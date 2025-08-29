@@ -365,29 +365,6 @@ class AffiliateManagerAI {
                 );
             }
             
-            // Script principale admin - verifica che il file esista
-            if (file_exists(ALMA_PLUGIN_DIR . 'assets/admin.js')) {
-                wp_enqueue_script(
-                    'alma-admin-script',
-                    ALMA_PLUGIN_URL . 'assets/admin.js',
-                    array('jquery'),
-                    ALMA_VERSION,
-                    true
-                );
-                
-                // Localizza script
-                wp_localize_script('alma-admin-script', 'alma_admin', array(
-                    'ajax_url' => admin_url('admin-ajax.php'),
-                    'nonce' => wp_create_nonce('alma_admin_nonce'),
-                    'strings' => array(
-                        'confirm_delete' => __('Sei sicuro di voler eliminare questo link? Tutti gli shortcode verranno rimossi.', 'affiliate-link-manager-ai'),
-                        'loading' => __('Caricamento...', 'affiliate-link-manager-ai'),
-                        'error' => __('Si è verificato un errore', 'affiliate-link-manager-ai'),
-                        'copied' => __('Copiato negli appunti!', 'affiliate-link-manager-ai'),
-                    )
-                ));
-            }
-            
             // Script AI - verifica che il file esista
             if (file_exists(ALMA_PLUGIN_DIR . 'assets/ai.js')) {
                 wp_enqueue_script(
