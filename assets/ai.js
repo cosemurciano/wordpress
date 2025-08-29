@@ -1,6 +1,6 @@
 /**
  * Affiliate Link Manager AI - AI Features JavaScript
- * Version: 1.3.0
+ * Version: 1.5
  * Author: Cosè Murciano
  */
 
@@ -685,5 +685,5 @@ jQuery(document).ready(function($) {
         $('head').append(styles);
     }
     
-    console.log('🤖 Affiliate AI v1.3.0: Funzionalità AI caricate!');
+    console.log('🤖 Affiliate AI v1.5: Funzionalità AI caricate!');
 });
