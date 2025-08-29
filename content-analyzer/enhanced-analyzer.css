@@ -1,0 +1,985 @@
+/**
+ * Enhanced AI Content Analyzer Styles
+ * Versione 2.0.0 - Design moderno e responsive
+ * 
+ * Stili per il widget AI Content Analyzer migliorato
+ * - Design moderno con glassmorphism
+ * - Animazioni fluide
+ * - Stati interattivi
+ * - Responsive design
+ * - Dark mode ready
+ */
+
+/* ================================================
+   WIDGET CONTAINER & LAYOUT
+   ================================================ */
+
+.alma-analyzer-widget {
+    background: #ffffff;
+    border: 1px solid #e1e5e9;
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    overflow: hidden;
+}
+
+.alma-analyzer-widget::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+    border-radius: 12px 12px 0 0;
+}
+
+.alma-analyzer-widget:hover {
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+    transform: translateY(-1px);
+}
+
+/* ================================================
+   HEADER SECTION
+   ================================================ */
+
+.alma-analyzer-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
+    padding-bottom: 15px;
+    border-bottom: 1px solid #f0f0f1;
+}
+
+.alma-analyzer-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #1e293b;
+}
+
+.alma-icon {
+    font-size: 18px;
+    animation: pulse-glow 2s infinite;
+}
+
+@keyframes pulse-glow {
+    0%, 100% { 
+        opacity: 1; 
+        transform: scale(1);
+    }
+    50% { 
+        opacity: 0.8; 
+        transform: scale(1.1);
+    }
+}
+
+.alma-analyzer-status {
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.status-ready {
+    color: #16a34a;
+    background: #dcfce7;
+    padding: 4px 8px;
+    border-radius: 6px;
+}
+
+.status-warning {
+    color: #d97706;
+    background: #fef3c7;
+    padding: 4px 8px;
+    border-radius: 6px;
+}
+
+.status-disabled {
+    color: #dc2626;
+    background: #fee2e2;
+    padding: 4px 8px;
+    border-radius: 6px;
+}
+
+/* ================================================
+   CONFIGURATION SECTION
+   ================================================ */
+
+.alma-analyzer-config {
+    background: #f8fafc;
+    border-radius: 8px;
+    padding: 15px;
+    margin-bottom: 20px;
+    border: 1px solid #e2e8f0;
+}
+
+.alma-config-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+}
+
+.alma-config-row:last-child {
+    margin-bottom: 0;
+}
+
+.alma-config-row label {
+    font-size: 13px;
+    font-weight: 500;
+    color: #374151;
+}
+
+.alma-select-small {
+    min-width: 80px;
+    padding: 6px 8px;
+    border-radius: 6px;
+    border: 1px solid #d1d5db;
+    font-size: 12px;
+    background: white;
+    transition: border-color 0.2s ease;
+}
+
+.alma-select-small:focus {
+    border-color: #667eea;
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.alma-checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    transition: color 0.2s ease;
+}
+
+.alma-checkbox-label:hover {
+    color: #667eea;
+}
+
+.alma-checkbox-text {
+    font-size: 13px;
+    user-select: none;
+}
+
+/* ================================================
+   QUICK STATS
+   ================================================ */
+
+.alma-quick-stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+.alma-stat-item {
+    text-align: center;
+    padding: 12px 8px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 8px;
+    color: white;
+    transition: transform 0.2s ease;
+}
+
+.alma-stat-item:hover {
+    transform: translateY(-2px);
+}
+
+.alma-stat-number {
+    display: block;
+    font-size: 18px;
+    font-weight: 700;
+    line-height: 1.2;
+}
+
+.alma-stat-label {
+    display: block;
+    font-size: 11px;
+    opacity: 0.9;
+    margin-top: 2px;
+}
+
+/* ================================================
+   MAIN ACTION BUTTON
+   ================================================ */
+
+.alma-main-action {
+    text-align: center;
+    margin-bottom: 25px;
+}
+
+.alma-analyze-button {
+    position: relative;
+    min-height: 44px;
+    padding: 12px 24px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border: none;
+    border-radius: 8px;
+    color: white;
+    font-weight: 600;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    width: 100%;
+    overflow: hidden;
+}
+
+.alma-analyze-button::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+    transition: left 0.5s ease;
+}
+
+.alma-analyze-button:hover::before {
+    left: 100%;
+}
+
+.alma-analyze-button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
+}
+
+.alma-analyze-button:disabled {
+    background: #9ca3af;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+.alma-analyze-button:disabled::before {
+    display: none;
+}
+
+.alma-button-icon {
+    margin-right: 8px;
+}
+
+.alma-button-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.alma-spinner {
+    width: 16px;
+    height: 16px;
+    border: 2px solid rgba(255,255,255,0.3);
+    border-top: 2px solid white;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+.alma-help-text {
+    margin-top: 12px;
+    font-size: 12px;
+    color: #6b7280;
+    text-align: center;
+}
+
+/* ================================================
+   ANALYSIS RESULTS
+   ================================================ */
+
+.alma-analysis-results {
+    border-top: 1px solid #e5e7eb;
+    padding-top: 20px;
+    animation: fadeInUp 0.5s ease;
+}
+
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.alma-content-insights {
+    margin-bottom: 25px;
+}
+
+.alma-content-insights h4 {
+    font-size: 14px;
+    font-weight: 600;
+    color: #374151;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.alma-insights-grid {
+    display: grid;
+    gap: 12px;
+}
+
+.alma-insight-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 12px;
+    background: #f8fafc;
+    border-radius: 8px;
+    border-left: 3px solid #667eea;
+}
+
+.alma-insight-icon {
+    font-size: 16px;
+    min-width: 20px;
+}
+
+.alma-insight-content {
+    flex: 1;
+    font-size: 12px;
+}
+
+.alma-insight-content strong {
+    display: block;
+    margin-bottom: 4px;
+    color: #374151;
+}
+
+.alma-keywords-list,
+.alma-themes-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 6px;
+}
+
+.alma-keywords-list .keyword-tag,
+.alma-themes-list .theme-tag {
+    background: #e0e7ff;
+    color: #3730a3;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 500;
+}
+
+.alma-sentiment {
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+}
+
+.alma-sentiment-positive {
+    background: #dcfce7;
+    color: #16a34a;
+}
+
+.alma-sentiment-negative {
+    background: #fee2e2;
+    color: #dc2626;
+}
+
+.alma-sentiment-neutral {
+    background: #f3f4f6;
+    color: #6b7280;
+}
+
+.alma-readability {
+    font-weight: 600;
+    color: #059669;
+}
+
+/* ================================================
+   SUGGESTIONS SECTION
+   ================================================ */
+
+.alma-suggestions-container {
+    margin-bottom: 20px;
+}
+
+.alma-suggestions-container h4 {
+    font-size: 14px;
+    font-weight: 600;
+    color: #374151;
+    margin-bottom: 15px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.alma-suggestions-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.alma-suggestion-item {
+    background: white;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 15px;
+    transition: all 0.2s ease;
+    position: relative;
+}
+
+.alma-suggestion-item:hover {
+    border-color: #667eea;
+    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.1);
+}
+
+.alma-suggestion-item.selected {
+    border-color: #667eea;
+    background: #f0f4ff;
+}
+
+.alma-suggestion-header {
+    margin-bottom: 12px;
+}
+
+.alma-suggestion-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.alma-suggestion-title {
+    flex: 1;
+    color: #374151;
+}
+
+.alma-relevance-badge {
+    padding: 3px 8px;
+    border-radius: 12px;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.alma-relevance-high {
+    background: #dcfce7;
+    color: #16a34a;
+}
+
+.alma-relevance-medium {
+    background: #fef3c7;
+    color: #d97706;
+}
+
+.alma-relevance-low {
+    background: #fee2e2;
+    color: #dc2626;
+}
+
+.alma-suggestion-details {
+    display: grid;
+    gap: 10px;
+    font-size: 12px;
+}
+
+.alma-suggestion-anchor strong,
+.alma-suggestion-reason strong {
+    color: #374151;
+    margin-right: 6px;
+}
+
+.alma-anchor-input {
+    width: 100%;
+    padding: 6px 8px;
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    font-size: 12px;
+    margin-top: 4px;
+    transition: border-color 0.2s ease;
+}
+
+.alma-anchor-input:focus {
+    border-color: #667eea;
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.1);
+}
+
+.alma-reason-text {
+    color: #6b7280;
+    font-style: italic;
+}
+
+.alma-suggestion-stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 8px;
+}
+
+.alma-stat-badge {
+    background: #f3f4f6;
+    color: #374151;
+    padding: 3px 8px;
+    border-radius: 12px;
+    font-size: 10px;
+    font-weight: 500;
+}
+
+/* ================================================
+   SUGGESTIONS ACTIONS
+   ================================================ */
+
+.alma-suggestions-actions {
+    background: #f8fafc;
+    border-radius: 8px;
+    padding: 15px;
+    margin-bottom: 20px;
+    border: 1px solid #e2e8f0;
+}
+
+.alma-action-buttons {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 15px;
+}
+
+.alma-action-buttons .button {
+    flex: 1;
+    text-align: center;
+    font-size: 12px;
+    padding: 8px 12px;
+}
+
+.alma-insert-section {
+    text-align: center;
+}
+
+.alma-insert-button {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    border: none;
+    color: white;
+    font-weight: 600;
+    width: 100%;
+    min-height: 40px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+.alma-insert-button::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+    transition: left 0.5s ease;
+}
+
+.alma-insert-button:hover::before {
+    left: 100%;
+}
+
+.alma-insert-button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(16, 185, 129, 0.4);
+}
+
+.alma-insert-count {
+    margin-top: 8px;
+    font-size: 12px;
+    color: #6b7280;
+}
+
+#alma-selected-count {
+    font-weight: 600;
+    color: #059669;
+}
+
+/* ================================================
+   PREVIEW SECTION
+   ================================================ */
+
+.alma-insert-preview {
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    overflow: hidden;
+}
+
+.alma-insert-preview h4 {
+    background: #f8fafc;
+    padding: 12px 15px;
+    margin: 0;
+    font-size: 14px;
+    font-weight: 600;
+    color: #374151;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.alma-preview-content {
+    padding: 15px;
+}
+
+.alma-preview-scroll {
+    max-height: 200px;
+    overflow-y: auto;
+    padding: 12px;
+    background: #f9fafb;
+    border-radius: 6px;
+    font-size: 12px;
+    line-height: 1.5;
+    color: #374151;
+    margin-bottom: 15px;
+    border: 1px solid #e5e7eb;
+}
+
+.alma-preview-actions {
+    display: flex;
+    gap: 10px;
+}
+
+.alma-preview-actions .button {
+    flex: 1;
+}
+
+/* ================================================
+   OPERATION LOG
+   ================================================ */
+
+.alma-operation-log {
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    overflow: hidden;
+}
+
+.alma-operation-log h4 {
+    background: #f8fafc;
+    padding: 12px 15px;
+    margin: 0;
+    font-size: 14px;
+    font-weight: 600;
+    color: #374151;
+    border-bottom: 1px solid #e5e7eb;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.alma-log-scroll {
+    max-height: 150px;
+    overflow-y: auto;
+    padding: 12px;
+    font-size: 11px;
+    line-height: 1.4;
+    font-family: 'Courier New', monospace;
+    background: #fafafa;
+}
+
+.alma-log-entry {
+    margin-bottom: 6px;
+    padding: 4px 6px;
+    border-radius: 3px;
+}
+
+.alma-log-success {
+    background: #dcfce7;
+    color: #16a34a;
+}
+
+.alma-log-error {
+    background: #fee2e2;
+    color: #dc2626;
+}
+
+.alma-log-info {
+    background: #dbeafe;
+    color: #2563eb;
+}
+
+#alma-clear-log {
+    padding: 4px 8px;
+    font-size: 10px;
+    min-height: auto;
+}
+
+/* ================================================
+   ANALYTICS SECTION
+   ================================================ */
+
+.alma-analytics-summary {
+    background: #f8fafc;
+    border-radius: 8px;
+    padding: 15px;
+    margin-bottom: 20px;
+    border: 1px solid #e2e8f0;
+}
+
+.alma-analytics-summary h4 {
+    font-size: 14px;
+    font-weight: 600;
+    color: #374151;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.alma-analytics-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 10px;
+}
+
+.alma-analytics-item {
+    text-align: center;
+    padding: 10px 8px;
+    background: white;
+    border-radius: 6px;
+    border: 1px solid #e5e7eb;
+}
+
+.alma-analytics-number {
+    display: block;
+    font-size: 16px;
+    font-weight: 700;
+    color: #374151;
+    line-height: 1.2;
+}
+
+.alma-analytics-label {
+    display: block;
+    font-size: 10px;
+    color: #6b7280;
+    margin-top: 2px;
+}
+
+/* ================================================
+   HELP SECTION
+   ================================================ */
+
+.alma-help-section {
+    margin-bottom: 15px;
+}
+
+.alma-help-details {
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.alma-help-details summary {
+    padding: 12px 15px;
+    background: #f8fafc;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    color: #374151;
+    transition: background-color 0.2s ease;
+}
+
+.alma-help-details summary:hover {
+    background: #f1f5f9;
+}
+
+.alma-help-content {
+    padding: 15px;
+    background: white;
+}
+
+.alma-help-content ul {
+    margin: 0;
+    padding-left: 20px;
+}
+
+.alma-help-content li {
+    margin-bottom: 8px;
+    font-size: 12px;
+    line-height: 1.5;
+    color: #374151;
+}
+
+.alma-help-content strong {
+    color: #1f2937;
+}
+
+/* ================================================
+   DEBUG SECTION
+   ================================================ */
+
+.alma-debug-section {
+    margin-bottom: 10px;
+}
+
+.alma-debug-details {
+    border: 1px solid #fbbf24;
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.alma-debug-details summary {
+    padding: 10px 12px;
+    background: #fef3c7;
+    cursor: pointer;
+    font-size: 11px;
+    font-weight: 500;
+    color: #92400e;
+}
+
+.alma-debug-content {
+    padding: 12px;
+    background: #fffbeb;
+    font-family: 'Courier New', monospace;
+}
+
+.alma-debug-content ul {
+    margin: 0;
+    padding-left: 15px;
+}
+
+.alma-debug-content li {
+    margin-bottom: 4px;
+    font-size: 10px;
+    line-height: 1.4;
+    color: #92400e;
+}
+
+/* ================================================
+   DISABLED STATE
+   ================================================ */
+
+.alma-analyzer-disabled {
+    text-align: center;
+    padding: 30px 20px;
+    color: #6b7280;
+}
+
+.alma-analyzer-disabled p {
+    margin-bottom: 15px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    font-size: 14px;
+}
+
+.alma-analyzer-disabled .dashicons {
+    color: #dc2626;
+}
+
+/* ================================================
+   RESPONSIVE DESIGN
+   ================================================ */
+
+@media (max-width: 782px) {
+    .alma-analyzer-widget {
+        padding: 15px;
+    }
+    
+    .alma-quick-stats {
+        grid-template-columns: 1fr;
+        gap: 8px;
+    }
+    
+    .alma-analytics-grid {
+        grid-template-columns: 1fr;
+        gap: 8px;
+    }
+    
+    .alma-action-buttons {
+        flex-direction: column;
+    }
+    
+    .alma-config-row {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+    }
+    
+    .alma-select-small {
+        width: 100%;
+    }
+}
+
+/* ================================================
+   ACCESSIBILITY
+   ================================================ */
+
+.alma-analyzer-widget *:focus {
+    outline: 2px solid #667eea;
+    outline-offset: 2px;
+}
+
+.alma-analyzer-widget button:focus-visible {
+    outline: 2px solid #667eea;
+    outline-offset: 2px;
+}
+
+/* Animazioni per stati di caricamento */
+.alma-loading-pulse {
+    animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes pulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: .5;
+    }
+}
+
+/* Transizioni fluide per stati */
+.alma-analyzer-widget * {
+    transition: color 0.2s ease, background-color 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+}
+
+/* Stati di hover migliorati */
+.alma-suggestion-item:hover .alma-suggestion-title {
+    color: #667eea;
+}
+
+.alma-analytics-item:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+/* Indicatori visivi per selezione multipla */
+.alma-suggestion-select:checked + .alma-suggestion-title {
+    color: #667eea;
+    font-weight: 600;
+}
+
+/* Effetti di feedback per azioni completate */
+@keyframes successPulse {
+    0% {
+        box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+    }
+    70% {
+        box-shadow: 0 0 0 10px rgba(16, 185, 129, 0);
+    }
+    100% {
+        box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+    }
+}
+
+.alma-success-animation {
+    animation: successPulse 0.6s ease-out;
+}
