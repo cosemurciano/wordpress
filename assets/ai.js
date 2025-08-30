@@ -176,6 +176,29 @@ jQuery(document).ready(function($) {
             }, 2000);
         }
     });
+
+    // Configurazione dinamica dello shortcode nel metabox
+    function almaUpdateShortcodePreview() {
+        const codeEl = $('#alma-shortcode-display');
+        if (!codeEl.length) return;
+        const linkId = codeEl.data('id');
+        let shortcode = `[affiliate_link id="${linkId}"`;
+        const img = $('#alma-sc-img').is(':checked');
+        const title = $('#alma-sc-title').is(':checked');
+        if (img) {
+            shortcode += ' img="yes"';
+            if (title) {
+                shortcode += ' fields="title"';
+            }
+        }
+        shortcode += ']';
+        codeEl.text(shortcode);
+        $('#alma-shortcode-copy').data('copy', shortcode);
+        $('#alma-sc-title').prop('disabled', !img);
+    }
+
+    $(document).on('change', '#alma-sc-img, #alma-sc-title', almaUpdateShortcodePreview);
+    almaUpdateShortcodePreview();
     
     // 🤖 Gestisci rigenera suggerimenti
     $(document).on('click', '.alma-regenerate-suggestions', function(e) {

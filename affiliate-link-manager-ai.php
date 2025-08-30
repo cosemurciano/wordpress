@@ -143,7 +143,13 @@ class AffiliateManagerAI {
             return '<span style="color:red;">[Affiliate Link: URL non configurato]</span>';
         }
         
-        $link_rel = get_post_meta($atts['id'], '_link_rel', true) ?: 'sponsored noopener';
+ $link_rel = get_post_meta($atts['id'], '_link_rel', true);
+        if ($link_rel === '') {
+            // Link interno: nessun attributo rel
+        } elseif (!$link_rel) {
+            $link_rel = 'sponsored noopener';
+        }
+
         $link_target = get_post_meta($atts['id'], '_link_target', true) ?: '_blank';
         $link_title = get_post_meta($atts['id'], '_link_title', true);
 
@@ -179,7 +185,9 @@ class AffiliateManagerAI {
         $link_html .= ' class="' . esc_attr($atts['class']) . ' alma-affiliate-link"';
         $link_html .= ' data-link-id="' . esc_attr($atts['id']) . '"';
         $link_html .= ' data-track="1"'; // Flag per tracking JavaScript
-        $link_html .= ' rel="' . esc_attr($link_rel) . '"';
+        if ($link_rel !== '') {
+            $link_html .= ' rel="' . esc_attr($link_rel) . '"';
+        }
         $link_html .= ' target="' . esc_attr($link_target) . '"';
         $link_html .= ' title="' . esc_attr($link_title) . '"';
         $link_html .= '>' . $content . '</a>';
@@ -480,7 +488,12 @@ class AffiliateManagerAI {
         wp_nonce_field('save_affiliate_link', 'affiliate_link_nonce');
         
         $affiliate_url = get_post_meta($post->ID, '_affiliate_url', true);
-        $link_rel = get_post_meta($post->ID, '_link_rel', true) ?: 'sponsored noopener';
+        $link_rel = get_post_meta($post->ID, '_link_rel', true);
+        if ($link_rel === '') {
+            // Link interno: nessun attributo rel
+        } elseif (!$link_rel) {
+            $link_rel = 'sponsored noopener';
+        }
         $link_target = get_post_meta($post->ID, '_link_target', true) ?: '_blank';
         $link_title = get_post_meta($post->ID, '_link_title', true);
         $click_count = get_post_meta($post->ID, '_click_count', true) ?: 0;
@@ -501,6 +514,7 @@ class AffiliateManagerAI {
         echo '<th><label for="link_rel">' . __('Tipo Relazione', 'affiliate-link-manager-ai') . '</label></th>';
         echo '<td>';
         echo '<select id="link_rel" name="link_rel" style="min-width:200px;">';
+        echo '<option value=""' . selected($link_rel, '', false) . '>' . __('Link interno (Follow)', 'affiliate-link-manager-ai') . '</option>';
         echo '<option value="sponsored noopener"' . selected($link_rel, 'sponsored noopener', false) . '>' . __('Sponsored + NoOpener (Raccomandato)', 'affiliate-link-manager-ai') . '</option>';
         echo '<option value="sponsored"' . selected($link_rel, 'sponsored', false) . '>' . __('Solo Sponsored', 'affiliate-link-manager-ai') . '</option>';
         echo '<option value="nofollow"' . selected($link_rel, 'nofollow', false) . '>' . __('Nofollow (Legacy)', 'affiliate-link-manager-ai') . '</option>';
@@ -558,8 +572,12 @@ class AffiliateManagerAI {
         echo '<th>' . __('Shortcode', 'affiliate-link-manager-ai') . '</th>';
         echo '<td>';
         echo '<div style="display:flex;gap:10px;align-items:center;">';
-        echo '<code style="padding:8px 12px;background:#f0f0f0;border-radius:4px;">[affiliate_link id="' . $post->ID . '"]</code>';
-        echo '<button type="button" class="button button-small alma-copy-btn" data-copy="[affiliate_link id=&quot;' . $post->ID . '&quot;]">📋 Copia</button>';
+        echo '<code id="alma-shortcode-display" data-id="' . $post->ID . '" style="padding:8px 12px;background:#f0f0f0;border-radius:4px;">[affiliate_link id="' . $post->ID . '"]</code>';
+        echo '<button type="button" id="alma-shortcode-copy" class="button button-small alma-copy-btn" data-copy="[affiliate_link id=&quot;' . $post->ID . '&quot;]">📋 Copia</button>';
+        echo '</div>';
+        echo '<div class="alma-shortcode-config" style="margin-top:8px;">';
+        echo '<label><input type="checkbox" id="alma-sc-img"> ' . __('Immagine', 'affiliate-link-manager-ai') . '</label> ';
+        echo '<label><input type="checkbox" id="alma-sc-title" disabled> ' . __('Titolo', 'affiliate-link-manager-ai') . '</label>';
         echo '</div>';
         echo '<p class="description">' . __('Usa questo shortcode per inserire il link nei tuoi contenuti', 'affiliate-link-manager-ai') . '</p>';
         echo '</td>';

@@ -563,3 +563,8 @@ button:disabled {
         transform: translateY(0);
     }
 }
+
+/* Shortcode config in link metabox */
+.alma-shortcode-config label {
+    margin-right: 10px;
+}
