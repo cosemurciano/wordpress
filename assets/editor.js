@@ -165,9 +165,24 @@ jQuery(document).ready(function($) {
         $(document).on('change.alma_editor', 'input[name="alma_text_option"]', function() {
             const isCustom = $(this).val() === 'custom';
             $('#alma-custom-text').prop('disabled', !isCustom);
-            
+
             if (isCustom) {
                 $('#alma-custom-text').focus();
+            }
+        });
+
+        // Usa immagine in primo piano
+        $(document).on('change.alma_editor', '#alma-use-img', function() {
+            const useImg = $(this).is(':checked');
+            $('input[name="alma_text_option"]').prop('disabled', useImg);
+            $('.alma-field-option').prop('disabled', !useImg);
+            if (useImg) {
+                $('#alma-custom-text').prop('disabled', true);
+                $('.alma-fields-row').slideDown();
+            } else {
+                const isCustom = $('input[name="alma_text_option"]:checked').val() === 'custom';
+                $('#alma-custom-text').prop('disabled', !isCustom);
+                $('.alma-fields-row').slideUp();
             }
         });
         
@@ -306,7 +321,24 @@ jQuery(document).ready(function($) {
                 
                 <div class="alma-shortcode-options" style="display:none;padding:20px 25px;background:#f9f9f9;border-top:1px solid #e0e0e0;">
                     <h3 style="margin:0 0 15px 0;font-size:14px;color:#23282d;">⚙️ Opzioni Shortcode</h3>
-                    
+
+                    <div class="alma-option-row" style="display:flex;align-items:center;gap:15px;margin-bottom:15px;">
+                        <label style="min-width:150px;font-weight:600;color:#23282d;">Usa immagine in primo piano:</label>
+                        <input type="checkbox" id="alma-use-img">
+                    </div>
+
+                    <div class="alma-option-row alma-fields-row" style="display:none;align-items:center;gap:15px;margin-bottom:15px;">
+                        <label style="min-width:150px;font-weight:600;color:#23282d;">Campi dopo immagine:</label>
+                        <label style="font-weight:normal;display:flex;align-items:center;gap:5px;">
+                            <input type="checkbox" class="alma-field-option" value="title">
+                            Titolo
+                        </label>
+                        <label style="font-weight:normal;display:flex;align-items:center;gap:5px;">
+                            <input type="checkbox" class="alma-field-option" value="content">
+                            Contenuto
+                        </label>
+                    </div>
+
                     <div class="alma-option-row" style="display:flex;align-items:center;gap:15px;margin-bottom:15px;">
                         <label style="min-width:150px;font-weight:600;color:#23282d;">Testo del link:</label>
                         <div class="alma-radio-group" style="display:flex;gap:20px;">
@@ -320,20 +352,20 @@ jQuery(document).ready(function($) {
                             </label>
                         </div>
                     </div>
-                    
+
                     <div class="alma-option-row" style="display:flex;align-items:center;gap:15px;margin-bottom:15px;">
                         <label for="alma-custom-text" style="min-width:150px;font-weight:600;color:#23282d;">Testo personalizzato:</label>
-                        <input type="text" 
-                               id="alma-custom-text" 
+                        <input type="text"
+                               id="alma-custom-text"
                                placeholder="Es: Clicca qui per l'offerta"
                                disabled
                                style="flex:1;padding:8px 12px;border:1px solid #ddd;border-radius:4px;">
                     </div>
-                    
+
                     <div class="alma-option-row" style="display:flex;align-items:center;gap:15px;">
                         <label for="alma-custom-class" style="min-width:150px;font-weight:600;color:#23282d;">Classe CSS:</label>
-                        <input type="text" 
-                               id="alma-custom-class" 
+                        <input type="text"
+                               id="alma-custom-class"
                                value="affiliate-link-btn"
                                placeholder="affiliate-link-btn"
                                style="flex:1;padding:8px 12px;border:1px solid #ddd;border-radius:4px;">
@@ -390,7 +422,10 @@ jQuery(document).ready(function($) {
         $('#alma-type-filter').val('');
         $('#alma-custom-text').val('').prop('disabled', true);
         $('#alma-custom-class').val('affiliate-link-btn');
-        $('input[name="alma_text_option"][value="auto"]').prop('checked', true);
+        $('input[name="alma_text_option"][value="auto"]').prop('checked', true).prop('disabled', false);
+        $('#alma-use-img').prop('checked', false);
+        $('.alma-field-option').prop('checked', false).prop('disabled', true);
+        $('.alma-fields-row').hide();
         $('#alma-insert-shortcode').prop('disabled', true);
         $('.alma-shortcode-options').hide();
         $('.alma-link-item').removeClass('selected');
@@ -507,13 +542,23 @@ jQuery(document).ready(function($) {
      */
     function insertShortcode() {
         let shortcode = `[affiliate_link id="${selectedLinkId}"`;
-        
-        // Aggiungi testo personalizzato se selezionato
-        const textOption = $('input[name="alma_text_option"]:checked').val();
-        if (textOption === 'custom') {
-            const customText = $('#alma-custom-text').val().trim();
-            if (customText) {
-                shortcode += ` text="${escapeShortcodeAttr(customText)}"`;
+
+        // Opzione immagine
+        const useImg = $('#alma-use-img').is(':checked');
+        if (useImg) {
+            shortcode += ' img="yes"';
+            const fields = $('.alma-field-option:checked').map(function() { return $(this).val(); }).get();
+            if (fields.length) {
+                shortcode += ` fields="${fields.join(',')}"`;
+            }
+        } else {
+            // Aggiungi testo personalizzato se selezionato
+            const textOption = $('input[name="alma_text_option"]:checked').val();
+            if (textOption === 'custom') {
+                const customText = $('#alma-custom-text').val().trim();
+                if (customText) {
+                    shortcode += ` text="${escapeShortcodeAttr(customText)}"`;
+                }
             }
         }
         
