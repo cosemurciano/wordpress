@@ -1,6 +1,6 @@
 /**
  * Affiliate Link Manager AI - Editor Integration
- * Version: 1.3.2
+ * Version: 1.5
  * Author: Cosè Murciano
  */
 
@@ -24,7 +24,7 @@ jQuery(document).ready(function($) {
         // Keyboard shortcuts
         setupKeyboardShortcuts();
         
-        console.log('🔗 Affiliate Link Manager AI v1.3.2 - Editor Integration Loaded');
+        console.log('🔗 Affiliate Link Manager AI v1.5 - Editor Integration Loaded');
     }
     
     /**

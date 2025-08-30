@@ -1,6 +1,6 @@
 /**
  * Affiliate Link Manager AI - Frontend Tracking
- * Version: 1.3.1
+ * Version: 1.5
  * Tracking asincrono per link affiliati senza redirect
  */
 

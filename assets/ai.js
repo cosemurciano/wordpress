@@ -1,6 +1,6 @@
 /**
  * Affiliate Link Manager AI - AI Features JavaScript
- * Version: 1.3.0
+ * Version: 1.5
  * Author: Cosè Murciano
  */
 
@@ -10,9 +10,11 @@ jQuery(document).ready(function($) {
     $(document).on('click', '#alma-ai-suggest-btn', function(e) {
         e.preventDefault();
         
-        const button = $(this);
-        const linkId = button.data('link-id');
-        const container = $('#alma-ai-suggestions-container');
+        const button     = $(this);
+        const linkId     = button.data('link-id');
+        const container  = $('#alma-ai-suggestions-container');
+        const title      = $('#title').val();
+        const description = $('#content').val();
         
         // Disabilita pulsante e mostra loading
         button.prop('disabled', true);
@@ -33,6 +35,8 @@ jQuery(document).ready(function($) {
             data: {
                 action: 'alma_ai_suggest_text',
                 link_id: linkId,
+                title: title,
+                description: description,
                 nonce: alma_ai.nonce
             },
             success: function(response) {
@@ -142,6 +146,7 @@ jQuery(document).ready(function($) {
     // 🤖 Gestisci copia suggerimento
     $(document).on('click', '.alma-copy-suggestion', function(e) {
         e.preventDefault();
+        e.stopPropagation();
         const text = $(this).data('text');
         const button = $(this);
         
@@ -680,5 +685,5 @@ jQuery(document).ready(function($) {
         $('head').append(styles);
     }
     
-    console.log('🤖 Affiliate AI v1.3.0: Funzionalità AI caricate!');
+    console.log('🤖 Affiliate AI v1.5: Funzionalità AI caricate!');
 });

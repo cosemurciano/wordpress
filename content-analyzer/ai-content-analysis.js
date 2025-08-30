@@ -1,6 +1,6 @@
 /**
  * Affiliate Link Manager AI - Content Analyzer JavaScript
- * Version: 1.3.0
+ * Version: 1.5
  * Author: Cosè Murciano
  */
 
@@ -15,7 +15,7 @@ jQuery(document).ready(function($) {
     init();
     
     function init() {
-        console.log('🤖 ALMA Content Analyzer v1.3.0 inizializzato');
+        console.log('🤖 ALMA Content Analyzer v1.5 inizializzato');
         
         // Bind eventi
         bindEvents();
