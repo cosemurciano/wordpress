@@ -1107,12 +1107,47 @@ class AffiliateManagerAI {
             $('.alma-settings-tabs .nav-tab').on('click', function(e) {
                 e.preventDefault();
                 var target = $(this).attr('href');
-                
+
                 $('.alma-settings-tabs .nav-tab').removeClass('nav-tab-active');
                 $(this).addClass('nav-tab-active');
-                
+
                 $('.alma-settings-section').hide();
                 $(target).show();
+            });
+
+            // Toggle API key visibility
+            $('.alma-toggle-api-key').on('click', function() {
+                var $input = $('#claude_api_key');
+                var type = $input.attr('type') === 'password' ? 'text' : 'password';
+                $input.attr('type', type);
+                $(this).text(type === 'password' ? '👁 Mostra' : '🙈 Nascondi');
+            });
+
+            // Test Claude API connection
+            $('#test-claude-connection').on('click', function(e) {
+                e.preventDefault();
+                var $result = $('#claude-test-result');
+                $result.html('<span class="spinner is-active" style="float:none; margin-top:0;"></span> Test in corso...');
+
+                $.ajax({
+                    url: ajaxurl,
+                    method: 'POST',
+                    data: {
+                        action: 'alma_test_claude_api',
+                        nonce: '<?php echo wp_create_nonce("alma_admin_nonce"); ?>'
+                    },
+                    success: function(response) {
+                        if (response.success) {
+                            $result.html('<span style="color:green;">✅ Connessione OK (' +
+                                response.data.model + ' - ' + response.data.response_time + 'ms)</span>');
+                        } else {
+                            $result.html('<span style="color:#dc3232;">❌ ' + response.data + '</span>');
+                        }
+                    },
+                    error: function() {
+                        $result.html('<span style="color:#dc3232;">❌ Errore di connessione</span>');
+                    }
+                });
             });
         });
         </script>
