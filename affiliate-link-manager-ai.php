@@ -41,6 +41,9 @@ class AffiliateManagerAI {
         
         // Registra Custom Post Type
         $this->create_post_type();
+
+        // Abilita featured image per i link affiliati
+        add_theme_support('post-thumbnails', array('affiliate_link'));
         
         // Inizializza hooks
         $this->init_hooks();
@@ -121,7 +124,9 @@ class AffiliateManagerAI {
         $atts = shortcode_atts(array(
             'id' => 0,
             'text' => '',
-            'class' => 'affiliate-link-btn'
+            'class' => 'affiliate-link-btn',
+            'img' => 'no',
+            'fields' => ''
         ), $atts);
         
         if (!$atts['id']) {
@@ -138,18 +143,37 @@ class AffiliateManagerAI {
             return '<span style="color:red;">[Affiliate Link: URL non configurato]</span>';
         }
         
-        if (empty($atts['text'])) {
-            $atts['text'] = get_the_title($atts['id']);
-        }
-        
         $link_rel = get_post_meta($atts['id'], '_link_rel', true) ?: 'sponsored noopener';
         $link_target = get_post_meta($atts['id'], '_link_target', true) ?: '_blank';
         $link_title = get_post_meta($atts['id'], '_link_title', true);
-        
+
         if (empty($link_title)) {
             $link_title = get_the_title($atts['id']);
         }
-        
+        // Contenuto del link
+        $content = '';
+        if ($atts['img'] === 'yes') {
+            $content = get_the_post_thumbnail($atts['id'], 'full', array('class' => 'alma-affiliate-img'));
+            if (!$content) {
+                $atts['img'] = 'no';
+            }
+
+            // Campi aggiuntivi dopo l'immagine
+            if (!empty($atts['fields'])) {
+                $fields = array_map('trim', explode(',', $atts['fields']));
+                if (in_array('title', $fields)) {
+                    $content .= '<span class="alma-link-title">' . esc_html(get_the_title($atts['id'])) . '</span>';
+                }
+            }
+        }
+
+        if ($atts['img'] !== 'yes') {
+            if (empty($atts['text'])) {
+                $atts['text'] = get_the_title($atts['id']);
+            }
+            $content = esc_html($atts['text']);
+        }
+
         // NUOVO: Usa link diretto invece di redirect
         $link_html = '<a href="' . esc_url($affiliate_url) . '"';
         $link_html .= ' class="' . esc_attr($atts['class']) . ' alma-affiliate-link"';
@@ -158,8 +182,8 @@ class AffiliateManagerAI {
         $link_html .= ' rel="' . esc_attr($link_rel) . '"';
         $link_html .= ' target="' . esc_attr($link_target) . '"';
         $link_html .= ' title="' . esc_attr($link_title) . '"';
-        $link_html .= '>' . esc_html($atts['text']) . '</a>';
-        
+        $link_html .= '>' . $content . '</a>';
+
         return $link_html;
     }
     
@@ -302,7 +326,7 @@ class AffiliateManagerAI {
             'show_in_menu' => true,
             'menu_position' => 25,
             'menu_icon' => 'dashicons-admin-links',
-            'supports' => array('title', 'editor'),
+            'supports' => array('title', 'editor', 'thumbnail'),
             'taxonomies' => array('link_type'),
             'has_archive' => false,
             'rewrite' => false,
