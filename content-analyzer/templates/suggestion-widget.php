@@ -31,7 +31,7 @@ wp_nonce_field('alma_content_analyzer', 'alma_content_analyzer_nonce');
     <div class="alma-analyzer-header">
         <h4>
             🤖 AI Content Analyzer
-            <span class="alma-version">v1.3.0</span>
+            <span class="alma-version">v1.5</span>
         </h4>
         <div class="alma-analyzer-status"></div>
     </div>

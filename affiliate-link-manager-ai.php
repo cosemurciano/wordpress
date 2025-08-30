@@ -3,7 +3,7 @@
  * Plugin Name: Affiliate Link Manager AI
  * Plugin URI: https://your-website.com
  * Description: Gestisce link affiliati con intelligenza artificiale per ottimizzazione e tracking automatico.
- * Version: 1.3.2
+ * Version: 1.5.1
  * Author: Cosè Murciano
  * License: GPL v2 or later
  * Text Domain: affiliate-link-manager-ai
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Definisci costanti del plugin
-define('ALMA_VERSION', '1.3.2');
+define('ALMA_VERSION', '1.5.1');
 define('ALMA_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('ALMA_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('ALMA_PLUGIN_FILE', __FILE__);
@@ -335,6 +335,7 @@ class AffiliateManagerAI {
         
         // AJAX handlers
         add_action('wp_ajax_alma_get_ai_suggestions', array($this, 'ajax_get_ai_suggestions'));
+        add_action('wp_ajax_alma_ai_suggest_text', array($this, 'ajax_ai_suggest_text'));
         add_action('wp_ajax_alma_test_claude_api', array($this, 'ajax_test_claude_api'));
         add_action('wp_ajax_alma_get_performance_predictions', array($this, 'ajax_get_performance_predictions'));
         add_action('wp_ajax_alma_get_link_types', array($this, 'ajax_get_link_types'));
@@ -364,29 +365,6 @@ class AffiliateManagerAI {
                 );
             }
             
-            // Script principale admin - verifica che il file esista
-            if (file_exists(ALMA_PLUGIN_DIR . 'assets/admin.js')) {
-                wp_enqueue_script(
-                    'alma-admin-script',
-                    ALMA_PLUGIN_URL . 'assets/admin.js',
-                    array('jquery'),
-                    ALMA_VERSION,
-                    true
-                );
-                
-                // Localizza script
-                wp_localize_script('alma-admin-script', 'alma_admin', array(
-                    'ajax_url' => admin_url('admin-ajax.php'),
-                    'nonce' => wp_create_nonce('alma_admin_nonce'),
-                    'strings' => array(
-                        'confirm_delete' => __('Sei sicuro di voler eliminare questo link? Tutti gli shortcode verranno rimossi.', 'affiliate-link-manager-ai'),
-                        'loading' => __('Caricamento...', 'affiliate-link-manager-ai'),
-                        'error' => __('Si è verificato un errore', 'affiliate-link-manager-ai'),
-                        'copied' => __('Copiato negli appunti!', 'affiliate-link-manager-ai'),
-                    )
-                ));
-            }
-            
             // Script AI - verifica che il file esista
             if (file_exists(ALMA_PLUGIN_DIR . 'assets/ai.js')) {
                 wp_enqueue_script(
@@ -396,6 +374,16 @@ class AffiliateManagerAI {
                     ALMA_VERSION,
                     true
                 );
+
+                wp_localize_script('alma-ai-script', 'alma_ai', array(
+                    'ajax_url' => admin_url('admin-ajax.php'),
+                    'nonce'    => wp_create_nonce('alma_ai_suggest_text'),
+                    'messages' => array(
+                        'generating' => __('Generazione suggerimenti...', 'affiliate-link-manager-ai'),
+                        'generated'  => __('Suggerimenti generati!', 'affiliate-link-manager-ai'),
+                        'error'      => __('Errore durante la generazione', 'affiliate-link-manager-ai'),
+                    ),
+                ));
             }
         }
         
@@ -616,14 +604,12 @@ class AffiliateManagerAI {
      * Render metabox suggerimenti AI
      */
     public function render_ai_suggestions_metabox($post) {
-        echo '<div id="alma-ai-suggestions-container">';
         echo '<div style="text-align:center;padding:20px;">';
-        echo '<button type="button" class="button button-primary" onclick="almaLoadAISuggestions(' . $post->ID . ')">';
+        echo '<button type="button" id="alma-ai-suggest-btn" class="button button-primary" data-link-id="' . $post->ID . '">';
         echo '🤖 ' . __('Genera Suggerimenti AI', 'affiliate-link-manager-ai');
         echo '</button>';
         echo '</div>';
-        echo '<div id="alma-ai-suggestions-content"></div>';
-        echo '</div>';
+        echo '<div id="alma-ai-suggestions-container"></div>';
     }
     
     /**
@@ -1349,13 +1335,46 @@ class AffiliateManagerAI {
             wp_send_json_error('Invalid nonce');
             return;
         }
-        
+
         $link_id = intval($_POST['link_id']);
-        
+
         // Genera suggerimenti AI
         $suggestions = $this->generate_ai_suggestions($link_id);
-        
+
         wp_send_json_success($suggestions);
+    }
+
+    public function ajax_ai_suggest_text() {
+        if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'alma_ai_suggest_text')) {
+            wp_send_json_error('Invalid nonce');
+            return;
+        }
+
+        $title       = isset($_POST['title']) ? sanitize_text_field(wp_unslash($_POST['title'])) : '';
+        $description = isset($_POST['description']) ? sanitize_textarea_field(wp_unslash($_POST['description'])) : '';
+
+        // Se non vengono passati titolo/descrizione, prova a recuperarli dal link_id
+        if (!$title && !$description && isset($_POST['link_id'])) {
+            $link_id = intval($_POST['link_id']);
+            $post    = get_post($link_id);
+
+            if ($post && $post->post_type === 'affiliate_link') {
+                $title       = $post->post_title;
+                $description = $post->post_content;
+            } else {
+                wp_send_json_error('Invalid link');
+                return;
+            }
+        }
+
+        if (!$title && !$description) {
+            wp_send_json_error('Missing data');
+            return;
+        }
+
+        $suggestions = $this->generate_title_suggestions($title, $description);
+
+        wp_send_json_success(array('suggestions' => $suggestions));
     }
     
     public function ajax_test_claude_api() {
@@ -1640,6 +1659,66 @@ class AffiliateManagerAI {
                 'title' => '🔄 A/B Testing',
                 'description' => 'Testa diversi anchor text per trovare quello più performante'
             )
+        );
+    }
+
+    private function generate_title_suggestions($title, $description) {
+        $prompt = sprintf(
+            'Genera 5 titoli SEO in italiano per un link affiliato. Titolo: "%s". Descrizione: "%s". Restituisci un JSON array con solo i titoli.',
+            wp_strip_all_tags($title),
+            wp_strip_all_tags($description)
+        );
+
+        $response = $this->call_claude_api($prompt);
+
+        if (!empty($response['success']) && !empty($response['response'])) {
+            $decoded = json_decode($response['response'], true);
+
+            if (is_array($decoded)) {
+                $suggestions = array();
+                foreach ($decoded as $text) {
+                    $suggestions[] = array(
+                        'text'       => sanitize_text_field($text),
+                        'confidence' => 90,
+                        'pattern'    => 'ai'
+                    );
+                }
+                if ($suggestions) {
+                    return $suggestions;
+                }
+            }
+        }
+
+        // Fallback basato su semplici pattern se l'AI non risponde
+        $base     = wp_strip_all_tags($title);
+        $keywords = $base ? $base : wp_trim_words(wp_strip_all_tags($description), 3, '');
+
+        return array(
+            array(
+                'text'       => sprintf('Le migliori %s 2024', $keywords),
+                'confidence' => 92,
+                'pattern'    => 'top_list'
+            ),
+            array(
+                'text'       => sprintf('Guida completa a %s', $keywords),
+                'confidence' => 88,
+                'pattern'    => 'guide'
+            ),
+            array(
+                'text'       => sprintf('%s: offerte e prezzi', $keywords),
+                'confidence' => 85,
+                'pattern'    => 'offers'
+            ),
+            array(
+                'text'       => sprintf('Recensione %s', $keywords),
+                'confidence' => 83,
+                'pattern'    => 'review'
+            ),
+            array(
+                'text'       => sprintf('Compra %s online', $keywords),
+                'confidence' => 80,
+                'pattern'    => 'buy_online'
+            ),
         );
     }
     

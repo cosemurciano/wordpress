@@ -222,7 +222,7 @@ if (isset($_POST['alma_save_analyzer_settings'])) {
     <div class="alma-debug-section" style="margin-top: 20px; padding: 15px; background: #f0f0f0; border-radius: 6px; font-family: monospace; font-size: 12px;">
         <h4><?php _e('🔧 Debug Info', 'affiliate-link-manager-ai'); ?></h4>
         <ul>
-            <li><strong>Content Analyzer Version:</strong> 1.3.0</li>
+            <li><strong>Content Analyzer Version:</strong> 1.5</li>
             <li><strong>WordPress:</strong> <?php echo get_bloginfo('version'); ?></li>
             <li><strong>PHP:</strong> <?php echo PHP_VERSION; ?></li>
             <li><strong>Plugin Directory:</strong> <?php echo ALMA_PLUGIN_DIR; ?></li>
