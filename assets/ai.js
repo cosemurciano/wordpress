@@ -193,10 +193,12 @@ jQuery(document).ready(function($) {
             if (content) fields.push('content');
             if (fields.length) {
                 shortcode += ` fields="${fields.join(',')}"`;
+
         if (img) {
             shortcode += ' img="yes"';
             if (title) {
                 shortcode += ' fields="title"';
+
             }
         }
         shortcode += ']';
@@ -206,6 +208,7 @@ jQuery(document).ready(function($) {
     }
 
     $(document).on('change', '#alma-sc-img, #alma-sc-title, #alma-sc-content', almaUpdateShortcodePreview);
+
         $('#alma-sc-title').prop('disabled', !img);
     }
 

@@ -3,7 +3,7 @@
  * Plugin Name: Affiliate Link Manager AI
  * Plugin URI: https://your-website.com
  * Description: Gestisce link affiliati con intelligenza artificiale per ottimizzazione e tracking automatico.
- * Version: 1.5.3
+ * Version: 1.5.4
  * Author: Cosè Murciano
  * License: GPL v2 or later
  * Text Domain: affiliate-link-manager-ai
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Definisci costanti del plugin
-define('ALMA_VERSION', '1.5.3');
+define('ALMA_VERSION', '1.5.4');
 define('ALMA_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('ALMA_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('ALMA_PLUGIN_FILE', __FILE__);
@@ -144,13 +144,13 @@ class AffiliateManagerAI {
         }
         
         $link_rel = get_post_meta($atts['id'], '_link_rel', true);
-        
+
         if ($link_rel === '') {
             // Link interno: nessun attributo rel
         } elseif (!$link_rel) {
             $link_rel = 'sponsored noopener';
         }
-      
+
         $link_target = get_post_meta($atts['id'], '_link_target', true) ?: '_blank';
         $link_title = get_post_meta($atts['id'], '_link_title', true);
 
@@ -180,14 +180,6 @@ class AffiliateManagerAI {
                 if (in_array('content', $fields)) {
                     $post_content = apply_filters('the_content', get_post_field('post_content', $atts['id']));
                     $content .= '<div class="alma-link-content">' . $post_content . '</div>';
-
-            }
-
-            // Campi aggiuntivi dopo l'immagine
-            if (!empty($atts['fields'])) {
-                $fields = array_map('trim', explode(',', $atts['fields']));
-                if (in_array('title', $fields)) {
-                    $content .= '<span class="alma-link-title">' . esc_html(get_the_title($atts['id'])) . '</span>';
 
                 }
             }
@@ -599,7 +591,6 @@ class AffiliateManagerAI {
         echo '<label><input type="checkbox" id="alma-sc-img"> ' . __('Immagine', 'affiliate-link-manager-ai') . '</label> ';
         echo '<label><input type="checkbox" id="alma-sc-title" disabled> ' . __('Titolo', 'affiliate-link-manager-ai') . '</label> ';
         echo '<label><input type="checkbox" id="alma-sc-content" disabled> ' . __('Contenuto', 'affiliate-link-manager-ai') . '</label>';
-        echo '<label><input type="checkbox" id="alma-sc-title" disabled> ' . __('Titolo', 'affiliate-link-manager-ai') . '</label>';
         echo '</div>';
         echo '<p class="description">' . __('Usa questo shortcode per inserire il link nei tuoi contenuti', 'affiliate-link-manager-ai') . '</p>';
         echo '</td>';
