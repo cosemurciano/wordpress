@@ -3,7 +3,7 @@
  * Plugin Name: Affiliate Link Manager AI
  * Plugin URI: https://your-website.com
  * Description: Gestisce link affiliati con intelligenza artificiale per ottimizzazione e tracking automatico.
- * Version: 1.6
+ * Version: 1.6.1
  * Author: Cosè Murciano
  * License: GPL v2 or later
  * Text Domain: affiliate-link-manager-ai
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Definisci costanti del plugin
-define('ALMA_VERSION', '1.6');
+define('ALMA_VERSION', '1.6.1');
 define('ALMA_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('ALMA_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('ALMA_PLUGIN_FILE', __FILE__);
@@ -1002,14 +1002,39 @@ class AffiliateManagerAI {
             }
         }
 
+
+        if (isset($_POST['alma_delete_nonce']) && wp_verify_nonce($_POST['alma_delete_nonce'], 'alma_import_delete')) {
+            $import_id = sanitize_text_field($_POST['delete_import_id']);
+            if ($import_id !== '') {
+                $deleted = $this->delete_imported_links($import_id);
+                echo '<div class="notice notice-success"><p>Eliminati ' . intval($deleted) . ' link importati.</p></div>';
+            }
+        }
+
+        ?>
+        <div class="wrap">
+            <h1><?php _e('Importa Link - Step 1', 'affiliate-link-manager-ai'); ?></h1>
+            <p>Carica un file <strong>CSV</strong> o <strong>TSV</strong> con intestazione nella prima riga. Campi obbligatori: <code>post_title</code> e <code>_affiliate_url</code>. Campi opzionali: <code>_link_rel</code>, <code>_link_target</code>, <code>_link_title</code> e <code>link_type</code> (separa termini multipli con virgole).</p>
+            <form method="post" enctype="multipart/form-data" style="margin-bottom:30px;">
+
         ?>
         <div class="wrap">
             <h1><?php _e('Importa Link - Step 1', 'affiliate-link-manager-ai'); ?></h1>
             <form method="post" enctype="multipart/form-data">
+
                 <?php wp_nonce_field('alma_import_step1', 'alma_import_nonce'); ?>
                 <input type="file" name="import_file" accept=".csv,.tsv,.xlsx" required />
                 <?php submit_button(__('Carica e continua', 'affiliate-link-manager-ai')); ?>
             </form>
+
+            <h2><?php _e('Elimina link importati', 'affiliate-link-manager-ai'); ?></h2>
+            <p>Hai un ID importazione precedente? Inseriscilo per cancellare tutti i link creati in quel batch.</p>
+            <form method="post">
+                <?php wp_nonce_field('alma_import_delete', 'alma_delete_nonce'); ?>
+                <input type="text" name="delete_import_id" placeholder="ID importazione" />
+                <?php submit_button(__('Elimina link', 'affiliate-link-manager-ai'), 'delete'); ?>
+            </form>
+
         </div>
         <?php
     }
@@ -1045,6 +1070,8 @@ class AffiliateManagerAI {
         ?>
         <div class="wrap">
             <h1><?php _e('Importa Link - Step 2', 'affiliate-link-manager-ai'); ?></h1>
+            <p>Abbina le colonne del tuo file ai campi del plugin. I campi contrassegnati con * sono obbligatori.</p>
+
             <form method="post">
                 <?php wp_nonce_field('alma_import_step2', 'alma_map_nonce'); ?>
                 <table class="form-table">
@@ -1088,7 +1115,10 @@ class AffiliateManagerAI {
         list($header, $rows) = $this->get_file_data($file, 5);
 
         if (isset($_POST['alma_import_confirm']) && wp_verify_nonce($_POST['alma_import_confirm'], 'alma_import_step3')) {
-            $result = $this->process_import($file, $mapping);
+
+            $import_id = uniqid('alma_', false);
+            $result = $this->process_import($file, $mapping, $import_id);
+
             delete_transient($this->get_import_transient_name());
             delete_transient($this->get_import_transient_name() . '_map');
             @unlink($file);
@@ -1102,6 +1132,14 @@ class AffiliateManagerAI {
                 }
                 echo '</ul>';
             }
+
+            echo '<p>ID importazione: <code>' . esc_html($import_id) . '</code></p>';
+            echo '<form method="post" style="margin-top:20px;">';
+            wp_nonce_field('alma_import_delete', 'alma_delete_nonce');
+            echo '<input type="hidden" name="delete_import_id" value="' . esc_attr($import_id) . '" />';
+            submit_button(__('Elimina questi link', 'affiliate-link-manager-ai'), 'delete');
+            echo '</form>';
+
             echo '<p><a class="button" href="' . admin_url('edit.php?post_type=affiliate_link&page=alma-import') . '">Nuova Importazione</a></p>';
             echo '</div>';
             return;
@@ -1139,7 +1177,8 @@ class AffiliateManagerAI {
         <?php
     }
 
-    private function process_import($file, $mapping) {
+    private function process_import($file, $mapping, $import_id) {
+
         list($header, $rows) = $this->get_file_data($file);
         $success = 0;
         $failed = 0;
@@ -1171,7 +1210,9 @@ class AffiliateManagerAI {
                 continue;
             }
 
-            update_post_meta($post_id, '_affiliate_url', $url);
+
+            update_post_meta($post_id, '_alma_import_id', $import_id);
+
 
             foreach (array('_link_rel', '_link_target', '_link_title') as $meta_key) {
                 if (!empty($mapping[$meta_key])) {
@@ -1199,6 +1240,23 @@ class AffiliateManagerAI {
             'errors' => $errors,
         );
     }
+
+    private function delete_imported_links($import_id) {
+        $posts = get_posts(array(
+            'post_type' => 'affiliate_link',
+            'numberposts' => -1,
+            'fields' => 'ids',
+            'meta_key' => '_alma_import_id',
+            'meta_value' => $import_id,
+        ));
+
+        foreach ($posts as $post_id) {
+            wp_delete_post($post_id, true);
+        }
+
+        return count($posts);
+    }
+
 
     private function get_file_data($file, $limit = null) {
         $ext = strtolower(pathinfo($file, PATHINFO_EXTENSION));
