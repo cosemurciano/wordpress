@@ -174,15 +174,13 @@ jQuery(document).ready(function($) {
         // Usa immagine in primo piano
         $(document).on('change.alma_editor', '#alma-use-img', function() {
             const useImg = $(this).is(':checked');
-            $('input[name="alma_text_option"]').prop('disabled', useImg);
             $('.alma-field-option').prop('disabled', !useImg);
             if (useImg) {
-                $('#alma-custom-text').prop('disabled', true);
                 $('.alma-fields-row').slideDown();
             } else {
+                $('.alma-fields-row').slideUp();
                 const isCustom = $('input[name="alma_text_option"]:checked').val() === 'custom';
                 $('#alma-custom-text').prop('disabled', !isCustom);
-                $('.alma-fields-row').slideUp();
             }
         });
         
@@ -551,14 +549,14 @@ jQuery(document).ready(function($) {
             if (fields.length) {
                 shortcode += ` fields="${fields.join(',')}"`;
             }
-        } else {
-            // Aggiungi testo personalizzato se selezionato
-            const textOption = $('input[name="alma_text_option"]:checked').val();
-            if (textOption === 'custom') {
-                const customText = $('#alma-custom-text').val().trim();
-                if (customText) {
-                    shortcode += ` text="${escapeShortcodeAttr(customText)}"`;
-                }
+        }
+
+        // Aggiungi testo personalizzato se selezionato
+        const textOption = $('input[name="alma_text_option"]:checked').val();
+        if (textOption === 'custom') {
+            const customText = $('#alma-custom-text').val().trim();
+            if (customText) {
+                shortcode += ` text="${escapeShortcodeAttr(customText)}"`;
             }
         }
         
