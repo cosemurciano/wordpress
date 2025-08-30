@@ -138,6 +138,20 @@
     opacity: 1;
 }
 
+/* Stili frontend per link con immagine */
+.alma-affiliate-img {
+    max-width: 100%;
+    height: auto;
+    display: inline-block;
+    vertical-align: middle;
+}
+
+.alma-link-title {
+    margin-left: 5px;
+    vertical-align: middle;
+    display: inline-block;
+}
+
 /* Search Section */
 .alma-search-section {
     padding: 20px 25px;
