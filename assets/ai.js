@@ -176,6 +176,33 @@ jQuery(document).ready(function($) {
             }, 2000);
         }
     });
+
+    // Configurazione dinamica dello shortcode nel metabox
+    function almaUpdateShortcodePreview() {
+        const codeEl = $('#alma-shortcode-display');
+        if (!codeEl.length) return;
+        const linkId = codeEl.data('id');
+        let shortcode = `[affiliate_link id="${linkId}"`;
+        const img = $('#alma-sc-img').is(':checked');
+        const title = $('#alma-sc-title').is(':checked');
+        const content = $('#alma-sc-content').is(':checked');
+        if (img) {
+            shortcode += ' img="yes"';
+            const fields = [];
+            if (title) fields.push('title');
+            if (content) fields.push('content');
+            if (fields.length) {
+                shortcode += ` fields="${fields.join(',')}"`;
+            }
+        }
+        shortcode += ']';
+        codeEl.text(shortcode);
+        $('#alma-shortcode-copy').data('copy', shortcode);
+        $('#alma-sc-title, #alma-sc-content').prop('disabled', !img);
+    }
+
+    $(document).on('change', '#alma-sc-img, #alma-sc-title, #alma-sc-content', almaUpdateShortcodePreview);
+    almaUpdateShortcodePreview();
     
     // 🤖 Gestisci rigenera suggerimenti
     $(document).on('click', '.alma-regenerate-suggestions', function(e) {
