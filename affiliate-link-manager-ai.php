@@ -3,7 +3,7 @@
  * Plugin Name: Affiliate Link Manager AI
  * Plugin URI: https://your-website.com
  * Description: Gestisce link affiliati con intelligenza artificiale per ottimizzazione e tracking automatico.
- * Version: 1.5.4
+ * Version: 1.6
  * Author: Cosè Murciano
  * License: GPL v2 or later
  * Text Domain: affiliate-link-manager-ai
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Definisci costanti del plugin
-define('ALMA_VERSION', '1.5.4');
+define('ALMA_VERSION', '1.6');
 define('ALMA_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('ALMA_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('ALMA_PLUGIN_FILE', __FILE__);
@@ -161,36 +161,40 @@ class AffiliateManagerAI {
         // Campi richiesti
         $fields = array_filter(array_map('trim', explode(',', $atts['fields'])));
 
+        // Parti del contenuto
+        $image_html = '';
+        $title_html = '';
+        $content_html = '';
 
-        // Contenuto del link
-        $content = '';
         if ($atts['img'] === 'yes') {
-            $content = get_the_post_thumbnail($atts['id'], 'full', array('class' => 'alma-affiliate-img'));
-            if (!$content) {
+            $image_html = get_the_post_thumbnail($atts['id'], 'full', array('class' => 'alma-affiliate-img'));
+            if (!$image_html) {
                 $atts['img'] = 'no';
-            } else {
-                if (in_array('title', $fields)) {
-                    $title_html = esc_html(get_the_title($atts['id']));
-                    if (in_array('content', $fields)) {
-                        $content .= '<h4 class="alma-link-title">' . $title_html . '</h4>';
-                    } else {
-                        $content .= '<span class="alma-link-title">' . $title_html . '</span>';
-                    }
-                }
-                if (in_array('content', $fields)) {
-                    $post_content = apply_filters('the_content', get_post_field('post_content', $atts['id']));
-                    $content .= '<div class="alma-link-content">' . $post_content . '</div>';
-
-                }
             }
         }
 
-        if ($atts['img'] !== 'yes') {
+        if (in_array('title', $fields)) {
+            $title_text = esc_html(get_the_title($atts['id']));
+            if (in_array('content', $fields)) {
+                $title_html = '<h4 class="alma-link-title">' . $title_text . '</h4>';
+            } else {
+                $title_html = '<span class="alma-link-title">' . $title_text . '</span>';
+            }
+        }
+
+        if (in_array('content', $fields)) {
+            $post_content = apply_filters('the_content', get_post_field('post_content', $atts['id']));
+            $content_html = '<div class="alma-link-content">' . $post_content . '</div>';
+        }
+
+        if ($atts['img'] !== 'yes' && $title_html === '') {
             if (empty($atts['text'])) {
                 $atts['text'] = get_the_title($atts['id']);
             }
-            $content = esc_html($atts['text']);
+            $title_html = esc_html($atts['text']);
         }
+
+        $link_inner = $image_html . $title_html;
 
         // NUOVO: Usa link diretto invece di redirect
         $link_html = '<a href="' . esc_url($affiliate_url) . '"';
@@ -202,7 +206,11 @@ class AffiliateManagerAI {
         }
         $link_html .= ' target="' . esc_attr($link_target) . '"';
         $link_html .= ' title="' . esc_attr($link_title) . '"';
-        $link_html .= '>' . $content . '</a>';
+        $link_html .= '>' . $link_inner . '</a>';
+
+        if ($content_html) {
+            $link_html .= $content_html;
+        }
 
         return $link_html;
     }
@@ -793,7 +801,7 @@ class AffiliateManagerAI {
         add_submenu_page(
             'edit.php?post_type=affiliate_link',
             __('Dashboard AI', 'affiliate-link-manager-ai'),
-            __('📊 Dashboard AI', 'affiliate-link-manager-ai'),
+            __('Dashboard AI', 'affiliate-link-manager-ai'),
             'manage_options',
             'affiliate-link-manager-dashboard',
             array($this, 'render_dashboard_page')
@@ -803,7 +811,7 @@ class AffiliateManagerAI {
         add_submenu_page(
             'edit.php?post_type=affiliate_link',
             __('Impostazioni', 'affiliate-link-manager-ai'),
-            __('⚙️ Impostazioni', 'affiliate-link-manager-ai'),
+            __('Impostazioni', 'affiliate-link-manager-ai'),
             'manage_options',
             'affiliate-link-manager-settings',
             array($this, 'render_settings_page')
@@ -834,7 +842,7 @@ class AffiliateManagerAI {
         
         ?>
         <div class="wrap">
-            <h1><?php _e('📊 Dashboard AI - Affiliate Link Manager', 'affiliate-link-manager-ai'); ?></h1>
+            <h1><?php _e('Dashboard AI - Affiliate Link Manager', 'affiliate-link-manager-ai'); ?></h1>
             <p style="font-size:14px;color:#666;">Versione <?php echo ALMA_VERSION; ?></p>
             
             <!-- Statistiche Principali -->
@@ -974,7 +982,7 @@ class AffiliateManagerAI {
         
         ?>
         <div class="wrap">
-            <h1><?php _e('⚙️ Impostazioni - Affiliate Link Manager AI', 'affiliate-link-manager-ai'); ?></h1>
+            <h1><?php _e('Impostazioni - Affiliate Link Manager AI', 'affiliate-link-manager-ai'); ?></h1>
             <p style="font-size:14px;color:#666;">Versione <?php echo ALMA_VERSION; ?></p>
             
             <form method="post" action="">
@@ -984,8 +992,8 @@ class AffiliateManagerAI {
                 <h2 class="nav-tab-wrapper alma-settings-tabs">
                     <a href="#general" class="nav-tab nav-tab-active">Generale</a>
                     <a href="#tracking" class="nav-tab">Tracking</a>
-                    <a href="#ai" class="nav-tab">🤖 AI Settings</a>
-                    <a href="#claude" class="nav-tab">🧠 Claude API</a>
+                    <a href="#ai" class="nav-tab">AI Settings</a>
+                    <a href="#claude" class="nav-tab">Claude API</a>
                     <a href="#cleanup" class="nav-tab">Pulizia</a>
                 </h2>
                 
@@ -2014,10 +2022,5 @@ class AffiliateManagerAI {
 
 // Inizializza il plugin
 new AffiliateManagerAI();
-
-// 🤖 AGGIUNTA v1.3.0 - Content Analyzer Integration
-if (file_exists(ALMA_PLUGIN_DIR . 'content-analyzer-init.php')) {
-    require_once ALMA_PLUGIN_DIR . 'content-analyzer-init.php';
-}
 
 ?>
