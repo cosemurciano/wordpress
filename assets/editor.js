@@ -175,6 +175,7 @@ jQuery(document).ready(function($) {
         $(document).on('change.alma_editor', '#alma-use-img', function() {
             const useImg = $(this).is(':checked');
             $('input[name="alma_text_option"]').prop('disabled', useImg);
+            $('.alma-field-option').prop('disabled', !useImg);
             if (useImg) {
                 $('#alma-custom-text').prop('disabled', true);
                 $('.alma-fields-row').slideDown();
@@ -332,6 +333,10 @@ jQuery(document).ready(function($) {
                             <input type="checkbox" class="alma-field-option" value="title">
                             Titolo
                         </label>
+                        <label style="font-weight:normal;display:flex;align-items:center;gap:5px;">
+                            <input type="checkbox" class="alma-field-option" value="content">
+                            Contenuto
+                        </label>
                     </div>
 
                     <div class="alma-option-row" style="display:flex;align-items:center;gap:15px;margin-bottom:15px;">
@@ -419,7 +424,7 @@ jQuery(document).ready(function($) {
         $('#alma-custom-class').val('affiliate-link-btn');
         $('input[name="alma_text_option"][value="auto"]').prop('checked', true).prop('disabled', false);
         $('#alma-use-img').prop('checked', false);
-        $('.alma-field-option').prop('checked', false);
+        $('.alma-field-option').prop('checked', false).prop('disabled', true);
         $('.alma-fields-row').hide();
         $('#alma-insert-shortcode').prop('disabled', true);
         $('.alma-shortcode-options').hide();

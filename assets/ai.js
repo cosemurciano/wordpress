@@ -185,6 +185,14 @@ jQuery(document).ready(function($) {
         let shortcode = `[affiliate_link id="${linkId}"`;
         const img = $('#alma-sc-img').is(':checked');
         const title = $('#alma-sc-title').is(':checked');
+        const content = $('#alma-sc-content').is(':checked');
+        if (img) {
+            shortcode += ' img="yes"';
+            const fields = [];
+            if (title) fields.push('title');
+            if (content) fields.push('content');
+            if (fields.length) {
+                shortcode += ` fields="${fields.join(',')}"`;
         if (img) {
             shortcode += ' img="yes"';
             if (title) {
@@ -194,6 +202,10 @@ jQuery(document).ready(function($) {
         shortcode += ']';
         codeEl.text(shortcode);
         $('#alma-shortcode-copy').data('copy', shortcode);
+        $('#alma-sc-title, #alma-sc-content').prop('disabled', !img);
+    }
+
+    $(document).on('change', '#alma-sc-img, #alma-sc-title, #alma-sc-content', almaUpdateShortcodePreview);
         $('#alma-sc-title').prop('disabled', !img);
     }
 

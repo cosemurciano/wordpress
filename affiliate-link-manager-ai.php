@@ -3,7 +3,7 @@
  * Plugin Name: Affiliate Link Manager AI
  * Plugin URI: https://your-website.com
  * Description: Gestisce link affiliati con intelligenza artificiale per ottimizzazione e tracking automatico.
- * Version: 1.5.2
+ * Version: 1.5.3
  * Author: Cosè Murciano
  * License: GPL v2 or later
  * Text Domain: affiliate-link-manager-ai
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Definisci costanti del plugin
-define('ALMA_VERSION', '1.5.2');
+define('ALMA_VERSION', '1.5.3');
 define('ALMA_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('ALMA_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('ALMA_PLUGIN_FILE', __FILE__);
@@ -143,25 +143,44 @@ class AffiliateManagerAI {
             return '<span style="color:red;">[Affiliate Link: URL non configurato]</span>';
         }
         
- $link_rel = get_post_meta($atts['id'], '_link_rel', true);
+        $link_rel = get_post_meta($atts['id'], '_link_rel', true);
+        
         if ($link_rel === '') {
             // Link interno: nessun attributo rel
         } elseif (!$link_rel) {
             $link_rel = 'sponsored noopener';
         }
-
+      
         $link_target = get_post_meta($atts['id'], '_link_target', true) ?: '_blank';
         $link_title = get_post_meta($atts['id'], '_link_title', true);
 
         if (empty($link_title)) {
             $link_title = get_the_title($atts['id']);
         }
+
+        // Campi richiesti
+        $fields = array_filter(array_map('trim', explode(',', $atts['fields'])));
+
+
         // Contenuto del link
         $content = '';
         if ($atts['img'] === 'yes') {
             $content = get_the_post_thumbnail($atts['id'], 'full', array('class' => 'alma-affiliate-img'));
             if (!$content) {
                 $atts['img'] = 'no';
+            } else {
+                if (in_array('title', $fields)) {
+                    $title_html = esc_html(get_the_title($atts['id']));
+                    if (in_array('content', $fields)) {
+                        $content .= '<h4 class="alma-link-title">' . $title_html . '</h4>';
+                    } else {
+                        $content .= '<span class="alma-link-title">' . $title_html . '</span>';
+                    }
+                }
+                if (in_array('content', $fields)) {
+                    $post_content = apply_filters('the_content', get_post_field('post_content', $atts['id']));
+                    $content .= '<div class="alma-link-content">' . $post_content . '</div>';
+
             }
 
             // Campi aggiuntivi dopo l'immagine
@@ -169,6 +188,7 @@ class AffiliateManagerAI {
                 $fields = array_map('trim', explode(',', $atts['fields']));
                 if (in_array('title', $fields)) {
                     $content .= '<span class="alma-link-title">' . esc_html(get_the_title($atts['id'])) . '</span>';
+
                 }
             }
         }
@@ -577,6 +597,8 @@ class AffiliateManagerAI {
         echo '</div>';
         echo '<div class="alma-shortcode-config" style="margin-top:8px;">';
         echo '<label><input type="checkbox" id="alma-sc-img"> ' . __('Immagine', 'affiliate-link-manager-ai') . '</label> ';
+        echo '<label><input type="checkbox" id="alma-sc-title" disabled> ' . __('Titolo', 'affiliate-link-manager-ai') . '</label> ';
+        echo '<label><input type="checkbox" id="alma-sc-content" disabled> ' . __('Contenuto', 'affiliate-link-manager-ai') . '</label>';
         echo '<label><input type="checkbox" id="alma-sc-title" disabled> ' . __('Titolo', 'affiliate-link-manager-ai') . '</label>';
         echo '</div>';
         echo '<p class="description">' . __('Usa questo shortcode per inserire il link nei tuoi contenuti', 'affiliate-link-manager-ai') . '</p>';
