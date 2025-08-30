@@ -193,6 +193,7 @@ class AffiliateManagerAI {
             } elseif ($atts['img'] !== 'yes') {
                 $title_html = esc_html(get_the_title($atts['id']));
             }
+
         }
 
         $link_inner = $image_html . $title_html;
