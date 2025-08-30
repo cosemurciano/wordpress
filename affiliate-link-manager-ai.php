@@ -187,11 +187,13 @@ class AffiliateManagerAI {
             $content_html = '<div class="alma-link-content">' . $post_content . '</div>';
         }
 
-        if ($atts['img'] !== 'yes' && $title_html === '') {
-            if (empty($atts['text'])) {
-                $atts['text'] = get_the_title($atts['id']);
+        if ($title_html === '') {
+            if (!empty($atts['text'])) {
+                $title_html = '<span class="alma-link-title">' . esc_html($atts['text']) . '</span>';
+            } elseif ($atts['img'] !== 'yes') {
+                $title_html = esc_html(get_the_title($atts['id']));
             }
-            $title_html = esc_html($atts['text']);
+
         }
 
         $link_inner = $image_html . $title_html;
