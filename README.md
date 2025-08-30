@@ -10,4 +10,7 @@ Questo plugin gestisce link affiliati e ora include una procedura guidata per l'
 
 ### Eliminare link importati
 Nella pagina di importazione puoi inserire l'ID fornito al termine dell'operazione per cancellare tutti i link creati in quell'import.
+=======
+2. Carica un file CSV o TSV e mappa le colonne richieste (`post_title` e `_affiliate_url`).
+3. Visualizza l'anteprima e conferma per creare i link affiliati.
 
