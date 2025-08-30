@@ -144,11 +144,13 @@ class AffiliateManagerAI {
         }
         
         $link_rel = get_post_meta($atts['id'], '_link_rel', true);
+
         if ($link_rel === '') {
             // Link interno: nessun attributo rel
         } elseif (!$link_rel) {
             $link_rel = 'sponsored noopener';
         }
+
         $link_target = get_post_meta($atts['id'], '_link_target', true) ?: '_blank';
         $link_title = get_post_meta($atts['id'], '_link_title', true);
 
@@ -158,6 +160,7 @@ class AffiliateManagerAI {
 
         // Campi richiesti
         $fields = array_filter(array_map('trim', explode(',', $atts['fields'])));
+
 
         // Contenuto del link
         $content = '';
@@ -177,6 +180,7 @@ class AffiliateManagerAI {
                 if (in_array('content', $fields)) {
                     $post_content = apply_filters('the_content', get_post_field('post_content', $atts['id']));
                     $content .= '<div class="alma-link-content">' . $post_content . '</div>';
+
                 }
             }
         }
