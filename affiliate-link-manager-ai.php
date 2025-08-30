@@ -3,7 +3,7 @@
  * Plugin Name: Affiliate Link Manager AI
  * Plugin URI: https://your-website.com
  * Description: Gestisce link affiliati con intelligenza artificiale per ottimizzazione e tracking automatico.
- * Version: 1.5.1
+ * Version: 1.5.2
  * Author: Cosè Murciano
  * License: GPL v2 or later
  * Text Domain: affiliate-link-manager-ai
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Definisci costanti del plugin
-define('ALMA_VERSION', '1.5.1');
+define('ALMA_VERSION', '1.5.2');
 define('ALMA_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('ALMA_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('ALMA_PLUGIN_FILE', __FILE__);
@@ -1373,8 +1373,12 @@ class AffiliateManagerAI {
 
         $link_id = intval($_POST['link_id']);
 
-        // Genera suggerimenti AI
+        // Genera suggerimenti AI basati su Claude
         $suggestions = $this->generate_ai_suggestions($link_id);
+
+        if (empty($suggestions)) {
+            wp_send_json_error(__('Impossibile generare suggerimenti con Claude.', 'affiliate-link-manager-ai'));
+        }
 
         wp_send_json_success($suggestions);
     }
@@ -1408,6 +1412,10 @@ class AffiliateManagerAI {
         }
 
         $suggestions = $this->generate_title_suggestions($title, $description);
+
+        if (empty($suggestions)) {
+            wp_send_json_error(__('Impossibile generare suggerimenti con Claude.', 'affiliate-link-manager-ai'));
+        }
 
         wp_send_json_success(array('suggestions' => $suggestions));
     }
@@ -1680,26 +1688,45 @@ class AffiliateManagerAI {
     }
     
     private function generate_ai_suggestions($link_id) {
-        // Suggerimenti base (senza API Claude)
-        return array(
-            array(
-                'title' => '🎯 Ottimizza Testo CTA',
-                'description' => 'Prova a usare testi più coinvolgenti come "Scopri l\'offerta" o "Risparmia ora"'
-            ),
-            array(
-                'title' => '📍 Posizionamento Strategico',
-                'description' => 'Inserisci il link all\'inizio del contenuto per maggiore visibilità'
-            ),
-            array(
-                'title' => '🔄 A/B Testing',
-                'description' => 'Testa diversi anchor text per trovare quello più performante'
-            )
+        $post = get_post($link_id);
+
+        if (!$post || $post->post_type !== 'affiliate_link') {
+            return array();
+        }
+
+        $prompt = sprintf(
+            'In base al titolo "%s" e al contenuto "%s", genera 5 suggerimenti brevi in italiano per ottimizzare un link affiliato. Restituisci un JSON array di oggetti con le chiavi "title" e "description".',
+            wp_strip_all_tags($post->post_title),
+            wp_strip_all_tags($post->post_content)
         );
+
+        $response = $this->call_claude_api($prompt);
+
+        if (!empty($response['success']) && !empty($response['response'])) {
+            $decoded = json_decode($response['response'], true);
+
+            if (is_array($decoded)) {
+                $suggestions = array();
+
+                foreach ($decoded as $item) {
+                    if (isset($item['title']) && isset($item['description'])) {
+                        $suggestions[] = array(
+                            'title'       => sanitize_text_field($item['title']),
+                            'description' => sanitize_text_field($item['description'])
+                        );
+                    }
+                }
+
+                return $suggestions;
+            }
+        }
+
+        return array();
     }
 
     private function generate_title_suggestions($title, $description) {
         $prompt = sprintf(
-            'Genera 5 titoli SEO in italiano per un link affiliato. Titolo: "%s". Descrizione: "%s". Restituisci un JSON array con solo i titoli.',
+            'In base al titolo "%s" e al contenuto "%s", genera 5 varianti di testo in italiano per promuovere un link affiliato. Restituisci un JSON array con solo i testi delle varianti.',
             wp_strip_all_tags($title),
             wp_strip_all_tags($description)
         );
@@ -1718,43 +1745,12 @@ class AffiliateManagerAI {
                         'pattern'    => 'ai'
                     );
                 }
-                if ($suggestions) {
-                    return $suggestions;
-                }
+
+                return $suggestions;
             }
         }
 
-        // Fallback basato su semplici pattern se l'AI non risponde
-        $base     = wp_strip_all_tags($title);
-        $keywords = $base ? $base : wp_trim_words(wp_strip_all_tags($description), 3, '');
-
-        return array(
-            array(
-                'text'       => sprintf('Le migliori %s 2024', $keywords),
-                'confidence' => 92,
-                'pattern'    => 'top_list'
-            ),
-            array(
-                'text'       => sprintf('Guida completa a %s', $keywords),
-                'confidence' => 88,
-                'pattern'    => 'guide'
-            ),
-            array(
-                'text'       => sprintf('%s: offerte e prezzi', $keywords),
-                'confidence' => 85,
-                'pattern'    => 'offers'
-            ),
-            array(
-                'text'       => sprintf('Recensione %s', $keywords),
-                'confidence' => 83,
-                'pattern'    => 'review'
-            ),
-            array(
-                'text'       => sprintf('Compra %s online', $keywords),
-                'confidence' => 80,
-                'pattern'    => 'buy_online'
-            ),
-        );
+        return array();
     }
     
     private function get_ai_performance_predictions($link_id) {
@@ -1791,13 +1787,47 @@ class AffiliateManagerAI {
             return array('success' => false, 'error' => 'API Key non configurata');
         }
         
-        // Implementazione chiamata API Claude
-        // (codice semplificato per esempio)
+        $model       = get_option('alma_claude_model', 'claude-3-haiku-20240307');
+        $temperature = (float) get_option('alma_claude_temperature', 0.7);
+
+        $body = array(
+            'model'       => $model,
+            'max_tokens'  => 300,
+            'temperature' => $temperature,
+            'messages'    => array(
+                array('role' => 'user', 'content' => $prompt)
+            )
+        );
+
+        $start    = microtime(true);
+        $response = wp_remote_post('https://api.anthropic.com/v1/messages', array(
+            'headers' => array(
+                'Content-Type'       => 'application/json',
+                'x-api-key'          => $api_key,
+                'anthropic-version'  => '2023-06-01',
+            ),
+            'body'    => wp_json_encode($body),
+            'timeout' => 30,
+        ));
+
+        $time = round((microtime(true) - $start) * 1000);
+
+        if (is_wp_error($response)) {
+            return array('success' => false, 'error' => $response->get_error_message());
+        }
+
+        $code = wp_remote_retrieve_response_code($response);
+        $data = json_decode(wp_remote_retrieve_body($response), true);
+
+        if (200 !== $code || empty($data['content'][0]['text'])) {
+            return array('success' => false, 'error' => 'Risposta non valida da Claude');
+        }
+
         return array(
-            'success' => true,
-            'model' => 'claude-3-haiku',
-            'response_time' => 250,
-            'response' => 'Test response'
+            'success'       => true,
+            'model'         => $data['model'] ?? $model,
+            'response_time' => $time,
+            'response'      => $data['content'][0]['text'],
         );
     }
     
