@@ -1,6 +1,6 @@
 /**
  * Affiliate Link Manager AI - AI Features JavaScript
- * Version: 1.5
+ * Version: 1.5.2
  * Author: Cosè Murciano
  */
 
