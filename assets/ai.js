@@ -228,67 +228,7 @@ jQuery(document).ready(function($) {
     $('#alma-sc-button').trigger('change');
     almaUpdateShortcodePreview();
 
-    // Gestione eliminazione link con scelta shortcode
-    function almaShowDeleteModal(deleteUrl) {
-        const options = [
-            {value: 'replace', label: 'Sostituisci con testo barrato'},
-            {value: 'remove', label: 'Rimuovi completamente'},
-            {value: 'comment', label: 'Converti in commento HTML'},
-            {value: 'none', label: 'Non modificare (sconsigliato)'}
-        ];
-        let select = '<select id="alma-delete-action">';
-        options.forEach(opt => {
-            const sel = opt.value === alma_ai.default_cleanup ? ' selected' : '';
-            select += `<option value="${opt.value}"${sel}>${opt.label}</option>`;
-        });
-        select += '</select>';
-        const modal = $(`
-            <div class="alma-modal-overlay" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:100000;display:flex;align-items:center;justify-content:center;">
-                <div style="background:#fff;padding:20px;border-radius:6px;max-width:400px;width:90%;">
-                    <h2>Cosa fare con gli shortcode quando elimini un link?</h2>
-                    <p>${select}</p>
-                    <p style="text-align:right;margin-top:20px;">
-                        <button class="button alma-cancel-delete">Annulla</button>
-                        <button class="button button-primary alma-confirm-delete">Elimina</button>
-                    </p>
-                </div>
-            </div>
-        `);
-        $('body').append(modal);
-        modal.on('click', '.alma-cancel-delete', function(e){ e.preventDefault(); modal.remove(); });
-        modal.on('click', '.alma-confirm-delete', function(e){
-            e.preventDefault();
-            const choice = $('#alma-delete-action').val();
-            const url = new URL(deleteUrl);
-            url.searchParams.set('alma_sc_action', choice);
-            window.location = url.toString();
-        });
-    }
-
-    function almaHandleDelete(e) {
-        e.preventDefault();
-        const link = $(this);
-        const deleteUrl = link.attr('href');
-        const url = new URL(deleteUrl, window.location.origin);
-        const linkId = url.searchParams.get('post');
-        if (!linkId) {
-            window.location = deleteUrl;
-            return;
-        }
-        $.post(alma_ai.ajax_url, {
-            action: 'alma_check_usage',
-            link_id: linkId,
-            nonce: alma_ai.usage_nonce
-        }, function(resp){
-            if (resp.success && resp.data.usage) {
-                almaShowDeleteModal(deleteUrl);
-            } else {
-                window.location = deleteUrl;
-            }
-        });
-    }
-
-    $(document).on('click', 'a.submitdelete, #delete-action a', almaHandleDelete);
+    // Le funzioni di gestione personalizzata degli shortcode durante l'eliminazione sono state rimosse.
     
     // 🤖 Gestisci rigenera suggerimenti
     $(document).on('click', '.alma-regenerate-suggestions', function(e) {

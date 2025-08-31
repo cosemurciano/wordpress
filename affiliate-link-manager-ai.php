@@ -104,9 +104,6 @@ class AffiliateManagerAI {
         add_action('wp_ajax_alma_track_click', array($this, 'ajax_track_click'));
         add_action('wp_ajax_nopriv_alma_track_click', array($this, 'ajax_track_click'));
         
-        // Hook per controllo utilizzo link
-        add_action('wp_ajax_alma_check_usage', array($this, 'check_link_usage'));
-        
         // Hook per ricerca link nell'editor
         add_action('wp_ajax_alma_search_links', array($this, 'ajax_search_links'));
         
@@ -465,11 +462,9 @@ class AffiliateManagerAI {
                 );
 
                 wp_localize_script('alma-ai-script', 'alma_ai', array(
-                    'ajax_url'       => admin_url('admin-ajax.php'),
-                    'nonce'          => wp_create_nonce('alma_ai_suggest_text'),
-                    'usage_nonce'    => wp_create_nonce('alma_check_usage'),
-                    'default_cleanup'=> get_option('alma_shortcode_cleanup', 'replace'),
-                    'messages' => array(
+                    'ajax_url'    => admin_url('admin-ajax.php'),
+                    'nonce'       => wp_create_nonce('alma_ai_suggest_text'),
+                    'messages'    => array(
                         'generating' => __('Generazione suggerimenti...', 'affiliate-link-manager-ai'),
                         'generated'  => __('Suggerimenti generati!', 'affiliate-link-manager-ai'),
                         'error'      => __('Errore durante la generazione', 'affiliate-link-manager-ai'),
@@ -1090,7 +1085,6 @@ class AffiliateManagerAI {
             
             // Impostazioni generali
             update_option('alma_track_logged_out', sanitize_text_field($_POST['track_logged_out'] ?? 'yes'));
-            update_option('alma_shortcode_cleanup', sanitize_text_field($_POST['shortcode_cleanup'] ?? 'replace'));
             update_option('alma_enable_ai', sanitize_text_field($_POST['enable_ai'] ?? 'yes'));
             
             // Claude API settings
@@ -1103,7 +1097,6 @@ class AffiliateManagerAI {
         
         // Recupera impostazioni attuali
         $track_logged_out = get_option('alma_track_logged_out', 'yes');
-        $shortcode_cleanup = get_option('alma_shortcode_cleanup', 'replace');
         $enable_ai = get_option('alma_enable_ai', 'yes');
         $claude_api_key = get_option('alma_claude_api_key', '');
         $claude_model = get_option('alma_claude_model', 'claude-3-haiku-20240307');
@@ -1262,29 +1255,8 @@ class AffiliateManagerAI {
                 <!-- Cleanup Settings -->
                 <div id="cleanup" class="alma-settings-section" style="display:none;">
                     <h2>Impostazioni Pulizia</h2>
+                    <p><?php _e('Quando un link viene eliminato, è rimosso definitivamente dal database e tutti gli shortcode associati vengono eliminati dai contenuti.', 'affiliate-link-manager-ai'); ?></p>
                     <table class="form-table">
-                        <tr>
-                            <th scope="row">
-                                <label for="shortcode_cleanup"><?php _e('Quando un link viene eliminato', 'affiliate-link-manager-ai'); ?></label>
-                            </th>
-                            <td>
-                                <select name="shortcode_cleanup" id="shortcode_cleanup">
-                                    <option value="replace" <?php selected($shortcode_cleanup, 'replace'); ?>>
-                                        Sostituisci con testo barrato
-                                    </option>
-                                    <option value="remove" <?php selected($shortcode_cleanup, 'remove'); ?>>
-                                        Rimuovi completamente
-                                    </option>
-                                    <option value="comment" <?php selected($shortcode_cleanup, 'comment'); ?>>
-                                        Converti in commento HTML
-                                    </option>
-                                    <option value="none" <?php selected($shortcode_cleanup, 'none'); ?>>
-                                        Non modificare (sconsigliato)
-                                    </option>
-                                </select>
-                                <p class="description">Cosa fare con gli shortcode quando elimini un link</p>
-                            </td>
-                        </tr>
                         <tr>
                             <th scope="row"><label for="delete_link_id"><?php _e('Elimina per ID', 'affiliate-link-manager-ai'); ?></label></th>
                             <td>
@@ -1561,22 +1533,6 @@ class AffiliateManagerAI {
         }
         
         wp_send_json_success($results);
-    }
-    
-    public function check_link_usage() {
-        if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'alma_check_usage')) {
-            wp_send_json_error('Invalid nonce');
-            return;
-        }
-        
-        $link_id = intval($_POST['link_id']);
-        $posts = $this->find_posts_with_shortcode($link_id);
-        
-        wp_send_json_success(array(
-            'usage' => !empty($posts),
-            'count' => count($posts),
-            'posts' => $posts
-        ));
     }
     
     public function ajax_get_ai_suggestions() {
@@ -2063,45 +2019,18 @@ class AffiliateManagerAI {
     }
     
     private function handle_shortcode_cleanup($link_id, $action = 'delete') {
-        $cleanup_option = get_option('alma_shortcode_cleanup', 'replace');
-
-        if (isset($_REQUEST['alma_sc_action'])) {
-            $requested = sanitize_text_field($_REQUEST['alma_sc_action']);
-            if (in_array($requested, array('replace','remove','comment','none'))) {
-                $cleanup_option = $requested;
-            }
-        }
-
-        if ($cleanup_option === 'none') {
-            return;
-        }
-        
         $affected_posts = $this->find_posts_with_shortcode($link_id);
-        
+
         if (empty($affected_posts)) {
             return;
         }
-        
-        $link_title = get_the_title($link_id);
-        
+
         foreach ($affected_posts as $post_id) {
-            $post = get_post($post_id);
-            $content = $post->post_content;
-            
-            switch ($cleanup_option) {
-                case 'remove':
-                    $content = $this->remove_shortcode_from_content($content, $link_id);
-                    break;
-                case 'replace':
-                    $content = $this->replace_shortcode_in_content($content, $link_id, $link_title);
-                    break;
-                case 'comment':
-                    $content = $this->comment_shortcode_in_content($content, $link_id);
-                    break;
-            }
-            
+            $post    = get_post($post_id);
+            $content = $this->remove_shortcode_from_content($post->post_content, $link_id);
+
             wp_update_post(array(
-                'ID' => $post_id,
+                'ID'           => $post_id,
                 'post_content' => $content
             ));
         }
@@ -2112,18 +2041,7 @@ class AffiliateManagerAI {
         return preg_replace($pattern, '', $content);
     }
     
-    private function replace_shortcode_in_content($content, $link_id, $link_title) {
-        $pattern = '/\[affiliate_link[^\]]*id=["\']?' . $link_id . '["\']?[^\]]*\]/';
-        $replacement = '<span style="text-decoration:line-through;color:#999;">' . esc_html($link_title) . '</span>';
-        return preg_replace($pattern, $replacement, $content);
-    }
-    
-    private function comment_shortcode_in_content($content, $link_id) {
-        $pattern = '/\[affiliate_link[^\]]*id=["\']?' . $link_id . '["\']?[^\]]*\]/';
-        return preg_replace_callback($pattern, function($matches) {
-            return '<!-- Affiliate link removed: ' . $matches[0] . ' -->';
-        }, $content);
-    }
+    // Le funzioni per sostituzione o commento shortcode sono state rimosse in favore di una cancellazione diretta.
     
     /**
      * Activation/Deactivation
