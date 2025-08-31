@@ -3,7 +3,7 @@
  * Plugin Name: Affiliate Link Manager AI
  * Plugin URI: https://your-website.com
  * Description: Gestisce link affiliati con intelligenza artificiale per ottimizzazione e tracking automatico.
- * Version: 1.8
+ * Version: 1.9
  * Author: Cosè Murciano
  * License: GPL v2 or later
  * Text Domain: affiliate-link-manager-ai
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Definisci costanti del plugin
-define('ALMA_VERSION', '1.8');
+define('ALMA_VERSION', '1.9');
 define('ALMA_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('ALMA_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('ALMA_PLUGIN_FILE', __FILE__);
@@ -426,6 +426,7 @@ class AffiliateManagerAI {
         add_action('wp_ajax_alma_test_claude_api', array($this, 'ajax_test_claude_api'));
         add_action('wp_ajax_alma_get_performance_predictions', array($this, 'ajax_get_performance_predictions'));
         add_action('wp_ajax_alma_get_link_types', array($this, 'ajax_get_link_types'));
+        add_action('wp_ajax_alma_import_affiliate_link', array($this, 'ajax_import_affiliate_link'));
         
         // Dashboard widget
         add_action('wp_dashboard_setup', array($this, 'add_dashboard_widget'));
@@ -472,6 +473,38 @@ class AffiliateManagerAI {
                         'error'      => __('Errore durante la generazione', 'affiliate-link-manager-ai'),
                     ),
                 ));
+            }
+
+            if ($hook === 'affiliate_link_page_affiliate-link-import') {
+                if (file_exists(ALMA_PLUGIN_DIR . 'assets/import-wizard.css')) {
+                    wp_enqueue_style(
+                        'alma-import-wizard',
+                        ALMA_PLUGIN_URL . 'assets/import-wizard.css',
+                        array(),
+                        ALMA_VERSION
+                    );
+                }
+                if (file_exists(ALMA_PLUGIN_DIR . 'assets/import-wizard.js')) {
+                    wp_enqueue_script(
+                        'alma-import-wizard',
+                        ALMA_PLUGIN_URL . 'assets/import-wizard.js',
+                        array('jquery'),
+                        ALMA_VERSION,
+                        true
+                    );
+                    wp_localize_script('alma-import-wizard', 'almaImport', array(
+                        'ajax_url' => admin_url('admin-ajax.php'),
+                        'nonce'    => wp_create_nonce('alma_import_links'),
+                        'msg_success' => __('Importato: %s', 'affiliate-link-manager-ai'),
+                        'msg_error' => __('Errore: %s', 'affiliate-link-manager-ai'),
+                        'msg_duplicate' => __('Duplicato: %s', 'affiliate-link-manager-ai'),
+                        'msg_no_title' => __('Titolo mancante', 'affiliate-link-manager-ai'),
+                        'msg_no_url' => __('URL mancante', 'affiliate-link-manager-ai'),
+                        'msg_bad_url' => __('URL non valido', 'affiliate-link-manager-ai'),
+                        'msg_ajax' => __('Errore di comunicazione', 'affiliate-link-manager-ai'),
+                        'msg_summary' => __('Totali: %total% | Importati: %success% | Duplicati: %dup% | Errori: %err%', 'affiliate-link-manager-ai'),
+                    ));
+                }
             }
         }
         
@@ -889,7 +922,17 @@ class AffiliateManagerAI {
             array($this, 'render_settings_page')
         );
 
-        
+        // Importazione massiva
+        add_submenu_page(
+            'edit.php?post_type=affiliate_link',
+            __('Importa Link', 'affiliate-link-manager-ai'),
+            __('Importa Link', 'affiliate-link-manager-ai'),
+            'manage_options',
+            'affiliate-link-import',
+            array($this, 'render_import_page')
+        );
+
+
         // Pagina nascosta per dettagli utilizzo
         add_submenu_page(
             null,
@@ -1403,7 +1446,104 @@ class AffiliateManagerAI {
         echo '<a href="' . admin_url('admin.php?page=affiliate-link-manager-dashboard') . '" class="button">Dashboard Completa</a>';
         echo '</p>';
     }
-    
+
+    /**
+     * Pagina importazione massiva
+     */
+    public function render_import_page() {
+        if (!current_user_can('manage_options')) {
+            wp_die(__('Non hai i permessi per accedere a questa pagina.'));
+        }
+
+        $types = get_terms(array(
+            'taxonomy' => 'link_type',
+            'hide_empty' => false,
+        ));
+
+        ?>
+        <div class="wrap">
+            <h1><?php _e('Importa Link Affiliati', 'affiliate-link-manager-ai'); ?></h1>
+
+            <ol class="alma-import-steps">
+                <li class="active"><?php _e('Inserimento', 'affiliate-link-manager-ai'); ?></li>
+                <li><?php _e('Anteprima', 'affiliate-link-manager-ai'); ?></li>
+                <li><?php _e('Importazione', 'affiliate-link-manager-ai'); ?></li>
+            </ol>
+
+            <div id="alma-step1" class="alma-step">
+                <h2><?php _e('1. Inserisci i link', 'affiliate-link-manager-ai'); ?></h2>
+                <p><?php _e('Inserisci un link per riga nel formato <strong>Titolo|URL</strong>. Ogni riga valida creerà un nuovo Link Affiliato. Esempio:<br><code>Nome prodotto|https://esempio.com</code>', 'affiliate-link-manager-ai'); ?></p>
+                <textarea id="alma-import-input" rows="10" style="width:100%;"></textarea>
+                <p>
+                    <?php _e('Totale righe', 'affiliate-link-manager-ai'); ?>: <span id="alma-line-count">0</span> ·
+                    <?php _e('Valide', 'affiliate-link-manager-ai'); ?>: <span id="alma-valid-count">0</span> ·
+                    <?php _e('Errori', 'affiliate-link-manager-ai'); ?>: <span id="alma-error-count">0</span>
+                </p>
+                <p class="alma-step-actions">
+                    <button id="alma-to-step2" class="button button-primary"><?php _e('Avanti', 'affiliate-link-manager-ai'); ?></button>
+                </p>
+            </div>
+
+            <div id="alma-step2" class="alma-step" style="display:none;">
+                <h2><?php _e('2. Anteprima e validazione', 'affiliate-link-manager-ai'); ?></h2>
+                <table id="alma-preview" class="wp-list-table widefat fixed striped">
+                    <thead>
+                        <tr>
+                            <th><?php _e('Titolo', 'affiliate-link-manager-ai'); ?></th>
+                            <th>URL</th>
+                            <th><?php _e('Errore', 'affiliate-link-manager-ai'); ?></th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+                <p>
+                    <?php _e('Totali', 'affiliate-link-manager-ai'); ?>: <span id="alma-total-preview">0</span> ·
+                    <?php _e('Validi', 'affiliate-link-manager-ai'); ?>: <span id="alma-valid-preview">0</span> ·
+                    <?php _e('Errori', 'affiliate-link-manager-ai'); ?>: <span id="alma-error-preview">0</span>
+                </p>
+                <h3><?php _e('Impostazioni importazione', 'affiliate-link-manager-ai'); ?></h3>
+                <p>
+                    <label for="alma-import-status"><?php _e('Stato dei nuovi link', 'affiliate-link-manager-ai'); ?></label>
+                    <select id="alma-import-status">
+                        <option value="draft"><?php _e('Bozza', 'affiliate-link-manager-ai'); ?></option>
+                        <option value="publish"><?php _e('Pubblicato', 'affiliate-link-manager-ai'); ?></option>
+                    </select>
+                </p>
+                <div id="alma-import-types">
+                    <p><?php _e('Tipologie da assegnare', 'affiliate-link-manager-ai'); ?>:</p>
+                    <?php if (!is_wp_error($types) && !empty($types)) : ?>
+                        <?php foreach ($types as $type) : ?>
+                            <label style="margin-right:15px;">
+                                <input type="checkbox" value="<?php echo esc_attr($type->term_id); ?>"> <?php echo esc_html($type->name); ?>
+                            </label>
+                        <?php endforeach; ?>
+                    <?php else : ?>
+                        <p><?php _e('Nessuna tipologia disponibile.', 'affiliate-link-manager-ai'); ?></p>
+                    <?php endif; ?>
+                </div>
+                <p class="alma-step-actions">
+                    <button id="alma-back-step1" class="button"><?php _e('Indietro', 'affiliate-link-manager-ai'); ?></button>
+                    <button id="alma-to-step3" class="button button-primary"><?php _e('Importa', 'affiliate-link-manager-ai'); ?></button>
+                </p>
+            </div>
+
+            <div id="alma-step3" class="alma-step" style="display:none;">
+                <h2><?php _e('3. Importazione', 'affiliate-link-manager-ai'); ?></h2>
+                <div class="alma-progress">
+                    <div id="alma-progress-bar"></div>
+                </div>
+                <div id="alma-log" style="max-height:200px;overflow:auto;margin-top:15px;"></div>
+                <div id="alma-final-stats" style="margin-top:15px;"></div>
+                <p class="alma-step-actions">
+                    <button id="alma-restart" class="button" style="display:none;">
+                        <?php _e('Importa altri link', 'affiliate-link-manager-ai'); ?>
+                    </button>
+                </p>
+            </div>
+        </div>
+        <?php
+    }
+
     /**
      * Pagina dettagli utilizzo
      */
@@ -1824,7 +1964,55 @@ class AffiliateManagerAI {
             'ai_score' => $ai_score
         ));
     }
-    
+
+    public function ajax_import_affiliate_link() {
+        if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'alma_import_links')) {
+            wp_send_json_error(array('code' => 'invalid_nonce'));
+        }
+
+        $title = sanitize_text_field($_POST['title'] ?? '');
+        $url   = esc_url_raw($_POST['url'] ?? '');
+        $status = ($_POST['status'] ?? 'draft') === 'publish' ? 'publish' : 'draft';
+        $types = isset($_POST['types']) ? array_map('intval', (array) $_POST['types']) : array();
+
+        if (empty($title) || empty($url) || !filter_var($url, FILTER_VALIDATE_URL)) {
+            wp_send_json_error(array('code' => 'invalid_data'));
+        }
+
+        // Controllo duplicati
+        $existing = get_posts(array(
+            'post_type'  => 'affiliate_link',
+            'post_status'=> 'any',
+            'meta_key'   => '_affiliate_url',
+            'meta_value' => $url,
+            'fields'     => 'ids',
+            'numberposts'=> 1,
+        ));
+        if ($existing) {
+            wp_send_json_error(array('code' => 'duplicate'));
+        }
+
+        $post_id = wp_insert_post(array(
+            'post_title'  => $title,
+            'post_type'   => 'affiliate_link',
+            'post_status' => $status,
+        ));
+
+        if (is_wp_error($post_id)) {
+            wp_send_json_error(array('code' => 'wp_error', 'message' => $post_id->get_error_message()));
+        }
+
+        update_post_meta($post_id, '_affiliate_url', $url);
+        if (!empty($types)) {
+            wp_set_object_terms($post_id, $types, 'link_type');
+        }
+
+        wp_send_json_success(array(
+            'id' => $post_id,
+            'edit_link' => get_edit_post_link($post_id, 'raw'),
+        ));
+    }
+
     /**
      * Helper Functions
      */

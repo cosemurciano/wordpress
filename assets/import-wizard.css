@@ -1,0 +1,38 @@
+.alma-import-steps {
+  display:flex;
+  list-style:none;
+  margin:0 0 20px;
+  padding:0;
+}
+.alma-import-steps li {
+  flex:1;
+  text-align:center;
+  padding:8px;
+  border-bottom:2px solid #ccd0d4;
+}
+.alma-import-steps li.active {
+  font-weight:bold;
+  border-bottom-color:#2271b1;
+}
+.alma-progress {
+  width:100%;
+  background:#f1f1f1;
+  border:1px solid #ccd0d4;
+  height:20px;
+  border-radius:4px;
+  overflow:hidden;
+}
+.alma-progress #alma-progress-bar {
+  background:#2271b1;
+  height:100%;
+  width:0;
+}
+.alma-step-actions {
+  margin-top:15px;
+}
+#alma-preview tbody tr.alma-error {
+  background:#fbeaea;
+}
+#alma-log .success { color:#00a32a; }
+#alma-log .error { color:#d63638; }
+#alma-log .duplicate { color:#cc9a00; }
