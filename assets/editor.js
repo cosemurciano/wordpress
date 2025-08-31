@@ -171,6 +171,12 @@ jQuery(document).ready(function($) {
             }
         });
 
+        // Abilita/disabilita opzioni pulsante
+        $(document).on('change.alma_editor', '#alma-add-button', function() {
+            const enabled = $(this).is(':checked');
+            $('#alma-button-text, #alma-button-size, #alma-button-align, #alma-button-class').prop('disabled', !enabled);
+        });
+
         
         // Inserisci shortcode
         $(document).on('click.alma_editor', '#alma-insert-shortcode', function() {
@@ -348,6 +354,27 @@ jQuery(document).ready(function($) {
                                style="flex:1;padding:8px 12px;border:1px solid #ddd;border-radius:4px;">
                     </div>
 
+                    <div class="alma-option-row" style="display:flex;align-items:center;gap:15px;margin-bottom:15px;">
+                        <label style="min-width:150px;font-weight:600;color:#23282d;">Pulsante CTA:</label>
+                        <input type="checkbox" id="alma-add-button">
+                        <select id="alma-button-size" style="margin-left:10px;">
+                            <option value="small">Piccolo</option>
+                            <option value="medium" selected>Medio</option>
+                            <option value="large">Grande</option>
+                        </select>
+                        <select id="alma-button-align" style="margin-left:10px;">
+                            <option value="left">Sinistra</option>
+                            <option value="center" selected>Centro</option>
+                            <option value="right">Destra</option>
+                        </select>
+                        <input type="text" id="alma-button-text" placeholder="Testo pulsante" style="flex:1;padding:8px 12px;border:1px solid #ddd;border-radius:4px;">
+                    </div>
+
+                    <div class="alma-option-row" style="display:flex;align-items:center;gap:15px;margin-bottom:15px;">
+                        <label for="alma-button-class" style="min-width:150px;font-weight:600;color:#23282d;">Classe pulsante:</label>
+                        <input type="text" id="alma-button-class" placeholder="classe-personalizzata" style="flex:1;padding:8px 12px;border:1px solid #ddd;border-radius:4px;">
+                    </div>
+
                     <div class="alma-option-row" style="display:flex;align-items:center;gap:15px;">
                         <label for="alma-custom-class" style="min-width:150px;font-weight:600;color:#23282d;">Classe CSS:</label>
                         <input type="text"
@@ -370,7 +397,10 @@ jQuery(document).ready(function($) {
         </div>`;
         
         $('body').append(modalHtml);
-        
+
+        // Disabilita campi pulsante inizialmente
+        $('#alma-button-text, #alma-button-size, #alma-button-align, #alma-button-class').prop('disabled', true);
+
         // Carica le tipologie dopo aver creato il modal
         loadLinkTypes();
     }
@@ -411,6 +441,11 @@ jQuery(document).ready(function($) {
         $('input[name="alma_text_option"][value="auto"]').prop('checked', true).prop('disabled', false);
         $('#alma-use-img').prop('checked', false);
         $('.alma-field-option').prop('checked', false);
+        $('#alma-add-button').prop('checked', false);
+        $('#alma-button-text').val('').prop('disabled', true);
+        $('#alma-button-size').val('medium').prop('disabled', true);
+        $('#alma-button-align').val('center').prop('disabled', true);
+        $('#alma-button-class').val('').prop('disabled', true);
         $('#alma-insert-shortcode').prop('disabled', true);
         $('.alma-shortcode-options').hide();
         $('.alma-link-item').removeClass('selected');
@@ -546,7 +581,29 @@ jQuery(document).ready(function($) {
                 shortcode += ` text="${escapeShortcodeAttr(customText)}"`;
             }
         }
-        
+
+        // Aggiungi pulsante CTA se selezionato
+        const addButton = $('#alma-add-button').is(':checked');
+        if (addButton) {
+            shortcode += ' button="yes"';
+            const btnSize = $('#alma-button-size').val();
+            if (btnSize) {
+                shortcode += ` button_size="${btnSize}"`;
+            }
+            const btnAlign = $('#alma-button-align').val();
+            if (btnAlign) {
+                shortcode += ` button_align="${btnAlign}"`;
+            }
+            const btnText = $('#alma-button-text').val().trim();
+            if (btnText) {
+                shortcode += ` button_text="${escapeShortcodeAttr(btnText)}"`;
+            }
+            const btnClass = $('#alma-button-class').val().trim();
+            if (btnClass) {
+                shortcode += ` button_class="${escapeShortcodeAttr(btnClass)}"`;
+            }
+        }
+
         // Aggiungi classe personalizzata se diversa dal default
         const customClass = $('#alma-custom-class').val().trim();
         if (customClass && customClass !== 'affiliate-link-btn') {

@@ -1,0 +1,34 @@
+.alma-affiliate-button {
+    display: inline-block;
+    text-decoration: none;
+    background: #2271b1;
+    color: #fff;
+    border-radius: 4px;
+    margin-top: 8px;
+}
+.alma-btn-small {
+    padding: 6px 12px;
+    font-size: 14px;
+}
+.alma-btn-medium {
+    padding: 10px 20px;
+    font-size: 16px;
+}
+.alma-btn-large {
+    padding: 14px 28px;
+    font-size: 18px;
+}
+
+.alma-button-wrapper {
+    display: block;
+    width: 100%;
+}
+.alma-align-left {
+    text-align: left;
+}
+.alma-align-center {
+    text-align: center;
+}
+.alma-align-right {
+    text-align: right;
+}

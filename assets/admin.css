@@ -574,3 +574,7 @@ button:disabled {
 .alma-shortcode-config label {
     margin-right: 10px;
 }
+.alma-shortcode-config input[type="text"],
+.alma-shortcode-config select {
+    margin-left: 5px;
+}
