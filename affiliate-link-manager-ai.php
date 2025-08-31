@@ -414,6 +414,7 @@ class AffiliateManagerAI {
         
         // Menu pages
         add_action('admin_menu', array($this, 'add_admin_pages'));
+        add_action('admin_menu', array($this, 'reorder_dashboard_menu'), 100);
         
         // Stili e script admin
         add_action('admin_enqueue_scripts', array($this, 'admin_enqueue_scripts'));
@@ -696,12 +697,7 @@ class AffiliateManagerAI {
         }
         
         echo '</div>';
-        
-        // Azioni rapide
-        echo '<div style="margin-top:20px;">';
-        echo '<button type="button" class="button button-primary button-small" style="width:100%;" onclick="almaGetAIPredictions(' . $post->ID . ')">🔮 Ottieni Predizioni AI</button>';
-        echo '</div>';
-        
+
         echo '</div>';
     }
     
@@ -842,8 +838,8 @@ class AffiliateManagerAI {
         // Dashboard principale
         add_submenu_page(
             'edit.php?post_type=affiliate_link',
-            __('Dashboard AI', 'affiliate-link-manager-ai'),
-            __('Dashboard AI', 'affiliate-link-manager-ai'),
+            __('Dashboard Link', 'affiliate-link-manager-ai'),
+            __('Dashboard Link', 'affiliate-link-manager-ai'),
             'manage_options',
             'affiliate-link-manager-dashboard',
             array($this, 'render_dashboard_page')
@@ -879,6 +875,26 @@ class AffiliateManagerAI {
             array($this, 'usage_details_page')
         );
     }
+
+    /**
+     * Posiziona la dashboard come prima voce del menu
+     */
+    public function reorder_dashboard_menu() {
+        global $submenu;
+        $parent = 'edit.php?post_type=affiliate_link';
+        if (!isset($submenu[$parent])) {
+            return;
+        }
+
+        foreach ($submenu[$parent] as $index => $item) {
+            if ($item[2] === 'affiliate-link-manager-dashboard') {
+                $dashboard = $item;
+                unset($submenu[$parent][$index]);
+                array_unshift($submenu[$parent], $dashboard);
+                break;
+            }
+        }
+    }
     
     /**
      * Render Dashboard Page
@@ -894,7 +910,7 @@ class AffiliateManagerAI {
         
         ?>
         <div class="wrap">
-            <h1><?php _e('Dashboard AI - Affiliate Link Manager', 'affiliate-link-manager-ai'); ?></h1>
+            <h1><?php _e('Dashboard Link - Affiliate Link Manager', 'affiliate-link-manager-ai'); ?></h1>
             <p style="font-size:14px;color:#666;">Versione <?php echo ALMA_VERSION; ?></p>
             <p><a href="<?php echo admin_url('edit.php?post_type=affiliate_link&page=alma-import'); ?>" class="button button-primary">Importa link</a></p>
             
@@ -1053,7 +1069,18 @@ class AffiliateManagerAI {
         ?>
         <div class="wrap">
             <h1><?php _e('Importa Link - Step 1', 'affiliate-link-manager-ai'); ?></h1>
-            <p>Carica un file <strong>CSV</strong> o <strong>TSV</strong> con intestazione nella prima riga. Campi obbligatori: <strong>Titolo</strong> (<code>post_title</code>) e <strong>URL affiliato</strong> (<code>_affiliate_url</code>). Campi opzionali: <strong>Rel</strong> (<code>_link_rel</code>), <strong>Target</strong> (<code>_link_target</code>), <strong>Title</strong> (<code>_link_title</code>) e <strong>Tipologia</strong> (<code>link_type</code>, separa termini multipli con virgole).</p>
+            <p>Carica un file <strong>CSV</strong> o <strong>TSV</strong> con intestazione nella prima riga.</p>
+            <div class="notice notice-info" style="padding:15px;">
+                <h2 style="margin-top:0;">Tutorial: campi del file di importazione</h2>
+                <ul>
+                    <li><code>post_title</code> – Titolo del link <em>(obbligatorio)</em></li>
+                    <li><code>_affiliate_url</code> – URL affiliato <em>(obbligatorio)</em></li>
+                    <li><code>_link_rel</code> – Attributo rel (es. <code>nofollow</code>)</li>
+                    <li><code>_link_target</code> – Attributo target (es. <code>_blank</code>)</li>
+                    <li><code>_link_title</code> – Testo tooltip del link</li>
+                    <li><code>link_type</code> – Tipologie separate da virgole</li>
+                </ul>
+            </div>
             <p><?php printf(__('Scarica un <a href="%s">file di esempio</a>.', 'affiliate-link-manager-ai'), esc_url(plugin_dir_url(__FILE__) . 'assets/import-sample.csv')); ?></p>
             <form method="post" enctype="multipart/form-data" style="margin-bottom:30px;">
                 <?php wp_nonce_field('alma_import_step1', 'alma_import_nonce'); ?>
@@ -1109,21 +1136,22 @@ class AffiliateManagerAI {
                 <table class="form-table">
                     <?php
                     $fields = array(
-                        'map_post_title' => array('label' => 'Titolo del link (post_title)', 'required' => true),
-                        'map_affiliate_url' => array('label' => 'URL affiliato (_affiliate_url)', 'required' => true),
-                        'map_link_rel' => array('label' => 'Rel (es. nofollow) (_link_rel)', 'required' => false),
-                        'map_link_target' => array('label' => 'Target (es. _blank) (_link_target)', 'required' => false),
-                        'map_link_title' => array('label' => 'Testo tooltip (_link_title)', 'required' => false),
-                        'map_link_type' => array('label' => 'Tipologia (link_type)', 'required' => false),
+                        'map_post_title' => array('label' => 'Titolo del link (post_title)', 'required' => true, 'suggest' => 'post_title'),
+                        'map_affiliate_url' => array('label' => 'URL affiliato (_affiliate_url)', 'required' => true, 'suggest' => '_affiliate_url'),
+                        'map_link_rel' => array('label' => 'Rel (es. nofollow) (_link_rel)', 'required' => false, 'suggest' => '_link_rel'),
+                        'map_link_target' => array('label' => 'Target (es. _blank) (_link_target)', 'required' => false, 'suggest' => '_link_target'),
+                        'map_link_title' => array('label' => 'Testo tooltip (_link_title)', 'required' => false, 'suggest' => '_link_title'),
+                        'map_link_type' => array('label' => 'Tipologia (link_type)', 'required' => false, 'suggest' => 'link_type'),
                     );
                     foreach ($fields as $name => $info) {
                         echo '<tr><th><label for="' . $name . '">' . $info['label'];
                         if ($info['required']) {
                             echo ' *';
                         }
-                        echo '</label></th><td><select name="' . $name . '" id="' . $name . '"><option value="">--</option>';
+                        echo '</label></th><td><select name="' . $name . '" id="' . $name . '"' . ($info['required'] ? ' required' : '') . '><option value="">--</option>';
                         foreach ($header as $col) {
-                            echo '<option value="' . esc_attr($col) . '">' . esc_html($col) . '</option>';
+                            $selected = strtolower($col) === strtolower($info['suggest']) ? ' selected' : '';
+                            echo '<option value="' . esc_attr($col) . '"' . $selected . '>' . esc_html($col) . '</option>';
                         }
                         echo '</select></td></tr>';
                     }
