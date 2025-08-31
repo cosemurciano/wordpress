@@ -3,7 +3,7 @@
  * Plugin Name: Affiliate Link Manager AI
  * Plugin URI: https://your-website.com
  * Description: Gestisce link affiliati con intelligenza artificiale per ottimizzazione e tracking automatico.
- * Version: 1.7.2
+ * Version: 1.7.3
  * Author: Cosè Murciano
  * License: GPL v2 or later
  * Text Domain: affiliate-link-manager-ai
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Definisci costanti del plugin
-define('ALMA_VERSION', '1.7.2');
+define('ALMA_VERSION', '1.7.3');
 define('ALMA_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('ALMA_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('ALMA_PLUGIN_FILE', __FILE__);
@@ -986,7 +986,7 @@ class AffiliateManagerAI {
             if (!empty($_FILES['import_file']['name'])) {
                 $file = $_FILES['import_file'];
                 $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-                $allowed = array('csv', 'tsv');
+                $allowed = array('csv', 'tsv', 'xml');
                 if (!in_array($ext, $allowed)) {
                     echo '<div class="notice notice-error"><p>Formato file non supportato.</p></div>';
                 } else {
@@ -1013,7 +1013,7 @@ class AffiliateManagerAI {
         ?>
         <div class="wrap">
             <h1><?php _e('Importa Link - Step 1', 'affiliate-link-manager-ai'); ?></h1>
-            <p>Carica un file <strong>CSV</strong> o <strong>TSV</strong> con l'intestazione nella prima riga. Ogni colonna deve corrispondere a uno dei campi supportati dal plugin:</p>
+            <p>Carica un file <strong>CSV</strong>, <strong>TSV</strong> o <strong>XML</strong> con l'intestazione nella prima riga. Ogni colonna (o tag XML) deve corrispondere a uno dei campi supportati dal plugin:</p>
             <ul style="margin-left:20px; list-style:disc;">
                 <li><code>post_title</code> – <em>(obbligatorio)</em> Titolo del link che verrà mostrato nell'elenco.</li>
                 <li><code>_affiliate_url</code> – <em>(obbligatorio)</em> URL di destinazione del programma di affiliazione.</li>
@@ -1022,10 +1022,11 @@ class AffiliateManagerAI {
                 <li><code>_link_title</code> – testo tooltip mostrato al passaggio del mouse.</li>
             </ul>
             <p>Dopo il caricamento potrai assegnare una o più <strong>Tipologie</strong> già esistenti ai link importati.</p>
-            <p><?php printf(__('Scarica un <a href="%s">file di esempio</a>.', 'affiliate-link-manager-ai'), esc_url(plugin_dir_url(__FILE__) . 'assets/import-sample.csv')); ?></p>
+            <p>Per il formato XML utilizza una struttura con un nodo radice contenente elementi figlio per ogni link, ad esempio:<br /><code>&lt;links&gt;&lt;link&gt;&lt;post_title&gt;...&lt;/post_title&gt;&lt;/link&gt;&lt;/links&gt;</code></p>
+            <p><?php printf(__('Scarica un file di esempio <a href="%1$s">CSV</a> o <a href="%2$s">XML</a>.', 'affiliate-link-manager-ai'), esc_url(plugin_dir_url(__FILE__) . 'assets/import-sample.csv'), esc_url(plugin_dir_url(__FILE__) . 'assets/import-sample.xml')); ?></p>
             <form method="post" enctype="multipart/form-data" style="margin-bottom:30px;">
                 <?php wp_nonce_field('alma_import_step1', 'alma_import_nonce'); ?>
-                <input type="file" name="import_file" accept=".csv,.tsv" required />
+                <input type="file" name="import_file" accept=".csv,.tsv,.xml" required />
                 <?php submit_button(__('Carica e continua', 'affiliate-link-manager-ai')); ?>
             </form>
 
@@ -1288,6 +1289,33 @@ class AffiliateManagerAI {
 
     private function get_file_data($file, $limit = null) {
         $ext = strtolower(pathinfo($file, PATHINFO_EXTENSION));
+
+        if ($ext === 'xml') {
+            $header = array();
+            $rows = array();
+            $xml = simplexml_load_file($file);
+            if ($xml) {
+                $items = $xml->xpath('/*/*');
+                if ($items) {
+                    $first = $items[0];
+                    foreach ($first->children() as $child) {
+                        $header[] = $child->getName();
+                    }
+                    $count = 0;
+                    foreach ($items as $item) {
+                        $row = array();
+                        foreach ($header as $col) {
+                            $row[] = isset($item->$col) ? (string) $item->$col : '';
+                        }
+                        $rows[] = $row;
+                        if ($limit !== null && ++$count >= $limit) {
+                            break;
+                        }
+                    }
+                }
+            }
+            return array($header, $rows);
+        }
 
         if ($ext === 'xlsx' && class_exists('SimpleXLSX')) {
             $xlsx = SimpleXLSX::parse($file);
