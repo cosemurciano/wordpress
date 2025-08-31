@@ -504,6 +504,7 @@ class AffiliateManagerAI {
      * Aggiungi metabox
      */
     public function add_meta_boxes() {
+        remove_meta_box('link_typediv', 'affiliate_link', 'side');
         // Box principale configurazione
         add_meta_box(
             'affiliate_link_details',
@@ -595,7 +596,21 @@ class AffiliateManagerAI {
         echo '<td><input type="text" id="link_title" name="link_title" value="' . esc_attr($link_title) . '" class="regular-text" placeholder="' . esc_attr(get_the_title($post->ID)) . '" />';
         echo '<p class="description">' . __('Testo che appare al passaggio del mouse. Se vuoto, userà il titolo del link.', 'affiliate-link-manager-ai') . '</p></td>';
         echo '</tr>';
-        
+
+        // Tipologie
+        $selected_types = wp_get_object_terms($post->ID, 'link_type', array('fields' => 'ids'));
+        $all_terms = get_terms(array('taxonomy' => 'link_type', 'hide_empty' => false));
+        echo '<tr>';
+        echo '<th><label for="alma_link_types">' . __('Tipologie', 'affiliate-link-manager-ai') . '</label></th>';
+        echo '<td><select id="alma_link_types" name="alma_link_types[]" multiple style="min-width:200px;">';
+        foreach ($all_terms as $term) {
+            $sel = in_array($term->term_id, $selected_types) ? ' selected' : '';
+            echo '<option value="' . intval($term->term_id) . '"' . $sel . '>' . esc_html($term->name) . '</option>';
+        }
+        echo '</select>';
+        echo '<p class="description">' . __('Seleziona una o più tipologie per il link', 'affiliate-link-manager-ai') . '</p></td>';
+        echo '</tr>';
+
         // Statistiche
         echo '<tr>';
         echo '<th>' . __('Statistiche Performance', 'affiliate-link-manager-ai') . '</th>';
@@ -749,7 +764,13 @@ class AffiliateManagerAI {
         if (isset($_POST['link_title'])) {
             update_post_meta($post_id, '_link_title', sanitize_text_field($_POST['link_title']));
         }
-        
+
+        // Salva tipologie
+        if (isset($_POST['alma_link_types'])) {
+            $types = array_map('intval', (array)$_POST['alma_link_types']);
+            wp_set_object_terms($post_id, $types, 'link_type');
+        }
+
         // Calcola AI Performance Score iniziale
         $this->calculate_ai_performance_score($post_id);
     }
@@ -761,7 +782,10 @@ class AffiliateManagerAI {
         $new_columns = array();
         
         foreach ($columns as $key => $value) {
-            if ($key === 'title') {
+            if ($key === 'cb') {
+                $new_columns[$key] = $value;
+                $new_columns['id'] = __('ID', 'affiliate-link-manager-ai');
+            } elseif ($key === 'title') {
                 $new_columns[$key] = $value;
                 $new_columns['shortcode'] = __('Shortcode', 'affiliate-link-manager-ai');
                 $new_columns['link_type'] = __('Tipologia', 'affiliate-link-manager-ai');
@@ -783,6 +807,9 @@ class AffiliateManagerAI {
      */
     public function custom_column_content($column, $post_id) {
         switch ($column) {
+            case 'id':
+                echo intval($post_id);
+                break;
             case 'shortcode':
                 echo '<code style="background:#f0f0f0;padding:2px 6px;border-radius:3px;">[affiliate_link id="' . $post_id . '"]</code>';
                 echo ' <button class="button button-small alma-copy-btn" data-copy="[affiliate_link id=&quot;' . $post_id . '&quot;]" style="margin-left:5px;">📋</button>';
@@ -1042,7 +1069,7 @@ class AffiliateManagerAI {
             if (!empty($_FILES['import_file']['name'])) {
                 $file = $_FILES['import_file'];
                 $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-                $allowed = array('csv', 'tsv', 'xlsx');
+                $allowed = array('csv', 'xlsx', 'xml');
                 if (!in_array($ext, $allowed)) {
                     echo '<div class="notice notice-error"><p>Formato file non supportato.</p></div>';
                 } else {
@@ -1069,7 +1096,7 @@ class AffiliateManagerAI {
         ?>
         <div class="wrap">
             <h1><?php _e('Importa Link - Step 1', 'affiliate-link-manager-ai'); ?></h1>
-            <p>Carica un file <strong>CSV</strong> o <strong>TSV</strong> con intestazione nella prima riga.</p>
+            <p>Carica un file <strong>CSV</strong>, <strong>XLSX</strong> o <strong>XML</strong> con intestazione nella prima riga.</p>
             <div class="notice notice-info" style="padding:15px;">
                 <h2 style="margin-top:0;">Tutorial: campi del file di importazione</h2>
                 <ul>
@@ -1078,13 +1105,13 @@ class AffiliateManagerAI {
                     <li><code>_link_rel</code> – Attributo rel (es. <code>nofollow</code>)</li>
                     <li><code>_link_target</code> – Attributo target (es. <code>_blank</code>)</li>
                     <li><code>_link_title</code> – Testo tooltip del link</li>
-                    <li><code>link_type</code> – Tipologie separate da virgole</li>
+                    <li><code>link_type</code> – Tipologie separate da virgole (opzionale, puoi sceglierle anche durante l\'importazione)</li>
                 </ul>
             </div>
             <p><?php printf(__('Scarica un <a href="%s">file di esempio</a>.', 'affiliate-link-manager-ai'), esc_url(plugin_dir_url(__FILE__) . 'assets/import-sample.csv')); ?></p>
             <form method="post" enctype="multipart/form-data" style="margin-bottom:30px;">
                 <?php wp_nonce_field('alma_import_step1', 'alma_import_nonce'); ?>
-                <input type="file" name="import_file" accept=".csv,.tsv,.xlsx" required />
+                <input type="file" name="import_file" accept=".csv,.xlsx,.xml" required />
                 <?php submit_button(__('Carica e continua', 'affiliate-link-manager-ai')); ?>
             </form>
 
@@ -1107,8 +1134,13 @@ class AffiliateManagerAI {
         }
 
         list($header) = $this->get_file_data($file);
+        if (empty($header)) {
+            echo '<div class="wrap"><h1>Errore</h1><p>Impossibile leggere il file di importazione.</p></div>';
+            return;
+        }
 
         if (isset($_POST['alma_map_nonce']) && wp_verify_nonce($_POST['alma_map_nonce'], 'alma_import_step2')) {
+            $selected_types = array_map('intval', $_POST['selected_link_types'] ?? array());
             $mapping = array(
                 'post_title' => sanitize_text_field($_POST['map_post_title']),
                 '_affiliate_url' => sanitize_text_field($_POST['map_affiliate_url']),
@@ -1116,6 +1148,7 @@ class AffiliateManagerAI {
                 '_link_target' => sanitize_text_field($_POST['map_link_target']),
                 '_link_title' => sanitize_text_field($_POST['map_link_title']),
                 'link_type' => sanitize_text_field($_POST['map_link_type']),
+                'selected_link_types' => $selected_types,
             );
 
             if (!$mapping['post_title'] || !$mapping['_affiliate_url']) {
@@ -1130,7 +1163,7 @@ class AffiliateManagerAI {
         ?>
         <div class="wrap">
             <h1><?php _e('Importa Link - Step 2', 'affiliate-link-manager-ai'); ?></h1>
-            <p>Abbina le colonne del tuo file ai campi del plugin. I campi contrassegnati con * sono obbligatori.</p>
+            <p>Abbina le colonne del tuo file ai campi del plugin. I campi contrassegnati con * sono obbligatori. Puoi inoltre selezionare tipologie da assegnare a tutti i link.</p>
             <form method="post">
                 <?php wp_nonce_field('alma_import_step2', 'alma_map_nonce'); ?>
                 <table class="form-table">
@@ -1155,6 +1188,15 @@ class AffiliateManagerAI {
                         }
                         echo '</select></td></tr>';
                     }
+                    $all_terms = get_terms(array('taxonomy' => 'link_type', 'hide_empty' => false));
+                    echo '<tr><th><label for="selected_link_types">' . __('Tipologie', 'affiliate-link-manager-ai') . '</label></th><td>';
+                    echo '<select name="selected_link_types[]" id="selected_link_types" multiple size="5" style="min-width:200px;">';
+                    foreach ($all_terms as $term) {
+                        echo '<option value="' . intval($term->term_id) . '">' . esc_html($term->name) . '</option>';
+                    }
+                    echo '</select>';
+                    echo '<p class="description">' . __('Seleziona tipologie da assegnare a tutti i link importati', 'affiliate-link-manager-ai') . '</p>';
+                    echo '</td></tr>';
                     ?>
                 </table>
                 <?php submit_button(__('Conferma mappatura', 'affiliate-link-manager-ai')); ?>
@@ -1201,14 +1243,30 @@ class AffiliateManagerAI {
             return;
         }
 
+        $selected_names = array();
+        if (!empty($mapping['selected_link_types'])) {
+            $terms = get_terms(array(
+                'taxonomy' => 'link_type',
+                'hide_empty' => false,
+                'include' => $mapping['selected_link_types']
+            ));
+            if (!is_wp_error($terms)) {
+                $selected_names = wp_list_pluck($terms, 'name');
+            }
+        }
+
         ?>
         <div class="wrap">
             <h1><?php _e('Importa Link - Step 3', 'affiliate-link-manager-ai'); ?></h1>
+            <?php if (!empty($selected_names)) { echo '<p><strong>' . __('Tipologie selezionate', 'affiliate-link-manager-ai') . ':</strong> ' . esc_html(implode(', ', $selected_names)) . '</p>'; } ?>
             <h2><?php _e('Anteprima', 'affiliate-link-manager-ai'); ?></h2>
             <table class="widefat">
                 <thead>
                     <tr>
-                        <?php foreach ($mapping as $field => $col) { if ($col) { echo '<th>' . esc_html($field) . '</th>'; } } ?>
+                        <?php foreach ($mapping as $field => $col) {
+                            if ($field === 'selected_link_types' || !$col) { continue; }
+                            echo '<th>' . esc_html($field) . '</th>';
+                        } ?>
                     </tr>
                 </thead>
                 <tbody>
@@ -1216,10 +1274,9 @@ class AffiliateManagerAI {
                         $assoc = array_combine($header, $row);
                         echo '<tr>';
                         foreach ($mapping as $field => $col) {
-                            if ($col) {
-                                $val = $assoc[$col] ?? '';
-                                echo '<td>' . esc_html($val) . '</td>';
-                            }
+                            if ($field === 'selected_link_types' || !$col) { continue; }
+                            $val = $assoc[$col] ?? '';
+                            echo '<td>' . esc_html($val) . '</td>';
                         }
                         echo '</tr>';
                     } ?>
@@ -1277,12 +1334,19 @@ class AffiliateManagerAI {
                 }
             }
 
+            $terms_to_set = array();
             if (!empty($mapping['link_type'])) {
                 $terms_raw = $assoc[$mapping['link_type']] ?? '';
                 if ($terms_raw !== '') {
-                    $terms = array_map('trim', explode(',', $terms_raw));
-                    wp_set_object_terms($post_id, $terms, 'link_type');
+                    $terms_to_set = array_map('trim', explode(',', $terms_raw));
                 }
+            }
+            if (!empty($mapping['selected_link_types'])) {
+                $terms_to_set = array_merge($terms_to_set, $mapping['selected_link_types']);
+            }
+            if (!empty($terms_to_set)) {
+                $terms_to_set = array_unique($terms_to_set);
+                wp_set_object_terms($post_id, $terms_to_set, 'link_type');
             }
 
             $success++;
@@ -1314,6 +1378,29 @@ class AffiliateManagerAI {
     private function get_file_data($file, $limit = null) {
         $ext = strtolower(pathinfo($file, PATHINFO_EXTENSION));
 
+        if ($ext === 'xml') {
+            $header = array();
+            $rows = array();
+            $xml = simplexml_load_file($file);
+            if ($xml) {
+                foreach ($xml->children() as $item) {
+                    $data = (array)$item;
+                    if (empty($header)) {
+                        $header = array_keys($data);
+                    }
+                    $row = array();
+                    foreach ($header as $col) {
+                        $row[] = isset($data[$col]) ? (string)$data[$col] : '';
+                    }
+                    $rows[] = $row;
+                    if ($limit !== null && count($rows) >= $limit) {
+                        break;
+                    }
+                }
+            }
+            return array($header, $rows);
+        }
+
         if ($ext === 'xlsx' && class_exists('SimpleXLSX')) {
             $xlsx = SimpleXLSX::parse($file);
             $rows = $xlsx ? $xlsx->rows() : array();
@@ -1324,7 +1411,7 @@ class AffiliateManagerAI {
             return array($header, $rows);
         }
 
-        $delimiter = $ext === 'tsv' ? "\t" : ',';
+        $delimiter = ',';
         $header = array();
         $rows = array();
         if (($handle = fopen($file, 'r')) !== false) {
