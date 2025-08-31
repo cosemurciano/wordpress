@@ -1572,8 +1572,12 @@ class AffiliateManagerAI {
             return;
         }
 
-        $title   = isset($_POST['title']) ? sanitize_text_field(wp_unslash($_POST['title'])) : '';
-        $content = isset($_POST['content']) ? sanitize_textarea_field(wp_unslash($_POST['content'])) : '';
+        $title   = isset($_POST['title']) ? wp_strip_all_tags(wp_unslash($_POST['title'])) : '';
+        $content = isset($_POST['content']) ? wp_strip_all_tags(wp_unslash($_POST['content'])) : '';
+
+        // Limita la lunghezza per evitare richieste eccessive
+        $title   = mb_substr($title, 0, 500);
+        $content = mb_substr($content, 0, 2000);
 
         // Recupera fino a 50 link affiliati
         $links = get_posts(array(
@@ -1595,7 +1599,11 @@ class AffiliateManagerAI {
         $prompt .= "\nRestituisci gli ID dei 5 link più pertinenti come array JSON.\n";
 
         $response = $this->call_claude_api($prompt);
-        $ids = json_decode(trim($response), true);
+        if (empty($response['success'])) {
+            wp_send_json_error(__('Impossibile generare suggerimenti con Claude.', 'affiliate-link-manager-ai'));
+        }
+
+        $ids = json_decode(trim($response['response']), true);
         if (!is_array($ids)) {
             wp_send_json_error('Invalid AI response');
         }
@@ -2055,6 +2063,7 @@ class AffiliateManagerAI {
             return array('success' => false, 'error' => 'API Key non configurata');
         }
         
+        $prompt     = wp_strip_all_tags($prompt);
         $model       = get_option('alma_claude_model', 'claude-3-haiku-20240307');
         $temperature = (float) get_option('alma_claude_temperature', 0.7);
 
@@ -2068,14 +2077,15 @@ class AffiliateManagerAI {
         );
 
         $start    = microtime(true);
-        $response = wp_remote_post('https://api.anthropic.com/v1/messages', array(
+        $response = wp_safe_remote_post('https://api.anthropic.com/v1/messages', array(
             'headers' => array(
-                'Content-Type'       => 'application/json',
-                'x-api-key'          => $api_key,
-                'anthropic-version'  => '2023-06-01',
+                'Content-Type'      => 'application/json',
+                'x-api-key'         => $api_key,
+                'anthropic-version' => '2023-06-01',
             ),
-            'body'    => wp_json_encode($body),
-            'timeout' => 30,
+            'body'      => wp_json_encode($body, JSON_UNESCAPED_UNICODE),
+            'timeout'   => 30,
+            'sslverify' => true,
         ));
 
         $time = round((microtime(true) - $start) * 1000);
