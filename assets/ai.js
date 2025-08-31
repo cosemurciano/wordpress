@@ -186,6 +186,9 @@ jQuery(document).ready(function($) {
         const img = $('#alma-sc-img').is(':checked');
         const title = $('#alma-sc-title').is(':checked');
         const content = $('#alma-sc-content').is(':checked');
+        const button = $('#alma-sc-button').is(':checked');
+        const buttonSize = $('#alma-sc-button-size').val();
+        const buttonText = $('#alma-sc-button-text').val().trim();
         if (img) {
             shortcode += ' img="yes"';
         }
@@ -195,12 +198,30 @@ jQuery(document).ready(function($) {
         if (fields.length) {
             shortcode += ` fields="${fields.join(',')}"`;
         }
+        if (button) {
+            shortcode += ' button="yes"';
+            if (buttonSize) {
+                shortcode += ` button_size="${buttonSize}"`;
+            }
+            if (buttonText) {
+                shortcode += ` button_text="${escapeShortcodeAttr(buttonText)}"`;
+            }
+        }
         shortcode += ']';
         codeEl.text(shortcode);
         $('#alma-shortcode-copy').data('copy', shortcode);
     }
 
-    $(document).on('change', '#alma-sc-img, #alma-sc-title, #alma-sc-content', almaUpdateShortcodePreview);
+    $(document).on('change', '#alma-sc-img, #alma-sc-title, #alma-sc-content, #alma-sc-button, #alma-sc-button-size', almaUpdateShortcodePreview);
+    $(document).on('input', '#alma-sc-button-text', almaUpdateShortcodePreview);
+
+    // Abilita/disabilita campi pulsante
+    $(document).on('change', '#alma-sc-button', function() {
+        const enabled = $(this).is(':checked');
+        $('#alma-sc-button-size, #alma-sc-button-text').prop('disabled', !enabled);
+    });
+
+    $('#alma-sc-button').trigger('change');
     almaUpdateShortcodePreview();
     
     // 🤖 Gestisci rigenera suggerimenti
@@ -581,6 +602,10 @@ jQuery(document).ready(function($) {
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
+    }
+
+    function escapeShortcodeAttr(text) {
+        return text.replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/\[/g, '&#91;').replace(/\]/g, '&#93;');
     }
     
     /**
