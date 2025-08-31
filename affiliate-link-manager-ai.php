@@ -599,8 +599,8 @@ class AffiliateManagerAI {
         echo '</div>';
         echo '<div class="alma-shortcode-config" style="margin-top:8px;">';
         echo '<label><input type="checkbox" id="alma-sc-img"> ' . __('Immagine', 'affiliate-link-manager-ai') . '</label> ';
-        echo '<label><input type="checkbox" id="alma-sc-title" disabled> ' . __('Titolo', 'affiliate-link-manager-ai') . '</label> ';
-        echo '<label><input type="checkbox" id="alma-sc-content" disabled> ' . __('Contenuto', 'affiliate-link-manager-ai') . '</label>';
+        echo '<label><input type="checkbox" id="alma-sc-title"> ' . __('Titolo', 'affiliate-link-manager-ai') . '</label> ';
+        echo '<label><input type="checkbox" id="alma-sc-content"> ' . __('Contenuto', 'affiliate-link-manager-ai') . '</label>';
         echo '</div>';
         echo '<p class="description">' . __('Usa questo shortcode per inserire il link nei tuoi contenuti', 'affiliate-link-manager-ai') . '</p>';
         echo '</td>';

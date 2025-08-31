@@ -188,17 +188,16 @@ jQuery(document).ready(function($) {
         const content = $('#alma-sc-content').is(':checked');
         if (img) {
             shortcode += ' img="yes"';
-            const fields = [];
-            if (title) fields.push('title');
-            if (content) fields.push('content');
-            if (fields.length) {
-                shortcode += ` fields="${fields.join(',')}"`;
-            }
+        }
+        const fields = [];
+        if (title) fields.push('title');
+        if (content) fields.push('content');
+        if (fields.length) {
+            shortcode += ` fields="${fields.join(',')}"`;
         }
         shortcode += ']';
         codeEl.text(shortcode);
         $('#alma-shortcode-copy').data('copy', shortcode);
-        $('#alma-sc-title, #alma-sc-content').prop('disabled', !img);
     }
 
     $(document).on('change', '#alma-sc-img, #alma-sc-title, #alma-sc-content', almaUpdateShortcodePreview);

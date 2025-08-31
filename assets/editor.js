@@ -171,18 +171,6 @@ jQuery(document).ready(function($) {
             }
         });
 
-        // Usa immagine in primo piano
-        $(document).on('change.alma_editor', '#alma-use-img', function() {
-            const useImg = $(this).is(':checked');
-            $('.alma-field-option').prop('disabled', !useImg);
-            if (useImg) {
-                $('.alma-fields-row').slideDown();
-            } else {
-                $('.alma-fields-row').slideUp();
-                const isCustom = $('input[name="alma_text_option"]:checked').val() === 'custom';
-                $('#alma-custom-text').prop('disabled', !isCustom);
-            }
-        });
         
         // Inserisci shortcode
         $(document).on('click.alma_editor', '#alma-insert-shortcode', function() {
@@ -325,8 +313,8 @@ jQuery(document).ready(function($) {
                         <input type="checkbox" id="alma-use-img">
                     </div>
 
-                    <div class="alma-option-row alma-fields-row" style="display:none;align-items:center;gap:15px;margin-bottom:15px;">
-                        <label style="min-width:150px;font-weight:600;color:#23282d;">Campi dopo immagine:</label>
+                    <div class="alma-option-row alma-fields-row" style="display:flex;align-items:center;gap:15px;margin-bottom:15px;">
+                        <label style="min-width:150px;font-weight:600;color:#23282d;">Elementi da includere:</label>
                         <label style="font-weight:normal;display:flex;align-items:center;gap:5px;">
                             <input type="checkbox" class="alma-field-option" value="title">
                             Titolo
@@ -422,8 +410,7 @@ jQuery(document).ready(function($) {
         $('#alma-custom-class').val('affiliate-link-btn');
         $('input[name="alma_text_option"][value="auto"]').prop('checked', true).prop('disabled', false);
         $('#alma-use-img').prop('checked', false);
-        $('.alma-field-option').prop('checked', false).prop('disabled', true);
-        $('.alma-fields-row').hide();
+        $('.alma-field-option').prop('checked', false);
         $('#alma-insert-shortcode').prop('disabled', true);
         $('.alma-shortcode-options').hide();
         $('.alma-link-item').removeClass('selected');
@@ -545,10 +532,10 @@ jQuery(document).ready(function($) {
         const useImg = $('#alma-use-img').is(':checked');
         if (useImg) {
             shortcode += ' img="yes"';
-            const fields = $('.alma-field-option:checked').map(function() { return $(this).val(); }).get();
-            if (fields.length) {
-                shortcode += ` fields="${fields.join(',')}"`;
-            }
+        }
+        const fields = $('.alma-field-option:checked').map(function() { return $(this).val(); }).get();
+        if (fields.length) {
+            shortcode += ` fields="${fields.join(',')}"`;
         }
 
         // Aggiungi testo personalizzato se selezionato
