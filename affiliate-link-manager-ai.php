@@ -139,7 +139,8 @@ class AffiliateManagerAI {
             'fields' => '',
             'button' => 'no',
             'button_text' => '',
-            'button_size' => 'medium'
+            'button_size' => 'medium',
+            'button_align' => 'left'
         ), $atts);
         
         if (!$atts['id']) {
@@ -230,9 +231,11 @@ class AffiliateManagerAI {
         // Pulsante call to action opzionale
         if ($atts['button'] === 'yes') {
             $size = in_array($atts['button_size'], array('small','medium','large')) ? $atts['button_size'] : 'medium';
+            $alignment = in_array($atts['button_align'], array('left','center','right')) ? $atts['button_align'] : 'left';
             $btn_classes = 'alma-affiliate-button alma-btn-' . esc_attr($size) . ' alma-affiliate-link';
             $btn_text = !empty($atts['button_text']) ? esc_html($atts['button_text']) : __('Scopri di più', 'affiliate-link-manager-ai');
-            $button_html = '<a href="' . esc_url($affiliate_url) . '"';
+            $button_html = '<div class="alma-button-wrapper" style="text-align:' . esc_attr($alignment) . ';">';
+            $button_html .= '<a href="' . esc_url($affiliate_url) . '"';
             $button_html .= ' class="' . $btn_classes . '"';
             $button_html .= ' data-link-id="' . esc_attr($atts['id']) . '"';
             $button_html .= ' data-track="1"';
@@ -241,7 +244,7 @@ class AffiliateManagerAI {
             }
             $button_html .= ' target="' . esc_attr($link_target) . '"';
             $button_html .= ' title="' . esc_attr($link_title) . '"';
-            $button_html .= '>' . $btn_text . '</a>';
+            $button_html .= '>' . $btn_text . '</a></div>';
             $link_html .= $button_html;
         }
 
@@ -462,8 +465,10 @@ class AffiliateManagerAI {
                 );
 
                 wp_localize_script('alma-ai-script', 'alma_ai', array(
-                    'ajax_url' => admin_url('admin-ajax.php'),
-                    'nonce'    => wp_create_nonce('alma_ai_suggest_text'),
+                    'ajax_url'       => admin_url('admin-ajax.php'),
+                    'nonce'          => wp_create_nonce('alma_ai_suggest_text'),
+                    'usage_nonce'    => wp_create_nonce('alma_check_usage'),
+                    'default_cleanup'=> get_option('alma_shortcode_cleanup', 'replace'),
                     'messages' => array(
                         'generating' => __('Generazione suggerimenti...', 'affiliate-link-manager-ai'),
                         'generated'  => __('Suggerimenti generati!', 'affiliate-link-manager-ai'),
@@ -655,6 +660,11 @@ class AffiliateManagerAI {
         echo '<option value="small">' . __('Piccolo', 'affiliate-link-manager-ai') . '</option>';
         echo '<option value="medium" selected>' . __('Medio', 'affiliate-link-manager-ai') . '</option>';
         echo '<option value="large">' . __('Grande', 'affiliate-link-manager-ai') . '</option>';
+        echo '</select>';
+        echo '<select id="alma-sc-button-align" style="margin-left:5px;" disabled>';
+        echo '<option value="left">' . __('Sinistra', 'affiliate-link-manager-ai') . '</option>';
+        echo '<option value="center">' . __('Centro', 'affiliate-link-manager-ai') . '</option>';
+        echo '<option value="right">' . __('Destra', 'affiliate-link-manager-ai') . '</option>';
         echo '</select>';
         echo '<input type="text" id="alma-sc-button-text" placeholder="' . esc_attr__('Testo pulsante', 'affiliate-link-manager-ai') . '" style="margin-left:5px;" disabled />';
         echo '</div>';
@@ -882,15 +892,6 @@ class AffiliateManagerAI {
             array($this, 'render_settings_page')
         );
 
-        // Importa link
-        add_submenu_page(
-            'edit.php?post_type=affiliate_link',
-            __('Importa link', 'affiliate-link-manager-ai'),
-            __('Importa link', 'affiliate-link-manager-ai'),
-            'manage_options',
-            'alma-import',
-            array($this, 'render_import_page')
-        );
         
         // Pagina nascosta per dettagli utilizzo
         add_submenu_page(
@@ -939,7 +940,6 @@ class AffiliateManagerAI {
         <div class="wrap">
             <h1><?php _e('Dashboard Link - Affiliate Link Manager', 'affiliate-link-manager-ai'); ?></h1>
             <p style="font-size:14px;color:#666;">Versione <?php echo ALMA_VERSION; ?></p>
-            <p><a href="<?php echo admin_url('edit.php?post_type=affiliate_link&page=alma-import'); ?>" class="button button-primary">Importa link</a></p>
             
             <!-- Statistiche Principali -->
             <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:20px;margin:30px 0;">
@@ -1040,435 +1040,7 @@ class AffiliateManagerAI {
             </div>
         </div>
         <?php
-    }
-
-    /**
-     * Render Import Wizard Page
-     */
-    public function render_import_page() {
-        if (!current_user_can('manage_options')) {
-            wp_die(__('Non hai i permessi per accedere a questa pagina.'));
-        }
-
-        $step = isset($_GET['step']) ? intval($_GET['step']) : 1;
-        switch ($step) {
-            case 2:
-                $this->render_import_step2();
-                break;
-            case 3:
-                $this->render_import_step3();
-                break;
-            default:
-                $this->render_import_step1();
-                break;
-        }
-    }
-
-    private function render_import_step1() {
-        if (isset($_POST['alma_import_nonce']) && wp_verify_nonce($_POST['alma_import_nonce'], 'alma_import_step1')) {
-            if (!empty($_FILES['import_file']['name'])) {
-                $file = $_FILES['import_file'];
-                $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-                $allowed = array('csv', 'xlsx', 'xml');
-                if (!in_array($ext, $allowed)) {
-                    echo '<div class="notice notice-error"><p>Formato file non supportato.</p></div>';
-                } else {
-                    $upload = wp_handle_upload($file, array('test_form' => false));
-                    if (!isset($upload['error'])) {
-                        set_transient($this->get_import_transient_name(), $upload['file'], HOUR_IN_SECONDS);
-                        wp_redirect(add_query_arg('step', 2, admin_url('edit.php?post_type=affiliate_link&page=alma-import')));
-                        exit;
-                    } else {
-                        echo '<div class="notice notice-error"><p>' . esc_html($upload['error']) . '</p></div>';
-                    }
-                }
-            }
-        }
-
-        if (isset($_POST['alma_delete_nonce']) && wp_verify_nonce($_POST['alma_delete_nonce'], 'alma_import_delete')) {
-            $import_id = sanitize_text_field($_POST['delete_import_id']);
-            if ($import_id !== '') {
-                $deleted = $this->delete_imported_links($import_id);
-                echo '<div class="notice notice-success"><p>Eliminati ' . intval($deleted) . ' link importati.</p></div>';
-            }
-        }
-
-        ?>
-        <div class="wrap">
-            <h1><?php _e('Importa Link - Step 1', 'affiliate-link-manager-ai'); ?></h1>
-            <p>Carica un file <strong>CSV</strong>, <strong>XLSX</strong> o <strong>XML</strong> con intestazione nella prima riga.</p>
-            <div class="notice notice-info" style="padding:15px;">
-                <h2 style="margin-top:0;">Tutorial: campi del file di importazione</h2>
-                <ul>
-                    <li><code>post_title</code> – Titolo del link <em>(obbligatorio)</em></li>
-                    <li><code>_affiliate_url</code> – URL affiliato <em>(obbligatorio)</em></li>
-                    <li><code>_link_rel</code> – Attributo rel (es. <code>nofollow</code>)</li>
-                    <li><code>_link_target</code> – Attributo target (es. <code>_blank</code>)</li>
-                    <li><code>_link_title</code> – Testo tooltip del link</li>
-                    <li><code>link_type</code> – Tipologie separate da virgole (opzionale, puoi sceglierle anche durante l\'importazione)</li>
-                </ul>
-            </div>
-            <p><?php printf(__('Scarica un <a href="%s">file di esempio</a>.', 'affiliate-link-manager-ai'), esc_url(plugin_dir_url(__FILE__) . 'assets/import-sample.csv')); ?></p>
-            <form method="post" enctype="multipart/form-data" style="margin-bottom:30px;">
-                <?php wp_nonce_field('alma_import_step1', 'alma_import_nonce'); ?>
-                <input type="file" name="import_file" accept=".csv,.xlsx,.xml" required />
-                <?php submit_button(__('Carica e continua', 'affiliate-link-manager-ai')); ?>
-            </form>
-
-            <h2><?php _e('Elimina link importati', 'affiliate-link-manager-ai'); ?></h2>
-            <p>Hai un ID importazione precedente? Inseriscilo per cancellare tutti i link creati in quel batch.</p>
-            <form method="post">
-                <?php wp_nonce_field('alma_import_delete', 'alma_delete_nonce'); ?>
-                <input type="text" name="delete_import_id" placeholder="ID importazione" />
-                <?php submit_button(__('Elimina link', 'affiliate-link-manager-ai'), 'delete'); ?>
-            </form>
-        </div>
-        <?php
-    }
-
-    private function render_import_step2() {
-        // Recupera il file caricato nello step precedente o permetti un nuovo upload
-        if (!empty($_FILES['import_file']['name'])) {
-            $upload = wp_handle_upload($_FILES['import_file'], array('test_form' => false));
-            if (isset($upload['error'])) {
-                wp_die(sprintf(__('Errore durante il caricamento: %s', 'affiliate-link-manager-ai'), esc_html($upload['error'])));
-            }
-            $file = $upload['file'];
-            set_transient($this->get_import_transient_name(), $file, HOUR_IN_SECONDS);
-        } else {
-            $file = get_transient($this->get_import_transient_name());
-        }
-
-        if (!$file || !file_exists($file)) {
-            wp_die(__('File di importazione non trovato. Carica nuovamente il file.', 'affiliate-link-manager-ai'));
-        }
-
-        $data = $this->get_file_data($file);
-        if (is_wp_error($data)) {
-            wp_die($data->get_error_message());
-        }
-        list($header) = $data;
-        if (empty($header)) {
-            echo '<div class="wrap"><h1>Errore</h1><p>Intestazione del file assente o file vuoto.</p></div>';
-            return;
-        }
-
-        if (isset($_POST['alma_map_nonce']) && wp_verify_nonce($_POST['alma_map_nonce'], 'alma_import_step2')) {
-            $selected_types = array_map('intval', $_POST['selected_link_types'] ?? array());
-            $mapping = array(
-                'post_title' => sanitize_text_field($_POST['map_post_title']),
-                '_affiliate_url' => sanitize_text_field($_POST['map_affiliate_url']),
-                '_link_rel' => sanitize_text_field($_POST['map_link_rel']),
-                '_link_target' => sanitize_text_field($_POST['map_link_target']),
-                '_link_title' => sanitize_text_field($_POST['map_link_title']),
-                'link_type' => sanitize_text_field($_POST['map_link_type']),
-                'selected_link_types' => $selected_types,
-            );
-
-            if (!$mapping['post_title'] || !$mapping['_affiliate_url']) {
-                echo '<div class="notice notice-error"><p>Campi obbligatori mancanti.</p></div>';
-            } else {
-                set_transient($this->get_import_transient_name() . '_map', $mapping, HOUR_IN_SECONDS);
-                wp_redirect(add_query_arg('step', 3, admin_url('edit.php?post_type=affiliate_link&page=alma-import')));
-                exit;
-            }
-        }
-
-        ?>
-        <div class="wrap">
-            <h1><?php _e('Importa Link - Step 2', 'affiliate-link-manager-ai'); ?></h1>
-            <p>Abbina le colonne del tuo file ai campi del plugin. I campi contrassegnati con * sono obbligatori. Puoi inoltre selezionare tipologie da assegnare a tutti i link.</p>
-            <form method="post">
-                <?php wp_nonce_field('alma_import_step2', 'alma_map_nonce'); ?>
-                <table class="form-table">
-                    <?php
-                    $fields = array(
-                        'map_post_title' => array('label' => 'Titolo del link (post_title)', 'required' => true, 'suggest' => 'post_title'),
-                        'map_affiliate_url' => array('label' => 'URL affiliato (_affiliate_url)', 'required' => true, 'suggest' => '_affiliate_url'),
-                        'map_link_rel' => array('label' => 'Rel (es. nofollow) (_link_rel)', 'required' => false, 'suggest' => '_link_rel'),
-                        'map_link_target' => array('label' => 'Target (es. _blank) (_link_target)', 'required' => false, 'suggest' => '_link_target'),
-                        'map_link_title' => array('label' => 'Testo tooltip (_link_title)', 'required' => false, 'suggest' => '_link_title'),
-                        'map_link_type' => array('label' => 'Tipologia (link_type)', 'required' => false, 'suggest' => 'link_type'),
-                    );
-                    foreach ($fields as $name => $info) {
-                        echo '<tr><th><label for="' . $name . '">' . $info['label'];
-                        if ($info['required']) {
-                            echo ' *';
-                        }
-                        echo '</label></th><td><select name="' . $name . '" id="' . $name . '"' . ($info['required'] ? ' required' : '') . '><option value="">--</option>';
-                        foreach ($header as $col) {
-                            $selected = strtolower($col) === strtolower($info['suggest']) ? ' selected' : '';
-                            echo '<option value="' . esc_attr($col) . '"' . $selected . '>' . esc_html($col) . '</option>';
-                        }
-                        echo '</select></td></tr>';
-                    }
-                    $all_terms = get_terms(array('taxonomy' => 'link_type', 'hide_empty' => false));
-                    echo '<tr><th><label for="selected_link_types">' . __('Tipologie', 'affiliate-link-manager-ai') . '</label></th><td>';
-                    echo '<select name="selected_link_types[]" id="selected_link_types" multiple size="5" style="min-width:200px;">';
-                    foreach ($all_terms as $term) {
-                        echo '<option value="' . intval($term->term_id) . '">' . esc_html($term->name) . '</option>';
-                    }
-                    echo '</select>';
-                    echo '<p class="description">' . __('Seleziona tipologie da assegnare a tutti i link importati', 'affiliate-link-manager-ai') . '</p>';
-                    echo '</td></tr>';
-                    ?>
-                </table>
-                <?php submit_button(__('Conferma mappatura', 'affiliate-link-manager-ai')); ?>
-            </form>
-        </div>
-        <?php
-    }
-
-    private function render_import_step3() {
-        $file = get_transient($this->get_import_transient_name());
-        $mapping = get_transient($this->get_import_transient_name() . '_map');
-
-        if (!$file || !$mapping || !file_exists($file)) {
-            echo '<div class="wrap"><h1>Errore</h1><p>Dati importazione mancanti.</p></div>';
-            return;
-        }
-
-        $data = $this->get_file_data($file, 5);
-        if (is_wp_error($data)) {
-            wp_die($data->get_error_message());
-        }
-        list($header, $rows) = $data;
-        if (empty($header)) {
-            echo '<div class="wrap"><h1>Errore</h1><p>Intestazione del file assente o file vuoto.</p></div>';
-            return;
-        }
-
-        if (isset($_POST['alma_import_confirm']) && wp_verify_nonce($_POST['alma_import_confirm'], 'alma_import_step3')) {
-            $import_id = uniqid('alma_', false);
-            $result = $this->process_import($file, $mapping, $import_id);
-            delete_transient($this->get_import_transient_name());
-            delete_transient($this->get_import_transient_name() . '_map');
-            @unlink($file);
-
-            echo '<div class="wrap"><h1>Report Importazione</h1>';
-            echo '<p>Successi: ' . $result['success'] . ' | Fallimenti: ' . $result['failed'] . '</p>';
-            if (!empty($result['errors'])) {
-                echo '<ul>';
-                foreach ($result['errors'] as $err) {
-                    echo '<li>' . esc_html($err) . '</li>';
-                }
-                echo '</ul>';
-            }
-            echo '<p>ID importazione: <code>' . esc_html($import_id) . '</code></p>';
-            echo '<form method="post" style="margin-top:20px;">';
-            wp_nonce_field('alma_import_delete', 'alma_delete_nonce');
-            echo '<input type="hidden" name="delete_import_id" value="' . esc_attr($import_id) . '" />';
-            submit_button(__('Elimina questi link', 'affiliate-link-manager-ai'), 'delete');
-            echo '</form>';
-            echo '<p><a class="button" href="' . admin_url('edit.php?post_type=affiliate_link&page=alma-import') . '">Nuova Importazione</a></p>';
-            echo '</div>';
-            return;
-        }
-
-        $selected_names = array();
-        if (!empty($mapping['selected_link_types'])) {
-            $terms = get_terms(array(
-                'taxonomy' => 'link_type',
-                'hide_empty' => false,
-                'include' => $mapping['selected_link_types']
-            ));
-            if (!is_wp_error($terms)) {
-                $selected_names = wp_list_pluck($terms, 'name');
-            }
-        }
-
-        ?>
-        <div class="wrap">
-            <h1><?php _e('Importa Link - Step 3', 'affiliate-link-manager-ai'); ?></h1>
-            <?php if (!empty($selected_names)) { echo '<p><strong>' . __('Tipologie selezionate', 'affiliate-link-manager-ai') . ':</strong> ' . esc_html(implode(', ', $selected_names)) . '</p>'; } ?>
-            <h2><?php _e('Anteprima', 'affiliate-link-manager-ai'); ?></h2>
-            <table class="widefat">
-                <thead>
-                    <tr>
-                        <?php foreach ($mapping as $field => $col) {
-                            if ($field === 'selected_link_types' || !$col) { continue; }
-                            echo '<th>' . esc_html($field) . '</th>';
-                        } ?>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php foreach ($rows as $row) {
-                        $assoc = array_combine($header, $row);
-                        echo '<tr>';
-                        foreach ($mapping as $field => $col) {
-                            if ($field === 'selected_link_types' || !$col) { continue; }
-                            $val = $assoc[$col] ?? '';
-                            echo '<td>' . esc_html($val) . '</td>';
-                        }
-                        echo '</tr>';
-                    } ?>
-                </tbody>
-            </table>
-            <form method="post">
-                <?php wp_nonce_field('alma_import_step3', 'alma_import_confirm'); ?>
-                <?php submit_button(__('Avvia importazione', 'affiliate-link-manager-ai')); ?>
-            </form>
-        </div>
-        <?php
-    }
-
-    private function process_import($file, $mapping, $import_id) {
-        $data = $this->get_file_data($file);
-        if (is_wp_error($data) || empty($data[0])) {
-            $err = is_wp_error($data) ? $data->get_error_message() : __('Intestazione del file assente o file vuoto.', 'affiliate-link-manager-ai');
-            return array('success' => 0, 'failed' => 0, 'errors' => array($err));
-        }
-        list($header, $rows) = $data;
-        $success = 0;
-        $failed = 0;
-        $errors = array();
-
-        foreach ($rows as $index => $row) {
-            $assoc = array_combine($header, $row);
-            $title = trim($assoc[$mapping['post_title']] ?? '');
-            $url = trim($assoc[$mapping['_affiliate_url']] ?? '');
-
-            if ($title === '' || $url === '') {
-                $failed++;
-                $errors[] = sprintf('Riga %d: campi obbligatori mancanti', $index + 2);
-                continue;
-            }
-
-            $post_id = wp_insert_post(
-                array(
-                    'post_title' => $title,
-                    'post_type' => 'affiliate_link',
-                    'post_status' => 'publish',
-                ),
-                true
-            );
-
-            if (is_wp_error($post_id)) {
-                $failed++;
-                $errors[] = sprintf('Riga %d: %s', $index + 2, $post_id->get_error_message());
-                continue;
-            }
-
-            update_post_meta($post_id, '_affiliate_url', $url);
-            update_post_meta($post_id, '_alma_import_id', $import_id);
-
-            foreach (array('_link_rel', '_link_target', '_link_title') as $meta_key) {
-                if (!empty($mapping[$meta_key])) {
-                    $val = $assoc[$mapping[$meta_key]] ?? '';
-                    if ($val !== '') {
-                        update_post_meta($post_id, $meta_key, $val);
-                    }
-                }
-            }
-
-            $terms_to_set = array();
-            if (!empty($mapping['link_type'])) {
-                $terms_raw = $assoc[$mapping['link_type']] ?? '';
-                if ($terms_raw !== '') {
-                    $terms_to_set = array_map('trim', explode(',', $terms_raw));
-                }
-            }
-            if (!empty($mapping['selected_link_types'])) {
-                $terms_to_set = array_merge($terms_to_set, $mapping['selected_link_types']);
-            }
-            if (!empty($terms_to_set)) {
-                $terms_to_set = array_unique($terms_to_set);
-                wp_set_object_terms($post_id, $terms_to_set, 'link_type');
-            }
-
-            $success++;
-        }
-
-        return array(
-            'success' => $success,
-            'failed' => $failed,
-            'errors' => $errors,
-        );
-    }
-
-    private function delete_imported_links($import_id) {
-        $posts = get_posts(array(
-            'post_type' => 'affiliate_link',
-            'numberposts' => -1,
-            'fields' => 'ids',
-            'meta_key' => '_alma_import_id',
-            'meta_value' => $import_id,
-        ));
-
-        foreach ($posts as $post_id) {
-            wp_delete_post($post_id, true);
-        }
-
-        return count($posts);
-    }
-
-    private function get_file_data($file, $limit = null) {
-        $ext = strtolower(pathinfo($file, PATHINFO_EXTENSION));
-
-        if ($ext === 'xml') {
-            $header = array();
-            $rows = array();
-            $xml = simplexml_load_file($file);
-            if ($xml) {
-                foreach ($xml->children() as $item) {
-                    $data = (array)$item;
-                    if (empty($header)) {
-                        $header = array_keys($data);
-                    }
-                    $row = array();
-                    foreach ($header as $col) {
-                        $row[] = isset($data[$col]) ? (string)$data[$col] : '';
-                    }
-                    $rows[] = $row;
-                    if ($limit !== null && count($rows) >= $limit) {
-                        break;
-                    }
-                }
-            }
-            return array($header, $rows);
-        }
-
-        if ($ext === 'xlsx' && class_exists('SimpleXLSX')) {
-            $xlsx = SimpleXLSX::parse($file);
-            $rows = $xlsx ? $xlsx->rows() : array();
-            $header = array_shift($rows);
-            if ($limit !== null) {
-                $rows = array_slice($rows, 0, $limit);
-            }
-            return array($header, $rows);
-        }
-
-        $delimiter = ',';
-        $header = array();
-        $rows = array();
-        $handle = fopen($file, 'r');
-        if ($handle === false) {
-            error_log('AffiliateManagerAI: impossibile aprire il file ' . $file);
-            return new WP_Error('alma_file_open', __('Impossibile aprire il file di importazione.', 'affiliate-link-manager-ai'));
-        }
-
-        $header = fgetcsv($handle, 0, $delimiter);
-        if ($header === false) {
-            error_log('AffiliateManagerAI: intestazione CSV mancante in ' . $file);
-            fclose($handle);
-            return new WP_Error('alma_header_missing', __('Intestazione CSV mancante o file vuoto.', 'affiliate-link-manager-ai'));
-        }
-
-        $count = 0;
-        while (($data = fgetcsv($handle, 0, $delimiter)) !== false) {
-            $rows[] = $data;
-            if ($limit !== null && ++$count >= $limit) {
-                break;
-            }
-        }
-        fclose($handle);
-        return array($header, $rows);
-    }
-
-    private function get_import_transient_name() {
-        return 'alma_import_' . get_current_user_id();
-    }
-    
+    }    
     /**
      * Render Settings Page
      */
@@ -1476,10 +1048,44 @@ class AffiliateManagerAI {
         if (!current_user_can('manage_options')) {
             wp_die(__('Non hai i permessi per accedere a questa pagina.'));
         }
-        
+
+        // Elimina link per ID
+        if (isset($_POST['alma_delete_by_id']) &&
+            isset($_POST['alma_delete_links_nonce']) &&
+            wp_verify_nonce($_POST['alma_delete_links_nonce'], 'alma_delete_links')) {
+            $delete_id = intval($_POST['delete_link_id']);
+            if ($delete_id) {
+                wp_delete_post($delete_id, true);
+                echo '<div class="notice notice-success"><p>' . __('Link eliminato.', 'affiliate-link-manager-ai') . '</p></div>';
+            }
+        }
+
+        // Elimina link per tipologia
+        if (isset($_POST['alma_delete_by_type']) &&
+            isset($_POST['alma_delete_links_nonce']) &&
+            wp_verify_nonce($_POST['alma_delete_links_nonce'], 'alma_delete_links')) {
+            $type_id = intval($_POST['delete_link_type']);
+            if ($type_id) {
+                $posts = get_posts(array(
+                    'post_type' => 'affiliate_link',
+                    'numberposts' => -1,
+                    'fields' => 'ids',
+                    'tax_query' => array(array(
+                        'taxonomy' => 'link_type',
+                        'field'    => 'term_id',
+                        'terms'    => $type_id,
+                    )),
+                ));
+                foreach ($posts as $pid) {
+                    wp_delete_post($pid, true);
+                }
+                echo '<div class="notice notice-success"><p>' . sprintf(__('Eliminati %d link.', 'affiliate-link-manager-ai'), count($posts)) . '</p></div>';
+            }
+        }
+
         // Salva impostazioni se form inviato
-        if (isset($_POST['alma_save_settings']) && 
-            isset($_POST['alma_settings_nonce']) && 
+        if (isset($_POST['alma_save_settings']) &&
+            isset($_POST['alma_settings_nonce']) &&
             wp_verify_nonce($_POST['alma_settings_nonce'], 'alma_save_settings')) {
             
             // Impostazioni generali
@@ -1510,6 +1116,7 @@ class AffiliateManagerAI {
             
             <form method="post" action="">
                 <?php wp_nonce_field('alma_save_settings', 'alma_settings_nonce'); ?>
+                <?php wp_nonce_field('alma_delete_links', 'alma_delete_links_nonce'); ?>
                 
                 <!-- Tabs Navigation -->
                 <h2 class="nav-tab-wrapper alma-settings-tabs">
@@ -1676,6 +1283,27 @@ class AffiliateManagerAI {
                                     </option>
                                 </select>
                                 <p class="description">Cosa fare con gli shortcode quando elimini un link</p>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><label for="delete_link_id"><?php _e('Elimina per ID', 'affiliate-link-manager-ai'); ?></label></th>
+                            <td>
+                                <input type="number" name="delete_link_id" id="delete_link_id" />
+                                <?php submit_button(__('Elimina', 'affiliate-link-manager-ai'), 'delete', 'alma_delete_by_id', false); ?>
+                                <p class="description">ID del link affiliato da eliminare</p>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><label for="delete_link_type"><?php _e('Elimina per Tipologia', 'affiliate-link-manager-ai'); ?></label></th>
+                            <td>
+                                <?php wp_dropdown_categories(array(
+                                    'taxonomy' => 'link_type',
+                                    'name' => 'delete_link_type',
+                                    'hide_empty' => false,
+                                    'show_option_none' => __('Seleziona tipologia', 'affiliate-link-manager-ai'),
+                                )); ?>
+                                <?php submit_button(__('Elimina', 'affiliate-link-manager-ai'), 'delete', 'alma_delete_by_type', false); ?>
+                                <p class="description">Rimuove tutti i link della tipologia selezionata</p>
                             </td>
                         </tr>
                     </table>
@@ -2436,7 +2064,14 @@ class AffiliateManagerAI {
     
     private function handle_shortcode_cleanup($link_id, $action = 'delete') {
         $cleanup_option = get_option('alma_shortcode_cleanup', 'replace');
-        
+
+        if (isset($_REQUEST['alma_sc_action'])) {
+            $requested = sanitize_text_field($_REQUEST['alma_sc_action']);
+            if (in_array($requested, array('replace','remove','comment','none'))) {
+                $cleanup_option = $requested;
+            }
+        }
+
         if ($cleanup_option === 'none') {
             return;
         }
