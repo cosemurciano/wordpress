@@ -174,7 +174,7 @@ jQuery(document).ready(function($) {
         // Abilita/disabilita opzioni pulsante
         $(document).on('change.alma_editor', '#alma-add-button', function() {
             const enabled = $(this).is(':checked');
-            $('#alma-button-text, #alma-button-size').prop('disabled', !enabled);
+            $('#alma-button-text, #alma-button-size, #alma-button-align').prop('disabled', !enabled);
         });
 
         
@@ -362,6 +362,11 @@ jQuery(document).ready(function($) {
                             <option value="medium" selected>Medio</option>
                             <option value="large">Grande</option>
                         </select>
+                        <select id="alma-button-align" style="margin-left:10px;">
+                            <option value="left">Sinistra</option>
+                            <option value="center">Centro</option>
+                            <option value="right">Destra</option>
+                        </select>
                         <input type="text" id="alma-button-text" placeholder="Testo pulsante" style="flex:1;padding:8px 12px;border:1px solid #ddd;border-radius:4px;">
                     </div>
 
@@ -389,7 +394,7 @@ jQuery(document).ready(function($) {
         $('body').append(modalHtml);
 
         // Disabilita campi pulsante inizialmente
-        $('#alma-button-text, #alma-button-size').prop('disabled', true);
+        $('#alma-button-text, #alma-button-size, #alma-button-align').prop('disabled', true);
 
         // Carica le tipologie dopo aver creato il modal
         loadLinkTypes();
@@ -434,6 +439,7 @@ jQuery(document).ready(function($) {
         $('#alma-add-button').prop('checked', false);
         $('#alma-button-text').val('').prop('disabled', true);
         $('#alma-button-size').val('medium').prop('disabled', true);
+        $('#alma-button-align').val('left').prop('disabled', true);
         $('#alma-insert-shortcode').prop('disabled', true);
         $('.alma-shortcode-options').hide();
         $('.alma-link-item').removeClass('selected');
@@ -581,6 +587,10 @@ jQuery(document).ready(function($) {
             const btnText = $('#alma-button-text').val().trim();
             if (btnText) {
                 shortcode += ` button_text="${escapeShortcodeAttr(btnText)}"`;
+            }
+            const btnAlign = $('#alma-button-align').val();
+            if (btnAlign && btnAlign !== 'left') {
+                shortcode += ` button_align="${btnAlign}"`;
             }
         }
 
