@@ -436,6 +436,7 @@ class AffiliateManagerAI {
     public function admin_enqueue_scripts($hook) {
         // Solo nelle pagine del plugin
         $screen = get_current_screen();
+        $allowed_types = get_option('alma_link_post_types', array('post', 'page'));
         
         if ($screen && ($screen->post_type === 'affiliate_link' || 
             strpos($hook, 'affiliate-link-manager') !== false ||
@@ -473,8 +474,8 @@ class AffiliateManagerAI {
             }
         }
         
-        // Script editor (per tutte le pagine di editing)
-        if (in_array($hook, array('post.php', 'post-new.php', 'page.php', 'page-new.php'))) {
+        // Script editor solo per i tipi di contenuto selezionati
+        if ($screen && in_array($hook, array('post.php', 'post-new.php')) && in_array($screen->post_type, $allowed_types, true)) {
             if (file_exists(ALMA_PLUGIN_DIR . 'assets/editor.js')) {
                 wp_enqueue_script(
                     'alma-editor-script',
@@ -483,7 +484,7 @@ class AffiliateManagerAI {
                     ALMA_VERSION,
                     true
                 );
-                
+
                 wp_localize_script('alma-editor-script', 'alma_editor', array(
                     'ajax_url' => admin_url('admin-ajax.php'),
                     'nonce' => wp_create_nonce('alma_editor_search'),
@@ -1082,11 +1083,15 @@ class AffiliateManagerAI {
         if (isset($_POST['alma_save_settings']) &&
             isset($_POST['alma_settings_nonce']) &&
             wp_verify_nonce($_POST['alma_settings_nonce'], 'alma_save_settings')) {
-            
+
             // Impostazioni generali
             update_option('alma_track_logged_out', sanitize_text_field($_POST['track_logged_out'] ?? 'yes'));
             update_option('alma_enable_ai', sanitize_text_field($_POST['enable_ai'] ?? 'yes'));
-            
+
+            // Editor integration
+            $selected_types = array_map('sanitize_text_field', $_POST['alma_link_post_types'] ?? array());
+            update_option('alma_link_post_types', $selected_types);
+
             // Claude API settings
             update_option('alma_claude_api_key', sanitize_text_field($_POST['claude_api_key'] ?? ''));
             update_option('alma_claude_model', sanitize_text_field($_POST['claude_model'] ?? 'claude-3-haiku-20240307'));
@@ -1101,7 +1106,8 @@ class AffiliateManagerAI {
         $claude_api_key = get_option('alma_claude_api_key', '');
         $claude_model = get_option('alma_claude_model', 'claude-3-haiku-20240307');
         $claude_temperature = get_option('alma_claude_temperature', 0.7);
-        
+        $allowed_post_types = get_option('alma_link_post_types', array('post', 'page'));
+
         ?>
         <div class="wrap">
             <h1><?php _e('Impostazioni - Affiliate Link Manager AI', 'affiliate-link-manager-ai'); ?></h1>
@@ -1117,6 +1123,7 @@ class AffiliateManagerAI {
                     <a href="#tracking" class="nav-tab">Tracking</a>
                     <a href="#ai" class="nav-tab">AI Settings</a>
                     <a href="#claude" class="nav-tab">Claude API</a>
+                    <a href="#editor" class="nav-tab">Editor</a>
                     <a href="#cleanup" class="nav-tab">Pulizia</a>
                 </h2>
                 
@@ -1251,7 +1258,30 @@ class AffiliateManagerAI {
                         </tr>
                     </table>
                 </div>
-                
+
+                <!-- Editor Settings -->
+                <div id="editor" class="alma-settings-section" style="display:none;">
+                    <h2><?php _e('Tipi di contenuto abilitati', 'affiliate-link-manager-ai'); ?></h2>
+                    <table class="form-table">
+                        <tr>
+                            <th scope="row">
+                                <label><?php _e('Mostra pulsante "Aggiungi Nuovo Link" in:', 'affiliate-link-manager-ai'); ?></label>
+                            </th>
+                            <td>
+                                <?php
+                                $post_types = get_post_types(array('show_ui' => true), 'objects');
+                                unset($post_types['affiliate_link']);
+                                foreach ($post_types as $pt) {
+                                    $checked = in_array($pt->name, $allowed_post_types, true) ? 'checked' : '';
+                                    echo '<label><input type="checkbox" name="alma_link_post_types[]" value="' . esc_attr($pt->name) . '" ' . $checked . '> ' . esc_html($pt->labels->singular_name) . '</label><br />';
+                                }
+                                ?>
+                                <p class="description"><?php _e('Seleziona i contenuti in cui visualizzare il pulsante per inserire link affiliati.', 'affiliate-link-manager-ai'); ?></p>
+                            </td>
+                        </tr>
+                    </table>
+                </div>
+
                 <!-- Cleanup Settings -->
                 <div id="cleanup" class="alma-settings-section" style="display:none;">
                     <h2>Impostazioni Pulizia</h2>
