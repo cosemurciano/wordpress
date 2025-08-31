@@ -3,7 +3,7 @@
  * Plugin Name: Affiliate Link Manager AI
  * Plugin URI: https://your-website.com
  * Description: Gestisce link affiliati con intelligenza artificiale per ottimizzazione e tracking automatico.
- * Version: 1.7
+ * Version: 1.8
  * Author: Cosè Murciano
  * License: GPL v2 or later
  * Text Domain: affiliate-link-manager-ai
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Definisci costanti del plugin
-define('ALMA_VERSION', '1.7');
+define('ALMA_VERSION', '1.8');
 define('ALMA_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('ALMA_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('ALMA_PLUGIN_FILE', __FILE__);
@@ -63,7 +63,7 @@ class AffiliateManagerAI {
      * Enqueue scripts frontend per tracking
      */
     public function enqueue_frontend_scripts() {
-        // Verifica se il file esiste prima di caricarlo
+        // Verifica se il file esiste prima di caricare script e stile
         $tracking_file = ALMA_PLUGIN_DIR . 'assets/tracking.js';
         if (file_exists($tracking_file)) {
             wp_enqueue_script(
@@ -73,13 +73,23 @@ class AffiliateManagerAI {
                 ALMA_VERSION,
                 true
             );
-            
+
             // Passa dati al JavaScript
             wp_localize_script('alma-tracking', 'alma_tracking', array(
                 'ajax_url' => admin_url('admin-ajax.php'),
                 'nonce' => wp_create_nonce('alma_track_click'),
                 'track_logged_out' => get_option('alma_track_logged_out', 'yes') === 'yes'
             ));
+        }
+
+        $style_file = ALMA_PLUGIN_DIR . 'assets/frontend.css';
+        if (file_exists($style_file)) {
+            wp_enqueue_style(
+                'alma-frontend',
+                ALMA_PLUGIN_URL . 'assets/frontend.css',
+                array(),
+                ALMA_VERSION
+            );
         }
     }
     
@@ -126,7 +136,10 @@ class AffiliateManagerAI {
             'text' => '',
             'class' => 'affiliate-link-btn',
             'img' => 'no',
-            'fields' => ''
+            'fields' => '',
+            'button' => 'no',
+            'button_text' => '',
+            'button_size' => 'medium'
         ), $atts);
         
         if (!$atts['id']) {
@@ -212,6 +225,24 @@ class AffiliateManagerAI {
 
         if ($content_html) {
             $link_html .= $content_html;
+        }
+
+        // Pulsante call to action opzionale
+        if ($atts['button'] === 'yes') {
+            $size = in_array($atts['button_size'], array('small','medium','large')) ? $atts['button_size'] : 'medium';
+            $btn_classes = 'alma-affiliate-button alma-btn-' . esc_attr($size) . ' alma-affiliate-link';
+            $btn_text = !empty($atts['button_text']) ? esc_html($atts['button_text']) : __('Scopri di più', 'affiliate-link-manager-ai');
+            $button_html = '<a href="' . esc_url($affiliate_url) . '"';
+            $button_html .= ' class="' . $btn_classes . '"';
+            $button_html .= ' data-link-id="' . esc_attr($atts['id']) . '"';
+            $button_html .= ' data-track="1"';
+            if ($link_rel !== '') {
+                $button_html .= ' rel="' . esc_attr($link_rel) . '"';
+            }
+            $button_html .= ' target="' . esc_attr($link_target) . '"';
+            $button_html .= ' title="' . esc_attr($link_title) . '"';
+            $button_html .= '>' . $btn_text . '</a>';
+            $link_html .= $button_html;
         }
 
         return $link_html;
@@ -601,6 +632,15 @@ class AffiliateManagerAI {
         echo '<label><input type="checkbox" id="alma-sc-img"> ' . __('Immagine', 'affiliate-link-manager-ai') . '</label> ';
         echo '<label><input type="checkbox" id="alma-sc-title"> ' . __('Titolo', 'affiliate-link-manager-ai') . '</label> ';
         echo '<label><input type="checkbox" id="alma-sc-content"> ' . __('Contenuto', 'affiliate-link-manager-ai') . '</label>';
+        echo '</div>';
+        echo '<div class="alma-shortcode-config" style="margin-top:8px;">';
+        echo '<label><input type="checkbox" id="alma-sc-button"> ' . __('Pulsante', 'affiliate-link-manager-ai') . '</label> ';
+        echo '<select id="alma-sc-button-size" style="margin-left:5px;" disabled>';
+        echo '<option value="small">' . __('Piccolo', 'affiliate-link-manager-ai') . '</option>';
+        echo '<option value="medium" selected>' . __('Medio', 'affiliate-link-manager-ai') . '</option>';
+        echo '<option value="large">' . __('Grande', 'affiliate-link-manager-ai') . '</option>';
+        echo '</select>';
+        echo '<input type="text" id="alma-sc-button-text" placeholder="' . esc_attr__('Testo pulsante', 'affiliate-link-manager-ai') . '" style="margin-left:5px;" disabled />';
         echo '</div>';
         echo '<p class="description">' . __('Usa questo shortcode per inserire il link nei tuoi contenuti', 'affiliate-link-manager-ai') . '</p>';
         echo '</td>';
