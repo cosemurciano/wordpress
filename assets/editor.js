@@ -10,6 +10,41 @@ jQuery(document).ready(function($) {
     let selectedLinkId = null;
     let selectedLinkTitle = '';
     let searchTimer = null;
+
+    /**
+     * Recupera titolo e contenuto del post corrente
+     */
+    function getCurrentPostData() {
+        let title = '';
+        let content = '';
+
+        // Gutenberg
+        if (typeof wp !== 'undefined' && wp.data && wp.data.select) {
+            try {
+                const editor = wp.data.select('core/editor');
+                if (editor) {
+                    title = editor.getEditedPostAttribute('title') || '';
+                    content = editor.getEditedPostContent() || '';
+                }
+            } catch (e) {
+                // fall back
+            }
+        }
+
+        // Classic editor fallback
+        if (!title) {
+            title = $('#title').val() || '';
+        }
+        if (!content) {
+            if (typeof tinyMCE !== 'undefined' && tinyMCE.get('content')) {
+                content = tinyMCE.get('content').getContent({ format: 'text' }) || '';
+            } else {
+                content = $('#content').val() || '';
+            }
+        }
+
+        return { title, content };
+    }
     
     /**
      * Inizializza integrazione editor
@@ -141,6 +176,12 @@ jQuery(document).ready(function($) {
         $(document).on('click.alma_editor', '#alma-search-btn', function() {
             const searchTerm = $('#alma-link-search').val();
             searchLinks(searchTerm);
+        });
+
+        // Suggerimenti AI
+        $(document).on('click.alma_editor', '#alma-ai-suggest', function() {
+            const data = getCurrentPostData();
+            aiSuggestLinks(data.title, data.content);
         });
         
         // Selezione link
@@ -298,6 +339,9 @@ jQuery(document).ready(function($) {
                         </select>
                         <button type="button" id="alma-search-btn" class="button">
                             Cerca
+                        </button>
+                        <button type="button" id="alma-ai-suggest" class="button">
+                            Suggerisci AI
                         </button>
                     </div>
                 </div>
@@ -468,6 +512,40 @@ jQuery(document).ready(function($) {
                 nonce: alma_editor.nonce,
                 search: searchTerm,
                 type_filter: typeFilter
+            },
+            success: function(response) {
+                if (response.success && response.data.length > 0) {
+                    displaySearchResults(response.data);
+                } else {
+                    displayNoResults();
+                }
+            },
+            error: function() {
+                displayError();
+            }
+        });
+    }
+
+    /**
+     * Suggerisci link tramite AI
+     */
+    function aiSuggestLinks(title, content) {
+        // Mostra loading
+        $('#alma-search-results').html(`
+            <div class="alma-loading" style="text-align:center;padding:40px;color:#666;">
+                <span class="spinner is-active" style="float:none;margin:0 auto 20px;"></span>
+                <p>${alma_editor.strings.loading || 'Caricamento...'}</p>
+            </div>
+        `);
+
+        $.ajax({
+            url: alma_editor.ajax_url,
+            type: 'POST',
+            data: {
+                action: 'alma_ai_suggest_links',
+                nonce: alma_editor.nonce,
+                title: title,
+                content: content
             },
             success: function(response) {
                 if (response.success && response.data.length > 0) {

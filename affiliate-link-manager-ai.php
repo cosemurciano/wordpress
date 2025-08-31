@@ -106,6 +106,7 @@ class AffiliateManagerAI {
         
         // Hook per ricerca link nell'editor
         add_action('wp_ajax_alma_search_links', array($this, 'ajax_search_links'));
+        add_action('wp_ajax_alma_ai_suggest_links', array($this, 'ajax_ai_suggest_links'));
         
         // Hook per dashboard data
         add_action('wp_ajax_alma_get_dashboard_data', array($this, 'ajax_get_dashboard_data'));
@@ -1562,6 +1563,73 @@ class AffiliateManagerAI {
             wp_reset_postdata();
         }
         
+        wp_send_json_success($results);
+    }
+
+    public function ajax_ai_suggest_links() {
+        if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'alma_editor_search')) {
+            wp_send_json_error('Invalid nonce');
+            return;
+        }
+
+        $title   = isset($_POST['title']) ? sanitize_text_field(wp_unslash($_POST['title'])) : '';
+        $content = isset($_POST['content']) ? sanitize_textarea_field(wp_unslash($_POST['content'])) : '';
+
+        // Recupera fino a 50 link affiliati
+        $links = get_posts(array(
+            'post_type'      => 'affiliate_link',
+            'post_status'    => 'publish',
+            'numberposts'    => 50,
+            'orderby'        => 'title',
+            'order'          => 'ASC',
+        ));
+
+        if (empty($links)) {
+            wp_send_json_success(array());
+        }
+
+        $prompt = "Articolo: {$title}\n\n{$content}\n\nLinks disponibili:\n";
+        foreach ($links as $link) {
+            $prompt .= 'ID ' . $link->ID . ': ' . $link->post_title . "\n";
+        }
+        $prompt .= "\nRestituisci gli ID dei 5 link più pertinenti come array JSON.\n";
+
+        $response = $this->call_claude_api($prompt);
+        $ids = json_decode(trim($response), true);
+        if (!is_array($ids)) {
+            wp_send_json_error('Invalid AI response');
+        }
+
+        $results = array();
+        foreach ($ids as $id) {
+            $id   = intval($id);
+            $post = get_post($id);
+            if (!$post || $post->post_type !== 'affiliate_link') {
+                continue;
+            }
+
+            $affiliate_url = get_post_meta($id, '_affiliate_url', true);
+            $click_count   = get_post_meta($id, '_click_count', true) ?: 0;
+            $usage_data    = $this->get_shortcode_usage_stats($id);
+            $terms         = get_the_terms($id, 'link_type');
+            $types         = array();
+            if ($terms && !is_wp_error($terms)) {
+                foreach ($terms as $term) {
+                    $types[] = $term->name;
+                }
+            }
+
+            $results[] = array(
+                'id'       => $id,
+                'title'    => get_the_title($id),
+                'url'      => $affiliate_url,
+                'types'    => $types,
+                'clicks'   => $click_count,
+                'usage'    => $usage_data,
+                'shortcode'=> '[affiliate_link id="' . $id . '"]',
+            );
+        }
+
         wp_send_json_success($results);
     }
     
