@@ -1127,15 +1127,29 @@ class AffiliateManagerAI {
     }
 
     private function render_import_step2() {
-        $file = get_transient($this->get_import_transient_name());
-        if (!$file || !file_exists($file)) {
-            echo '<div class="wrap"><h1>Errore</h1><p>File non trovato.</p></div>';
-            return;
+        // Recupera il file caricato nello step precedente o permetti un nuovo upload
+        if (!empty($_FILES['import_file']['name'])) {
+            $upload = wp_handle_upload($_FILES['import_file'], array('test_form' => false));
+            if (isset($upload['error'])) {
+                wp_die(sprintf(__('Errore durante il caricamento: %s', 'affiliate-link-manager-ai'), esc_html($upload['error'])));
+            }
+            $file = $upload['file'];
+            set_transient($this->get_import_transient_name(), $file, HOUR_IN_SECONDS);
+        } else {
+            $file = get_transient($this->get_import_transient_name());
         }
 
-        list($header) = $this->get_file_data($file);
+        if (!$file || !file_exists($file)) {
+            wp_die(__('File di importazione non trovato. Carica nuovamente il file.', 'affiliate-link-manager-ai'));
+        }
+
+        $data = $this->get_file_data($file);
+        if (is_wp_error($data)) {
+            wp_die($data->get_error_message());
+        }
+        list($header) = $data;
         if (empty($header)) {
-            echo '<div class="wrap"><h1>Errore</h1><p>Impossibile leggere il file di importazione.</p></div>';
+            echo '<div class="wrap"><h1>Errore</h1><p>Intestazione del file assente o file vuoto.</p></div>';
             return;
         }
 
@@ -1214,7 +1228,15 @@ class AffiliateManagerAI {
             return;
         }
 
-        list($header, $rows) = $this->get_file_data($file, 5);
+        $data = $this->get_file_data($file, 5);
+        if (is_wp_error($data)) {
+            wp_die($data->get_error_message());
+        }
+        list($header, $rows) = $data;
+        if (empty($header)) {
+            echo '<div class="wrap"><h1>Errore</h1><p>Intestazione del file assente o file vuoto.</p></div>';
+            return;
+        }
 
         if (isset($_POST['alma_import_confirm']) && wp_verify_nonce($_POST['alma_import_confirm'], 'alma_import_step3')) {
             $import_id = uniqid('alma_', false);
@@ -1291,7 +1313,12 @@ class AffiliateManagerAI {
     }
 
     private function process_import($file, $mapping, $import_id) {
-        list($header, $rows) = $this->get_file_data($file);
+        $data = $this->get_file_data($file);
+        if (is_wp_error($data) || empty($data[0])) {
+            $err = is_wp_error($data) ? $data->get_error_message() : __('Intestazione del file assente o file vuoto.', 'affiliate-link-manager-ai');
+            return array('success' => 0, 'failed' => 0, 'errors' => array($err));
+        }
+        list($header, $rows) = $data;
         $success = 0;
         $failed = 0;
         $errors = array();
@@ -1414,17 +1441,27 @@ class AffiliateManagerAI {
         $delimiter = ',';
         $header = array();
         $rows = array();
-        if (($handle = fopen($file, 'r')) !== false) {
-            $header = fgetcsv($handle, 0, $delimiter);
-            $count = 0;
-            while (($data = fgetcsv($handle, 0, $delimiter)) !== false) {
-                $rows[] = $data;
-                if ($limit !== null && ++$count >= $limit) {
-                    break;
-                }
-            }
-            fclose($handle);
+        $handle = fopen($file, 'r');
+        if ($handle === false) {
+            error_log('AffiliateManagerAI: impossibile aprire il file ' . $file);
+            return new WP_Error('alma_file_open', __('Impossibile aprire il file di importazione.', 'affiliate-link-manager-ai'));
         }
+
+        $header = fgetcsv($handle, 0, $delimiter);
+        if ($header === false) {
+            error_log('AffiliateManagerAI: intestazione CSV mancante in ' . $file);
+            fclose($handle);
+            return new WP_Error('alma_header_missing', __('Intestazione CSV mancante o file vuoto.', 'affiliate-link-manager-ai'));
+        }
+
+        $count = 0;
+        while (($data = fgetcsv($handle, 0, $delimiter)) !== false) {
+            $rows[] = $data;
+            if ($limit !== null && ++$count >= $limit) {
+                break;
+            }
+        }
+        fclose($handle);
         return array($header, $rows);
     }
 
