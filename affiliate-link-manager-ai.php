@@ -985,6 +985,7 @@ class AffiliateManagerAI {
         
         $total_clicks = $this->get_total_clicks();
         $total_links = wp_count_posts('affiliate_link')->publish;
+        $unused_links = $this->get_unused_links_count();
         $top_links = $this->get_top_performing_links(10);
 
         global $wpdb;
@@ -1017,23 +1018,20 @@ class AffiliateManagerAI {
                 <div style="background:#fff;padding:20px;border:1px solid #ccd0d4;border-radius:8px;">
                     <h3 style="margin:0 0 10px 0;color:#23282d;">🎯 CTR Medio</h3>
                     <div style="font-size:36px;font-weight:bold;color:#d63638;">
-                        <?php 
-                        $avg_ctr = $total_links > 0 ? round($total_clicks / $total_links, 2) : 0;
+                        <?php
+                        $avg_ctr = $this->get_average_ctr();
                         echo $avg_ctr . '%';
                         ?>
                     </div>
                     <p style="color:#666;margin:5px 0 0 0;">Click-through rate</p>
                 </div>
-                
+
                 <div style="background:#fff;padding:20px;border:1px solid #ccd0d4;border-radius:8px;">
-                    <h3 style="margin:0 0 10px 0;color:#23282d;">🤖 AI Score Medio</h3>
+                    <h3 style="margin:0 0 10px 0;color:#23282d;">🚫 Link Non Utilizzati</h3>
                     <div style="font-size:36px;font-weight:bold;color:#8e44ad;">
-                        <?php
-                        $avg_score = $this->get_average_ai_score();
-                        echo $avg_score . '%';
-                        ?>
+                        <?php echo number_format($unused_links); ?>
                     </div>
-                    <p style="color:#666;margin:5px 0 0 0;">Performance score</p>
+                    <p style="color:#666;margin:5px 0 0 0;">Link senza utilizzo</p>
                 </div>
 
                 <div style="background:#fff;padding:20px;border:1px solid #ccd0d4;border-radius:8px;">
@@ -1054,6 +1052,7 @@ class AffiliateManagerAI {
             <!-- Andamento Click Totali -->
             <div style="background:#fff;padding:20px;border:1px solid #ccd0d4;border-radius:8px;margin-bottom:30px;">
                 <h2>📈 Andamento Click Totali</h2>
+                <p style="margin-top:0;color:#666;">Grafico dell'evoluzione reale dei click sui link affiliati.</p>
                 <div style="display:flex;flex-wrap:wrap;gap:20px;">
                     <div style="flex:1 1 300px;">
                         <h3>Mensile</h3>
@@ -1069,6 +1068,7 @@ class AffiliateManagerAI {
             <!-- Altre Statistiche -->
             <div style="background:#fff;padding:20px;border:1px solid #ccd0d4;border-radius:8px;margin-bottom:30px;">
                 <h2>📊 Altre Statistiche</h2>
+                <p style="margin-top:0;color:#666;">Andamento dei link pubblicati e del CTR medio nel tempo.</p>
                 <div style="display:flex;flex-wrap:wrap;gap:20px;">
                     <div style="flex:1 1 300px;">
                         <h3>Link Attivi</h3>
@@ -1077,10 +1077,6 @@ class AffiliateManagerAI {
                     <div style="flex:1 1 300px;">
                         <h3>CTR Medio</h3>
                         <canvas id="alma-ctr-trend"></canvas>
-                    </div>
-                    <div style="flex:1 1 300px;">
-                        <h3>AI Score Medio</h3>
-                        <canvas id="alma-ai-trend"></canvas>
                     </div>
                 </div>
             </div>
@@ -1149,7 +1145,6 @@ class AffiliateManagerAI {
                 fetchChart('clicks', 'weekly', 'alma-clicks-weekly', 'Click Settimanali', '#00a32a');
                 fetchChart('links', 'monthly', 'alma-links-trend', 'Link Attivi', '#00a32a');
                 fetchChart('ctr', 'monthly', 'alma-ctr-trend', 'CTR Medio', '#d63638');
-                fetchChart('ai_score', 'monthly', 'alma-ai-trend', 'AI Score Medio', '#8e44ad');
             });
             </script>
 
@@ -2067,15 +2062,30 @@ class AffiliateManagerAI {
 
         switch ($metric) {
             case 'clicks':
+                $table = $wpdb->prefix . 'alma_analytics';
                 if ($range === 'weekly') {
                     for ($i = 11; $i >= 0; $i--) {
-                        $labels[] = 'W' . date('W', strtotime("-$i weeks"));
-                        $data[]   = rand(5, 50);
+                        $start = date('Y-m-d', strtotime("monday -$i week"));
+                        $end   = date('Y-m-d', strtotime("sunday -$i week"));
+                        $count = $wpdb->get_var($wpdb->prepare(
+                            "SELECT COUNT(*) FROM $table WHERE click_time BETWEEN %s AND %s",
+                            $start . ' 00:00:00',
+                            $end . ' 23:59:59'
+                        ));
+                        $labels[] = 'W' . date('W', strtotime($start));
+                        $data[]   = intval($count);
                     }
                 } else {
                     for ($i = 11; $i >= 0; $i--) {
-                        $labels[] = date('M', strtotime("-$i months"));
-                        $data[]   = rand(50, 200);
+                        $month = date('n', strtotime("-$i months"));
+                        $year  = date('Y', strtotime("-$i months"));
+                        $count = $wpdb->get_var($wpdb->prepare(
+                            "SELECT COUNT(*) FROM $table WHERE YEAR(click_time)=%d AND MONTH(click_time)=%d",
+                            $year,
+                            $month
+                        ));
+                        $labels[] = date_i18n('M', strtotime("$year-$month-01"));
+                        $data[]   = intval($count);
                     }
                 }
                 break;
@@ -2088,20 +2098,23 @@ class AffiliateManagerAI {
                         $year,
                         $month
                     ));
-                    $labels[] = date('M', strtotime("-$i months"));
+                    $labels[] = date_i18n('M', strtotime("$year-$month-01"));
                     $data[]   = intval($count);
                 }
                 break;
             case 'ctr':
+                $total_occurrences = $this->get_total_link_occurrences();
                 for ($i = 11; $i >= 0; $i--) {
-                    $labels[] = date('M', strtotime("-$i months"));
-                    $data[]   = rand(1, 10);
-                }
-                break;
-            case 'ai_score':
-                for ($i = 11; $i >= 0; $i--) {
-                    $labels[] = date('M', strtotime("-$i months"));
-                    $data[]   = rand(40, 100);
+                    $month = date('n', strtotime("-$i months"));
+                    $year  = date('Y', strtotime("-$i months"));
+                    $clicks = $wpdb->get_var($wpdb->prepare(
+                        "SELECT COUNT(*) FROM {$wpdb->prefix}alma_analytics WHERE YEAR(click_time)=%d AND MONTH(click_time)=%d",
+                        $year,
+                        $month
+                    ));
+                    $ctr = $total_occurrences > 0 ? ($clicks / $total_occurrences) * 100 : 0;
+                    $labels[] = date_i18n('M', strtotime("$year-$month-01"));
+                    $data[]   = round($ctr, 2);
                 }
                 break;
         }
@@ -2228,25 +2241,48 @@ class AffiliateManagerAI {
     }
     
     private function get_recent_clicks($days = 7) {
-        // Implementazione semplificata
-        return rand(100, 500);
+        global $wpdb;
+        $table = $wpdb->prefix . 'alma_analytics';
+        $start = date('Y-m-d', strtotime("-$days days"));
+        $count = $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM $table WHERE click_time >= %s",
+            $start . ' 00:00:00'
+        ));
+        return intval($count);
     }
-    
+
     private function get_average_ai_score() {
         global $wpdb;
         $result = $wpdb->get_var("
-            SELECT AVG(meta_value) 
-            FROM {$wpdb->postmeta} 
+            SELECT AVG(meta_value)
+            FROM {$wpdb->postmeta}
             WHERE meta_key = '_ai_performance_score'
         ");
         return round($result ?: 50);
     }
-    
+
     private function get_average_ctr() {
-        // Implementazione semplificata
-        return rand(2, 8);
+        $links = get_posts(array(
+            'post_type'   => 'affiliate_link',
+            'post_status' => 'publish',
+            'numberposts' => -1,
+            'fields'      => 'ids',
+        ));
+
+        $total = 0;
+        $count = 0;
+        foreach ($links as $id) {
+            $clicks = get_post_meta($id, '_click_count', true) ?: 0;
+            $usage  = $this->get_shortcode_usage_stats($id);
+            if ($usage['total_occurrences'] > 0) {
+                $total += ($clicks / $usage['total_occurrences']) * 100;
+                $count++;
+            }
+        }
+
+        return $count > 0 ? round($total / $count, 2) : 0;
     }
-    
+
     private function get_top_performing_links($limit = 5) {
         global $wpdb;
         
@@ -2263,6 +2299,43 @@ class AffiliateManagerAI {
         ";
         
         return $wpdb->get_results($wpdb->prepare($query, $limit));
+    }
+
+    private function get_unused_links_count() {
+        $links = get_posts(array(
+            'post_type'   => 'affiliate_link',
+            'post_status' => 'publish',
+            'numberposts' => -1,
+            'fields'      => 'ids',
+        ));
+
+        $unused = 0;
+        foreach ($links as $id) {
+            $usage = $this->get_shortcode_usage_stats($id);
+            if ($usage['total_occurrences'] == 0) {
+                $unused++;
+            }
+        }
+        return $unused;
+    }
+
+    private function get_total_link_occurrences() {
+        global $wpdb;
+        $pattern = '[affiliate_link';
+        $query = "
+            SELECT SUM((LENGTH(post_content) - LENGTH(REPLACE(post_content, %s, ''))) / LENGTH(%s)) as total_occurrences
+            FROM {$wpdb->posts}
+            WHERE post_status='publish'
+            AND post_type IN ('post','page')
+            AND post_content LIKE %s
+        ";
+        $result = $wpdb->get_var($wpdb->prepare(
+            $query,
+            $pattern,
+            $pattern,
+            '%' . $wpdb->esc_like($pattern) . '%'
+        ));
+        return $result ? intval($result) : 0;
     }
     
     private function get_shortcode_usage_stats($link_id) {
