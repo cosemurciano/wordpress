@@ -3,7 +3,7 @@
  * Plugin Name: Affiliate Link Manager AI
  * Plugin URI: https://your-website.com
  * Description: Gestisce link affiliati con intelligenza artificiale per ottimizzazione e tracking automatico.
- * Version: 1.9
+ * Version: 1.10
  * Author: Cosè Murciano
  * License: GPL v2 or later
  * Text Domain: affiliate-link-manager-ai
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Definisci costanti del plugin
-define('ALMA_VERSION', '1.9');
+define('ALMA_VERSION', '1.10');
 define('ALMA_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('ALMA_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('ALMA_PLUGIN_FILE', __FILE__);
@@ -2189,10 +2189,14 @@ class AffiliateManagerAI {
     }
 
     private function generate_title_suggestions($title, $description) {
+        $title       = wp_strip_all_tags($title);
+        $description = wp_strip_all_tags($description);
+        $content_part = $description ? sprintf(' e il contenuto "%s"', $description) : '';
+
         $prompt = sprintf(
-            'In base al titolo "%s" e al contenuto "%s", genera 5 varianti di testo in italiano per promuovere un link affiliato. Restituisci un JSON array con solo i testi delle varianti.',
-            wp_strip_all_tags($title),
-            wp_strip_all_tags($description)
+            'Sei un copywriter SEO. Analizza il titolo "%s"%s e proponi 3 alternative in italiano, ottimizzate per i motori di ricerca e con alto potenziale di conversione per un link affiliato. Rispondi con un array JSON contenente esclusivamente i tre titoli suggeriti.',
+            $title,
+            $content_part
         );
 
         $response = $this->call_claude_api($prompt);
@@ -2202,7 +2206,7 @@ class AffiliateManagerAI {
 
             if (is_array($decoded)) {
                 $suggestions = array();
-                foreach ($decoded as $text) {
+                foreach (array_slice($decoded, 0, 3) as $text) {
                     $suggestions[] = array(
                         'text'       => sanitize_text_field($text),
                         'confidence' => 90,
