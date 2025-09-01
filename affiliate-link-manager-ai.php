@@ -1509,6 +1509,24 @@ class AffiliateManagerAI {
                         <option value="publish"><?php _e('Pubblicato', 'affiliate-link-manager-ai'); ?></option>
                     </select>
                 </p>
+                <p>
+                    <label for="alma-import-rel"><?php _e('Tipo Relazione', 'affiliate-link-manager-ai'); ?></label>
+                    <select id="alma-import-rel" style="min-width:200px;">
+                        <option value=""><?php _e('Link interno (Follow)', 'affiliate-link-manager-ai'); ?></option>
+                        <option value="sponsored noopener" selected><?php _e('Sponsored + NoOpener (Raccomandato)', 'affiliate-link-manager-ai'); ?></option>
+                        <option value="sponsored"><?php _e('Solo Sponsored', 'affiliate-link-manager-ai'); ?></option>
+                        <option value="nofollow"><?php _e('Nofollow (Legacy)', 'affiliate-link-manager-ai'); ?></option>
+                        <option value="sponsored nofollow"><?php _e('Sponsored + Nofollow', 'affiliate-link-manager-ai'); ?></option>
+                    </select>
+                </p>
+                <p>
+                    <label for="alma-import-target"><?php _e('Target Link', 'affiliate-link-manager-ai'); ?></label>
+                    <select id="alma-import-target" style="min-width:200px;">
+                        <option value="_blank" selected><?php _e('Nuova finestra (_blank)', 'affiliate-link-manager-ai'); ?></option>
+                        <option value="_self"><?php _e('Stessa finestra (_self)', 'affiliate-link-manager-ai'); ?></option>
+                        <option value="_parent"><?php _e('Finestra padre (_parent)', 'affiliate-link-manager-ai'); ?></option>
+                    </select>
+                </p>
                 <div id="alma-import-types">
                     <p><?php _e('Tipologie da assegnare', 'affiliate-link-manager-ai'); ?>:</p>
                     <?php if (!is_wp_error($types) && !empty($types)) : ?>
@@ -1985,6 +2003,8 @@ class AffiliateManagerAI {
         $url   = esc_url_raw($_POST['url'] ?? '');
         $status = ($_POST['status'] ?? 'draft') === 'publish' ? 'publish' : 'draft';
         $types = isset($_POST['types']) ? array_map('intval', (array) $_POST['types']) : array();
+        $link_rel = sanitize_text_field($_POST['rel'] ?? 'sponsored noopener');
+        $link_target = sanitize_text_field($_POST['target'] ?? '_blank');
 
         if (empty($title) || empty($url) || !filter_var($url, FILTER_VALIDATE_URL)) {
             wp_send_json_error(array('code' => 'invalid_data'));
@@ -2014,6 +2034,8 @@ class AffiliateManagerAI {
         }
 
         update_post_meta($post_id, '_affiliate_url', $url);
+        update_post_meta($post_id, '_link_rel', $link_rel);
+        update_post_meta($post_id, '_link_target', $link_target);
         if (!empty($types)) {
             wp_set_object_terms($post_id, $types, 'link_type');
         }

@@ -56,7 +56,7 @@ jQuery(function($){
         $('#alma-to-step3').prop('disabled', errors > 0);
     }
 
-    function startImport(status, types){
+    function startImport(status, types, rel, target){
         var total = lines.length;
         var current = 0, success = 0, errors = 0, duplicates = 0;
         $('#alma-progress-bar').css('width','0%');
@@ -83,7 +83,9 @@ jQuery(function($){
                 title: item.title,
                 url: item.url,
                 status: status,
-                types: types
+                types: types,
+                rel: rel,
+                target: target
             };
             $.post(almaImport.ajax_url, data, function(res){
                 if(res.success){
@@ -132,7 +134,9 @@ jQuery(function($){
         e.preventDefault();
         var status = $('#alma-import-status').val();
         var types = $('#alma-import-types input:checked').map(function(){ return $(this).val(); }).get();
-        startImport(status, types);
+        var rel = $('#alma-import-rel').val();
+        var target = $('#alma-import-target').val();
+        startImport(status, types, rel, target);
         showStep(3);
     });
 
