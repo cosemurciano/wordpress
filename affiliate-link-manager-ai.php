@@ -998,32 +998,37 @@ class AffiliateManagerAI {
         ?>
         <div class="wrap">
             <h1><?php _e('Dashboard Link - Affiliate Link Manager', 'affiliate-link-manager-ai'); ?></h1>
+            <p style="font-size:14px;color:#666;margin:5px 0 10px;">
+                <?php _e('Gestione e monitoraggio dei link affiliati direttamente dal tuo sito.', 'affiliate-link-manager-ai'); ?>
+            </p>
             <p style="font-size:14px;color:#666;">Versione <?php echo ALMA_VERSION; ?></p>
-            
+
             <!-- Statistiche Principali -->
-            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:20px;margin:30px 0;">
-                
-                <div style="background:#fff;padding:20px;border:1px solid #ccd0d4;border-radius:8px;">
-                    <h3 style="margin:0 0 10px 0;color:#23282d;">📊 Click Totali</h3>
-                    <div style="font-size:36px;font-weight:bold;color:#2271b1;"><?php echo number_format($total_clicks); ?></div>
-                    <p style="color:#666;margin:5px 0 0 0;">Su tutti i link affiliati</p>
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:auto auto;gap:20px;margin:30px 0;">
+
+                <div style="background:#fff;padding:20px;border:1px solid #ccd0d4;border-radius:8px;grid-row:span 2;">
+                    <h3 style="margin:0 0 10px 0;color:#23282d;">📝 Stato Articoli</h3>
+                    <p style="margin:0 0 5px 0;color:#23282d;">
+                        <strong><?php echo number_format($posts_with_links); ?></strong> articoli con link affiliati
+                    </p>
+                    <p style="margin:0;color:#23282d;">
+                        <a href="<?php echo esc_url($no_affiliate_url); ?>">
+                            <strong><?php echo number_format($posts_without_links); ?></strong> articoli senza link affiliati
+                        </a>
+                    </p>
+                    <canvas id="alma-posts-pie" style="max-width:200px;margin-top:15px;"></canvas>
                 </div>
-                
+
                 <div style="background:#fff;padding:20px;border:1px solid #ccd0d4;border-radius:8px;">
                     <h3 style="margin:0 0 10px 0;color:#23282d;">🔗 Link Attivi</h3>
                     <div style="font-size:36px;font-weight:bold;color:#00a32a;"><?php echo number_format($total_links); ?></div>
                     <p style="color:#666;margin:5px 0 0 0;">Link pubblicati</p>
                 </div>
-                
+
                 <div style="background:#fff;padding:20px;border:1px solid #ccd0d4;border-radius:8px;">
-                    <h3 style="margin:0 0 10px 0;color:#23282d;">🎯 CTR Medio</h3>
-                    <div style="font-size:36px;font-weight:bold;color:#d63638;">
-                        <?php
-                        $avg_ctr = $this->get_average_ctr();
-                        echo $avg_ctr . '%';
-                        ?>
-                    </div>
-                    <p style="color:#666;margin:5px 0 0 0;">Click-through rate</p>
+                    <h3 style="margin:0 0 10px 0;color:#23282d;">📊 Click Totali</h3>
+                    <div style="font-size:36px;font-weight:bold;color:#2271b1;"><?php echo number_format($total_clicks); ?></div>
+                    <p style="color:#666;margin:5px 0 0 0;">Su tutti i link affiliati</p>
                 </div>
 
                 <div style="background:#fff;padding:20px;border:1px solid #ccd0d4;border-radius:8px;">
@@ -1035,16 +1040,14 @@ class AffiliateManagerAI {
                 </div>
 
                 <div style="background:#fff;padding:20px;border:1px solid #ccd0d4;border-radius:8px;">
-                    <h3 style="margin:0 0 10px 0;color:#23282d;">📝 Stato Articoli</h3>
-                    <p style="margin:0 0 5px 0;color:#23282d;">
-                        <strong><?php echo number_format($posts_with_links); ?></strong> articoli con link affiliati
-                    </p>
-                    <p style="margin:0;color:#23282d;">
-                        <a href="<?php echo esc_url($no_affiliate_url); ?>">
-                            <strong><?php echo number_format($posts_without_links); ?></strong> articoli senza link affiliati
-                        </a>
-                    </p>
-                    <canvas id="alma-posts-pie" style="max-width:200px;margin-top:15px;"></canvas>
+                    <h3 style="margin:0 0 10px 0;color:#23282d;">🎯 CTR Medio</h3>
+                    <div style="font-size:36px;font-weight:bold;color:#d63638;">
+                        <?php
+                        $avg_ctr = $this->get_average_ctr();
+                        echo $avg_ctr . '%';
+                        ?>
+                    </div>
+                    <p style="color:#666;margin:5px 0 0 0;">Click-through rate</p>
                 </div>
 
             </div>
