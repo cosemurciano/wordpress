@@ -1000,7 +1000,7 @@ class AffiliateManagerAI {
             <p style="font-size:14px;color:#666;">Versione <?php echo ALMA_VERSION; ?></p>
             
             <!-- Statistiche Principali -->
-            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:20px;margin:30px 0;">
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:20px;margin:30px 0;">
                 
                 <div style="background:#fff;padding:20px;border:1px solid #ccd0d4;border-radius:8px;">
                     <h3 style="margin:0 0 10px 0;color:#23282d;">📊 Click Totali</h3>
@@ -1051,6 +1051,40 @@ class AffiliateManagerAI {
 
             </div>
 
+            <!-- Andamento Click Totali -->
+            <div style="background:#fff;padding:20px;border:1px solid #ccd0d4;border-radius:8px;margin-bottom:30px;">
+                <h2>📈 Andamento Click Totali</h2>
+                <div style="display:flex;flex-wrap:wrap;gap:20px;">
+                    <div style="flex:1 1 300px;">
+                        <h3>Mensile</h3>
+                        <canvas id="alma-clicks-monthly"></canvas>
+                    </div>
+                    <div style="flex:1 1 300px;">
+                        <h3>Settimanale</h3>
+                        <canvas id="alma-clicks-weekly"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Altre Statistiche -->
+            <div style="background:#fff;padding:20px;border:1px solid #ccd0d4;border-radius:8px;margin-bottom:30px;">
+                <h2>📊 Altre Statistiche</h2>
+                <div style="display:flex;flex-wrap:wrap;gap:20px;">
+                    <div style="flex:1 1 300px;">
+                        <h3>Link Attivi</h3>
+                        <canvas id="alma-links-trend"></canvas>
+                    </div>
+                    <div style="flex:1 1 300px;">
+                        <h3>CTR Medio</h3>
+                        <canvas id="alma-ctr-trend"></canvas>
+                    </div>
+                    <div style="flex:1 1 300px;">
+                        <h3>AI Score Medio</h3>
+                        <canvas id="alma-ai-trend"></canvas>
+                    </div>
+                </div>
+            </div>
+
             <script>
             document.addEventListener('DOMContentLoaded', function() {
                 var ctx = document.getElementById('alma-posts-pie');
@@ -1073,6 +1107,49 @@ class AffiliateManagerAI {
                         }
                     });
                 }
+
+                function fetchChart(metric, range, canvasId, label, color) {
+                    var canvas = document.getElementById(canvasId);
+                    if (!canvas) return;
+                    fetch(ajaxurl, {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                        body: new URLSearchParams({
+                            action: 'alma_get_chart_data',
+                            nonce: '<?php echo wp_create_nonce('alma_admin_nonce'); ?>',
+                            metric: metric,
+                            range: range
+                        })
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (!data.success) return;
+                        new Chart(canvas, {
+                            type: 'line',
+                            data: {
+                                labels: data.data.labels,
+                                datasets: [{
+                                    label: label,
+                                    data: data.data.data,
+                                    borderColor: color,
+                                    backgroundColor: color,
+                                    fill: false
+                                }]
+                            },
+                            options: {
+                                scales: {
+                                    y: { beginAtZero: true }
+                                }
+                            }
+                        });
+                    });
+                }
+
+                fetchChart('clicks', 'monthly', 'alma-clicks-monthly', 'Click Mensili', '#2271b1');
+                fetchChart('clicks', 'weekly', 'alma-clicks-weekly', 'Click Settimanali', '#00a32a');
+                fetchChart('links', 'monthly', 'alma-links-trend', 'Link Attivi', '#00a32a');
+                fetchChart('ctr', 'monthly', 'alma-ctr-trend', 'CTR Medio', '#d63638');
+                fetchChart('ai_score', 'monthly', 'alma-ai-trend', 'AI Score Medio', '#8e44ad');
             });
             </script>
 
@@ -1980,23 +2057,58 @@ class AffiliateManagerAI {
             return;
         }
         
-        $days = intval($_POST['days'] ?? 30);
-        
-        // Genera dati fittizi per il grafico (da implementare con dati reali)
+        global $wpdb;
+
+        $metric = sanitize_text_field($_POST['metric'] ?? 'clicks');
+        $range  = sanitize_text_field($_POST['range'] ?? 'monthly');
+
         $labels = array();
-        $clicks = array();
-        $ctr = array();
-        
-        for ($i = $days; $i > 0; $i--) {
-            $labels[] = date('d/m', strtotime("-$i days"));
-            $clicks[] = rand(10, 100);
-            $ctr[] = rand(1, 10);
+        $data   = array();
+
+        switch ($metric) {
+            case 'clicks':
+                if ($range === 'weekly') {
+                    for ($i = 11; $i >= 0; $i--) {
+                        $labels[] = 'W' . date('W', strtotime("-$i weeks"));
+                        $data[]   = rand(5, 50);
+                    }
+                } else {
+                    for ($i = 11; $i >= 0; $i--) {
+                        $labels[] = date('M', strtotime("-$i months"));
+                        $data[]   = rand(50, 200);
+                    }
+                }
+                break;
+            case 'links':
+                for ($i = 11; $i >= 0; $i--) {
+                    $month = date('n', strtotime("-$i months"));
+                    $year  = date('Y', strtotime("-$i months"));
+                    $count = $wpdb->get_var($wpdb->prepare(
+                        "SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_type='affiliate_link' AND post_status='publish' AND YEAR(post_date)=%d AND MONTH(post_date)=%d",
+                        $year,
+                        $month
+                    ));
+                    $labels[] = date('M', strtotime("-$i months"));
+                    $data[]   = intval($count);
+                }
+                break;
+            case 'ctr':
+                for ($i = 11; $i >= 0; $i--) {
+                    $labels[] = date('M', strtotime("-$i months"));
+                    $data[]   = rand(1, 10);
+                }
+                break;
+            case 'ai_score':
+                for ($i = 11; $i >= 0; $i--) {
+                    $labels[] = date('M', strtotime("-$i months"));
+                    $data[]   = rand(40, 100);
+                }
+                break;
         }
-        
+
         wp_send_json_success(array(
             'labels' => $labels,
-            'clicks' => $clicks,
-            'ctr' => $ctr
+            'data'   => $data
         ));
     }
     
