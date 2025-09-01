@@ -97,8 +97,17 @@ class AffiliateManagerAI {
      * Inizializza hooks
      */
     private function init_hooks() {
-        // Shortcode per mostrare link
+        // Carica e registra widget
+        require_once ALMA_PLUGIN_DIR . 'includes/class-affiliate-links-widget.php';
+
+        // Shortcode per mostrare link singolo
         add_shortcode('affiliate_link', array($this, 'display_affiliate_link'));
+
+        // Shortcode per mostrare elenco di link tramite widget
+        add_shortcode('affiliate_links_widget', array('ALMA_Affiliate_Links_Widget', 'shortcode'));
+
+        // Registra il widget
+        add_action('widgets_init', array($this, 'register_widget'));
         
         // Hook AJAX per tracking click (modificato per tracking asincrono)
         add_action('wp_ajax_alma_track_click', array($this, 'ajax_track_click'));
@@ -124,7 +133,11 @@ class AffiliateManagerAI {
         add_action('admin_footer-page.php', array($this, 'add_editor_integration'));
         add_action('admin_footer-page-new.php', array($this, 'add_editor_integration'));
     }
-    
+
+    public function register_widget() {
+        register_widget('ALMA_Affiliate_Links_Widget');
+    }
+
     /**
      * Display affiliate link - MODIFICATO per link diretti
      */
@@ -134,6 +147,7 @@ class AffiliateManagerAI {
             'text' => '',
             'class' => 'affiliate-link-btn',
             'img' => 'no',
+            'img_size' => 'full',
             'fields' => '',
             'button' => 'no',
             'button_text' => '',
@@ -179,7 +193,8 @@ class AffiliateManagerAI {
         $content_html = '';
 
         if ($atts['img'] === 'yes') {
-            $image_html = get_the_post_thumbnail($atts['id'], 'full', array('class' => 'alma-affiliate-img'));
+            $size = in_array($atts['img_size'], array('thumbnail','medium','large','full')) ? $atts['img_size'] : 'full';
+            $image_html = get_the_post_thumbnail($atts['id'], $size, array('class' => 'alma-affiliate-img'));
             if (!$image_html) {
                 $atts['img'] = 'no';
             }
@@ -943,6 +958,16 @@ class AffiliateManagerAI {
             array($this, 'render_import_page')
         );
 
+        // Shortcode widget
+        add_submenu_page(
+            'edit.php?post_type=affiliate_link',
+            __('Shortcode Widget', 'affiliate-link-manager-ai'),
+            __('Shortcode Widget', 'affiliate-link-manager-ai'),
+            'manage_options',
+            'affiliate-link-widgets',
+            array($this, 'render_widget_shortcode_page')
+        );
+
 
         // Pagina nascosta per dettagli utilizzo
         add_submenu_page(
@@ -1689,6 +1714,57 @@ class AffiliateManagerAI {
                     </button>
                 </p>
             </div>
+        </div>
+        <?php
+    }
+
+    public function render_widget_shortcode_page() {
+        if (!current_user_can('manage_options')) {
+            wp_die(__('Non hai i permessi per accedere a questa pagina.'));
+        }
+
+        $instances = get_option('widget_affiliate_links_widget', array());
+        ?>
+        <div class="wrap">
+            <h1><?php _e('Shortcode Widget', 'affiliate-link-manager-ai'); ?></h1>
+            <?php
+            $has_items = false;
+            if (is_array($instances)) {
+                foreach ($instances as $id => $instance) {
+                    if (is_numeric($id)) {
+                        $has_items = true;
+                        break;
+                    }
+                }
+            }
+            if (!$has_items) : ?>
+                <p><?php _e('Nessun widget configurato.', 'affiliate-link-manager-ai'); ?></p>
+            <?php else : ?>
+                <table class="widefat">
+                    <thead>
+                        <tr>
+                            <th><?php _e('ID Widget', 'affiliate-link-manager-ai'); ?></th>
+                            <th><?php _e('Titolo', 'affiliate-link-manager-ai'); ?></th>
+                            <th><?php _e('Shortcode', 'affiliate-link-manager-ai'); ?></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($instances as $id => $instance) :
+                            if (!is_numeric($id)) {
+                                continue;
+                            }
+                            $title = $instance['title'] ?? '';
+                            $shortcode = '[affiliate_links_widget id="' . $id . '"]';
+                        ?>
+                        <tr>
+                            <td><?php echo esc_html($id); ?></td>
+                            <td><?php echo esc_html($title); ?></td>
+                            <td><code><?php echo esc_html($shortcode); ?></code></td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            <?php endif; ?>
         </div>
         <?php
     }
