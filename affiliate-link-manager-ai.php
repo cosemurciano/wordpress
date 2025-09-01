@@ -1740,10 +1740,12 @@ class AffiliateManagerAI {
 
         $response = $this->call_claude_api($prompt);
         if (empty($response['success'])) {
-            wp_send_json_error(__('Impossibile generare suggerimenti con Claude.', 'affiliate-link-manager-ai'));
+            $msg = $response['error'] ?? __('Impossibile generare suggerimenti con Claude.', 'affiliate-link-manager-ai');
+            error_log('Claude API error: ' . $msg);
+            wp_send_json_error($msg);
         }
 
-        $ids = json_decode(trim($response['response']), true);
+        $ids = json_decode($this->extract_first_json($response['response']), true);
         if (!is_array($ids)) {
             wp_send_json_error('Invalid AI response');
         }
@@ -1792,8 +1794,11 @@ class AffiliateManagerAI {
         // Genera suggerimenti AI basati su Claude
         $suggestions = $this->generate_ai_suggestions($link_id);
 
-        if (empty($suggestions)) {
-            wp_send_json_error(__('Impossibile generare suggerimenti con Claude.', 'affiliate-link-manager-ai'));
+        if (is_wp_error($suggestions) || empty($suggestions)) {
+            $msg = is_wp_error($suggestions)
+                ? $suggestions->get_error_message()
+                : __('Impossibile generare suggerimenti con Claude.', 'affiliate-link-manager-ai');
+            wp_send_json_error($msg);
         }
 
         wp_send_json_success($suggestions);
@@ -1829,8 +1834,11 @@ class AffiliateManagerAI {
 
         $suggestions = $this->generate_title_suggestions($title, $description);
 
-        if (empty($suggestions)) {
-            wp_send_json_error(__('Impossibile generare suggerimenti con Claude.', 'affiliate-link-manager-ai'));
+        if (is_wp_error($suggestions) || empty($suggestions)) {
+            $msg = is_wp_error($suggestions)
+                ? $suggestions->get_error_message()
+                : __('Impossibile generare suggerimenti con Claude.', 'affiliate-link-manager-ai');
+            wp_send_json_error($msg);
         }
 
         wp_send_json_success(array('suggestions' => $suggestions));
@@ -2155,7 +2163,7 @@ class AffiliateManagerAI {
         $post = get_post($link_id);
 
         if (!$post || $post->post_type !== 'affiliate_link') {
-            return array();
+            return new \WP_Error('invalid_link', 'Invalid link');
         }
 
         $prompt = sprintf(
@@ -2166,26 +2174,33 @@ class AffiliateManagerAI {
 
         $response = $this->call_claude_api($prompt);
 
-        if (!empty($response['success']) && !empty($response['response'])) {
-            $decoded = json_decode($response['response'], true);
+        if (empty($response['success'])) {
+            return new \WP_Error('claude_error', $response['error'] ?? __('Errore sconosciuto', 'affiliate-link-manager-ai'));
+        }
 
-            if (is_array($decoded)) {
-                $suggestions = array();
+        $clean   = $this->extract_first_json($response['response']);
+        $decoded = json_decode($clean, true);
 
-                foreach ($decoded as $item) {
-                    if (isset($item['title']) && isset($item['description'])) {
-                        $suggestions[] = array(
-                            'title'       => sanitize_text_field($item['title']),
-                            'description' => sanitize_text_field($item['description'])
-                        );
-                    }
-                }
+        if (!is_array($decoded)) {
+            return new \WP_Error('claude_parse_error', __('Risposta non valida da Claude', 'affiliate-link-manager-ai'));
+        }
 
-                return $suggestions;
+        $suggestions = array();
+
+        foreach ($decoded as $item) {
+            if (isset($item['title']) && isset($item['description'])) {
+                $suggestions[] = array(
+                    'title'       => sanitize_text_field($item['title']),
+                    'description' => sanitize_text_field($item['description'])
+                );
             }
         }
 
-        return array();
+        if (empty($suggestions)) {
+            return new \WP_Error('empty_suggestions', __('Risposta non valida da Claude', 'affiliate-link-manager-ai'));
+        }
+
+        return $suggestions;
     }
 
     private function generate_title_suggestions($title, $description) {
@@ -2201,24 +2216,40 @@ class AffiliateManagerAI {
 
         $response = $this->call_claude_api($prompt);
 
-        if (!empty($response['success']) && !empty($response['response'])) {
-            $decoded = json_decode($response['response'], true);
-
-            if (is_array($decoded)) {
-                $suggestions = array();
-                foreach (array_slice($decoded, 0, 3) as $text) {
-                    $suggestions[] = array(
-                        'text'       => sanitize_text_field($text),
-                        'confidence' => 90,
-                        'pattern'    => 'ai'
-                    );
-                }
-
-                return $suggestions;
-            }
+        if (empty($response['success'])) {
+            return new \WP_Error('claude_error', $response['error'] ?? __('Errore sconosciuto', 'affiliate-link-manager-ai'));
         }
 
-        return array();
+        $clean   = $this->extract_first_json($response['response']);
+        $decoded = json_decode($clean, true);
+
+        if (!is_array($decoded)) {
+            return new \WP_Error('claude_parse_error', __('Risposta non valida da Claude', 'affiliate-link-manager-ai'));
+        }
+
+        $suggestions = array();
+        foreach (array_slice($decoded, 0, 3) as $text) {
+            $suggestions[] = array(
+                'text'       => sanitize_text_field($text),
+                'confidence' => 90,
+                'pattern'    => 'ai'
+            );
+        }
+
+        if (empty($suggestions)) {
+            return new \WP_Error('empty_suggestions', __('Risposta non valida da Claude', 'affiliate-link-manager-ai'));
+        }
+
+        return $suggestions;
+    }
+
+    private function extract_first_json($text) {
+        $text = preg_replace('/```json\s*(.+?)\s*```/is', '$1', $text);
+        $text = preg_replace('/```\s*(.+?)\s*```/is', '$1', $text);
+        if (preg_match('/(\{.*\}|\[.*\])/s', $text, $matches)) {
+            return $matches[1];
+        }
+        return '';
     }
     
     private function get_ai_performance_predictions($link_id) {
@@ -2264,7 +2295,15 @@ class AffiliateManagerAI {
             'max_tokens'  => 300,
             'temperature' => $temperature,
             'messages'    => array(
-                array('role' => 'user', 'content' => $prompt)
+                array(
+                    'role'    => 'user',
+                    'content' => array(
+                        array(
+                            'type' => 'text',
+                            'text' => $prompt,
+                        )
+                    )
+                )
             )
         );
 
