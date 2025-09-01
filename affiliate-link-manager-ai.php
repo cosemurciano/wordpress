@@ -968,6 +968,16 @@ class AffiliateManagerAI {
             array($this, 'render_widget_shortcode_page')
         );
 
+        // Creazione widget
+        add_submenu_page(
+            'edit.php?post_type=affiliate_link',
+            __('Crea Widget', 'affiliate-link-manager-ai'),
+            __('Crea Widget', 'affiliate-link-manager-ai'),
+            'manage_options',
+            'alma-create-widget',
+            array($this, 'render_create_widget_page')
+        );
+
 
         // Pagina nascosta per dettagli utilizzo
         add_submenu_page(
@@ -1714,6 +1724,115 @@ class AffiliateManagerAI {
                     </button>
                 </p>
             </div>
+        </div>
+        <?php
+    }
+
+    /**
+     * Pagina creazione widget
+     */
+    public function render_create_widget_page() {
+        if (!current_user_can('manage_options')) {
+            wp_die(__('Non hai i permessi per accedere a questa pagina.'));
+        }
+
+        $created   = false;
+        $shortcode = '';
+        $php_code  = '';
+
+        if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['alma_create_widget'])) {
+            check_admin_referer('alma_create_widget');
+
+            $instance = array();
+            $instance['title']        = sanitize_text_field($_POST['title'] ?? '');
+            $instance['show_image']   = !empty($_POST['show_image']) ? 1 : 0;
+            $instance['show_title']   = !empty($_POST['show_title']) ? 1 : 0;
+            $instance['show_content'] = !empty($_POST['show_content']) ? 1 : 0;
+            $instance['types']        = array_map('intval', $_POST['types'] ?? array());
+            $instance['format']       = ($_POST['format'] ?? 'large') === 'small' ? 'small' : 'large';
+            $instance['orientation']  = ($_POST['orientation'] ?? 'vertical') === 'horizontal' ? 'horizontal' : 'vertical';
+            $instance['number']       = intval($_POST['number'] ?? 5);
+
+            $instances = get_option('widget_affiliate_links_widget', array());
+            $id = 1;
+            if (!empty($instances)) {
+                $numeric_ids = array_filter(array_keys($instances), 'is_numeric');
+                if (!empty($numeric_ids)) {
+                    $id = max($numeric_ids) + 1;
+                }
+            }
+
+            $instances[$id] = $instance;
+            update_option('widget_affiliate_links_widget', $instances);
+
+            $created   = true;
+            $shortcode = '[affiliate_links_widget id="' . $id . '"]';
+            $php_code  = "<?php echo do_shortcode('" . $shortcode . "'); ?>";
+        }
+
+        $all_types = get_terms(array('taxonomy' => 'link_type', 'hide_empty' => false));
+        ?>
+        <div class="wrap">
+            <h1><?php _e('Crea Widget Link Affiliati', 'affiliate-link-manager-ai'); ?></h1>
+
+            <?php if ($created) : ?>
+                <div class="notice notice-success"><p><?php _e('Widget creato con successo!', 'affiliate-link-manager-ai'); ?></p></div>
+                <p><?php _e('Shortcode:', 'affiliate-link-manager-ai'); ?> <code><?php echo esc_html($shortcode); ?></code></p>
+                <p><?php _e('PHP:', 'affiliate-link-manager-ai'); ?> <code><?php echo esc_html($php_code); ?></code></p>
+            <?php endif; ?>
+
+            <form method="post">
+                <?php wp_nonce_field('alma_create_widget'); ?>
+                <table class="form-table" role="presentation">
+                    <tbody>
+                        <tr>
+                            <th scope="row"><label for="alma_widget_title"><?php _e('Titolo', 'affiliate-link-manager-ai'); ?></label></th>
+                            <td><input name="title" type="text" id="alma_widget_title" value="" class="regular-text"></td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><?php _e('Opzioni', 'affiliate-link-manager-ai'); ?></th>
+                            <td>
+                                <label><input type="checkbox" name="show_image" value="1"> <?php _e('Mostra immagine', 'affiliate-link-manager-ai'); ?></label><br>
+                                <label><input type="checkbox" name="show_title" value="1"> <?php _e('Mostra titolo', 'affiliate-link-manager-ai'); ?></label><br>
+                                <label><input type="checkbox" name="show_content" value="1"> <?php _e('Mostra contenuto', 'affiliate-link-manager-ai'); ?></label>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><label for="alma_widget_types"><?php _e('Tipologie', 'affiliate-link-manager-ai'); ?></label></th>
+                            <td>
+                                <select name="types[]" id="alma_widget_types" multiple style="min-width:200px;">
+                                    <?php if (!is_wp_error($all_types)) : foreach ($all_types as $t) : ?>
+                                        <option value="<?php echo esc_attr($t->term_id); ?>"><?php echo esc_html($t->name); ?></option>
+                                    <?php endforeach; endif; ?>
+                                </select>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><label for="alma_widget_format"><?php _e('Formato', 'affiliate-link-manager-ai'); ?></label></th>
+                            <td>
+                                <select name="format" id="alma_widget_format">
+                                    <option value="large"><?php _e('Immagine grande, titolo e contenuto', 'affiliate-link-manager-ai'); ?></option>
+                                    <option value="small"><?php _e('Immagine piccola e titolo', 'affiliate-link-manager-ai'); ?></option>
+                                </select>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><label for="alma_widget_orientation"><?php _e('Orientamento', 'affiliate-link-manager-ai'); ?></label></th>
+                            <td>
+                                <select name="orientation" id="alma_widget_orientation">
+                                    <option value="vertical"><?php _e('Verticale', 'affiliate-link-manager-ai'); ?></option>
+                                    <option value="horizontal"><?php _e('Orizzontale', 'affiliate-link-manager-ai'); ?></option>
+                                </select>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><label for="alma_widget_number"><?php _e('Numero di link', 'affiliate-link-manager-ai'); ?></label></th>
+                            <td><input name="number" type="number" id="alma_widget_number" value="5" class="small-text" min="1"></td>
+                        </tr>
+                    </tbody>
+                </table>
+                <p><input type="submit" name="alma_create_widget" class="button-primary" value="<?php _e('Crea Widget', 'affiliate-link-manager-ai'); ?>"></p>
+            </form>
         </div>
         <?php
     }
