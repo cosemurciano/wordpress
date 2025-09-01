@@ -10,6 +10,7 @@ jQuery(document).ready(function($) {
     let selectedLinkId = null;
     let selectedLinkTitle = '';
     let searchTimer = null;
+    let aiSuggestionsCache = null;
 
     /**
      * Recupera titolo e contenuto del post corrente
@@ -302,8 +303,12 @@ jQuery(document).ready(function($) {
             $('#alma-link-search').focus();
         }, 100);
         
-        // Carica link iniziali
-        searchLinks('');
+        // Carica link iniziali o mostra suggerimenti AI memorizzati
+        if (aiSuggestionsCache && aiSuggestionsCache.length > 0) {
+            displaySearchResults(aiSuggestionsCache);
+        } else {
+            searchLinks('');
+        }
     }
     
     /**
@@ -515,13 +520,17 @@ jQuery(document).ready(function($) {
             },
             success: function(response) {
                 if (response.success && response.data.length > 0) {
+                    aiSuggestionsCache = response.data;
                     displaySearchResults(response.data);
-                } else {
+                } else if (response.success) {
                     displayNoResults();
+                } else {
+                    displayError(response.data || 'Errore sconosciuto');
                 }
             },
-            error: function() {
-                displayError();
+            error: function(xhr) {
+                const msg = xhr.responseJSON && xhr.responseJSON.data ? xhr.responseJSON.data : null;
+                displayError(msg || 'Errore durante la richiesta');
             }
         });
     }
@@ -554,8 +563,9 @@ jQuery(document).ready(function($) {
                     displayNoResults();
                 }
             },
-            error: function() {
-                displayError();
+            error: function(xhr) {
+                const msg = xhr.responseJSON && xhr.responseJSON.data ? xhr.responseJSON.data : null;
+                displayError(msg);
             }
         });
     }
@@ -570,13 +580,14 @@ jQuery(document).ready(function($) {
             const types = link.types ? link.types.join(', ') : '';
             const clicks = link.clicks || 0;
             const usage = link.usage ? link.usage.post_count : 0;
-            
+            const score = typeof link.score !== 'undefined' ? Math.round(link.score) : null;
+
             html += `
-            <div class="alma-link-item" 
-                 data-link-id="${link.id}" 
+            <div class="alma-link-item"
+                 data-link-id="${link.id}"
                  data-link-title="${escapeHtml(link.title)}"
                  style="display:flex;justify-content:space-between;align-items:center;padding:15px 20px;background:white;border:2px solid #e0e0e0;border-radius:6px;cursor:pointer;transition:all 0.2s;">
-                
+
                 <div class="alma-link-main" style="flex:1;min-width:0;">
                     <strong class="alma-link-title" style="display:block;font-size:14px;font-weight:600;color:#23282d;margin-bottom:5px;">${escapeHtml(link.title)}</strong>
                     ${types ? `<span class="alma-link-type" style="display:inline-block;padding:2px 8px;background:#e0e0e0;color:#666;font-size:11px;border-radius:3px;">${escapeHtml(types)}</span>` : ''}
@@ -586,8 +597,9 @@ jQuery(document).ready(function($) {
                         </span>
                     </div>
                 </div>
-                
+
                 <div class="alma-link-stats" style="display:flex;gap:15px;align-items:center;color:#666;font-size:12px;">
+                    ${score !== null ? `<span title="Coerenza con il contenuto" style="display:flex;align-items:center;gap:4px;"><span class="dashicons dashicons-thumbs-up"></span> ${score}%</span>` : ''}
                     <span title="Click totali" style="display:flex;align-items:center;gap:4px;">
                         <span class="dashicons dashicons-chart-bar"></span> ${clicks}
                     </span>
@@ -619,11 +631,12 @@ jQuery(document).ready(function($) {
     /**
      * Mostra errore
      */
-    function displayError() {
+    function displayError(message) {
+        const msg = message || alma_editor.strings.error || 'Si è verificato un errore';
         $('#alma-search-results').html(`
             <div class="alma-error" style="text-align:center;padding:40px;color:#666;">
                 <span class="dashicons dashicons-warning" style="display:block;margin:0 auto 15px;font-size:48px;color:#d63638;width:48px;height:48px;"></span>
-                <p style="margin:0 0 10px 0;font-size:16px;">${alma_editor.strings.error || 'Si è verificato un errore'}</p>
+                <p style="margin:0 0 10px 0;font-size:16px;">${escapeHtml(msg)}</p>
                 <p style="margin:0;font-size:14px;opacity:0.8;"><small>Riprova tra qualche secondo</small></p>
             </div>
         `);

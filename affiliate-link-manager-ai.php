@@ -1736,7 +1736,7 @@ class AffiliateManagerAI {
         foreach ($links as $link) {
             $prompt .= 'ID ' . $link->ID . ': ' . $link->post_title . "\n";
         }
-        $prompt .= "\nRestituisci gli ID dei 5 link più pertinenti come array JSON.\n";
+        $prompt .= "\nRestituisci un array JSON con massimo 3 oggetti {\"id\": ID, \"score\": COERENZA}, dove COERENZA è un numero da 0 a 100 che indica quanto il link è coerente con l'articolo.\n";
 
         $response = $this->call_claude_api($prompt);
         if (empty($response['success'])) {
@@ -1745,14 +1745,16 @@ class AffiliateManagerAI {
             wp_send_json_error($msg);
         }
 
-        $ids = json_decode($this->extract_first_json($response['response']), true);
-        if (!is_array($ids)) {
-            wp_send_json_error('Invalid AI response');
+        $items = json_decode($this->extract_first_json($response['response']), true);
+        if (!is_array($items)) {
+            wp_send_json_error(__('Risposta AI non valida.', 'affiliate-link-manager-ai'));
         }
 
         $results = array();
-        foreach ($ids as $id) {
-            $id   = intval($id);
+        foreach (array_slice($items, 0, 3) as $item) {
+            $id    = isset($item['id']) ? intval($item['id']) : 0;
+            $score = isset($item['score']) ? floatval($item['score']) : 0;
+
             $post = get_post($id);
             if (!$post || $post->post_type !== 'affiliate_link') {
                 continue;
@@ -1777,6 +1779,7 @@ class AffiliateManagerAI {
                 'clicks'   => $click_count,
                 'usage'    => $usage_data,
                 'shortcode'=> '[affiliate_link id="' . $id . '"]',
+                'score'    => max(0, min(100, round($score))),
             );
         }
 
