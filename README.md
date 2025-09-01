@@ -1,6 +1,6 @@
 # Affiliate Link Manager AI
 
-Versione 2.0
+Versione 2.1
 
 Questo plugin gestisce e ottimizza i link affiliati all'interno di WordPress.
 

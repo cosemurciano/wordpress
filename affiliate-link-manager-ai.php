@@ -3,7 +3,7 @@
  * Plugin Name: Affiliate Link Manager AI
  * Plugin URI: https://your-website.com
  * Description: Gestisce link affiliati con intelligenza artificiale per ottimizzazione e tracking automatico.
- * Version: 2.0
+ * Version: 2.1
  * Author: Cosè Murciano
  * License: GPL v2 or later
  * Text Domain: affiliate-link-manager-ai
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Definisci costanti del plugin
-define('ALMA_VERSION', '2.0');
+define('ALMA_VERSION', '2.1');
 define('ALMA_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('ALMA_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('ALMA_PLUGIN_FILE', __FILE__);
@@ -427,9 +427,10 @@ class AffiliateManagerAI {
         add_action('wp_ajax_alma_get_performance_predictions', array($this, 'ajax_get_performance_predictions'));
         add_action('wp_ajax_alma_get_link_types', array($this, 'ajax_get_link_types'));
         add_action('wp_ajax_alma_import_affiliate_link', array($this, 'ajax_import_affiliate_link'));
-        
+
         // Dashboard widget
         add_action('wp_dashboard_setup', array($this, 'add_dashboard_widget'));
+        add_action('pre_get_posts', array($this, 'filter_posts_without_affiliates'));
     }
     
     /**
@@ -505,6 +506,16 @@ class AffiliateManagerAI {
                         'msg_summary' => __('Totali: %total% | Importati: %success% | Duplicati: %dup% | Errori: %err%', 'affiliate-link-manager-ai'),
                     ));
                 }
+            }
+
+            if ($hook === 'affiliate_link_page_affiliate-link-manager-dashboard') {
+                wp_enqueue_script(
+                    'chart.js',
+                    'https://cdn.jsdelivr.net/npm/chart.js',
+                    array(),
+                    '4.4.0',
+                    true
+                );
             }
         }
         
@@ -975,6 +986,13 @@ class AffiliateManagerAI {
         $total_clicks = $this->get_total_clicks();
         $total_links = wp_count_posts('affiliate_link')->publish;
         $top_links = $this->get_top_performing_links(10);
+
+        global $wpdb;
+        $total_posts = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_type='post' AND post_status='publish'");
+        $like = $wpdb->esc_like('[affiliate_link');
+        $posts_with_links = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_type='post' AND post_status='publish' AND post_content LIKE %s", '%' . $like . '%'));
+        $posts_without_links = $total_posts - $posts_with_links;
+        $no_affiliate_url = admin_url('edit.php?post_type=post&alma_no_affiliates=1');
         
         ?>
         <div class="wrap">
@@ -1010,16 +1028,54 @@ class AffiliateManagerAI {
                 <div style="background:#fff;padding:20px;border:1px solid #ccd0d4;border-radius:8px;">
                     <h3 style="margin:0 0 10px 0;color:#23282d;">🤖 AI Score Medio</h3>
                     <div style="font-size:36px;font-weight:bold;color:#8e44ad;">
-                        <?php 
+                        <?php
                         $avg_score = $this->get_average_ai_score();
                         echo $avg_score . '%';
                         ?>
                     </div>
                     <p style="color:#666;margin:5px 0 0 0;">Performance score</p>
                 </div>
-                
+
+                <div style="background:#fff;padding:20px;border:1px solid #ccd0d4;border-radius:8px;">
+                    <h3 style="margin:0 0 10px 0;color:#23282d;">📝 Stato Articoli</h3>
+                    <p style="margin:0 0 5px 0;color:#23282d;">
+                        <strong><?php echo number_format($posts_with_links); ?></strong> articoli con link affiliati
+                    </p>
+                    <p style="margin:0;color:#23282d;">
+                        <a href="<?php echo esc_url($no_affiliate_url); ?>">
+                            <strong><?php echo number_format($posts_without_links); ?></strong> articoli senza link affiliati
+                        </a>
+                    </p>
+                    <canvas id="alma-posts-pie" style="max-width:200px;margin-top:15px;"></canvas>
+                </div>
+
             </div>
-            
+
+            <script>
+            document.addEventListener('DOMContentLoaded', function() {
+                var ctx = document.getElementById('alma-posts-pie');
+                if (ctx) {
+                    new Chart(ctx, {
+                        type: 'pie',
+                        data: {
+                            labels: ['Con link affiliati', 'Senza link affiliati'],
+                            datasets: [{
+                                data: [<?php echo $posts_with_links; ?>, <?php echo $posts_without_links; ?>],
+                                backgroundColor: ['#16a34a', '#dc2626']
+                            }]
+                        },
+                        options: {
+                            plugins: {
+                                legend: {
+                                    position: 'bottom'
+                                }
+                            }
+                        }
+                    });
+                }
+            });
+            </script>
+
             <!-- Top Performing Links -->
             <div style="background:#fff;padding:20px;border:1px solid #ccd0d4;border-radius:8px;margin-bottom:30px;">
                 <h2>🏆 Top 10 Link Performanti</h2>
@@ -2404,9 +2460,24 @@ class AffiliateManagerAI {
         $pattern = '/\[affiliate_link[^\]]*id=["\']?' . $link_id . '["\']?[^\]]*\]/';
         return preg_replace($pattern, '', $content);
     }
-    
+
     // Le funzioni per sostituzione o commento shortcode sono state rimosse in favore di una cancellazione diretta.
-    
+
+    public function filter_posts_without_affiliates($query) {
+        if (!is_admin() || !$query->is_main_query()) {
+            return;
+        }
+        if ($query->get('post_type') !== 'post' || !isset($_GET['alma_no_affiliates'])) {
+            return;
+        }
+        global $wpdb;
+        $like = $wpdb->esc_like('[affiliate_link');
+        $ids = $wpdb->get_col($wpdb->prepare("SELECT ID FROM {$wpdb->posts} WHERE post_type='post' AND post_status='publish' AND post_content LIKE %s", '%' . $like . '%'));
+        if (!empty($ids)) {
+            $query->set('post__not_in', $ids);
+        }
+    }
+
     /**
      * Activation/Deactivation
      */
