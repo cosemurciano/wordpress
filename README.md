@@ -1,12 +1,16 @@
 # Affiliate Link Manager AI
 
-Questo plugin gestisce link affiliati con funzionalità avanzate di monitoraggio e gestione.
+Versione 2.0
 
-## Suggerimenti AI per il titolo
+Questo plugin gestisce e ottimizza i link affiliati all'interno di WordPress.
 
-Durante la creazione o modifica di un link affiliato è possibile generare automaticamente tre varianti di titolo ottimizzate per la SEO e pensate per aumentare le conversioni.
+## Funzionalità principali
 
-## Eliminazione link
-
-Nelle impostazioni del plugin puoi decidere come gestire gli shortcode quando un link viene eliminato. È inoltre possibile eliminare rapidamente un singolo link tramite ID oppure rimuovere tutti i link appartenenti a una specifica tipologia.
+- Gestione dei link affiliati tramite un Custom Post Type dedicato.
+- Tracciamento dei click con report e statistiche nel pannello di controllo.
+- Suggerimenti AI per la generazione di titoli ottimizzati per la SEO e le conversioni.
+- Importazione massiva di link tramite un flusso guidato a step.
+- Assegnazione di tipologie personalizzate con creazione automatica delle categorie più comuni.
+- Pulizia automatica degli shortcode quando i link vengono eliminati o spostati nel cestino.
+- Dashboard riassuntiva con conteggio dei link attivi e dei click totali.
 
