@@ -1885,7 +1885,13 @@ class AffiliateManagerAI {
                             <th scope="row"><?php _e('Link suggeriti', 'affiliate-link-manager-ai'); ?></th>
                             <td>
                                 <?php foreach ($suggestions as $s) : ?>
-                                    <label><input type="checkbox" name="links[]" value="<?php echo esc_attr($s['id']); ?>"> <?php echo esc_html($s['title']); ?></label><br>
+                                    <label>
+                                        <input type="checkbox" name="links[]" value="<?php echo esc_attr($s['id']); ?>">
+                                        <?php echo esc_html($s['title']); ?>
+                                        (<?php echo esc_html(number_format_i18n($s['score'], 1)); ?>)
+                                        <?php if (!empty($s['types'])) : ?>- <?php echo esc_html(implode(', ', $s['types'])); ?><?php endif; ?>
+                                        - <?php printf(__('Articoli: %d, Click: %d', 'affiliate-link-manager-ai'), $s['usage']['post_count'], $s['clicks']); ?>
+                                    </label><br>
                                 <?php endforeach; ?>
                             </td>
                         </tr>
@@ -1983,7 +1989,13 @@ class AffiliateManagerAI {
                             <th scope="row"><?php _e('Link suggeriti', 'affiliate-link-manager-ai'); ?></th>
                             <td>
                                 <?php foreach ($suggestions as $s) : ?>
-                                    <label><input type="checkbox" name="links[]" value="<?php echo esc_attr($s['id']); ?>" <?php checked(in_array($s['id'], (array) ($instance['links'] ?? array()))); ?>> <?php echo esc_html($s['title']); ?></label><br>
+                                    <label>
+                                        <input type="checkbox" name="links[]" value="<?php echo esc_attr($s['id']); ?>" <?php checked(in_array($s['id'], (array) ($instance['links'] ?? array()))); ?>>
+                                        <?php echo esc_html($s['title']); ?>
+                                        (<?php echo esc_html(number_format_i18n($s['score'], 1)); ?>)
+                                        <?php if (!empty($s['types'])) : ?>- <?php echo esc_html(implode(', ', $s['types'])); ?><?php endif; ?>
+                                        - <?php printf(__('Articoli: %d, Click: %d', 'affiliate-link-manager-ai'), $s['usage']['post_count'], $s['clicks']); ?>
+                                    </label><br>
                                 <?php endforeach; ?>
                             </td>
                         </tr>
@@ -2828,28 +2840,50 @@ class AffiliateManagerAI {
         foreach ($links as $link) {
             $prompt .= $link->ID . ': ' . $link->post_title . "\n";
         }
-        $prompt .= "\nRestituisci un array JSON con massimo 6 ID dei link più coerenti con il titolo.";
+        $prompt .= "\nRestituisci un array JSON con massimo 10 oggetti {\"id\": ID, \"score\": PERTINENZA}, dove PERTINENZA è un numero da 0 a 100 che indica quanto il link è coerente con il titolo. Ordina dal più pertinente al meno pertinente.";
 
         $response = $this->call_claude_api($prompt);
         if (empty($response['success'])) {
             return array();
         }
 
-        $ids = json_decode($this->extract_first_json($response['response']), true);
-        if (!is_array($ids)) {
+        $items = json_decode($this->extract_first_json($response['response']), true);
+        if (!is_array($items)) {
             return array();
         }
 
+        usort($items, function ($a, $b) {
+            return ($b['score'] ?? 0) <=> ($a['score'] ?? 0);
+        });
+
         $suggestions = array();
-        foreach (array_slice($ids, 0, 6) as $item) {
-            $id   = is_array($item) ? intval($item['id'] ?? 0) : intval($item);
+        foreach (array_slice($items, 0, 10) as $item) {
+            $id    = intval($item['id'] ?? 0);
+            $score = floatval($item['score'] ?? 0);
+
             $post = get_post($id);
-            if ($post && $post->post_type === 'affiliate_link') {
-                $suggestions[] = array(
-                    'id'    => $id,
-                    'title' => get_the_title($id),
-                );
+            if (!$post || $post->post_type !== 'affiliate_link') {
+                continue;
             }
+
+            $click_count = get_post_meta($id, '_click_count', true) ?: 0;
+            $usage_data  = $this->get_shortcode_usage_stats($id);
+            $terms       = get_the_terms($id, 'link_type');
+            $types       = array();
+            if ($terms && !is_wp_error($terms)) {
+                foreach ($terms as $term) {
+                    $types[] = $term->name;
+                }
+            }
+
+            $suggestions[] = array(
+                'id'     => $id,
+                'title'  => get_the_title($id),
+                'score'  => $score,
+                'types'  => $types,
+                'clicks' => $click_count,
+                'usage'  => $usage_data,
+            );
         }
 
         return $suggestions;
