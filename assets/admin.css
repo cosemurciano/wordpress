@@ -581,9 +581,7 @@ button:disabled {
 
 /* Suggested links styling */
 .alma-suggested-link {
-    display: flex;
-    align-items: center;
-    gap: 4px;
+    display: block;
     padding: 6px 10px;
     border: 1px solid #ccd0d4;
     border-radius: 4px;
@@ -591,6 +589,17 @@ button:disabled {
     background: #fff;
 }
 
+.alma-suggested-link input[type="checkbox"] {
+    margin-right: 6px;
+}
+
+.alma-suggested-link small {
+    display: block;
+    margin-left: 22px;
+    color: #555;
+}
+
 .alma-suggested-link .dashicons {
     color: #2271b1;
+    margin-right: 2px;
 }
