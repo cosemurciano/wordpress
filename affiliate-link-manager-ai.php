@@ -3,7 +3,7 @@
  * Plugin Name: Affiliate Link Manager AI
  * Plugin URI: https://your-website.com
  * Description: Gestisce link affiliati con intelligenza artificiale per ottimizzazione e tracking automatico.
- * Version: 2.3
+ * Version: 2.3.1
  * Author: Cosè Murciano
  * License: GPL v2 or later
  * Text Domain: affiliate-link-manager-ai
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Definisci costanti del plugin
-define('ALMA_VERSION', '2.3');
+define('ALMA_VERSION', '2.3.1');
 define('ALMA_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('ALMA_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('ALMA_PLUGIN_FILE', __FILE__);
@@ -1821,7 +1821,6 @@ class AffiliateManagerAI {
             $suggested_links = array_map('intval', $_POST['links'] ?? array());
             $manual_ids = array_filter(array_map('intval', explode(',', $_POST['manual_ids'] ?? '')));
             $manual_ids = array_slice(array_unique($manual_ids), 0, 20);
-            $manual_ids = array_diff($manual_ids, $suggested_links);
 
                 $instance['manual_ids'] = $manual_ids;
                 $instance['links']      = array_unique(array_merge($suggested_links, $manual_ids));
@@ -1967,7 +1966,6 @@ class AffiliateManagerAI {
             $suggested_links = array_map('intval', $_POST['links'] ?? array());
             $manual_ids = array_filter(array_map('intval', explode(',', $_POST['manual_ids'] ?? '')));
             $manual_ids = array_slice(array_unique($manual_ids), 0, 20);
-            $manual_ids = array_diff($manual_ids, $suggested_links);
 
             $instance['manual_ids'] = $manual_ids;
             $instance['links']      = array_unique(array_merge($suggested_links, $manual_ids));
@@ -2056,7 +2054,10 @@ class AffiliateManagerAI {
                             <th scope="row"><?php _e('Link selezionati', 'affiliate-link-manager-ai'); ?></th>
                             <td>
                                 <?php foreach ((array) ($instance['links'] ?? array()) as $lid) : ?>
-                                    <label class="alma-suggested-link"><input type="checkbox" name="links[]" value="<?php echo esc_attr($lid); ?>" checked><?php echo esc_html(get_the_title($lid)); ?></label>
+                                    <label class="alma-suggested-link">
+                                        <input type="checkbox" name="links[]" value="<?php echo esc_attr($lid); ?>" checked>
+                                        <?php echo esc_html(get_the_title($lid)); ?><br>
+                                    </label>
                                 <?php endforeach; ?>
                             </td>
                         </tr>
