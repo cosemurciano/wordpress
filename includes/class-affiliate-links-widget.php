@@ -18,6 +18,8 @@ class ALMA_Affiliate_Links_Widget extends WP_Widget {
         $show_image = !empty($instance['show_image']);
         $show_title = !empty($instance['show_title']);
         $show_content = !empty($instance['show_content']);
+        $show_button = !empty($instance['show_button']);
+        $button_text = isset($instance['button_text']) ? sanitize_text_field($instance['button_text']) : '';
         $format = isset($instance['format']) && $instance['format'] === 'small' ? 'small' : 'large';
         $orientation = isset($instance['orientation']) && $instance['orientation'] === 'horizontal' ? 'horizontal' : 'vertical';
 
@@ -60,7 +62,9 @@ class ALMA_Affiliate_Links_Widget extends WP_Widget {
             $id = get_the_ID();
 
             $fields_attr = !empty($fields) ? ' fields="' . implode(',', $fields) . '"' : '';
-            $shortcode = '[affiliate_link id="' . $id . '" img="' . $img . '" img_size="' . $img_size . '"' . $fields_attr . ' button="no"]';
+            $button_attr = $show_button ? ' button="yes"' : ' button="no"';
+            $text_attr = ($show_button && $button_text !== '') ? ' button_text="' . esc_attr($button_text) . '"' : '';
+            $shortcode = '[affiliate_link id="' . $id . '" img="' . $img . '" img_size="' . $img_size . '"' . $fields_attr . $button_attr . $text_attr . ']';
             $link_html = do_shortcode($shortcode);
 
             $output .= '<div class="alma-affiliate-item" style="' . esc_attr($item_style) . '">' . $link_html . '</div>';
@@ -90,6 +94,8 @@ class ALMA_Affiliate_Links_Widget extends WP_Widget {
         $show_image = !empty($instance['show_image']);
         $show_title = !empty($instance['show_title']);
         $show_content = !empty($instance['show_content']);
+        $show_button = !empty($instance['show_button']);
+        $button_text = $instance['button_text'] ?? '';
         $format = $instance['format'] ?? 'large';
         $orientation = $instance['orientation'] ?? 'vertical';
         $links = isset($instance['links']) ? implode(',', array_map('intval', (array) $instance['links'])) : '';
@@ -113,6 +119,14 @@ class ALMA_Affiliate_Links_Widget extends WP_Widget {
         <p>
             <input class="checkbox" type="checkbox" <?php checked($show_content); ?> id="<?php echo esc_attr($this->get_field_id('show_content')); ?>" name="<?php echo esc_attr($this->get_field_name('show_content')); ?>" />
             <label for="<?php echo esc_attr($this->get_field_id('show_content')); ?>"><?php _e('Mostra contenuto', 'affiliate-link-manager-ai'); ?></label>
+        </p>
+        <p>
+            <input class="checkbox" type="checkbox" <?php checked($show_button); ?> id="<?php echo esc_attr($this->get_field_id('show_button')); ?>" name="<?php echo esc_attr($this->get_field_name('show_button')); ?>" />
+            <label for="<?php echo esc_attr($this->get_field_id('show_button')); ?>"><?php _e('Pulsante', 'affiliate-link-manager-ai'); ?></label>
+        </p>
+        <p>
+            <label for="<?php echo esc_attr($this->get_field_id('button_text')); ?>"><?php _e('Testo pulsante:', 'affiliate-link-manager-ai'); ?></label>
+            <input class="widefat" id="<?php echo esc_attr($this->get_field_id('button_text')); ?>" name="<?php echo esc_attr($this->get_field_name('button_text')); ?>" type="text" value="<?php echo esc_attr($button_text); ?>">
         </p>
         <p>
             <label for="<?php echo esc_attr($this->get_field_id('format')); ?>"><?php _e('Formato:', 'affiliate-link-manager-ai'); ?></label>
@@ -142,6 +156,8 @@ class ALMA_Affiliate_Links_Widget extends WP_Widget {
         $instance['show_image'] = !empty($new_instance['show_image']) ? 1 : 0;
         $instance['show_title'] = !empty($new_instance['show_title']) ? 1 : 0;
         $instance['show_content'] = !empty($new_instance['show_content']) ? 1 : 0;
+        $instance['show_button'] = !empty($new_instance['show_button']) ? 1 : 0;
+        $instance['button_text'] = sanitize_text_field($new_instance['button_text'] ?? '');
         $instance['format'] = $new_instance['format'] === 'small' ? 'small' : 'large';
         $instance['orientation'] = $new_instance['orientation'] === 'horizontal' ? 'horizontal' : 'vertical';
         $links = array_filter(array_map('intval', explode(',', $new_instance['links'] ?? '')));
