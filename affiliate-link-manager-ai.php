@@ -3,7 +3,7 @@
  * Plugin Name: Affiliate Link Manager AI
  * Plugin URI: https://your-website.com
  * Description: Gestisce link affiliati con intelligenza artificiale per ottimizzazione e tracking automatico.
- * Version: 2.2
+ * Version: 2.3
  * Author: Cosè Murciano
  * License: GPL v2 or later
  * Text Domain: affiliate-link-manager-ai
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Definisci costanti del plugin
-define('ALMA_VERSION', '2.2');
+define('ALMA_VERSION', '2.3');
 define('ALMA_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('ALMA_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('ALMA_PLUGIN_FILE', __FILE__);
@@ -1028,22 +1028,30 @@ class AffiliateManagerAI {
 
         $tip_index = null;
         $create_item = null;
+        $create_index = null;
         $shortcode_item = null;
+        $shortcode_index = null;
 
         foreach ($submenu[$parent] as $idx => $item) {
             if ($item[2] === 'edit-tags.php?taxonomy=link_type&post_type=affiliate_link') {
                 $tip_index = $idx;
             } elseif ($item[2] === 'alma-create-widget') {
                 $create_item = $item;
-                unset($submenu[$parent][$idx]);
+                $create_index = $idx;
             } elseif ($item[2] === 'affiliate-link-widgets') {
                 $shortcode_item = $item;
-                unset($submenu[$parent][$idx]);
+                $shortcode_index = $idx;
             }
         }
 
-        // Insert widget pages right after Tipologie
+        // Inserisci le pagine del widget subito dopo Tipologie solo se la voce esiste
         if ($tip_index !== null) {
+            if ($create_item !== null) {
+                unset($submenu[$parent][$create_index]);
+            }
+            if ($shortcode_item !== null) {
+                unset($submenu[$parent][$shortcode_index]);
+            }
             $submenu[$parent] = array_values($submenu[$parent]);
             $insert_pos = $tip_index + 1;
             $items_to_insert = array();
