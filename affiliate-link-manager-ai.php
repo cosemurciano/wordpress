@@ -2038,7 +2038,7 @@ class AffiliateManagerAI {
                                 <?php foreach ($suggestions as $s) : ?>
                                     <label class="alma-suggested-link">
                                         <input type="checkbox" name="links[]" value="<?php echo esc_attr($s['id']); ?>" <?php checked(in_array($s['id'], (array) ($instance['links'] ?? array()))); ?>>
-                                        <?php echo esc_html($s['title']); ?><br>
+                                        <?php echo esc_html($s['id']) . ' - ' . esc_html($s['title']); ?><br>
                                         <small>
                                             <span class="dashicons dashicons-admin-links"></span>
                                             <?php _e('Coerenza', 'affiliate-link-manager-ai'); ?>: <?php echo esc_html(number_format_i18n($s['score'], 1)); ?>% -
@@ -2056,7 +2056,7 @@ class AffiliateManagerAI {
                                 <?php foreach ((array) ($instance['links'] ?? array()) as $lid) : ?>
                                     <label class="alma-suggested-link">
                                         <input type="checkbox" name="links[]" value="<?php echo esc_attr($lid); ?>" checked>
-                                        <?php echo esc_html(get_the_title($lid)); ?><br>
+                                        <?php echo esc_html($lid) . ' - ' . esc_html(get_the_title($lid)); ?><br>
                                     </label>
                                 <?php endforeach; ?>
                             </td>
