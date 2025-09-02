@@ -1823,28 +1823,31 @@ class AffiliateManagerAI {
             $manual_ids = array_slice(array_unique($manual_ids), 0, 20);
             $manual_ids = array_diff($manual_ids, $suggested_links);
 
-            $instance['manual_ids'] = $manual_ids;
-            $instance['links']      = array_unique(array_merge($suggested_links, $manual_ids));
+                $instance['manual_ids'] = $manual_ids;
+                $instance['links']      = array_unique(array_merge($suggested_links, $manual_ids));
 
-            if (empty($instance['links'])) {
-                $suggestions = $this->generate_widget_ai_suggestions($instance['title']);
-            } else {
-                $instances = get_option('widget_affiliate_links_widget', array());
-                $id = 1;
-                if (!empty($instances)) {
-                    $numeric_ids = array_filter(array_keys($instances), 'is_numeric');
-                    if (!empty($numeric_ids)) {
-                        $id = max($numeric_ids) + 1;
+                if (empty($instance['links'])) {
+                    $suggestions = $this->generate_widget_ai_suggestions($instance['title']);
+                } else {
+                    $instances = get_option('widget_affiliate_links_widget', array());
+                    $id = 1;
+                    if (!empty($instances)) {
+                        $numeric_ids = array_filter(array_keys($instances), 'is_numeric');
+                        if (!empty($numeric_ids)) {
+                            $id = max($numeric_ids) + 1;
+                        }
                     }
+
+                    // Salva data di creazione
+                    $instance['created_at'] = current_time('mysql');
+
+                    $instances[$id] = $instance;
+                    update_option('widget_affiliate_links_widget', $instances);
+
+                    $created   = true;
+                    $shortcode = '[affiliate_links_widget id="' . $id . '"]';
+                    $php_code  = "<?php echo do_shortcode('" . $shortcode . "'); ?>";
                 }
-
-                $instances[$id] = $instance;
-                update_option('widget_affiliate_links_widget', $instances);
-
-                $created   = true;
-                $shortcode = '[affiliate_links_widget id="' . $id . '"]';
-                $php_code  = "<?php echo do_shortcode('" . $shortcode . "'); ?>";
-            }
         }
         ?>
         <div class="wrap">
@@ -1901,11 +1904,13 @@ class AffiliateManagerAI {
                                 <?php foreach ($suggestions as $s) : ?>
                                     <label class="alma-suggested-link">
                                         <input type="checkbox" name="links[]" value="<?php echo esc_attr($s['id']); ?>">
-                                        <span class="dashicons dashicons-admin-links"></span>
-                                        <?php echo esc_html($s['title']); ?>
-                                        (<?php echo esc_html(number_format_i18n($s['score'], 1)); ?>)
-                                        <?php if (!empty($s['types'])) : ?>- <?php echo esc_html(implode(', ', $s['types'])); ?><?php endif; ?>
-                                        - <?php printf(__('Articoli: %d, Click: %d', 'affiliate-link-manager-ai'), $s['usage']['post_count'], $s['clicks']); ?>
+                                        <?php echo esc_html($s['title']); ?><br>
+                                        <small>
+                                            <span class="dashicons dashicons-admin-links"></span>
+                                            <?php _e('Coerenza', 'affiliate-link-manager-ai'); ?>: <?php echo esc_html(number_format_i18n($s['score'], 1)); ?>% -
+                                            <?php _e('Tipologia', 'affiliate-link-manager-ai'); ?>: <?php echo !empty($s['types']) ? esc_html(implode(', ', $s['types'])) : '-'; ?> -
+                                            <?php printf(__('In %d Articoli, Click: %d', 'affiliate-link-manager-ai'), $s['usage']['post_count'], $s['clicks']); ?>
+                                        </small>
                                     </label>
                                 <?php endforeach; ?>
                             </td>
@@ -1920,7 +1925,9 @@ class AffiliateManagerAI {
                         </tr>
                     </tbody>
                 </table>
+                <?php if (!$created) : ?>
                 <p><input type="submit" name="alma_create_widget" class="button-primary" value="<?php echo empty($suggestions) ? esc_attr__('Genera suggerimenti', 'affiliate-link-manager-ai') : esc_attr__('Crea Widget AI', 'affiliate-link-manager-ai'); ?>"></p>
+                <?php endif; ?>
             </form>
         </div>
         <?php
@@ -1964,6 +1971,10 @@ class AffiliateManagerAI {
 
             $instance['manual_ids'] = $manual_ids;
             $instance['links']      = array_unique(array_merge($suggested_links, $manual_ids));
+
+            if (empty($instance['created_at'])) {
+                $instance['created_at'] = current_time('mysql');
+            }
 
             if (empty($instance['links'])) {
                 $suggestions = $this->generate_widget_ai_suggestions($instance['title']);
@@ -2029,11 +2040,13 @@ class AffiliateManagerAI {
                                 <?php foreach ($suggestions as $s) : ?>
                                     <label class="alma-suggested-link">
                                         <input type="checkbox" name="links[]" value="<?php echo esc_attr($s['id']); ?>" <?php checked(in_array($s['id'], (array) ($instance['links'] ?? array()))); ?>>
-                                        <span class="dashicons dashicons-admin-links"></span>
-                                        <?php echo esc_html($s['title']); ?>
-                                        (<?php echo esc_html(number_format_i18n($s['score'], 1)); ?>)
-                                        <?php if (!empty($s['types'])) : ?>- <?php echo esc_html(implode(', ', $s['types'])); ?><?php endif; ?>
-                                        - <?php printf(__('Articoli: %d, Click: %d', 'affiliate-link-manager-ai'), $s['usage']['post_count'], $s['clicks']); ?>
+                                        <?php echo esc_html($s['title']); ?><br>
+                                        <small>
+                                            <span class="dashicons dashicons-admin-links"></span>
+                                            <?php _e('Coerenza', 'affiliate-link-manager-ai'); ?>: <?php echo esc_html(number_format_i18n($s['score'], 1)); ?>% -
+                                            <?php _e('Tipologia', 'affiliate-link-manager-ai'); ?>: <?php echo !empty($s['types']) ? esc_html(implode(', ', $s['types'])) : '-'; ?> -
+                                            <?php printf(__('In %d Articoli, Click: %d', 'affiliate-link-manager-ai'), $s['usage']['post_count'], $s['clicks']); ?>
+                                        </small>
                                     </label>
                                 <?php endforeach; ?>
                             </td>
@@ -2043,7 +2056,7 @@ class AffiliateManagerAI {
                             <th scope="row"><?php _e('Link selezionati', 'affiliate-link-manager-ai'); ?></th>
                             <td>
                                 <?php foreach ((array) ($instance['links'] ?? array()) as $lid) : ?>
-                                    <label class="alma-suggested-link"><input type="checkbox" name="links[]" value="<?php echo esc_attr($lid); ?>" checked><span class="dashicons dashicons-admin-links"></span><?php echo esc_html(get_the_title($lid)); ?></label>
+                                    <label class="alma-suggested-link"><input type="checkbox" name="links[]" value="<?php echo esc_attr($lid); ?>" checked><?php echo esc_html(get_the_title($lid)); ?></label>
                                 <?php endforeach; ?>
                             </td>
                         </tr>
@@ -2100,6 +2113,7 @@ class AffiliateManagerAI {
                         <tr>
                             <th><?php _e('ID Widget', 'affiliate-link-manager-ai'); ?></th>
                             <th><?php _e('Titolo', 'affiliate-link-manager-ai'); ?></th>
+                            <th><?php _e('Creato il', 'affiliate-link-manager-ai'); ?></th>
                             <th><?php _e('Shortcode', 'affiliate-link-manager-ai'); ?></th>
                             <th><?php _e('Azioni', 'affiliate-link-manager-ai'); ?></th>
                         </tr>
@@ -2109,16 +2123,19 @@ class AffiliateManagerAI {
                             if (!is_numeric($id)) {
                                 continue;
                             }
-                            $title     = $instance['title'] ?? '';
-                            $shortcode = '[affiliate_links_widget id="' . $id . '"]';
+                            $title        = $instance['title'] ?? '';
+                            $shortcode    = '[affiliate_links_widget id="' . $id . '"]';
+                            $created_at   = $instance['created_at'] ?? '';
+                            $created_disp = $created_at ? mysql2date(get_option('date_format'), $created_at) : '-';
                         ?>
                         <tr>
                             <td><?php echo esc_html($id); ?></td>
                             <td><?php echo esc_html($title); ?></td>
+                            <td><?php echo esc_html($created_disp); ?></td>
                             <td><code><?php echo esc_html($shortcode); ?></code></td>
                             <td>
                                 <a href="<?php echo esc_url(admin_url('admin.php?page=alma-edit-widget&widget_id=' . $id)); ?>"><?php _e('Modifica', 'affiliate-link-manager-ai'); ?></a> |
-                                <a href="<?php echo esc_url(wp_nonce_url(admin_url('admin.php?page=affiliate-link-widgets&action=delete&widget_id=' . $id), 'alma_delete_widget_' . $id)); ?>" onclick="return confirm('<?php echo esc_js(__('Sei sicuro?', 'affiliate-link-manager-ai')); ?>');"><?php _e('Elimina', 'affiliate-link-manager-ai'); ?></a>
+                                <a href="<?php echo esc_url(wp_nonce_url(admin_url('admin.php?page=affiliate-link-widgets&action=delete&widget_id=' . $id), 'alma_delete_widget_' . $id)); ?>" onclick="return confirm('<?php echo esc_js(__('Eliminando lo shortcode verrà rimosso da tutti i contenuti in cui è stato inserito. Continuare?', 'affiliate-link-manager-ai')); ?>');"><?php _e('Elimina', 'affiliate-link-manager-ai'); ?></a>
                             </td>
                         </tr>
                         <?php endforeach; ?>
