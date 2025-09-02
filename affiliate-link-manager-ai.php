@@ -1797,24 +1797,34 @@ class AffiliateManagerAI {
         $suggestions = array();
         $instance    = array(
             'title'        => '',
+            'custom_content' => '',
             'show_image'   => 0,
             'show_title'   => 0,
             'show_content' => 0,
             'format'       => 'large',
             'orientation'  => 'vertical',
             'links'        => array(),
+            'manual_ids'   => array(),
         );
 
         if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['alma_create_widget'])) {
             check_admin_referer('alma_create_widget');
 
             $instance['title']        = sanitize_text_field($_POST['title'] ?? '');
+            $instance['custom_content'] = wp_kses_post($_POST['custom_content'] ?? '');
             $instance['show_image']   = !empty($_POST['show_image']) ? 1 : 0;
             $instance['show_title']   = !empty($_POST['show_title']) ? 1 : 0;
             $instance['show_content'] = !empty($_POST['show_content']) ? 1 : 0;
             $instance['format']       = ($_POST['format'] ?? 'large') === 'small' ? 'small' : 'large';
             $instance['orientation']  = ($_POST['orientation'] ?? 'vertical') === 'horizontal' ? 'horizontal' : 'vertical';
-            $instance['links']        = array_map('intval', $_POST['links'] ?? array());
+
+            $suggested_links = array_map('intval', $_POST['links'] ?? array());
+            $manual_ids = array_filter(array_map('intval', explode(',', $_POST['manual_ids'] ?? '')));
+            $manual_ids = array_slice(array_unique($manual_ids), 0, 20);
+            $manual_ids = array_diff($manual_ids, $suggested_links);
+
+            $instance['manual_ids'] = $manual_ids;
+            $instance['links']      = array_unique(array_merge($suggested_links, $manual_ids));
 
             if (empty($instance['links'])) {
                 $suggestions = $this->generate_widget_ai_suggestions($instance['title']);
@@ -1855,6 +1865,10 @@ class AffiliateManagerAI {
                             <td><input name="title" type="text" id="alma_widget_title" value="<?php echo esc_attr($instance['title']); ?>" class="regular-text"></td>
                         </tr>
                         <tr>
+                            <th scope="row"><label for="alma_widget_content"><?php _e('Contenuto', 'affiliate-link-manager-ai'); ?></label></th>
+                            <td><textarea name="custom_content" id="alma_widget_content" rows="4" class="large-text code"><?php echo esc_textarea($instance['custom_content']); ?></textarea></td>
+                        </tr>
+                        <tr>
                             <th scope="row"><?php _e('Opzioni', 'affiliate-link-manager-ai'); ?></th>
                             <td>
                                 <label><input type="checkbox" name="show_image" value="1" <?php checked($instance['show_image']); ?>> <?php _e('Mostra immagine', 'affiliate-link-manager-ai'); ?></label><br>
@@ -1885,17 +1899,25 @@ class AffiliateManagerAI {
                             <th scope="row"><?php _e('Link suggeriti', 'affiliate-link-manager-ai'); ?></th>
                             <td>
                                 <?php foreach ($suggestions as $s) : ?>
-                                    <label>
+                                    <label class="alma-suggested-link">
                                         <input type="checkbox" name="links[]" value="<?php echo esc_attr($s['id']); ?>">
+                                        <span class="dashicons dashicons-admin-links"></span>
                                         <?php echo esc_html($s['title']); ?>
                                         (<?php echo esc_html(number_format_i18n($s['score'], 1)); ?>)
                                         <?php if (!empty($s['types'])) : ?>- <?php echo esc_html(implode(', ', $s['types'])); ?><?php endif; ?>
                                         - <?php printf(__('Articoli: %d, Click: %d', 'affiliate-link-manager-ai'), $s['usage']['post_count'], $s['clicks']); ?>
-                                    </label><br>
+                                    </label>
                                 <?php endforeach; ?>
                             </td>
                         </tr>
                         <?php endif; ?>
+                        <tr>
+                            <th scope="row"><label for="alma_widget_manual_ids"><?php _e('ID Link affiliati', 'affiliate-link-manager-ai'); ?></label></th>
+                            <td>
+                                <input name="manual_ids" type="text" id="alma_widget_manual_ids" value="<?php echo esc_attr(implode(',', $instance['manual_ids'])); ?>" class="regular-text">
+                                <p class="description"><?php _e('Inserisci fino a 20 ID separati da virgola', 'affiliate-link-manager-ai'); ?></p>
+                            </td>
+                        </tr>
                     </tbody>
                 </table>
                 <p><input type="submit" name="alma_create_widget" class="button-primary" value="<?php echo empty($suggestions) ? esc_attr__('Genera suggerimenti', 'affiliate-link-manager-ai') : esc_attr__('Crea Widget AI', 'affiliate-link-manager-ai'); ?>"></p>
@@ -1917,6 +1939,10 @@ class AffiliateManagerAI {
         }
 
         $instance    = $instances[$widget_id];
+        $instance   += array(
+            'custom_content' => '',
+            'manual_ids'     => array(),
+        );
         $saved       = false;
         $suggestions = array();
 
@@ -1924,12 +1950,20 @@ class AffiliateManagerAI {
             check_admin_referer('alma_edit_widget');
 
             $instance['title']        = sanitize_text_field($_POST['title'] ?? '');
+            $instance['custom_content'] = wp_kses_post($_POST['custom_content'] ?? '');
             $instance['show_image']   = !empty($_POST['show_image']) ? 1 : 0;
             $instance['show_title']   = !empty($_POST['show_title']) ? 1 : 0;
             $instance['show_content'] = !empty($_POST['show_content']) ? 1 : 0;
             $instance['format']       = ($_POST['format'] ?? 'large') === 'small' ? 'small' : 'large';
             $instance['orientation']  = ($_POST['orientation'] ?? 'vertical') === 'horizontal' ? 'horizontal' : 'vertical';
-            $instance['links']        = array_map('intval', $_POST['links'] ?? array());
+
+            $suggested_links = array_map('intval', $_POST['links'] ?? array());
+            $manual_ids = array_filter(array_map('intval', explode(',', $_POST['manual_ids'] ?? '')));
+            $manual_ids = array_slice(array_unique($manual_ids), 0, 20);
+            $manual_ids = array_diff($manual_ids, $suggested_links);
+
+            $instance['manual_ids'] = $manual_ids;
+            $instance['links']      = array_unique(array_merge($suggested_links, $manual_ids));
 
             if (empty($instance['links'])) {
                 $suggestions = $this->generate_widget_ai_suggestions($instance['title']);
@@ -1959,6 +1993,10 @@ class AffiliateManagerAI {
                             <td><input name="title" type="text" id="alma_widget_title" value="<?php echo esc_attr($instance['title']); ?>" class="regular-text"></td>
                         </tr>
                         <tr>
+                            <th scope="row"><label for="alma_widget_content"><?php _e('Contenuto', 'affiliate-link-manager-ai'); ?></label></th>
+                            <td><textarea name="custom_content" id="alma_widget_content" rows="4" class="large-text code"><?php echo esc_textarea($instance['custom_content']); ?></textarea></td>
+                        </tr>
+                        <tr>
                             <th scope="row"><?php _e('Opzioni', 'affiliate-link-manager-ai'); ?></th>
                             <td>
                                 <label><input type="checkbox" name="show_image" value="1" <?php checked($instance['show_image']); ?>> <?php _e('Mostra immagine', 'affiliate-link-manager-ai'); ?></label><br>
@@ -1989,13 +2027,14 @@ class AffiliateManagerAI {
                             <th scope="row"><?php _e('Link suggeriti', 'affiliate-link-manager-ai'); ?></th>
                             <td>
                                 <?php foreach ($suggestions as $s) : ?>
-                                    <label>
+                                    <label class="alma-suggested-link">
                                         <input type="checkbox" name="links[]" value="<?php echo esc_attr($s['id']); ?>" <?php checked(in_array($s['id'], (array) ($instance['links'] ?? array()))); ?>>
+                                        <span class="dashicons dashicons-admin-links"></span>
                                         <?php echo esc_html($s['title']); ?>
                                         (<?php echo esc_html(number_format_i18n($s['score'], 1)); ?>)
                                         <?php if (!empty($s['types'])) : ?>- <?php echo esc_html(implode(', ', $s['types'])); ?><?php endif; ?>
                                         - <?php printf(__('Articoli: %d, Click: %d', 'affiliate-link-manager-ai'), $s['usage']['post_count'], $s['clicks']); ?>
-                                    </label><br>
+                                    </label>
                                 <?php endforeach; ?>
                             </td>
                         </tr>
@@ -2004,11 +2043,18 @@ class AffiliateManagerAI {
                             <th scope="row"><?php _e('Link selezionati', 'affiliate-link-manager-ai'); ?></th>
                             <td>
                                 <?php foreach ((array) ($instance['links'] ?? array()) as $lid) : ?>
-                                    <label><input type="checkbox" name="links[]" value="<?php echo esc_attr($lid); ?>" checked> <?php echo esc_html(get_the_title($lid)); ?></label><br>
+                                    <label class="alma-suggested-link"><input type="checkbox" name="links[]" value="<?php echo esc_attr($lid); ?>" checked><span class="dashicons dashicons-admin-links"></span><?php echo esc_html(get_the_title($lid)); ?></label>
                                 <?php endforeach; ?>
                             </td>
                         </tr>
                         <?php endif; ?>
+                        <tr>
+                            <th scope="row"><label for="alma_widget_manual_ids"><?php _e('ID Link affiliati', 'affiliate-link-manager-ai'); ?></label></th>
+                            <td>
+                                <input name="manual_ids" type="text" id="alma_widget_manual_ids" value="<?php echo esc_attr(implode(',', $instance['manual_ids'])); ?>" class="regular-text">
+                                <p class="description"><?php _e('Inserisci fino a 20 ID separati da virgola', 'affiliate-link-manager-ai'); ?></p>
+                            </td>
+                        </tr>
                     </tbody>
                 </table>
                 <p><input type="submit" name="alma_save_widget" class="button-primary" value="<?php echo empty($instance['links']) ? esc_attr__('Salva Widget', 'affiliate-link-manager-ai') : esc_attr__('Aggiorna Widget', 'affiliate-link-manager-ai'); ?>"></p>

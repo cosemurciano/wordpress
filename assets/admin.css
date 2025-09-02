@@ -578,3 +578,19 @@ button:disabled {
 .alma-shortcode-config select {
     margin-left: 5px;
 }
+
+/* Suggested links styling */
+.alma-suggested-link {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 10px;
+    border: 1px solid #ccd0d4;
+    border-radius: 4px;
+    margin-bottom: 6px;
+    background: #fff;
+}
+
+.alma-suggested-link .dashicons {
+    color: #2271b1;
+}

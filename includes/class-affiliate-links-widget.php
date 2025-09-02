@@ -77,12 +77,16 @@ class ALMA_Affiliate_Links_Widget extends WP_Widget {
         if (!empty($instance['title'])) {
             echo $args['before_title'] . apply_filters('widget_title', $instance['title']) . $args['after_title'];
         }
+        if (!empty($instance['custom_content'])) {
+            echo '<div class="alma-widget-content">' . wp_kses_post($instance['custom_content']) . '</div>';
+        }
         echo self::render_links($instance);
         echo $args['after_widget'];
     }
 
     public function form($instance) {
         $title = $instance['title'] ?? '';
+        $custom_content = $instance['custom_content'] ?? '';
         $show_image = !empty($instance['show_image']);
         $show_title = !empty($instance['show_title']);
         $show_content = !empty($instance['show_content']);
@@ -93,6 +97,10 @@ class ALMA_Affiliate_Links_Widget extends WP_Widget {
         <p>
             <label for="<?php echo esc_attr($this->get_field_id('title')); ?>"><?php _e('Titolo:', 'affiliate-link-manager-ai'); ?></label>
             <input class="widefat" id="<?php echo esc_attr($this->get_field_id('title')); ?>" name="<?php echo esc_attr($this->get_field_name('title')); ?>" type="text" value="<?php echo esc_attr($title); ?>">
+        </p>
+        <p>
+            <label for="<?php echo esc_attr($this->get_field_id('custom_content')); ?>"><?php _e('Contenuto HTML:', 'affiliate-link-manager-ai'); ?></label>
+            <textarea class="widefat" rows="4" id="<?php echo esc_attr($this->get_field_id('custom_content')); ?>" name="<?php echo esc_attr($this->get_field_name('custom_content')); ?>"><?php echo esc_textarea($custom_content); ?></textarea>
         </p>
         <p>
             <input class="checkbox" type="checkbox" <?php checked($show_image); ?> id="<?php echo esc_attr($this->get_field_id('show_image')); ?>" name="<?php echo esc_attr($this->get_field_name('show_image')); ?>" />
@@ -121,7 +129,7 @@ class ALMA_Affiliate_Links_Widget extends WP_Widget {
             </select>
         </p>
         <p>
-            <label for="<?php echo esc_attr($this->get_field_id('links')); ?>"><?php _e('ID Link (separati da virgola):', 'affiliate-link-manager-ai'); ?></label>
+            <label for="<?php echo esc_attr($this->get_field_id('links')); ?>"><?php _e('ID Link (separati da virgola, max 20):', 'affiliate-link-manager-ai'); ?></label>
             <input class="widefat" id="<?php echo esc_attr($this->get_field_id('links')); ?>" name="<?php echo esc_attr($this->get_field_name('links')); ?>" type="text" value="<?php echo esc_attr($links); ?>">
         </p>
         <?php
@@ -130,12 +138,14 @@ class ALMA_Affiliate_Links_Widget extends WP_Widget {
     public function update($new_instance, $old_instance) {
         $instance = array();
         $instance['title'] = sanitize_text_field($new_instance['title'] ?? '');
+        $instance['custom_content'] = wp_kses_post($new_instance['custom_content'] ?? '');
         $instance['show_image'] = !empty($new_instance['show_image']) ? 1 : 0;
         $instance['show_title'] = !empty($new_instance['show_title']) ? 1 : 0;
         $instance['show_content'] = !empty($new_instance['show_content']) ? 1 : 0;
         $instance['format'] = $new_instance['format'] === 'small' ? 'small' : 'large';
         $instance['orientation'] = $new_instance['orientation'] === 'horizontal' ? 'horizontal' : 'vertical';
-        $instance['links'] = array_filter(array_map('intval', explode(',', $new_instance['links'] ?? '')));
+        $links = array_filter(array_map('intval', explode(',', $new_instance['links'] ?? '')));
+        $instance['links'] = array_slice(array_unique($links), 0, 20);
         return $instance;
     }
 
@@ -154,6 +164,9 @@ class ALMA_Affiliate_Links_Widget extends WP_Widget {
         $output = '';
         if ($title) {
             $output .= '<h2 class="alma-widget-title">' . esc_html($title) . '</h2>';
+        }
+        if (!empty($instance['custom_content'])) {
+            $output .= '<div class="alma-widget-content">' . wp_kses_post($instance['custom_content']) . '</div>';
         }
         $output .= self::render_links($instance);
         return $output;
