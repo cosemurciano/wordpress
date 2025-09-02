@@ -431,6 +431,9 @@ class AffiliateManagerAI {
         // Menu pages
         add_action('admin_menu', array($this, 'add_admin_pages'));
         add_action('admin_menu', array($this, 'reorder_dashboard_menu'), 100);
+
+        // Cleanup shortcodes when widget instances change
+        add_action('update_option_widget_affiliate_links_widget', array($this, 'on_widget_option_update'), 10, 3);
         
         // Stili e script admin
         add_action('admin_enqueue_scripts', array($this, 'admin_enqueue_scripts'));
@@ -961,8 +964,8 @@ class AffiliateManagerAI {
         // Creazione widget
         add_submenu_page(
             'edit.php?post_type=affiliate_link',
-            __('Crea Widget', 'affiliate-link-manager-ai'),
-            __('Crea Widget', 'affiliate-link-manager-ai'),
+            __('Crea Widget AI', 'affiliate-link-manager-ai'),
+            __('Crea Widget AI', 'affiliate-link-manager-ai'),
             'manage_options',
             'alma-create-widget',
             array($this, 'render_create_widget_page')
@@ -971,8 +974,8 @@ class AffiliateManagerAI {
         // Shortcode widget
         add_submenu_page(
             'edit.php?post_type=affiliate_link',
-            __('Shortcode Widget', 'affiliate-link-manager-ai'),
-            __('Shortcode Widget', 'affiliate-link-manager-ai'),
+            __('Shortcode Widget AI', 'affiliate-link-manager-ai'),
+            __('Shortcode Widget AI', 'affiliate-link-manager-ai'),
             'manage_options',
             'affiliate-link-widgets',
             array($this, 'render_widget_shortcode_page')
@@ -1001,7 +1004,7 @@ class AffiliateManagerAI {
     }
 
     /**
-     * Posiziona la dashboard come prima voce del menu
+     * Reorder submenu: dashboard first and widget pages after taxonomy.
      */
     public function reorder_dashboard_menu() {
         global $submenu;
@@ -1010,6 +1013,7 @@ class AffiliateManagerAI {
             return;
         }
 
+        // Move dashboard page to first position
         foreach ($submenu[$parent] as $index => $item) {
             if ($item[2] === 'affiliate-link-manager-dashboard') {
                 $dashboard = $item;
@@ -1017,6 +1021,39 @@ class AffiliateManagerAI {
                 array_unshift($submenu[$parent], $dashboard);
                 break;
             }
+        }
+
+        // Reindex array after unsetting
+        $submenu[$parent] = array_values($submenu[$parent]);
+
+        $tip_index = null;
+        $create_item = null;
+        $shortcode_item = null;
+
+        foreach ($submenu[$parent] as $idx => $item) {
+            if ($item[2] === 'edit-tags.php?taxonomy=link_type&post_type=affiliate_link') {
+                $tip_index = $idx;
+            } elseif ($item[2] === 'alma-create-widget') {
+                $create_item = $item;
+                unset($submenu[$parent][$idx]);
+            } elseif ($item[2] === 'affiliate-link-widgets') {
+                $shortcode_item = $item;
+                unset($submenu[$parent][$idx]);
+            }
+        }
+
+        // Insert widget pages right after Tipologie
+        if ($tip_index !== null) {
+            $submenu[$parent] = array_values($submenu[$parent]);
+            $insert_pos = $tip_index + 1;
+            $items_to_insert = array();
+            if ($create_item) {
+                $items_to_insert[] = $create_item;
+            }
+            if ($shortcode_item) {
+                $items_to_insert[] = $shortcode_item;
+            }
+            array_splice($submenu[$parent], $insert_pos, 0, $items_to_insert);
         }
     }
     
@@ -1793,7 +1830,7 @@ class AffiliateManagerAI {
         }
         ?>
         <div class="wrap">
-            <h1><?php _e('Crea Widget Link Affiliati', 'affiliate-link-manager-ai'); ?></h1>
+            <h1><?php _e('Crea Widget AI', 'affiliate-link-manager-ai'); ?></h1>
 
             <?php if ($created) : ?>
                 <div class="notice notice-success"><p><?php _e('Widget creato con successo!', 'affiliate-link-manager-ai'); ?></p></div>
@@ -1847,7 +1884,7 @@ class AffiliateManagerAI {
                         <?php endif; ?>
                     </tbody>
                 </table>
-                <p><input type="submit" name="alma_create_widget" class="button-primary" value="<?php echo empty($suggestions) ? esc_attr__('Genera suggerimenti', 'affiliate-link-manager-ai') : esc_attr__('Crea Widget', 'affiliate-link-manager-ai'); ?>"></p>
+                <p><input type="submit" name="alma_create_widget" class="button-primary" value="<?php echo empty($suggestions) ? esc_attr__('Genera suggerimenti', 'affiliate-link-manager-ai') : esc_attr__('Crea Widget AI', 'affiliate-link-manager-ai'); ?>"></p>
             </form>
         </div>
         <?php
@@ -1978,7 +2015,7 @@ class AffiliateManagerAI {
 
         ?>
         <div class="wrap">
-            <h1><?php _e('Shortcode Widget', 'affiliate-link-manager-ai'); ?></h1>
+            <h1><?php _e('Shortcode Widget AI', 'affiliate-link-manager-ai'); ?></h1>
             <?php
             $has_items = false;
             if (is_array($instances)) {
@@ -3032,6 +3069,49 @@ class AffiliateManagerAI {
     }
 
     // Le funzioni per sostituzione o commento shortcode sono state rimosse in favore di una cancellazione diretta.
+
+    /**
+     * Gestisce l'aggiornamento dell'opzione dei widget per rimuovere gli shortcode orfani.
+     */
+    public function on_widget_option_update($old_value, $value, $option) {
+        $old_ids = array_filter(array_keys((array) $old_value), 'is_numeric');
+        $new_ids = array_filter(array_keys((array) $value), 'is_numeric');
+        $deleted = array_diff($old_ids, $new_ids);
+        if (empty($deleted)) {
+            return;
+        }
+        foreach ($deleted as $widget_id) {
+            $this->cleanup_widget_shortcodes($widget_id);
+        }
+    }
+
+    private function cleanup_widget_shortcodes($widget_id) {
+        global $wpdb;
+        $like  = '%' . $wpdb->esc_like("[affiliate_links_widget id=\"$widget_id\"") . '%';
+        $posts = $wpdb->get_results($wpdb->prepare(
+            "SELECT ID, post_content FROM {$wpdb->posts} WHERE post_content LIKE %s AND post_type IN ('post','page') AND post_status IN ('publish','draft','private')",
+            $like
+        ));
+
+        if (!$posts) {
+            return;
+        }
+
+        foreach ($posts as $post) {
+            $content = $this->remove_widget_shortcode_from_content($post->post_content, $widget_id);
+            if ($content !== $post->post_content) {
+                wp_update_post(array(
+                    'ID'           => $post->ID,
+                    'post_content' => $content
+                ));
+            }
+        }
+    }
+
+    private function remove_widget_shortcode_from_content($content, $widget_id) {
+        $pattern = '/\[affiliate_links_widget[^\]]*id=["\']?' . $widget_id . '["\']?[^\]]*\]/';
+        return preg_replace($pattern, '', $content);
+    }
 
     public function filter_posts_without_affiliates($query) {
         if (!is_admin() || !$query->is_main_query()) {
