@@ -57,9 +57,13 @@ class ALMA_Affiliate_Links_Widget extends WP_Widget {
 
         while ($q->have_posts()) {
             $q->the_post();
-            $id        = get_the_ID();
-            $link_html = do_shortcode('[affiliate_link id="' . $id . '" img="' . $img . '" img_size="' . $img_size . '" fields="' . implode(',', $fields) . '" button="no"]');
-            $output   .= '<div class="alma-affiliate-item" style="' . esc_attr($item_style) . '">' . $link_html . '</div>';
+            $id = get_the_ID();
+
+            $fields_attr = !empty($fields) ? ' fields="' . implode(',', $fields) . '"' : '';
+            $shortcode = '[affiliate_link id="' . $id . '" img="' . $img . '" img_size="' . $img_size . '"' . $fields_attr . ' button="no"]';
+            $link_html = do_shortcode($shortcode);
+
+            $output .= '<div class="alma-affiliate-item" style="' . esc_attr($item_style) . '">' . $link_html . '</div>';
         }
         wp_reset_postdata();
 
