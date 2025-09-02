@@ -1801,6 +1801,8 @@ class AffiliateManagerAI {
             'show_image'   => 0,
             'show_title'   => 0,
             'show_content' => 0,
+            'show_button'  => 0,
+            'button_text'  => '',
             'format'       => 'large',
             'orientation'  => 'vertical',
             'links'        => array(),
@@ -1815,6 +1817,8 @@ class AffiliateManagerAI {
             $instance['show_image']   = !empty($_POST['show_image']) ? 1 : 0;
             $instance['show_title']   = !empty($_POST['show_title']) ? 1 : 0;
             $instance['show_content'] = !empty($_POST['show_content']) ? 1 : 0;
+            $instance['show_button']  = !empty($_POST['show_button']) ? 1 : 0;
+            $instance['button_text']  = sanitize_text_field($_POST['button_text'] ?? '');
             $instance['format']       = ($_POST['format'] ?? 'large') === 'small' ? 'small' : 'large';
             $instance['orientation']  = ($_POST['orientation'] ?? 'vertical') === 'horizontal' ? 'horizontal' : 'vertical';
 
@@ -1875,8 +1879,13 @@ class AffiliateManagerAI {
                             <td>
                                 <label><input type="checkbox" name="show_image" value="1" <?php checked($instance['show_image']); ?>> <?php _e('Mostra immagine', 'affiliate-link-manager-ai'); ?></label><br>
                                 <label><input type="checkbox" name="show_title" value="1" <?php checked($instance['show_title']); ?>> <?php _e('Mostra titolo', 'affiliate-link-manager-ai'); ?></label><br>
-                                <label><input type="checkbox" name="show_content" value="1" <?php checked($instance['show_content']); ?>> <?php _e('Mostra contenuto', 'affiliate-link-manager-ai'); ?></label>
+                                <label><input type="checkbox" name="show_content" value="1" <?php checked($instance['show_content']); ?>> <?php _e('Mostra contenuto', 'affiliate-link-manager-ai'); ?></label><br>
+                                <label><input type="checkbox" name="show_button" value="1" <?php checked($instance['show_button']); ?>> <?php _e('Mostra pulsante', 'affiliate-link-manager-ai'); ?></label>
                             </td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><label for="alma_widget_button_text"><?php _e('Testo pulsante', 'affiliate-link-manager-ai'); ?></label></th>
+                            <td><input name="button_text" type="text" id="alma_widget_button_text" value="<?php echo esc_attr($instance['button_text']); ?>" class="regular-text"></td>
                         </tr>
                         <tr>
                             <th scope="row"><label for="alma_widget_format"><?php _e('Formato', 'affiliate-link-manager-ai'); ?></label></th>
@@ -1948,6 +1957,8 @@ class AffiliateManagerAI {
         $instance   += array(
             'custom_content' => '',
             'manual_ids'     => array(),
+            'show_button'    => 0,
+            'button_text'    => '',
         );
         $saved       = false;
         $suggestions = array();
@@ -1960,6 +1971,8 @@ class AffiliateManagerAI {
             $instance['show_image']   = !empty($_POST['show_image']) ? 1 : 0;
             $instance['show_title']   = !empty($_POST['show_title']) ? 1 : 0;
             $instance['show_content'] = !empty($_POST['show_content']) ? 1 : 0;
+            $instance['show_button']  = !empty($_POST['show_button']) ? 1 : 0;
+            $instance['button_text']  = sanitize_text_field($_POST['button_text'] ?? '');
             $instance['format']       = ($_POST['format'] ?? 'large') === 'small' ? 'small' : 'large';
             $instance['orientation']  = ($_POST['orientation'] ?? 'vertical') === 'horizontal' ? 'horizontal' : 'vertical';
 
@@ -2010,8 +2023,13 @@ class AffiliateManagerAI {
                             <td>
                                 <label><input type="checkbox" name="show_image" value="1" <?php checked($instance['show_image']); ?>> <?php _e('Mostra immagine', 'affiliate-link-manager-ai'); ?></label><br>
                                 <label><input type="checkbox" name="show_title" value="1" <?php checked($instance['show_title']); ?>> <?php _e('Mostra titolo', 'affiliate-link-manager-ai'); ?></label><br>
-                                <label><input type="checkbox" name="show_content" value="1" <?php checked($instance['show_content']); ?>> <?php _e('Mostra contenuto', 'affiliate-link-manager-ai'); ?></label>
+                                <label><input type="checkbox" name="show_content" value="1" <?php checked($instance['show_content']); ?>> <?php _e('Mostra contenuto', 'affiliate-link-manager-ai'); ?></label><br>
+                                <label><input type="checkbox" name="show_button" value="1" <?php checked($instance['show_button']); ?>> <?php _e('Mostra pulsante', 'affiliate-link-manager-ai'); ?></label>
                             </td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><label for="alma_widget_button_text"><?php _e('Testo pulsante', 'affiliate-link-manager-ai'); ?></label></th>
+                            <td><input name="button_text" type="text" id="alma_widget_button_text" value="<?php echo esc_attr($instance['button_text']); ?>" class="regular-text"></td>
                         </tr>
                         <tr>
                             <th scope="row"><label for="alma_widget_format"><?php _e('Formato', 'affiliate-link-manager-ai'); ?></label></th>
