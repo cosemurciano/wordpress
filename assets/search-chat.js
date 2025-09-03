@@ -2,8 +2,8 @@ jQuery(document).ready(function($){
   $('.alma-search-chat').each(function(){
     var container = $(this);
     var messages = container.find('.alma-chat-messages');
-    function addMessage(text, cls){
-      var div = $('<div>').addClass('alma-msg '+cls).html(text);
+    function addMessage(content, cls){
+      var div = $('<div>').addClass('alma-msg '+cls).append(content);
       messages.append(div);
       messages.scrollTop(messages.prop('scrollHeight'));
     }
@@ -11,7 +11,7 @@ jQuery(document).ready(function($){
       var input = container.find('.alma-chat-input');
       var text = input.val();
       if(!text){return;}
-      addMessage($('<div>').text(text).html(),'user');
+      addMessage($('<div>').text(text),'user');
       input.val('');
       $.post(almaChat.ajax_url,{action:'alma_nl_search',nonce:almaChat.nonce,query:text},function(resp){
         if(resp.success){
@@ -22,10 +22,23 @@ jQuery(document).ready(function($){
             grouped[type].push(item);
           });
           $.each(grouped,function(type,items){
-            addMessage('<strong>'+type+'</strong>','bot');
+            addMessage($('<strong>').text(type),'bot');
             items.forEach(function(it){
-              var link = '<a href="'+it.url+'" target="_blank">'+almaChat.strings.visit+'</a>';
-              addMessage('<strong>'+it.title+'</strong>: '+it.description+' '+link,'bot');
+              var result = $('<div>').addClass('alma-result');
+              if(it.image){
+                var imgLink = $('<a>').attr({href:it.url,target:'_blank'})
+                  .append($('<img>').attr({src:it.image,width:80,height:80}));
+                result.append(imgLink);
+              }
+              var content = $('<div>').addClass('alma-result-content');
+              var titleLink = $('<a>').attr({href:it.url,target:'_blank'})
+                .append($('<h4>').text(it.title));
+              content.append(titleLink);
+              if(it.description){
+                content.append($('<p>').text(it.description));
+              }
+              result.append(content);
+              addMessage(result,'bot');
             });
           });
         } else {
