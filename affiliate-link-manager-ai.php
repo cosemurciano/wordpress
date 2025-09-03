@@ -106,6 +106,9 @@ class AffiliateManagerAI {
         // Shortcode per mostrare elenco di link tramite widget
         add_shortcode('affiliate_links_widget', array('ALMA_Affiliate_Links_Widget', 'shortcode'));
 
+        // Shortcode per la chat di ricerca affiliati
+        add_shortcode('alma_search_chat', array($this, 'render_search_chat'));
+
         // Registra il widget
         add_action('widgets_init', array($this, 'register_widget'));
         
@@ -116,6 +119,10 @@ class AffiliateManagerAI {
         // Hook per ricerca link nell'editor
         add_action('wp_ajax_alma_search_links', array($this, 'ajax_search_links'));
         add_action('wp_ajax_alma_ai_suggest_links', array($this, 'ajax_ai_suggest_links'));
+
+        // Hook per ricerca in linguaggio naturale
+        add_action('wp_ajax_alma_nl_search', array($this, 'ajax_nl_search'));
+        add_action('wp_ajax_nopriv_alma_nl_search', array($this, 'ajax_nl_search'));
         
         // Hook per dashboard data
         add_action('wp_ajax_alma_get_dashboard_data', array($this, 'ajax_get_dashboard_data'));
@@ -263,7 +270,53 @@ class AffiliateManagerAI {
 
         return $link_html;
     }
-    
+
+    /**
+     * Renderizza la chat di ricerca affiliati.
+     */
+    public function render_search_chat($atts) {
+        if (file_exists(ALMA_PLUGIN_DIR . 'assets/search-chat.css')) {
+            wp_enqueue_style(
+                'alma-search-chat',
+                ALMA_PLUGIN_URL . 'assets/search-chat.css',
+                array(),
+                ALMA_VERSION
+            );
+        }
+
+        if (file_exists(ALMA_PLUGIN_DIR . 'assets/search-chat.js')) {
+            wp_enqueue_script(
+                'alma-search-chat',
+                ALMA_PLUGIN_URL . 'assets/search-chat.js',
+                array('jquery'),
+                ALMA_VERSION,
+                true
+            );
+
+            wp_localize_script('alma-search-chat', 'almaChat', array(
+                'ajax_url' => admin_url('admin-ajax.php'),
+                'nonce'    => wp_create_nonce('alma_nl_search'),
+                'strings'  => array(
+                    'visit'       => __('Visita', 'affiliate-link-manager-ai'),
+                    'placeholder' => __('Scrivi la tua richiesta...', 'affiliate-link-manager-ai'),
+                    'send'        => __('Invia', 'affiliate-link-manager-ai'),
+                ),
+            ));
+        }
+
+        ob_start();
+        ?>
+        <div class="alma-search-chat">
+            <div class="alma-chat-messages"></div>
+            <div class="alma-chat-form">
+                <input type="text" class="alma-chat-input" placeholder="<?php esc_attr_e('Scrivi la tua richiesta...', 'affiliate-link-manager-ai'); ?>" />
+                <button type="button" class="alma-chat-send"><?php esc_html_e('Invia', 'affiliate-link-manager-ai'); ?></button>
+            </div>
+        </div>
+        <?php
+        return ob_get_clean();
+    }
+
     /**
      * AJAX handler per tracking click - NUOVO
      */
@@ -979,6 +1032,16 @@ class AffiliateManagerAI {
             'manage_options',
             'affiliate-link-widgets',
             array($this, 'render_widget_shortcode_page')
+        );
+
+        // Configurazione chat ricerca
+        add_submenu_page(
+            'edit.php?post_type=affiliate_link',
+            __('Chat Ricerca', 'affiliate-link-manager-ai'),
+            __('Chat Ricerca', 'affiliate-link-manager-ai'),
+            'manage_options',
+            'alma-chat-search',
+            array($this, 'render_chat_search_page')
         );
 
         // Pagina nascosta per modifica widget
@@ -2166,6 +2229,38 @@ class AffiliateManagerAI {
     }
 
     /**
+     * Pagina configurazione chat ricerca.
+     */
+    public function render_chat_search_page() {
+        if (!current_user_can('manage_options')) {
+            wp_die(__('Non hai i permessi per accedere a questa pagina.'));
+        }
+
+        if (isset($_POST['alma_chat_save']) && check_admin_referer('alma_chat_settings')) {
+            update_option('alma_chat_max_results', max(1, intval($_POST['alma_chat_max_results'] ?? 5)));
+            echo '<div class="notice notice-success"><p>' . esc_html__('Impostazioni salvate.', 'affiliate-link-manager-ai') . '</p></div>';
+        }
+
+        $max_results = get_option('alma_chat_max_results', 5);
+        ?>
+        <div class="wrap">
+            <h1><?php _e('Chat Ricerca - Impostazioni', 'affiliate-link-manager-ai'); ?></h1>
+            <form method="post">
+                <?php wp_nonce_field('alma_chat_settings'); ?>
+                <table class="form-table">
+                    <tr>
+                        <th scope="row"><label for="alma_chat_max_results"><?php _e('Numero massimo risultati', 'affiliate-link-manager-ai'); ?></label></th>
+                        <td><input type="number" min="1" max="10" id="alma_chat_max_results" name="alma_chat_max_results" value="<?php echo esc_attr($max_results); ?>" /></td>
+                    </tr>
+                </table>
+                <p><?php _e('Usa lo shortcode [alma_search_chat] per mostrare la chat sul sito.', 'affiliate-link-manager-ai'); ?></p>
+                <?php submit_button(__('Salva', 'affiliate-link-manager-ai'), 'primary', 'alma_chat_save'); ?>
+            </form>
+        </div>
+        <?php
+    }
+
+    /**
      * Pagina dettagli utilizzo
      */
     public function usage_details_page() {
@@ -2406,7 +2501,102 @@ class AffiliateManagerAI {
 
         wp_send_json_success($results);
     }
-    
+
+    /**
+     * AJAX per ricerca in linguaggio naturale.
+     */
+    public function ajax_nl_search() {
+        if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'alma_nl_search')) {
+            wp_send_json_error('Invalid nonce');
+            return;
+        }
+
+        $query = isset($_POST['query']) ? wp_strip_all_tags(wp_unslash($_POST['query'])) : '';
+        $query = mb_substr($query, 0, 500);
+
+        if ($query === '') {
+            wp_send_json_success(array());
+        }
+
+        $links = get_posts(array(
+            'post_type'   => 'affiliate_link',
+            'post_status' => 'publish',
+            'numberposts' => 50,
+            'orderby'     => 'title',
+            'order'       => 'ASC',
+        ));
+
+        if (empty($links)) {
+            wp_send_json_success(array());
+        }
+
+        $max_results = intval(get_option('alma_chat_max_results', 5));
+
+        $prompt = "Richiesta utente: {$query}\n\nLinks disponibili:\n";
+        foreach ($links as $link) {
+            $terms = get_the_terms($link->ID, 'link_type');
+            $types = array();
+            if ($terms && !is_wp_error($terms)) {
+                foreach ($terms as $term) {
+                    $types[] = $term->name;
+                }
+            }
+            $prompt .= 'ID ' . $link->ID . ': ' . $link->post_title;
+            if ($types) {
+                $prompt .= ' [' . implode(', ', $types) . ']';
+            }
+            $prompt .= "\n";
+        }
+        $prompt .= "\nRestituisci un array JSON con massimo {$max_results} oggetti {\"id\":ID,\"description\":\"testo\",\"score\":COERENZA} dove COERENZA è 0-100.\n";
+
+        $response = $this->call_claude_api($prompt);
+        if (empty($response['success'])) {
+            $msg = $response['error'] ?? __('Errore AI', 'affiliate-link-manager-ai');
+            wp_send_json_error($msg);
+        }
+
+        $items = json_decode($this->extract_first_json($response['response']), true);
+        if (!is_array($items)) {
+            wp_send_json_error(__('Risposta AI non valida.', 'affiliate-link-manager-ai'));
+        }
+
+        $results = array();
+        foreach (array_slice($items, 0, $max_results) as $item) {
+            $id          = isset($item['id']) ? intval($item['id']) : 0;
+            $description = isset($item['description']) ? wp_strip_all_tags($item['description']) : '';
+            $score       = isset($item['score']) ? floatval($item['score']) : 0;
+
+            $post = get_post($id);
+            if (!$post || $post->post_type !== 'affiliate_link') {
+                continue;
+            }
+
+            $affiliate_url = get_post_meta($id, '_affiliate_url', true);
+            $terms         = get_the_terms($id, 'link_type');
+            $types         = array();
+            if ($terms && !is_wp_error($terms)) {
+                foreach ($terms as $term) {
+                    $types[] = $term->name;
+                }
+            }
+
+            $results[] = array(
+                'title'       => get_the_title($id),
+                'url'         => $affiliate_url,
+                'types'       => $types,
+                'description' => $description,
+                'score'       => max(0, min(100, round($score))),
+            );
+        }
+
+        // Ordina per punteggio
+        usort($results, function ($a, $b) {
+            return $b['score'] <=> $a['score'];
+        });
+
+        wp_send_json_success($results);
+    }
+
     public function ajax_get_ai_suggestions() {
         if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'alma_admin_nonce')) {
             wp_send_json_error('Invalid nonce');

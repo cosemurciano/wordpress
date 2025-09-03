@@ -1,0 +1,7 @@
+.alma-search-chat{border:1px solid #ccc;padding:10px;max-width:400px;}
+.alma-search-chat .alma-chat-messages{max-height:300px;overflow-y:auto;margin-bottom:10px;}
+.alma-msg{margin:5px 0;padding:5px;border-radius:4px;}
+.alma-msg.user{text-align:right;background:#e0f7fa;}
+.alma-msg.bot{text-align:left;background:#f1f1f1;}
+.alma-chat-form{display:flex;gap:5px;}
+.alma-chat-input{flex:1;}
