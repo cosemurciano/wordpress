@@ -294,9 +294,10 @@ class AffiliateManagerAI {
             );
 
             wp_localize_script('alma-search-chat', 'almaChat', array(
-                'ajax_url' => admin_url('admin-ajax.php'),
-                'nonce'    => wp_create_nonce('alma_nl_search'),
-                'strings'  => array(
+                'ajax_url'  => admin_url('admin-ajax.php'),
+                'nonce'     => wp_create_nonce('alma_nl_search'),
+                'fallback'  => wp_kses_post(get_option('alma_chat_default_reply', '')),
+                'strings'   => array(
                     'visit'       => __('Visita', 'affiliate-link-manager-ai'),
                     'placeholder' => __('Scrivi la tua richiesta...', 'affiliate-link-manager-ai'),
                     'send'        => __('Invia', 'affiliate-link-manager-ai'),
@@ -1896,13 +1897,8 @@ class AffiliateManagerAI {
                     $suggestions = $this->generate_widget_ai_suggestions($instance['title']);
                 } else {
                     $instances = get_option('widget_affiliate_links_widget', array());
-                    $id = 1;
-                    if (!empty($instances)) {
-                        $numeric_ids = array_filter(array_keys($instances), 'is_numeric');
-                        if (!empty($numeric_ids)) {
-                            $id = max($numeric_ids) + 1;
-                        }
-                    }
+                    $id        = (int) get_option('alma_widget_next_id', 1);
+                    update_option('alma_widget_next_id', $id + 1);
 
                     // Salva data di creazione
                     $instance['created_at'] = current_time('mysql');
@@ -2236,26 +2232,51 @@ class AffiliateManagerAI {
             wp_die(__('Non hai i permessi per accedere a questa pagina.'));
         }
 
-        if (isset($_POST['alma_chat_save']) && check_admin_referer('alma_chat_settings')) {
+        $tab = isset($_GET['tab']) ? sanitize_key($_GET['tab']) : 'general';
+
+        if ($tab === 'general' && isset($_POST['alma_chat_save']) && check_admin_referer('alma_chat_settings')) {
             update_option('alma_chat_max_results', max(1, intval($_POST['alma_chat_max_results'] ?? 5)));
             echo '<div class="notice notice-success"><p>' . esc_html__('Impostazioni salvate.', 'affiliate-link-manager-ai') . '</p></div>';
+        } elseif ($tab === 'fallback' && isset($_POST['alma_chat_save_fallback']) && check_admin_referer('alma_chat_fallback')) {
+            update_option('alma_chat_default_reply', wp_kses_post($_POST['alma_chat_default_reply'] ?? ''));
+            echo '<div class="notice notice-success"><p>' . esc_html__('Risposta di default salvata.', 'affiliate-link-manager-ai') . '</p></div>';
         }
 
         $max_results = get_option('alma_chat_max_results', 5);
+        $fallback    = get_option('alma_chat_default_reply', '');
+        $base_url    = admin_url('admin.php?page=alma-chat-search');
         ?>
         <div class="wrap">
             <h1><?php _e('Chat Ricerca - Impostazioni', 'affiliate-link-manager-ai'); ?></h1>
-            <form method="post">
-                <?php wp_nonce_field('alma_chat_settings'); ?>
-                <table class="form-table">
-                    <tr>
-                        <th scope="row"><label for="alma_chat_max_results"><?php _e('Numero massimo risultati', 'affiliate-link-manager-ai'); ?></label></th>
-                        <td><input type="number" min="1" max="10" id="alma_chat_max_results" name="alma_chat_max_results" value="<?php echo esc_attr($max_results); ?>" /></td>
-                    </tr>
-                </table>
-                <p><?php _e('Usa lo shortcode [alma_search_chat] per mostrare la chat sul sito.', 'affiliate-link-manager-ai'); ?></p>
-                <?php submit_button(__('Salva', 'affiliate-link-manager-ai'), 'primary', 'alma_chat_save'); ?>
-            </form>
+            <h2 class="nav-tab-wrapper">
+                <a href="<?php echo esc_url($base_url . '&tab=general'); ?>" class="nav-tab <?php echo $tab === 'general' ? 'nav-tab-active' : ''; ?>"><?php _e('Generale', 'affiliate-link-manager-ai'); ?></a>
+                <a href="<?php echo esc_url($base_url . '&tab=fallback'); ?>" class="nav-tab <?php echo $tab === 'fallback' ? 'nav-tab-active' : ''; ?>"><?php _e('Risposta di default', 'affiliate-link-manager-ai'); ?></a>
+            </h2>
+
+            <?php if ($tab === 'general') : ?>
+                <form method="post">
+                    <?php wp_nonce_field('alma_chat_settings'); ?>
+                    <table class="form-table">
+                        <tr>
+                            <th scope="row"><label for="alma_chat_max_results"><?php _e('Numero massimo risultati', 'affiliate-link-manager-ai'); ?></label></th>
+                            <td><input type="number" min="1" max="10" id="alma_chat_max_results" name="alma_chat_max_results" value="<?php echo esc_attr($max_results); ?>" /></td>
+                        </tr>
+                    </table>
+                    <p><?php _e('Usa lo shortcode [alma_search_chat] per mostrare la chat sul sito.', 'affiliate-link-manager-ai'); ?></p>
+                    <?php submit_button(__('Salva', 'affiliate-link-manager-ai'), 'primary', 'alma_chat_save'); ?>
+                </form>
+            <?php else : ?>
+                <form method="post">
+                    <?php wp_nonce_field('alma_chat_fallback'); ?>
+                    <table class="form-table">
+                        <tr>
+                            <th scope="row"><label for="alma_chat_default_reply"><?php _e('Messaggio di fallback', 'affiliate-link-manager-ai'); ?></label></th>
+                            <td><textarea id="alma_chat_default_reply" name="alma_chat_default_reply" rows="5" class="large-text code"><?php echo esc_textarea($fallback); ?></textarea></td>
+                        </tr>
+                    </table>
+                    <?php submit_button(__('Salva', 'affiliate-link-manager-ai'), 'primary', 'alma_chat_save_fallback'); ?>
+                </form>
+            <?php endif; ?>
         </div>
         <?php
     }
