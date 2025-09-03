@@ -3,7 +3,12 @@ jQuery(document).ready(function($){
     var container = $(this);
     var messages = container.find('.alma-chat-messages');
     function addMessage(content, cls){
-      var div = $('<div>').addClass('alma-msg '+cls).append(content);
+      var div = $('<div>').addClass('alma-msg '+cls);
+      if(cls==='bot' && almaChat.avatar){
+        div.append($('<img>').addClass('alma-avatar').attr('src', almaChat.avatar));
+      }
+      var bubble = $('<div>').addClass('alma-bubble').append(content);
+      div.append(bubble);
       messages.append(div);
       messages.scrollTop(messages.prop('scrollHeight'));
     }
