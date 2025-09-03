@@ -25,7 +25,9 @@ jQuery(document).ready(function($){
             if(!grouped[type]) grouped[type]=[];
             grouped[type].push(item);
           });
+          var hasResults = false;
           $.each(grouped,function(type,items){
+            hasResults = true;
             addMessage($('<strong>').text(type),'bot');
             items.forEach(function(it){
               var result = $('<div>').addClass('alma-result');
@@ -45,8 +47,15 @@ jQuery(document).ready(function($){
               addMessage(result,'bot');
             });
           });
+          if(!hasResults && almaChat.fallback){
+            addMessage($('<div>').html(almaChat.fallback),'bot');
+          }
         } else {
-          addMessage(resp.data || 'Error','bot');
+          if(almaChat.fallback){
+            addMessage($('<div>').html(almaChat.fallback),'bot');
+          } else {
+            addMessage(resp.data || 'Error','bot');
+          }
         }
       });
     }
