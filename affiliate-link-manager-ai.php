@@ -297,6 +297,7 @@ class AffiliateManagerAI {
                 'ajax_url'  => admin_url('admin-ajax.php'),
                 'nonce'     => wp_create_nonce('alma_nl_search'),
                 'fallback'  => wp_kses_post(get_option('alma_chat_default_reply', '')),
+                'avatar'    => esc_url(get_option('alma_chat_avatar', '')),
                 'strings'   => array(
                     'visit'       => __('Visita', 'affiliate-link-manager-ai'),
                     'placeholder' => __('Scrivi la tua richiesta...', 'affiliate-link-manager-ai'),
@@ -2236,6 +2237,7 @@ class AffiliateManagerAI {
 
         if ($tab === 'general' && isset($_POST['alma_chat_save']) && check_admin_referer('alma_chat_settings')) {
             update_option('alma_chat_max_results', max(1, intval($_POST['alma_chat_max_results'] ?? 5)));
+            update_option('alma_chat_avatar', esc_url_raw($_POST['alma_chat_avatar'] ?? ''));
             echo '<div class="notice notice-success"><p>' . esc_html__('Impostazioni salvate.', 'affiliate-link-manager-ai') . '</p></div>';
         } elseif ($tab === 'fallback' && isset($_POST['alma_chat_save_fallback']) && check_admin_referer('alma_chat_fallback')) {
             update_option('alma_chat_default_reply', wp_kses_post($_POST['alma_chat_default_reply'] ?? ''));
@@ -2243,6 +2245,7 @@ class AffiliateManagerAI {
         }
 
         $max_results = get_option('alma_chat_max_results', 5);
+        $avatar      = get_option('alma_chat_avatar', '');
         $fallback    = get_option('alma_chat_default_reply', '');
         $base_url    = admin_url('admin.php?page=alma-chat-search');
         ?>
@@ -2260,6 +2263,10 @@ class AffiliateManagerAI {
                         <tr>
                             <th scope="row"><label for="alma_chat_max_results"><?php _e('Numero massimo risultati', 'affiliate-link-manager-ai'); ?></label></th>
                             <td><input type="number" min="1" max="10" id="alma_chat_max_results" name="alma_chat_max_results" value="<?php echo esc_attr($max_results); ?>" /></td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><label for="alma_chat_avatar"><?php _e('Immagine profilo AI (URL)', 'affiliate-link-manager-ai'); ?></label></th>
+                            <td><input type="url" id="alma_chat_avatar" name="alma_chat_avatar" value="<?php echo esc_attr($avatar); ?>" class="regular-text" /></td>
                         </tr>
                     </table>
                     <p><?php _e('Usa lo shortcode [alma_search_chat] per mostrare la chat sul sito.', 'affiliate-link-manager-ai'); ?></p>
