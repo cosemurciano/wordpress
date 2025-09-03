@@ -2547,7 +2547,7 @@ class AffiliateManagerAI {
             }
             $prompt .= "\n";
         }
-        $prompt .= "\nRestituisci un array JSON con massimo {$max_results} oggetti {\"id\":ID,\"description\":\"testo\",\"score\":COERENZA} dove COERENZA è 0-100.\n";
+        $prompt .= "\nRestituisci un oggetto JSON con i campi summary e results. summary deve contenere una breve frase in italiano che spiega perché hai scelto i link. results è un array con massimo {$max_results} oggetti {\"id\":ID,\"description\":\"testo\",\"score\":COERENZA} dove COERENZA è 0-100.\n";
 
         $response = $this->call_claude_api($prompt);
         if (empty($response['success'])) {
@@ -2556,12 +2556,13 @@ class AffiliateManagerAI {
         }
 
         $items = json_decode($this->extract_first_json($response['response']), true);
-        if (!is_array($items)) {
+        if (!is_array($items) || !isset($items['results']) || !is_array($items['results'])) {
             wp_send_json_error(__('Risposta AI non valida.', 'affiliate-link-manager-ai'));
         }
 
+        $summary = isset($items['summary']) ? sanitize_text_field($items['summary']) : '';
         $results = array();
-        foreach (array_slice($items, 0, $max_results) as $item) {
+        foreach (array_slice($items['results'], 0, $max_results) as $item) {
             $id          = isset($item['id']) ? intval($item['id']) : 0;
             $description = isset($item['description']) ? wp_strip_all_tags($item['description']) : '';
             $score       = isset($item['score']) ? floatval($item['score']) : 0;
@@ -2595,7 +2596,12 @@ class AffiliateManagerAI {
             return $b['score'] <=> $a['score'];
         });
 
-        wp_send_json_success($results);
+        wp_send_json_success(
+            array(
+                'summary' => $summary,
+                'results' => $results,
+            )
+        );
     }
 
     public function ajax_get_ai_suggestions() {

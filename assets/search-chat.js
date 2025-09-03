@@ -15,9 +15,13 @@ jQuery(document).ready(function($){
       input.val('');
       $.post(almaChat.ajax_url,{action:'alma_nl_search',nonce:almaChat.nonce,query:text},function(resp){
         if(resp.success){
+          var data = resp.data || {};
+          if(data.summary){
+            addMessage($('<div>').text(data.summary),'bot');
+          }
           var grouped = {};
-          resp.data.forEach(function(item){
-            var type = item.types.length ? item.types[0] : 'Altro';
+          (data.results || []).forEach(function(item){
+            var type = item.types && item.types.length ? item.types[0] : 'Altro';
             if(!grouped[type]) grouped[type]=[];
             grouped[type].push(item);
           });
