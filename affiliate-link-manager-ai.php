@@ -581,6 +581,19 @@ class AffiliateManagerAI {
                 }
             }
 
+            if ($hook === 'affiliate_link_page_alma-chat-search') {
+                wp_enqueue_media();
+                if (file_exists(ALMA_PLUGIN_DIR . 'assets/chat-admin.js')) {
+                    wp_enqueue_script(
+                        'alma-chat-admin',
+                        ALMA_PLUGIN_URL . 'assets/chat-admin.js',
+                        array('jquery'),
+                        ALMA_VERSION,
+                        true
+                    );
+                }
+            }
+
             if ($hook === 'affiliate_link_page_affiliate-link-manager-dashboard') {
                 wp_enqueue_script(
                     'chart.js',
@@ -2265,8 +2278,11 @@ class AffiliateManagerAI {
                             <td><input type="number" min="1" max="10" id="alma_chat_max_results" name="alma_chat_max_results" value="<?php echo esc_attr($max_results); ?>" /></td>
                         </tr>
                         <tr>
-                            <th scope="row"><label for="alma_chat_avatar"><?php _e('Immagine profilo AI (URL)', 'affiliate-link-manager-ai'); ?></label></th>
-                            <td><input type="url" id="alma_chat_avatar" name="alma_chat_avatar" value="<?php echo esc_attr($avatar); ?>" class="regular-text" /></td>
+                            <th scope="row"><label for="alma_chat_avatar"><?php _e('Immagine profilo AI', 'affiliate-link-manager-ai'); ?></label></th>
+                            <td>
+                                <input type="url" id="alma_chat_avatar" name="alma_chat_avatar" value="<?php echo esc_attr($avatar); ?>" class="regular-text" />
+                                <button type="button" class="button alma-chat-avatar-upload"><?php _e('Carica immagine', 'affiliate-link-manager-ai'); ?></button>
+                            </td>
                         </tr>
                     </table>
                     <p><?php _e('Usa lo shortcode [alma_search_chat] per mostrare la chat sul sito.', 'affiliate-link-manager-ai'); ?></p>

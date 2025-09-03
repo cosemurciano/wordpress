@@ -3,10 +3,12 @@
 .alma-msg{margin:5px 0;display:flex;}
 .alma-msg.user{justify-content:flex-end;}
 .alma-msg.bot{justify-content:flex-start;}
+.alma-msg.bot-result{justify-content:flex-start;}
 .alma-avatar{width:32px;height:32px;border-radius:50%;margin-right:8px;}
 .alma-msg .alma-bubble{padding:8px;border-radius:7px;max-width:80%;}
 .alma-msg.user .alma-bubble{background:#dcf8c6;}
 .alma-msg.bot .alma-bubble{background:#ffffff;}
+.alma-msg.bot-result .alma-bubble{background:#ffffff;}
 .alma-result{display:flex;align-items:flex-start;}
 .alma-result img{width:80px;height:80px;object-fit:cover;margin-right:10px;}
 .alma-result-content h4{margin:0 0 5px;}

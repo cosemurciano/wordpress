@@ -10,12 +10,12 @@ jQuery(document).ready(function($){
       var bubble = $('<div>').addClass('alma-bubble').append(content);
       div.append(bubble);
       messages.append(div);
-      messages.scrollTop(messages.prop('scrollHeight'));
     }
     function send(){
       var input = container.find('.alma-chat-input');
       var text = input.val();
       if(!text){return;}
+      messages.empty();
       addMessage($('<div>').text(text),'user');
       input.val('');
       $.post(almaChat.ajax_url,{action:'alma_nl_search',nonce:almaChat.nonce,query:text},function(resp){
@@ -33,7 +33,7 @@ jQuery(document).ready(function($){
           var hasResults = false;
           $.each(grouped,function(type,items){
             hasResults = true;
-            addMessage($('<strong>').text(type),'bot');
+            addMessage($('<strong>').text(type),'bot-result');
             items.forEach(function(it){
               var result = $('<div>').addClass('alma-result');
               if(it.image){
@@ -49,7 +49,7 @@ jQuery(document).ready(function($){
                 content.append($('<p>').text(it.description));
               }
               result.append(content);
-              addMessage(result,'bot');
+              addMessage(result,'bot-result');
             });
           });
           if(!hasResults && almaChat.fallback){
@@ -62,6 +62,7 @@ jQuery(document).ready(function($){
             addMessage(resp.data || 'Error','bot');
           }
         }
+        messages.scrollTop(0);
       });
     }
     container.on('click','.alma-chat-send',send);
