@@ -2585,6 +2585,7 @@ class AffiliateManagerAI {
                 'url'         => $affiliate_url,
                 'types'       => $types,
                 'description' => $description,
+                'image'       => get_the_post_thumbnail_url($id, 'thumbnail'),
                 'score'       => max(0, min(100, round($score))),
             );
         }

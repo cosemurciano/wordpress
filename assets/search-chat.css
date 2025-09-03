@@ -1,7 +1,11 @@
-.alma-search-chat{border:1px solid #ccc;padding:10px;max-width:400px;}
-.alma-search-chat .alma-chat-messages{max-height:300px;overflow-y:auto;margin-bottom:10px;}
-.alma-msg{margin:5px 0;padding:5px;border-radius:4px;}
-.alma-msg.user{text-align:right;background:#e0f7fa;}
-.alma-msg.bot{text-align:left;background:#f1f1f1;}
+.alma-search-chat{border:1px solid #ccc;padding:10px;width:100%;}
+.alma-search-chat .alma-chat-messages{max-height:300px;overflow-y:auto;margin-bottom:10px;display:flex;flex-direction:column;}
+.alma-msg{margin:5px 0;padding:8px;border-radius:7px;max-width:80%;}
+.alma-msg.user{align-self:flex-end;background:#dcf8c6;}
+.alma-msg.bot{align-self:flex-start;background:#ffffff;}
+.alma-result{display:flex;align-items:flex-start;}
+.alma-result img{width:80px;height:80px;object-fit:cover;margin-right:10px;}
+.alma-result-content h4{margin:0 0 5px;}
+.alma-result-content p{margin:0;}
 .alma-chat-form{display:flex;gap:5px;}
 .alma-chat-input{flex:1;}
