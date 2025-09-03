@@ -306,9 +306,12 @@ class AffiliateManagerAI {
             ));
         }
 
+        $width  = esc_attr(get_option('alma_chat_width', '100%'));
+        $height = esc_attr(get_option('alma_chat_height', '100%'));
+
         ob_start();
         ?>
-        <div class="alma-search-chat">
+        <div class="alma-search-chat" style="width:<?php echo $width; ?>;height:<?php echo $height; ?>;">
             <div class="alma-chat-messages"></div>
             <div class="alma-chat-form">
                 <input type="text" class="alma-chat-input" placeholder="<?php esc_attr_e('Scrivi la tua richiesta...', 'affiliate-link-manager-ai'); ?>" />
@@ -2251,6 +2254,8 @@ class AffiliateManagerAI {
         if ($tab === 'general' && isset($_POST['alma_chat_save']) && check_admin_referer('alma_chat_settings')) {
             update_option('alma_chat_max_results', max(1, intval($_POST['alma_chat_max_results'] ?? 5)));
             update_option('alma_chat_avatar', esc_url_raw($_POST['alma_chat_avatar'] ?? ''));
+            update_option('alma_chat_width', sanitize_text_field($_POST['alma_chat_width'] ?? '100%'));
+            update_option('alma_chat_height', sanitize_text_field($_POST['alma_chat_height'] ?? '100%'));
             echo '<div class="notice notice-success"><p>' . esc_html__('Impostazioni salvate.', 'affiliate-link-manager-ai') . '</p></div>';
         } elseif ($tab === 'fallback' && isset($_POST['alma_chat_save_fallback']) && check_admin_referer('alma_chat_fallback')) {
             update_option('alma_chat_default_reply', wp_kses_post($_POST['alma_chat_default_reply'] ?? ''));
@@ -2259,6 +2264,8 @@ class AffiliateManagerAI {
 
         $max_results = get_option('alma_chat_max_results', 5);
         $avatar      = get_option('alma_chat_avatar', '');
+        $width       = get_option('alma_chat_width', '100%');
+        $height      = get_option('alma_chat_height', '100%');
         $fallback    = get_option('alma_chat_default_reply', '');
         $base_url    = admin_url('admin.php?page=alma-chat-search');
         ?>
@@ -2283,6 +2290,14 @@ class AffiliateManagerAI {
                                 <input type="url" id="alma_chat_avatar" name="alma_chat_avatar" value="<?php echo esc_attr($avatar); ?>" class="regular-text" />
                                 <button type="button" class="button alma-chat-avatar-upload"><?php _e('Carica immagine', 'affiliate-link-manager-ai'); ?></button>
                             </td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><label for="alma_chat_width"><?php _e('Larghezza chat', 'affiliate-link-manager-ai'); ?></label></th>
+                            <td><input type="text" id="alma_chat_width" name="alma_chat_width" value="<?php echo esc_attr($width); ?>" class="regular-text" /></td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><label for="alma_chat_height"><?php _e('Altezza chat', 'affiliate-link-manager-ai'); ?></label></th>
+                            <td><input type="text" id="alma_chat_height" name="alma_chat_height" value="<?php echo esc_attr($height); ?>" class="regular-text" /></td>
                         </tr>
                     </table>
                     <p><?php _e('Usa lo shortcode [alma_search_chat] per mostrare la chat sul sito.', 'affiliate-link-manager-ai'); ?></p>

@@ -15,9 +15,9 @@ jQuery(document).ready(function($){
       var input = container.find('.alma-chat-input');
       var text = input.val();
       if(!text){return;}
-      messages.empty();
       addMessage($('<div>').text(text),'user');
       input.val('');
+      messages.scrollTop(messages[0].scrollHeight);
       $.post(almaChat.ajax_url,{action:'alma_nl_search',nonce:almaChat.nonce,query:text},function(resp){
         if(resp.success){
           var data = resp.data || {};
@@ -62,7 +62,7 @@ jQuery(document).ready(function($){
             addMessage(resp.data || 'Error','bot');
           }
         }
-        messages.scrollTop(0);
+        messages.scrollTop(messages[0].scrollHeight);
       });
     }
     container.on('click','.alma-chat-send',send);
