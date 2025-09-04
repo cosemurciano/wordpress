@@ -52,14 +52,20 @@ jQuery(document).ready(function($){
               addMessage(result,'bot-result');
             });
           });
-          if(!hasResults && almaChat.fallback){
-            addMessage($('<div>').html(almaChat.fallback),'bot');
+          if(!hasResults){
+            if(almaChat.ai_active){
+              addMessage($('<div>').text(almaChat.strings.no_results),'bot');
+            } else if(almaChat.fallback){
+              addMessage($('<div>').html(almaChat.fallback),'bot');
+            }
           }
         } else {
-          if(almaChat.fallback){
+          if(almaChat.ai_active){
+            addMessage($('<div>').text(resp.data || almaChat.strings.error),'bot');
+          } else if(almaChat.fallback){
             addMessage($('<div>').html(almaChat.fallback),'bot');
           } else {
-            addMessage(resp.data || 'Error','bot');
+            addMessage(resp.data || almaChat.strings.error,'bot');
           }
         }
         messages.scrollTop(messages[0].scrollHeight);
