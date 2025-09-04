@@ -25,6 +25,7 @@ class ALMA_Prompt_AI_Admin {
             'edit.php?post_type=affiliate_link',
             __('PROMPT AI Settings', 'affiliate-link-manager-ai'),
             __('PROMPT AI Settings', 'affiliate-link-manager-ai'),
+
             'manage_options',
             'alma-prompt-ai-settings',
             array($this, 'render_page')
@@ -73,14 +74,15 @@ class ALMA_Prompt_AI_Admin {
         $settings = get_option(self::OPTION_NAME, array());
         ?>
         <div class="wrap">
-            <h1><?php esc_html_e('PROMPT AI Settings', 'affiliate-link-manager-ai'); ?></h1>
+            <h1><?php esc_html_e('PROMPT PER AI DEVELOPER', 'affiliate-link-manager-ai'); ?></h1>
             <form id="alma-prompt-settings-form">
                 <?php wp_nonce_field('alma_prompt_ai_nonce', 'alma_prompt_ai_nonce_field'); ?>
                 <h2><?php esc_html_e('Prompt di Sistema Base', 'affiliate-link-manager-ai'); ?></h2>
                 <textarea name="base_prompt" rows="10" cols="80" placeholder="<?php esc_attr_e('Es: Sei un assistente customer service professionale per [nome azienda]...', 'affiliate-link-manager-ai'); ?>"><?php echo isset($settings['base_prompt']) ? esc_textarea($settings['base_prompt']) : ''; ?></textarea>
                 <p class="description"><?php esc_html_e('Istruzioni principali che definiscono il ruolo dell\'AI', 'affiliate-link-manager-ai'); ?></p>
 
-                <h2><?php esc_html_e('Personalit\xC3\A0 dell\'AI', 'affiliate-link-manager-ai'); ?></h2>
+
+                <h2><?php esc_html_e('Personalità', 'affiliate-link-manager-ai'); ?></h2>
                 <select name="personality" id="alma-personality">
                     <?php $personality = $settings['personality'] ?? ''; ?>
                     <option value="professionale" <?php selected($personality, 'professionale'); ?>><?php esc_html_e('professionale', 'affiliate-link-manager-ai'); ?></option>
@@ -89,7 +91,7 @@ class ALMA_Prompt_AI_Admin {
                     <option value="commerciale" <?php selected($personality, 'commerciale'); ?>><?php esc_html_e('commerciale', 'affiliate-link-manager-ai'); ?></option>
                     <option value="personalizzato" <?php selected($personality, 'personalizzato'); ?>><?php esc_html_e('personalizzato', 'affiliate-link-manager-ai'); ?></option>
                 </select>
-                <textarea name="personality_custom" id="alma-personality-custom" rows="4" cols="80" placeholder="<?php esc_attr_e('Definisci la personalit\xC3\A0 personalizzata', 'affiliate-link-manager-ai'); ?>" style="<?php echo ($personality === 'personalizzato') ? '' : 'display:none;'; ?>"><?php echo isset($settings['personality_custom']) ? esc_textarea($settings['personality_custom']) : ''; ?></textarea>
+                <textarea name="personality_custom" id="alma-personality-custom" rows="4" cols="80" placeholder="<?php esc_attr_e('Definisci la personalità personalizzata', 'affiliate-link-manager-ai'); ?>" style="<?php echo ($personality === 'personalizzato') ? '' : 'display:none;'; ?>"><?php echo isset($settings['personality_custom']) ? esc_textarea($settings['personality_custom']) : ''; ?></textarea>
 
                 <h2><?php esc_html_e('Informazioni Azienda', 'affiliate-link-manager-ai'); ?></h2>
                 <p><input type="text" name="company_name" value="<?php echo isset($settings['company_name']) ? esc_attr($settings['company_name']) : ''; ?>" placeholder="<?php esc_attr_e('Nome azienda', 'affiliate-link-manager-ai'); ?>" /></p>
