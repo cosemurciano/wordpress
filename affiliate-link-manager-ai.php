@@ -3563,5 +3563,9 @@ class AffiliateManagerAI {
 
 // Inizializza il plugin
 new AffiliateManagerAI();
+if (is_admin()) {
+    require_once ALMA_PLUGIN_DIR . 'includes/class-prompt-ai-admin.php';
+    new ALMA_Prompt_AI_Admin();
+}
 
 ?>
