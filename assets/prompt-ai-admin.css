@@ -1,3 +1,18 @@
 .alma-custom-prompt { margin-bottom: 10px; }
 .alma-custom-prompt textarea { display:block; margin-top:5px; }
 #alma-test-result { margin-top:20px; }
+
+.alma-field { margin-bottom:15px; }
+.alma-field label { display:block; font-weight:600; margin-bottom:3px; }
+.alma-field label .required { color:#d63638; margin-left:2px; }
+
+#alma-prompt-settings-form input[type="text"],
+#alma-prompt-settings-form input[type="email"],
+#alma-prompt-settings-form textarea,
+#alma-prompt-settings-form select { width:100%; max-width:600px; }
+
+.nav-tab-wrapper { margin-top:10px; border-bottom:1px solid #ccd0d4; }
+.nav-tab-wrapper .nav-tab { margin-right:5px; background:#f0f0f1; border:1px solid #ccd0d4; border-bottom:none; padding:8px 12px; cursor:pointer; }
+.nav-tab-wrapper .nav-tab-active { background:#fff; color:#000; }
+
+.alma-context { border:1px solid #ccd0d4; padding:10px; background:#fff; margin-bottom:15px; }

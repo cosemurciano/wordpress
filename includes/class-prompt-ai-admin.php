@@ -77,64 +77,104 @@ class ALMA_Prompt_AI_Admin {
             <h1><?php esc_html_e('PROMPT PER AI DEVELOPER', 'affiliate-link-manager-ai'); ?></h1>
             <form id="alma-prompt-settings-form">
                 <?php wp_nonce_field('alma_prompt_ai_nonce', 'alma_prompt_ai_nonce_field'); ?>
-                <h2><?php esc_html_e('Prompt di Sistema Base', 'affiliate-link-manager-ai'); ?></h2>
-                <textarea name="base_prompt" rows="10" cols="80" placeholder="<?php esc_attr_e('Es: Sei un assistente customer service professionale per [nome azienda]...', 'affiliate-link-manager-ai'); ?>"><?php echo isset($settings['base_prompt']) ? esc_textarea($settings['base_prompt']) : ''; ?></textarea>
-                <p class="description"><?php esc_html_e('Istruzioni principali che definiscono il ruolo dell\'AI', 'affiliate-link-manager-ai'); ?></p>
+                <div class="alma-field alma-required">
+                    <label for="alma-base-prompt"><strong><?php esc_html_e('Prompt di Sistema Base', 'affiliate-link-manager-ai'); ?></strong><span class="required">*</span></label>
+                    <textarea id="alma-base-prompt" name="base_prompt" rows="10" cols="80" required placeholder="<?php esc_attr_e('Es: Sei un assistente customer service professionale per [nome azienda]...', 'affiliate-link-manager-ai'); ?>"><?php echo isset($settings['base_prompt']) ? esc_textarea($settings['base_prompt']) : ''; ?></textarea>
+                    <p class="description"><?php esc_html_e('Istruzioni principali che definiscono il ruolo dell\'AI.', 'affiliate-link-manager-ai'); ?></p>
+                </div>
 
+                <div class="alma-field alma-required">
+                    <label for="alma-personality"><strong><?php esc_html_e('Personalità', 'affiliate-link-manager-ai'); ?></strong><span class="required">*</span></label>
+                    <select name="personality" id="alma-personality" required>
+                        <?php $personality = $settings['personality'] ?? ''; ?>
+                        <option value="professionale" <?php selected($personality, 'professionale'); ?>><?php esc_html_e('professionale', 'affiliate-link-manager-ai'); ?></option>
+                        <option value="amichevole" <?php selected($personality, 'amichevole'); ?>><?php esc_html_e('amichevole', 'affiliate-link-manager-ai'); ?></option>
+                        <option value="tecnico" <?php selected($personality, 'tecnico'); ?>><?php esc_html_e('tecnico', 'affiliate-link-manager-ai'); ?></option>
+                        <option value="commerciale" <?php selected($personality, 'commerciale'); ?>><?php esc_html_e('commerciale', 'affiliate-link-manager-ai'); ?></option>
+                        <option value="personalizzato" <?php selected($personality, 'personalizzato'); ?>><?php esc_html_e('personalizzato', 'affiliate-link-manager-ai'); ?></option>
+                    </select>
+                    <textarea name="personality_custom" id="alma-personality-custom" rows="4" cols="80" placeholder="<?php esc_attr_e('Definisci la personalità personalizzata', 'affiliate-link-manager-ai'); ?>" style="<?php echo ($personality === 'personalizzato') ? '' : 'display:none;'; ?>"><?php echo isset($settings['personality_custom']) ? esc_textarea($settings['personality_custom']) : ''; ?></textarea>
+                    <p class="description"><?php esc_html_e('Stile con cui l\'AI interagisce. Es: professionale.', 'affiliate-link-manager-ai'); ?></p>
+                </div>
 
-                <h2><?php esc_html_e('Personalità', 'affiliate-link-manager-ai'); ?></h2>
-                <select name="personality" id="alma-personality">
-                    <?php $personality = $settings['personality'] ?? ''; ?>
-                    <option value="professionale" <?php selected($personality, 'professionale'); ?>><?php esc_html_e('professionale', 'affiliate-link-manager-ai'); ?></option>
-                    <option value="amichevole" <?php selected($personality, 'amichevole'); ?>><?php esc_html_e('amichevole', 'affiliate-link-manager-ai'); ?></option>
-                    <option value="tecnico" <?php selected($personality, 'tecnico'); ?>><?php esc_html_e('tecnico', 'affiliate-link-manager-ai'); ?></option>
-                    <option value="commerciale" <?php selected($personality, 'commerciale'); ?>><?php esc_html_e('commerciale', 'affiliate-link-manager-ai'); ?></option>
-                    <option value="personalizzato" <?php selected($personality, 'personalizzato'); ?>><?php esc_html_e('personalizzato', 'affiliate-link-manager-ai'); ?></option>
-                </select>
-                <textarea name="personality_custom" id="alma-personality-custom" rows="4" cols="80" placeholder="<?php esc_attr_e('Definisci la personalità personalizzata', 'affiliate-link-manager-ai'); ?>" style="<?php echo ($personality === 'personalizzato') ? '' : 'display:none;'; ?>"><?php echo isset($settings['personality_custom']) ? esc_textarea($settings['personality_custom']) : ''; ?></textarea>
+                <div class="alma-field alma-required">
+                    <label for="alma-company-name"><strong><?php esc_html_e('Nome Azienda', 'affiliate-link-manager-ai'); ?></strong><span class="required">*</span></label>
+                    <input type="text" id="alma-company-name" name="company_name" value="<?php echo isset($settings['company_name']) ? esc_attr($settings['company_name']) : ''; ?>" required placeholder="<?php esc_attr_e('Es: ACME Corp', 'affiliate-link-manager-ai'); ?>" />
+                    <p class="description"><?php esc_html_e('Nome dell\'azienda utilizzato nelle risposte.', 'affiliate-link-manager-ai'); ?></p>
+                </div>
 
-                <h2><?php esc_html_e('Informazioni Azienda', 'affiliate-link-manager-ai'); ?></h2>
-                <p><input type="text" name="company_name" value="<?php echo isset($settings['company_name']) ? esc_attr($settings['company_name']) : ''; ?>" placeholder="<?php esc_attr_e('Nome azienda', 'affiliate-link-manager-ai'); ?>" /></p>
-                <p>
-                    <select name="company_sector">
+                <div class="alma-field">
+                    <label for="alma-company-sector"><strong><?php esc_html_e('Settore', 'affiliate-link-manager-ai'); ?></strong></label>
+                    <select name="company_sector" id="alma-company-sector">
                         <?php $sector = $settings['company_sector'] ?? ''; ?>
                         <option value="e-commerce" <?php selected($sector, 'e-commerce'); ?>><?php esc_html_e('e-commerce', 'affiliate-link-manager-ai'); ?></option>
                         <option value="servizi" <?php selected($sector, 'servizi'); ?>><?php esc_html_e('servizi', 'affiliate-link-manager-ai'); ?></option>
                         <option value="blog" <?php selected($sector, 'blog'); ?>><?php esc_html_e('blog', 'affiliate-link-manager-ai'); ?></option>
                         <option value="altro" <?php selected($sector, 'altro'); ?>><?php esc_html_e('altro', 'affiliate-link-manager-ai'); ?></option>
                     </select>
-                </p>
-                <p><input type="text" name="support_hours" value="<?php echo isset($settings['support_hours']) ? esc_attr($settings['support_hours']) : ''; ?>" placeholder="<?php esc_attr_e('Orari supporto', 'affiliate-link-manager-ai'); ?>" /></p>
-                <p><input type="email" name="support_email" value="<?php echo isset($settings['support_email']) ? esc_attr($settings['support_email']) : ''; ?>" placeholder="<?php esc_attr_e('Email supporto', 'affiliate-link-manager-ai'); ?>" /></p>
-                <p><input type="text" name="support_phone" value="<?php echo isset($settings['support_phone']) ? esc_attr($settings['support_phone']) : ''; ?>" placeholder="<?php esc_attr_e('Telefono supporto', 'affiliate-link-manager-ai'); ?>" /></p>
-                <p><input type="text" name="support_whatsapp" value="<?php echo isset($settings['support_whatsapp']) ? esc_attr($settings['support_whatsapp']) : ''; ?>" placeholder="<?php esc_attr_e('Whatsapp', 'affiliate-link-manager-ai'); ?>" /></p>
+                    <p class="description"><?php esc_html_e('Settore operativo dell\'azienda. Es: e-commerce.', 'affiliate-link-manager-ai'); ?></p>
+                </div>
+
+                <div class="alma-field">
+                    <label for="alma-support-hours"><strong><?php esc_html_e('Orari Supporto', 'affiliate-link-manager-ai'); ?></strong></label>
+                    <input type="text" id="alma-support-hours" name="support_hours" value="<?php echo isset($settings['support_hours']) ? esc_attr($settings['support_hours']) : ''; ?>" placeholder="<?php esc_attr_e('Es: Lun-Ven 9-18', 'affiliate-link-manager-ai'); ?>" />
+                    <p class="description"><?php esc_html_e('Orari in cui è disponibile il servizio clienti.', 'affiliate-link-manager-ai'); ?></p>
+                </div>
+
+                <div class="alma-field alma-required">
+                    <label for="alma-support-email"><strong><?php esc_html_e('Email Supporto', 'affiliate-link-manager-ai'); ?></strong><span class="required">*</span></label>
+                    <input type="email" id="alma-support-email" name="support_email" value="<?php echo isset($settings['support_email']) ? esc_attr($settings['support_email']) : ''; ?>" required placeholder="<?php esc_attr_e('Es: supporto@azienda.com', 'affiliate-link-manager-ai'); ?>" />
+                    <p class="description"><?php esc_html_e('Indirizzo email per contattare il supporto.', 'affiliate-link-manager-ai'); ?></p>
+                </div>
+
+                <div class="alma-field">
+                    <label for="alma-support-phone"><strong><?php esc_html_e('Telefono Supporto', 'affiliate-link-manager-ai'); ?></strong></label>
+                    <input type="text" id="alma-support-phone" name="support_phone" value="<?php echo isset($settings['support_phone']) ? esc_attr($settings['support_phone']) : ''; ?>" placeholder="<?php esc_attr_e('Es: +39 012 345 6789', 'affiliate-link-manager-ai'); ?>" />
+                    <p class="description"><?php esc_html_e('Numero telefonico per il supporto clienti.', 'affiliate-link-manager-ai'); ?></p>
+                </div>
+
+                <div class="alma-field">
+                    <label for="alma-support-whatsapp"><strong><?php esc_html_e('Whatsapp', 'affiliate-link-manager-ai'); ?></strong></label>
+                    <input type="text" id="alma-support-whatsapp" name="support_whatsapp" value="<?php echo isset($settings['support_whatsapp']) ? esc_attr($settings['support_whatsapp']) : ''; ?>" placeholder="<?php esc_attr_e('Es: +39 012 345 6789', 'affiliate-link-manager-ai'); ?>" />
+                    <p class="description"><?php esc_html_e('Numero Whatsapp per il supporto clienti.', 'affiliate-link-manager-ai'); ?></p>
+                </div>
 
                 <h2><?php esc_html_e('Regole Comportamentali', 'affiliate-link-manager-ai'); ?></h2>
-                <p>
+
+                <div class="alma-field">
+                    <label for="alma-response-length"><strong><?php esc_html_e('Lunghezza Risposta', 'affiliate-link-manager-ai'); ?></strong></label>
                     <?php $resp_len = $settings['response_length'] ?? ''; ?>
-                    <select name="response_length">
+                    <select name="response_length" id="alma-response-length">
                         <option value="brevi" <?php selected($resp_len, 'brevi'); ?>><?php esc_html_e('brevi', 'affiliate-link-manager-ai'); ?></option>
                         <option value="medie" <?php selected($resp_len, 'medie'); ?>><?php esc_html_e('medie', 'affiliate-link-manager-ai'); ?></option>
                         <option value="dettagliate" <?php selected($resp_len, 'dettagliate'); ?>><?php esc_html_e('dettagliate', 'affiliate-link-manager-ai'); ?></option>
                     </select>
-                </p>
-                <p>
+                    <p class="description"><?php esc_html_e('Determina la lunghezza delle risposte generate.', 'affiliate-link-manager-ai'); ?></p>
+                </div>
+
+                <div class="alma-field alma-required">
+                    <label for="alma-primary-language"><strong><?php esc_html_e('Lingua Principale', 'affiliate-link-manager-ai'); ?></strong><span class="required">*</span></label>
                     <?php $lang = $settings['primary_language'] ?? ''; ?>
-                    <select name="primary_language">
+                    <select name="primary_language" id="alma-primary-language" required>
                         <option value="italiano" <?php selected($lang, 'italiano'); ?>><?php esc_html_e('italiano', 'affiliate-link-manager-ai'); ?></option>
                         <option value="inglese" <?php selected($lang, 'inglese'); ?>><?php esc_html_e('inglese', 'affiliate-link-manager-ai'); ?></option>
                         <option value="auto" <?php selected($lang, 'auto'); ?>><?php esc_html_e('rileva la lingua dell\'utente', 'affiliate-link-manager-ai'); ?></option>
                     </select>
-                </p>
-                <p>
+                    <p class="description"><?php esc_html_e('Lingua in cui l\'AI risponde di default.', 'affiliate-link-manager-ai'); ?></p>
+                </div>
+
+                <div class="alma-field">
+                    <label for="alma-off-topic"><strong><?php esc_html_e('Richieste Off Topic', 'affiliate-link-manager-ai'); ?></strong></label>
                     <?php $off = $settings['off_topic'] ?? ''; ?>
-                    <select name="off_topic">
+                    <select name="off_topic" id="alma-off-topic">
                         <option value="rifiuta" <?php selected($off, 'rifiuta'); ?>><?php esc_html_e('Rifiuta educatamente', 'affiliate-link-manager-ai'); ?></option>
                         <option value="default" <?php selected($off, 'default'); ?>><?php esc_html_e('Risposta di default', 'affiliate-link-manager-ai'); ?></option>
                     </select>
-                </p>
+                    <p class="description"><?php esc_html_e('Comportamento dell\'AI per domande fuori contesto.', 'affiliate-link-manager-ai'); ?></p>
+                </div>
 
                 <h2><?php esc_html_e('Contesti Specifici', 'affiliate-link-manager-ai'); ?></h2>
+                <p class="description"><?php esc_html_e('Definisci istruzioni personalizzate per diversi scenari.', 'affiliate-link-manager-ai'); ?></p>
                 <h3 class="nav-tab-wrapper">
                     <?php $contexts = $settings['contexts'] ?? array(); ?>
                     <a href="#" class="nav-tab nav-tab-active" data-context="customer_service"><?php esc_html_e('Customer Service', 'affiliate-link-manager-ai'); ?></a>
@@ -143,19 +183,24 @@ class ALMA_Prompt_AI_Admin {
                     <a href="#" class="nav-tab" data-context="general"><?php esc_html_e('Informazioni Generali', 'affiliate-link-manager-ai'); ?></a>
                 </h3>
                 <div class="alma-context" id="context-customer_service">
-                    <textarea name="contexts[customer_service]" rows="6" cols="80"><?php echo isset($contexts['customer_service']) ? esc_textarea($contexts['customer_service']) : ''; ?></textarea>
+                    <textarea name="contexts[customer_service]" rows="6" cols="80" placeholder="<?php esc_attr_e('Es: Rispondi con tono empatico e orientato alla soluzione.', 'affiliate-link-manager-ai'); ?>"><?php echo isset($contexts['customer_service']) ? esc_textarea($contexts['customer_service']) : ''; ?></textarea>
+                    <p class="description"><?php esc_html_e('Indicazioni per richieste di assistenza clienti.', 'affiliate-link-manager-ai'); ?></p>
                 </div>
                 <div class="alma-context" id="context-sales" style="display:none;">
-                    <textarea name="contexts[sales]" rows="6" cols="80"><?php echo isset($contexts['sales']) ? esc_textarea($contexts['sales']) : ''; ?></textarea>
+                    <textarea name="contexts[sales]" rows="6" cols="80" placeholder="<?php esc_attr_e('Es: Suggerisci prodotti e promozioni rilevanti.', 'affiliate-link-manager-ai'); ?>"><?php echo isset($contexts['sales']) ? esc_textarea($contexts['sales']) : ''; ?></textarea>
+                    <p class="description"><?php esc_html_e('Indicazioni per conversazioni orientate alla vendita.', 'affiliate-link-manager-ai'); ?></p>
                 </div>
                 <div class="alma-context" id="context-support" style="display:none;">
-                    <textarea name="contexts[support]" rows="6" cols="80"><?php echo isset($contexts['support']) ? esc_textarea($contexts['support']) : ''; ?></textarea>
+                    <textarea name="contexts[support]" rows="6" cols="80" placeholder="<?php esc_attr_e('Es: Fornisci istruzioni tecniche dettagliate.', 'affiliate-link-manager-ai'); ?>"><?php echo isset($contexts['support']) ? esc_textarea($contexts['support']) : ''; ?></textarea>
+                    <p class="description"><?php esc_html_e('Indicazioni per supporto tecnico.', 'affiliate-link-manager-ai'); ?></p>
                 </div>
                 <div class="alma-context" id="context-general" style="display:none;">
-                    <textarea name="contexts[general]" rows="6" cols="80"><?php echo isset($contexts['general']) ? esc_textarea($contexts['general']) : ''; ?></textarea>
+                    <textarea name="contexts[general]" rows="6" cols="80" placeholder="<?php esc_attr_e('Es: Fornisci informazioni generali sull\'azienda.', 'affiliate-link-manager-ai'); ?>"><?php echo isset($contexts['general']) ? esc_textarea($contexts['general']) : ''; ?></textarea>
+                    <p class="description"><?php esc_html_e('Indicazioni generali.', 'affiliate-link-manager-ai'); ?></p>
                 </div>
 
                 <h2><?php esc_html_e('Prompt Personalizzati', 'affiliate-link-manager-ai'); ?></h2>
+                <p class="description"><?php esc_html_e('Crea prompt aggiuntivi con nome e testo.', 'affiliate-link-manager-ai'); ?></p>
                 <div id="alma-custom-prompts">
                     <?php if (!empty($settings['custom_prompts']) && is_array($settings['custom_prompts'])) :
                         foreach ($settings['custom_prompts'] as $index => $cp) : ?>
@@ -174,8 +219,13 @@ class ALMA_Prompt_AI_Admin {
             <hr />
             <h2><?php esc_html_e('Test Prompt', 'affiliate-link-manager-ai'); ?></h2>
             <form id="alma-test-form">
-                <p><input type="text" name="test_message" id="alma-test-message" placeholder="<?php esc_attr_e('Messaggio test', 'affiliate-link-manager-ai'); ?>" size="80" /></p>
-                <p>
+                <div class="alma-field">
+                    <label for="alma-test-message"><strong><?php esc_html_e('Messaggio di test', 'affiliate-link-manager-ai'); ?></strong></label>
+                    <input type="text" name="test_message" id="alma-test-message" placeholder="<?php esc_attr_e('Es: Come posso tracciare il mio ordine?', 'affiliate-link-manager-ai'); ?>" size="80" />
+                    <p class="description"><?php esc_html_e('Inserisci un messaggio per simulare la risposta dell\'AI.', 'affiliate-link-manager-ai'); ?></p>
+                </div>
+                <div class="alma-field">
+                    <label for="alma-test-context"><strong><?php esc_html_e('Contesto', 'affiliate-link-manager-ai'); ?></strong></label>
                     <select name="test_context" id="alma-test-context">
                         <option value="customer_service"><?php esc_html_e('Customer Service', 'affiliate-link-manager-ai'); ?></option>
                         <option value="sales"><?php esc_html_e('Vendite', 'affiliate-link-manager-ai'); ?></option>
@@ -186,8 +236,9 @@ class ALMA_Prompt_AI_Admin {
                                 <option value="custom_<?php echo esc_attr($cp['name']); ?>"><?php echo esc_html($cp['name']); ?></option>
                             <?php endforeach; endif; ?>
                     </select>
-                </p>
-                <p><button class="button" id="alma-test-claude"><?php esc_html_e('Testa Claude', 'affiliate-link-manager-ai'); ?></button></p>
+                    <p class="description"><?php esc_html_e('Scegli il contesto da utilizzare nel test.', 'affiliate-link-manager-ai'); ?></p>
+                </div>
+                <p><button class="button" id="alma-test-claude"><?php esc_html_e('Testa comportamento AI', 'affiliate-link-manager-ai'); ?></button></p>
             </form>
             <div id="alma-test-result" style="display:none;">
                 <h3><?php esc_html_e('Risposta Claude', 'affiliate-link-manager-ai'); ?></h3>
