@@ -2613,7 +2613,7 @@ class AffiliateManagerAI {
             }
             $message .= "\n";
         }
-        $message .= "\nRestituisci un oggetto JSON con i campi summary e results. summary deve contenere una breve frase in italiano che spiega perché hai scelto i link. results è un array con massimo {$max_results} oggetti {\"id\":ID,\"description\":\"testo\",\"score\":COERENZA} dove COERENZA è 0-100.\n";
+        $message .= "\nRispondi esclusivamente con un oggetto JSON con i campi \"summary\" e \"results\". \"summary\" deve contenere una breve frase in italiano che spiega perché hai scelto i link. \"results\" è un array con massimo {$max_results} oggetti {\"id\":ID,\"description\":\"testo\",\"score\":COERENZA} dove COERENZA è 0-100. Non includere testo fuori dal JSON.\n";
 
         if (!class_exists('ALMA_Prompt_AI_Admin')) {
             require_once ALMA_PLUGIN_DIR . 'includes/class-prompt-ai-admin.php';
@@ -2627,16 +2627,19 @@ class AffiliateManagerAI {
         }
 
         $items = json_decode($this->extract_first_json($response['response']), true);
-        if (!is_array($items) || !isset($items['results']) || !is_array($items['results'])) {
+        if (!is_array($items) || !isset($items['summary']) || !is_string($items['summary']) || !isset($items['results']) || !is_array($items['results'])) {
             wp_send_json_error(__('Risposta AI non valida.', 'affiliate-link-manager-ai'));
         }
 
-        $summary = isset($items['summary']) ? sanitize_text_field($items['summary']) : '';
+        $summary = sanitize_text_field($items['summary']);
         $results = array();
         foreach (array_slice($items['results'], 0, $max_results) as $item) {
-            $id          = isset($item['id']) ? intval($item['id']) : 0;
+            if (!isset($item['id']) || !isset($item['score'])) {
+                wp_send_json_error(__('Risposta AI non valida.', 'affiliate-link-manager-ai'));
+            }
+            $id          = intval($item['id']);
             $description = isset($item['description']) ? wp_strip_all_tags($item['description']) : '';
-            $score       = isset($item['score']) ? floatval($item['score']) : 0;
+            $score       = floatval($item['score']);
 
             $post = get_post($id);
             if (!$post || $post->post_type !== 'affiliate_link') {

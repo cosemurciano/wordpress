@@ -34,9 +34,7 @@ jQuery( document ).ready( function( $ ) {
     }
 
     function handleError( msg ) {
-      if ( almaChat.ai_active ) {
-        addMessage( $( '<div>' ).text( msg || almaChat.strings.error ), 'bot' );
-      } else if ( almaChat.fallback ) {
+      if ( almaChat.fallback ) {
         addMessage( $( '<div>' ).text( almaChat.fallback ), 'bot' );
       } else {
         addMessage( $( '<div>' ).text( msg || almaChat.strings.error ), 'bot' );
