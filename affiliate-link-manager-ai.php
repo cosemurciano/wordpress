@@ -318,7 +318,7 @@ class AffiliateManagerAI {
             <div class="alma-chat-messages"></div>
             <div class="alma-chat-form">
                 <input type="text" class="alma-chat-input" placeholder="<?php esc_attr_e('Scrivi la tua richiesta...', 'affiliate-link-manager-ai'); ?>" />
-                <button type="button" class="alma-chat-send"><?php esc_html_e('Invia', 'affiliate-link-manager-ai'); ?></button>
+                <button type="button" class="alma-chat-send" disabled aria-label="<?php esc_attr_e('Invia', 'affiliate-link-manager-ai'); ?>">&#10148;</button>
             </div>
         </div>
         <?php
