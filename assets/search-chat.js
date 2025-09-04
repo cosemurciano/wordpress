@@ -2,6 +2,17 @@ jQuery( document ).ready( function( $ ) {
   $( '.alma-search-chat' ).each( function() {
     var container = $( this );
     var messages = container.find( '.alma-chat-messages' );
+    var input    = container.find( '.alma-chat-input' );
+    var button   = container.find( '.alma-chat-send' );
+
+    function updateButton(){
+      var hasText = $.trim( input.val() ).length > 0;
+      button.prop( 'disabled', ! hasText );
+      button.toggleClass( 'is-active', hasText );
+    }
+
+    input.on( 'input', updateButton );
+    updateButton();
 
     function addMessage( content, cls ) {
       var div = $( '<div>' ).addClass( 'alma-msg ' + cls );
@@ -33,16 +44,17 @@ jQuery( document ).ready( function( $ ) {
     }
 
     function send() {
-      var input = container.find( '.alma-chat-input' );
-      var text  = input.val();
-
-      if ( ! text ) {
+      if ( button.prop( 'disabled' ) ) {
         return;
       }
 
+      var text  = input.val();
       addMessage( $( '<div>' ).text( text ), 'user' );
       input.val( '' );
+      updateButton();
       messages.scrollTop( messages[0].scrollHeight );
+
+      button.addClass( 'is-loading' ).prop( 'disabled', true );
 
       $.post(
         almaChat.ajax_url,
@@ -112,6 +124,12 @@ jQuery( document ).ready( function( $ ) {
       ).fail( function() {
         handleError();
         messages.scrollTop( messages[0].scrollHeight );
+      } ).always( function() {
+        button.removeClass( 'is-loading' ).addClass( 'is-success' );
+        setTimeout( function(){
+          button.removeClass( 'is-success' );
+          updateButton();
+        }, 500 );
       } );
     }
 
