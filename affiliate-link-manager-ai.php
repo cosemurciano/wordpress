@@ -1915,6 +1915,10 @@ class AffiliateManagerAI {
                 } else {
                     $instances = get_option('widget_affiliate_links_widget', array());
                     $id        = (int) get_option('alma_widget_next_id', 1);
+
+                    while (isset($instances[$id])) {
+                        $id++;
+                    }
                     update_option('alma_widget_next_id', $id + 1);
 
                     // Salva data di creazione
