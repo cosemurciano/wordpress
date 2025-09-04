@@ -21,13 +21,13 @@ class ALMA_Prompt_AI_Admin {
      * Registra la pagina di amministrazione
      */
     public function register_menu() {
-        add_menu_page(
+        add_submenu_page(
+            'edit.php?post_type=affiliate_link',
             __('PROMPT AI Settings', 'affiliate-link-manager-ai'),
             __('PROMPT AI Settings', 'affiliate-link-manager-ai'),
             'manage_options',
             'alma-prompt-ai-settings',
-            array($this, 'render_page'),
-            'dashicons-robot'
+            array($this, 'render_page')
         );
     }
 
@@ -35,7 +35,7 @@ class ALMA_Prompt_AI_Admin {
      * Carica script e stili
      */
     public function enqueue_assets($hook) {
-        if ($hook !== 'toplevel_page_alma-prompt-ai-settings') {
+        if ($hook !== 'affiliate_link_page_alma-prompt-ai-settings') {
             return;
         }
 
@@ -80,7 +80,7 @@ class ALMA_Prompt_AI_Admin {
                 <textarea name="base_prompt" rows="10" cols="80" placeholder="<?php esc_attr_e('Es: Sei un assistente customer service professionale per [nome azienda]...', 'affiliate-link-manager-ai'); ?>"><?php echo isset($settings['base_prompt']) ? esc_textarea($settings['base_prompt']) : ''; ?></textarea>
                 <p class="description"><?php esc_html_e('Istruzioni principali che definiscono il ruolo dell\'AI', 'affiliate-link-manager-ai'); ?></p>
 
-                <h2><?php esc_html_e('Personalit\xC3\A0', 'affiliate-link-manager-ai'); ?></h2>
+                <h2><?php esc_html_e('Personalit\xC3\A0 dell\'AI', 'affiliate-link-manager-ai'); ?></h2>
                 <select name="personality" id="alma-personality">
                     <?php $personality = $settings['personality'] ?? ''; ?>
                     <option value="professionale" <?php selected($personality, 'professionale'); ?>><?php esc_html_e('professionale', 'affiliate-link-manager-ai'); ?></option>
