@@ -3,7 +3,7 @@
  * Plugin Name: Affiliate Link Manager AI
  * Plugin URI: https://your-website.com
  * Description: Gestisce link affiliati con intelligenza artificiale per ottimizzazione e tracking automatico.
- * Version: 2.3.2
+ * Version: 2.4
  * Author: Cosè Murciano
  * License: GPL v2 or later
  * Text Domain: affiliate-link-manager-ai
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Definisci costanti del plugin
-define('ALMA_VERSION', '2.3.2');
+define('ALMA_VERSION', '2.4');
 define('ALMA_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('ALMA_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('ALMA_PLUGIN_FILE', __FILE__);
@@ -2595,7 +2595,7 @@ class AffiliateManagerAI {
 
         $max_results = intval(get_option('alma_chat_max_results', 5));
 
-        $prompt = "Richiesta utente: {$query}\n\nLinks disponibili:\n";
+        $message = "Richiesta utente: {$query}\n\nLinks disponibili:\n";
         foreach ($links as $link) {
             $terms = get_the_terms($link->ID, 'link_type');
             $types = array();
@@ -2604,13 +2604,18 @@ class AffiliateManagerAI {
                     $types[] = $term->name;
                 }
             }
-            $prompt .= 'ID ' . $link->ID . ': ' . $link->post_title;
+            $message .= 'ID ' . $link->ID . ': ' . $link->post_title;
             if ($types) {
-                $prompt .= ' [' . implode(', ', $types) . ']';
+                $message .= ' [' . implode(', ', $types) . ']';
             }
-            $prompt .= "\n";
+            $message .= "\n";
         }
-        $prompt .= "\nRestituisci un oggetto JSON con i campi summary e results. summary deve contenere una breve frase in italiano che spiega perché hai scelto i link. results è un array con massimo {$max_results} oggetti {\"id\":ID,\"description\":\"testo\",\"score\":COERENZA} dove COERENZA è 0-100.\n";
+        $message .= "\nRestituisci un oggetto JSON con i campi summary e results. summary deve contenere una breve frase in italiano che spiega perché hai scelto i link. results è un array con massimo {$max_results} oggetti {\"id\":ID,\"description\":\"testo\",\"score\":COERENZA} dove COERENZA è 0-100.\n";
+
+        if (!class_exists('ALMA_Prompt_AI_Admin')) {
+            require_once ALMA_PLUGIN_DIR . 'includes/class-prompt-ai-admin.php';
+        }
+        $prompt = ALMA_Prompt_AI_Admin::build_prompt($message, 'search');
 
         $response = $this->call_claude_api($prompt);
         if (empty($response['success'])) {
