@@ -298,10 +298,13 @@ class AffiliateManagerAI {
                 'nonce'     => wp_create_nonce('alma_nl_search'),
                 'fallback'  => wp_kses_post(get_option('alma_chat_default_reply', '')),
                 'avatar'    => esc_url(get_option('alma_chat_avatar', '')),
+                'ai_active' => !empty(get_option('alma_claude_api_key')),
                 'strings'   => array(
                     'visit'       => __('Visita', 'affiliate-link-manager-ai'),
                     'placeholder' => __('Scrivi la tua richiesta...', 'affiliate-link-manager-ai'),
                     'send'        => __('Invia', 'affiliate-link-manager-ai'),
+                    'no_results'  => __('Nessun risultato trovato.', 'affiliate-link-manager-ai'),
+                    'error'       => __('Si è verificato un errore.', 'affiliate-link-manager-ai'),
                 ),
             ));
         }
