@@ -35,7 +35,7 @@ jQuery( document ).ready( function( $ ) {
 
     function handleError( msg ) {
       if ( almaChat.fallback ) {
-        addMessage( $( '<div>' ).text( almaChat.fallback ), 'bot' );
+        addMessage( $( '<div>' ).html( almaChat.fallback ), 'bot' );
       } else {
         addMessage( $( '<div>' ).text( msg || almaChat.strings.error ), 'bot' );
       }
@@ -110,7 +110,7 @@ jQuery( document ).ready( function( $ ) {
               if ( almaChat.ai_active ) {
                 addMessage( $( '<div>' ).text( almaChat.strings.no_results ), 'bot' );
               } else if ( almaChat.fallback ) {
-                addMessage( $( '<div>' ).text( almaChat.fallback ), 'bot' );
+                addMessage( $( '<div>' ).html( almaChat.fallback ), 'bot' );
               }
             }
           } else {

@@ -2258,6 +2258,10 @@ class AffiliateManagerAI {
 
         $tab = isset($_GET['tab']) ? sanitize_key($_GET['tab']) : 'general';
 
+        if ($tab === 'fallback') {
+            wp_enqueue_editor();
+        }
+
         if ($tab === 'general' && isset($_POST['alma_chat_save']) && check_admin_referer('alma_chat_settings')) {
             update_option('alma_chat_max_results', max(1, intval($_POST['alma_chat_max_results'] ?? 5)));
             update_option('alma_chat_avatar', esc_url_raw($_POST['alma_chat_avatar'] ?? ''));
@@ -2316,7 +2320,19 @@ class AffiliateManagerAI {
                     <table class="form-table">
                         <tr>
                             <th scope="row"><label for="alma_chat_default_reply"><?php _e('Messaggio di fallback', 'affiliate-link-manager-ai'); ?></label></th>
-                            <td><textarea id="alma_chat_default_reply" name="alma_chat_default_reply" rows="5" class="large-text code"><?php echo esc_textarea($fallback); ?></textarea></td>
+                            <td>
+                                <?php
+                                wp_editor(
+                                    wp_kses_post($fallback),
+                                    'alma_chat_default_reply',
+                                    array(
+                                        'textarea_name' => 'alma_chat_default_reply',
+                                        'textarea_rows' => 5,
+                                        'media_buttons' => true,
+                                    )
+                                );
+                                ?>
+                            </td>
                         </tr>
                     </table>
                     <?php submit_button(__('Salva', 'affiliate-link-manager-ai'), 'primary', 'alma_chat_save_fallback'); ?>
