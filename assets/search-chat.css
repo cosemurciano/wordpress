@@ -1,4 +1,4 @@
-.alma-search-chat{border:1px solid #ccc;padding:10px;width:100%;height:100%;display:flex;flex-direction:column;}
+.alma-search-chat{border:0;padding:10px;width:100%;height:100%;display:flex;flex-direction:column;}
 .alma-search-chat .alma-chat-messages{flex:1;overflow-y:auto;margin-bottom:10px;display:flex;flex-direction:column;}
 .alma-msg{margin:5px 0;display:flex;}
 .alma-msg.user{justify-content:flex-end;}
