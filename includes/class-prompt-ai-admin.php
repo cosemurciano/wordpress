@@ -317,7 +317,7 @@ class ALMA_Prompt_AI_Admin {
         $message = isset($_POST['message']) ? sanitize_text_field(wp_unslash($_POST['message'])) : '';
         $context = isset($_POST['context']) ? sanitize_text_field(wp_unslash($_POST['context'])) : 'general';
 
-        $final_prompt = $this->build_prompt($message, $context);
+        $final_prompt = self::build_prompt($message, $context);
         $response = $this->call_claude_api($final_prompt);
         if (empty($response['success'])) {
             wp_send_json_error($response['error'] ?? __('Errore AI', 'affiliate-link-manager-ai'));
@@ -331,7 +331,7 @@ class ALMA_Prompt_AI_Admin {
     /**
      * Costruisce il prompt finale
      */
-    private function build_prompt($message, $context) {
+    public static function build_prompt($message, $context) {
         $settings = get_option(self::OPTION_NAME, array());
         $parts = array();
         if (!empty($settings['base_prompt'])) {
