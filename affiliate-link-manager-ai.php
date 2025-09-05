@@ -3486,18 +3486,10 @@ class AffiliateManagerAI {
 
         $body = array(
             'model'       => $model,
+            'system'      => 'Rispondi esclusivamente con JSON valido',
             'max_tokens'  => 300,
             'temperature' => $temperature,
             'messages'    => array(
-                array(
-                    'role'    => 'system',
-                    'content' => array(
-                        array(
-                            'type' => 'text',
-                            'text' => 'Rispondi esclusivamente con JSON valido',
-                        )
-                    )
-                ),
                 array(
                     'role'    => 'user',
                     'content' => array(
