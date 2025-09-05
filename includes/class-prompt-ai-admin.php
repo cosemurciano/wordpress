@@ -460,7 +460,7 @@ class ALMA_Prompt_AI_Admin {
         $message .= "\nRispondi esclusivamente con un oggetto JSON con i campi \"summary\" e \"results\". \"summary\" deve contenere una breve frase in italiano che spiega perché hai scelto i link. \"results\" è un array con massimo {$max_results} oggetti{\"id\":ID,\"description\":\"testo\",\"score\":COERENZA} dove COERENZA è 0-100. Rispondi esclusivamente con JSON valido, senza testo aggiuntivo.\n";
 
         $prompts  = self::build_prompt($message, 'search');
-        $response = ALMA_AI_Utils::call_claude_api($prompts['user'], $prompts['system'], 'json');
+        $response = ALMA_AI_Utils::call_claude_api($prompts['user'], $prompts['system']);
 
         if (empty($response['success'])) {
             return new \WP_Error('claude_error', $response['error'] ?? __('Errore AI', 'affiliate-link-manager-ai'));

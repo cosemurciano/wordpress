@@ -2364,7 +2364,7 @@ class AffiliateManagerAI {
         }
         $prompt .= "\nRestituisci un array JSON con massimo 3 oggetti {\"id\": ID, \"score\": COERENZA}, dove COERENZA è un numero da 0 a 100 che indica quanto il link è coerente con l'articolo. Rispondi esclusivamente con JSON valido, senza testo aggiuntivo.\n";
 
-        $response = ALMA_AI_Utils::call_claude_api($prompt, 'Rispondi esclusivamente con JSON valido, senza testo aggiuntivo', 'json');
+        $response = ALMA_AI_Utils::call_claude_api($prompt, 'Rispondi esclusivamente con JSON valido, senza testo aggiuntivo');
         if (empty($response['success'])) {
             $msg = $response['error'] ?? __('Impossibile generare suggerimenti con Claude.', 'affiliate-link-manager-ai');
             error_log('Claude API error: ' . $msg);
@@ -2931,7 +2931,7 @@ class AffiliateManagerAI {
         }
         $prompt .= "\nRestituisci un array JSON con massimo 10 oggetti {\"id\": ID, \"score\": PERTINENZA}, dove PERTINENZA è un numero da 0 a 100 che indica quanto il link è coerente con il titolo. Ordina dal più pertinente al meno pertinente. Rispondi esclusivamente con JSON valido, senza testo aggiuntivo.";
 
-        $response = ALMA_AI_Utils::call_claude_api($prompt, 'Rispondi esclusivamente con JSON valido, senza testo aggiuntivo', 'json');
+        $response = ALMA_AI_Utils::call_claude_api($prompt, 'Rispondi esclusivamente con JSON valido, senza testo aggiuntivo');
         if (empty($response['success'])) {
             return array();
         }
@@ -2993,7 +2993,7 @@ class AffiliateManagerAI {
             wp_strip_all_tags($post->post_content)
         );
 
-        $response = ALMA_AI_Utils::call_claude_api($prompt, 'Rispondi esclusivamente con JSON valido, senza testo aggiuntivo', 'json');
+        $response = ALMA_AI_Utils::call_claude_api($prompt, 'Rispondi esclusivamente con JSON valido, senza testo aggiuntivo');
 
         if (empty($response['success'])) {
             return new \WP_Error('claude_error', $response['error'] ?? __('Errore sconosciuto', 'affiliate-link-manager-ai'));
@@ -3036,7 +3036,7 @@ class AffiliateManagerAI {
             $content_part
         );
 
-        $response = ALMA_AI_Utils::call_claude_api($prompt, 'Rispondi esclusivamente con JSON valido, senza testo aggiuntivo', 'json');
+        $response = ALMA_AI_Utils::call_claude_api($prompt, 'Rispondi esclusivamente con JSON valido, senza testo aggiuntivo');
 
         if (empty($response['success'])) {
             return new \WP_Error('claude_error', $response['error'] ?? __('Errore sconosciuto', 'affiliate-link-manager-ai'));
