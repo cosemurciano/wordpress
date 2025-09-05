@@ -2036,10 +2036,7 @@ class AffiliateManagerAI {
                             <th scope="row"><?php _e('Link suggeriti', 'affiliate-link-manager-ai'); ?></th>
                             <td>
                                 <?php
-                                $per_page           = 10;
-                                $page               = isset($_GET['suggestions_page']) ? max(1, intval($_GET['suggestions_page'])) : 1;
-                                $total_pages        = max(1, ceil(count($suggestions) / $per_page));
-                                $display_suggestions = array_slice($suggestions, ($page - 1) * $per_page, $per_page);
+                                $display_suggestions = array_slice($suggestions, 0, 20);
                                 foreach ($display_suggestions as $s) :
                                 ?>
                                     <label class="alma-suggested-link">
@@ -2053,18 +2050,6 @@ class AffiliateManagerAI {
                                         </small>
                                     </label>
                                 <?php endforeach; ?>
-                                <?php if ($total_pages > 1) : ?>
-                                    <div class="tablenav"><div class="tablenav-pages">
-                                        <?php echo paginate_links(array(
-                                            'base'      => add_query_arg('suggestions_page', '%#%'),
-                                            'format'    => '',
-                                            'prev_text' => __('&laquo;', 'affiliate-link-manager-ai'),
-                                            'next_text' => __('&raquo;', 'affiliate-link-manager-ai'),
-                                            'total'     => $total_pages,
-                                            'current'   => $page,
-                                        )); ?>
-                                    </div></div>
-                                <?php endif; ?>
                             </td>
                         </tr>
                         <?php endif; ?>
@@ -2198,10 +2183,7 @@ class AffiliateManagerAI {
                             <th scope="row"><?php _e('Link suggeriti', 'affiliate-link-manager-ai'); ?></th>
                             <td>
                                 <?php
-                                $per_page           = 10;
-                                $page               = isset($_GET['suggestions_page']) ? max(1, intval($_GET['suggestions_page'])) : 1;
-                                $total_pages        = max(1, ceil(count($suggestions) / $per_page));
-                                $display_suggestions = array_slice($suggestions, ($page - 1) * $per_page, $per_page);
+                                $display_suggestions = array_slice($suggestions, 0, 20);
                                 foreach ($display_suggestions as $s) :
                                 ?>
                                     <label class="alma-suggested-link">
@@ -2215,18 +2197,6 @@ class AffiliateManagerAI {
                                         </small>
                                     </label>
                                 <?php endforeach; ?>
-                                <?php if ($total_pages > 1) : ?>
-                                    <div class="tablenav"><div class="tablenav-pages">
-                                        <?php echo paginate_links(array(
-                                            'base'      => add_query_arg('suggestions_page', '%#%'),
-                                            'format'    => '',
-                                            'prev_text' => __('&laquo;', 'affiliate-link-manager-ai'),
-                                            'next_text' => __('&raquo;', 'affiliate-link-manager-ai'),
-                                            'total'     => $total_pages,
-                                            'current'   => $page,
-                                        )); ?>
-                                    </div></div>
-                                <?php endif; ?>
                             </td>
                         </tr>
                         <?php else : ?>
