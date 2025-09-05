@@ -3,7 +3,7 @@
  * Plugin Name: Affiliate Link Manager AI
  * Plugin URI: https://your-website.com
  * Description: Gestisce link affiliati con intelligenza artificiale per ottimizzazione e tracking automatico.
- * Version: 2.4
+ * Version: 2.5
  * Author: Cosè Murciano
  * License: GPL v2 or later
  * Text Domain: affiliate-link-manager-ai
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Definisci costanti del plugin
-define('ALMA_VERSION', '2.4');
+define('ALMA_VERSION', '2.5');
 define('ALMA_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('ALMA_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('ALMA_PLUGIN_FILE', __FILE__);
@@ -934,8 +934,8 @@ class AffiliateManagerAI {
         // Dashboard principale
         add_submenu_page(
             'edit.php?post_type=affiliate_link',
-            __('Dashboard Link', 'affiliate-link-manager-ai'),
-            __('Dashboard Link', 'affiliate-link-manager-ai'),
+            __('Dashboard', 'affiliate-link-manager-ai'),
+            __('Dashboard', 'affiliate-link-manager-ai'),
             'manage_options',
             'affiliate-link-manager-dashboard',
             array($this, 'render_dashboard_page')
@@ -964,8 +964,8 @@ class AffiliateManagerAI {
         // Creazione widget
         add_submenu_page(
             'edit.php?post_type=affiliate_link',
-            __('Crea Widget AI', 'affiliate-link-manager-ai'),
-            __('Crea Widget AI', 'affiliate-link-manager-ai'),
+            __('Crea Widget Link AI', 'affiliate-link-manager-ai'),
+            __('Crea Widget Link AI', 'affiliate-link-manager-ai'),
             'manage_options',
             'alma-create-widget',
             array($this, 'render_create_widget_page')
@@ -974,8 +974,8 @@ class AffiliateManagerAI {
         // Shortcode widget
         add_submenu_page(
             'edit.php?post_type=affiliate_link',
-            __('Shortcode Widget AI', 'affiliate-link-manager-ai'),
-            __('Shortcode Widget AI', 'affiliate-link-manager-ai'),
+            __('Shortcode Widget', 'affiliate-link-manager-ai'),
+            __('Shortcode Widget', 'affiliate-link-manager-ai'),
             'manage_options',
             'affiliate-link-widgets',
             array($this, 'render_widget_shortcode_page')
@@ -1013,56 +1013,59 @@ class AffiliateManagerAI {
             return;
         }
 
-        // Move dashboard page to first position
-        foreach ($submenu[$parent] as $index => $item) {
-            if ($item[2] === 'affiliate-link-manager-dashboard') {
-                $dashboard = $item;
-                unset($submenu[$parent][$index]);
-                array_unshift($submenu[$parent], $dashboard);
-                break;
+        $items = $submenu[$parent];
+        $order = array(
+            'affiliate-link-manager-dashboard',
+            'edit.php?post_type=affiliate_link',
+            'post-new.php?post_type=affiliate_link',
+            'edit-tags.php?taxonomy=link_type&post_type=affiliate_link',
+            'alma-create-widget',
+            'affiliate-link-widgets',
+            'affiliate-link-import',
+            'alma-prompt-ai-settings',
+            'affiliate-link-manager-settings',
+        );
+
+        $new = array();
+        foreach ($order as $slug) {
+            foreach ($items as $item) {
+                if ($item[2] === $slug) {
+                    switch ($slug) {
+                        case 'affiliate-link-manager-dashboard':
+                            $item[0] = __('Dashboard', 'affiliate-link-manager-ai');
+                            break;
+                        case 'edit.php?post_type=affiliate_link':
+                            $item[0] = __('Affiliate Link AI', 'affiliate-link-manager-ai');
+                            break;
+                        case 'post-new.php?post_type=affiliate_link':
+                            $item[0] = __('Aggiungi Link', 'affiliate-link-manager-ai');
+                            break;
+                        case 'edit-tags.php?taxonomy=link_type&post_type=affiliate_link':
+                            $item[0] = __('Tipologie Link', 'affiliate-link-manager-ai');
+                            break;
+                        case 'alma-create-widget':
+                            $item[0] = __('Crea Widget Link AI', 'affiliate-link-manager-ai');
+                            break;
+                        case 'affiliate-link-widgets':
+                            $item[0] = __('Shortcode Widget', 'affiliate-link-manager-ai');
+                            break;
+                        case 'affiliate-link-import':
+                            $item[0] = __('Importa Link', 'affiliate-link-manager-ai');
+                            break;
+                        case 'alma-prompt-ai-settings':
+                            $item[0] = __('Prompt AI', 'affiliate-link-manager-ai');
+                            break;
+                        case 'affiliate-link-manager-settings':
+                            $item[0] = __('Impostazioni', 'affiliate-link-manager-ai');
+                            break;
+                    }
+                    $new[] = $item;
+                    break;
+                }
             }
         }
 
-        // Reindex array after unsetting
-        $submenu[$parent] = array_values($submenu[$parent]);
-
-        $tip_index = null;
-        $create_item = null;
-        $create_index = null;
-        $shortcode_item = null;
-        $shortcode_index = null;
-
-        foreach ($submenu[$parent] as $idx => $item) {
-            if ($item[2] === 'edit-tags.php?taxonomy=link_type&post_type=affiliate_link') {
-                $tip_index = $idx;
-            } elseif ($item[2] === 'alma-create-widget') {
-                $create_item = $item;
-                $create_index = $idx;
-            } elseif ($item[2] === 'affiliate-link-widgets') {
-                $shortcode_item = $item;
-                $shortcode_index = $idx;
-            }
-        }
-
-        // Inserisci le pagine del widget subito dopo Tipologie solo se la voce esiste
-        if ($tip_index !== null) {
-            if ($create_item !== null) {
-                unset($submenu[$parent][$create_index]);
-            }
-            if ($shortcode_item !== null) {
-                unset($submenu[$parent][$shortcode_index]);
-            }
-            $submenu[$parent] = array_values($submenu[$parent]);
-            $insert_pos = $tip_index + 1;
-            $items_to_insert = array();
-            if ($create_item) {
-                $items_to_insert[] = $create_item;
-            }
-            if ($shortcode_item) {
-                $items_to_insert[] = $shortcode_item;
-            }
-            array_splice($submenu[$parent], $insert_pos, 0, $items_to_insert);
-        }
+        $submenu[$parent] = $new;
     }
     
     /**

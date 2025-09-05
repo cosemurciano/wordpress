@@ -23,9 +23,8 @@ class ALMA_Prompt_AI_Admin {
     public function register_menu() {
         add_submenu_page(
             'edit.php?post_type=affiliate_link',
-            __('PROMPT AI Settings', 'affiliate-link-manager-ai'),
-            __('PROMPT AI Settings', 'affiliate-link-manager-ai'),
-
+            __('Prompt AI', 'affiliate-link-manager-ai'),
+            __('Prompt AI', 'affiliate-link-manager-ai'),
             'manage_options',
             'alma-prompt-ai-settings',
             array($this, 'render_page')
