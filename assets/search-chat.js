@@ -102,6 +102,10 @@ jQuery( document ).ready( function( $ ) {
                 if ( it.description ) {
                   content.append( $( '<p>' ).text( it.description ) );
                 }
+                if ( typeof it.score !== 'undefined' ) {
+                  var scoreClass = it.score >= 80 ? 'alma-score-high' : it.score >= 50 ? 'alma-score-medium' : 'alma-score-low';
+                  content.append( $( '<div>' ).addClass( 'alma-score ' + scoreClass ).text( '⭐ ' + it.score + '%' ) );
+                }
 
                 result.append( content );
                 addMessage( result, 'bot-result' );
