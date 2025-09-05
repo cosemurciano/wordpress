@@ -20,6 +20,9 @@ define('ALMA_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('ALMA_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('ALMA_PLUGIN_FILE', __FILE__);
 
+// Utilità comuni per le interazioni con l'AI
+require_once ALMA_PLUGIN_DIR . 'includes/class-ai-utils.php';
+
 /**
  * Classe principale del plugin
  */
@@ -2359,16 +2362,16 @@ class AffiliateManagerAI {
         foreach ($links as $link) {
             $prompt .= 'ID ' . $link->ID . ': ' . $link->post_title . "\n";
         }
-        $prompt .= "\nRestituisci un array JSON con massimo 3 oggetti {\"id\": ID, \"score\": COERENZA}, dove COERENZA è un numero da 0 a 100 che indica quanto il link è coerente con l'articolo.\n";
+        $prompt .= "\nRestituisci un array JSON con massimo 3 oggetti {\"id\": ID, \"score\": COERENZA}, dove COERENZA è un numero da 0 a 100 che indica quanto il link è coerente con l'articolo. Rispondi esclusivamente con JSON valido, senza testo aggiuntivo.\n";
 
-        $response = $this->call_claude_api($prompt);
+        $response = ALMA_AI_Utils::call_claude_api($prompt, 'Rispondi esclusivamente con JSON valido, senza testo aggiuntivo', 'json');
         if (empty($response['success'])) {
             $msg = $response['error'] ?? __('Impossibile generare suggerimenti con Claude.', 'affiliate-link-manager-ai');
             error_log('Claude API error: ' . $msg);
             wp_send_json_error($msg);
         }
 
-        $clean = $this->extract_first_json($response['response']);
+        $clean = ALMA_AI_Utils::extract_first_json($response['response']);
         $items = json_decode($clean, true);
         if (!is_array($items)) {
             error_log('JSON decode failed: ' . json_last_error_msg() . ' | Raw: ' . $response['response']);
@@ -2485,7 +2488,7 @@ class AffiliateManagerAI {
         }
         
         // Test semplice con Claude
-        $response = $this->call_claude_api('Rispondi solo con: "Connessione OK"');
+        $response = ALMA_AI_Utils::call_claude_api('Rispondi solo con: "Connessione OK"');
         
         if ($response['success']) {
             wp_send_json_success(array(
@@ -2926,14 +2929,14 @@ class AffiliateManagerAI {
         foreach ($links as $link) {
             $prompt .= $link->ID . ': ' . $link->post_title . "\n";
         }
-        $prompt .= "\nRestituisci un array JSON con massimo 10 oggetti {\"id\": ID, \"score\": PERTINENZA}, dove PERTINENZA è un numero da 0 a 100 che indica quanto il link è coerente con il titolo. Ordina dal più pertinente al meno pertinente.";
+        $prompt .= "\nRestituisci un array JSON con massimo 10 oggetti {\"id\": ID, \"score\": PERTINENZA}, dove PERTINENZA è un numero da 0 a 100 che indica quanto il link è coerente con il titolo. Ordina dal più pertinente al meno pertinente. Rispondi esclusivamente con JSON valido, senza testo aggiuntivo.";
 
-        $response = $this->call_claude_api($prompt);
+        $response = ALMA_AI_Utils::call_claude_api($prompt, 'Rispondi esclusivamente con JSON valido, senza testo aggiuntivo', 'json');
         if (empty($response['success'])) {
             return array();
         }
 
-        $clean = $this->extract_first_json($response['response']);
+        $clean = ALMA_AI_Utils::extract_first_json($response['response']);
         $items = json_decode($clean, true);
         if (!is_array($items)) {
             error_log('JSON decode failed: ' . json_last_error_msg() . ' | Raw: ' . $response['response']);
@@ -2985,18 +2988,18 @@ class AffiliateManagerAI {
         }
 
         $prompt = sprintf(
-            'In base al titolo "%s" e al contenuto "%s", genera 5 suggerimenti brevi in italiano per ottimizzare un link affiliato. Restituisci un JSON array di oggetti con le chiavi "title" e "description".',
+            'In base al titolo "%s" e al contenuto "%s", genera 5 suggerimenti brevi in italiano per ottimizzare un link affiliato. Restituisci un JSON array di oggetti con le chiavi "title" e "description". Rispondi esclusivamente con JSON valido, senza testo aggiuntivo.',
             wp_strip_all_tags($post->post_title),
             wp_strip_all_tags($post->post_content)
         );
 
-        $response = $this->call_claude_api($prompt);
+        $response = ALMA_AI_Utils::call_claude_api($prompt, 'Rispondi esclusivamente con JSON valido, senza testo aggiuntivo', 'json');
 
         if (empty($response['success'])) {
             return new \WP_Error('claude_error', $response['error'] ?? __('Errore sconosciuto', 'affiliate-link-manager-ai'));
         }
 
-        $clean   = $this->extract_first_json($response['response']);
+        $clean   = ALMA_AI_Utils::extract_first_json($response['response']);
         $decoded = json_decode($clean, true);
 
         if (!is_array($decoded)) {
@@ -3028,18 +3031,18 @@ class AffiliateManagerAI {
         $content_part = $description ? sprintf(' e il contenuto "%s"', $description) : '';
 
         $prompt = sprintf(
-            'Sei un copywriter SEO. Analizza il titolo "%s"%s e proponi 3 alternative in italiano, ottimizzate per i motori di ricerca e con alto potenziale di conversione per un link affiliato. Rispondi con un array JSON contenente esclusivamente i tre titoli suggeriti.',
+            'Sei un copywriter SEO. Analizza il titolo "%s"%s e proponi 3 alternative in italiano, ottimizzate per i motori di ricerca e con alto potenziale di conversione per un link affiliato. Rispondi con un array JSON contenente esclusivamente i tre titoli suggeriti. Rispondi esclusivamente con JSON valido, senza testo aggiuntivo.',
             $title,
             $content_part
         );
 
-        $response = $this->call_claude_api($prompt);
+        $response = ALMA_AI_Utils::call_claude_api($prompt, 'Rispondi esclusivamente con JSON valido, senza testo aggiuntivo', 'json');
 
         if (empty($response['success'])) {
             return new \WP_Error('claude_error', $response['error'] ?? __('Errore sconosciuto', 'affiliate-link-manager-ai'));
         }
 
-        $clean   = $this->extract_first_json($response['response']);
+        $clean   = ALMA_AI_Utils::extract_first_json($response['response']);
         $decoded = json_decode($clean, true);
 
         if (!is_array($decoded)) {
@@ -3063,57 +3066,6 @@ class AffiliateManagerAI {
         return $suggestions;
     }
 
-    private function extract_first_json($text) {
-        $text = preg_replace('/```json\s*(.+?)\s*```/is', '$1', $text);
-        $text = preg_replace('/```\s*(.+?)\s*```/is', '$1', $text);
-
-        $len = strlen($text);
-        for ($i = 0; $i < $len; $i++) {
-            $char = $text[$i];
-            if ($char !== '{' && $char !== '[') {
-                continue;
-            }
-
-            $open  = $char;
-            $close = $char === '{' ? '}' : ']';
-            $depth = 0;
-            $in_string = false;
-            $escape = false;
-
-            for ($j = $i; $j < $len; $j++) {
-                $c = $text[$j];
-
-                if ($in_string) {
-                    if ($c === '\\' && !$escape) {
-                        $escape = true;
-                        continue;
-                    }
-                    if ($c === '"' && !$escape) {
-                        $in_string = false;
-                    }
-                    $escape = false;
-                    continue;
-                }
-
-                if ($c === '"') {
-                    $in_string = true;
-                    continue;
-                }
-
-                if ($c === $open) {
-                    $depth++;
-                } elseif ($c === $close) {
-                    $depth--;
-                    if ($depth === 0) {
-                        return substr($text, $i, $j - $i + 1);
-                    }
-                }
-            }
-        }
-
-        return '';
-    }
-    
     private function get_ai_performance_predictions($link_id) {
         $historical_data = get_post_meta($link_id, '_ai_historical_data', true) ?: array();
         
@@ -3138,73 +3090,6 @@ class AffiliateManagerAI {
             'predicted_clicks' => round($avg_clicks),
             'trend' => $avg_ctr > 2 ? 'up' : 'stable',
             'recommendation' => 'Performance stabile. Considera A/B testing per migliorare.'
-        );
-    }
-    
-    private function call_claude_api($prompt) {
-        $api_key = trim(get_option('alma_claude_api_key'));
-
-        if (empty($api_key)) {
-            return array('success' => false, 'error' => 'API Key non configurata');
-        }
-        
-        $prompt     = wp_strip_all_tags($prompt);
-        $model       = get_option('alma_claude_model', 'claude-3-haiku-20240307');
-        $temperature = (float) get_option('alma_claude_temperature', 0.7);
-
-        $body = array(
-            'model'       => $model,
-            'system'      => 'Rispondi esclusivamente con JSON valido',
-            'max_tokens'  => 300,
-            'temperature' => $temperature,
-            'messages'    => array(
-                array(
-                    'role'    => 'user',
-                    'content' => array(
-                        array(
-                            'type' => 'text',
-                            'text' => $prompt,
-                        )
-                    )
-                )
-            )
-        );
-
-        $start    = microtime(true);
-        $response = wp_remote_post('https://api.anthropic.com/v1/messages', array(
-            'headers' => array(
-                'Content-Type'      => 'application/json',
-                'Accept'            => 'application/json',
-                'x-api-key'         => $api_key,
-                'anthropic-version' => '2023-06-01',
-            ),
-            'body'    => wp_json_encode($body, JSON_UNESCAPED_UNICODE),
-            'timeout' => 30,
-        ));
-
-        $time = round((microtime(true) - $start) * 1000);
-
-        if (is_wp_error($response)) {
-            return array('success' => false, 'error' => $response->get_error_message());
-        }
-
-        $code = wp_remote_retrieve_response_code($response);
-        $data = json_decode(wp_remote_retrieve_body($response), true);
-
-        if (200 !== $code) {
-            $error = $data['error']['message'] ?? 'Errore di connessione a Claude';
-            return array('success' => false, 'error' => $error);
-        }
-
-        if (empty($data['content'][0]['text'])) {
-            return array('success' => false, 'error' => 'Risposta non valida da Claude');
-        }
-
-        return array(
-            'success'       => true,
-            'model'         => $data['model'] ?? $model,
-            'response_time' => $time,
-            'response'      => $data['content'][0]['text'],
         );
     }
     
