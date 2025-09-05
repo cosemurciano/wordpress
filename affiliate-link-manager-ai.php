@@ -308,6 +308,22 @@ class AffiliateManagerAI {
             wp_send_json_error(__('Richiesta mancante', 'affiliate-link-manager-ai'));
         }
 
+        $conversation = array();
+        if (!empty($_POST['conversation'])) {
+            $decoded = json_decode(stripslashes($_POST['conversation']), true);
+            if (is_array($decoded)) {
+                foreach ($decoded as $msg) {
+                    if (empty($msg['content'])) {
+                        continue;
+                    }
+                    $conversation[] = array(
+                        'role'    => $msg['role'] === 'assistant' ? 'assistant' : 'user',
+                        'content' => sanitize_textarea_field($msg['content'])
+                    );
+                }
+            }
+        }
+
         $posts = get_posts(array(
             'post_type'      => 'affiliate_link',
             'numberposts'    => -1,
@@ -349,7 +365,7 @@ class AffiliateManagerAI {
         $user_prompt = "Richiesta utente: $query\nLink disponibili:\n$links_text\n" .
             'Suggerisci i link più pertinenti organizzati per tipologia e spiega brevemente le tue scelte prima della lista.';
 
-        $result = ALMA_AI_Utils::call_claude_api($user_prompt, $system_prompt);
+        $result = ALMA_AI_Utils::call_claude_api($user_prompt, $system_prompt, $conversation);
 
         if (!$result['success']) {
             wp_send_json_error($result['error']);
