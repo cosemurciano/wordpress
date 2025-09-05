@@ -11,6 +11,21 @@
     padding: 15px;
     z-index: 9999;
     display: none;
+    opacity: 0;
+}
+
+.alma-bot-affiliate .alma-bot-affiliate-close {
+    position: absolute;
+    top: 5px;
+    right: 8px;
+    background: transparent;
+    border: none;
+    font-size: 16px;
+    cursor: pointer;
+}
+
+.alma-bot-intro {
+    margin: 0 0 10px;
 }
 .alma-bot-affiliate ul {
     list-style: none;
@@ -26,4 +41,42 @@
 }
 .alma-bot-affiliate a:hover {
     text-decoration: underline;
+}
+
+.alma-bot-affiliate.alma-animation-fade {
+    animation: alma-fade 0.6s forwards;
+}
+
+@keyframes alma-fade {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.alma-bot-affiliate.alma-animation-slide {
+    animation: alma-slide 0.6s forwards;
+}
+
+@keyframes alma-slide {
+    from { transform: translate(-50%, 20px); opacity: 0; }
+    to { transform: translate(-50%, 0); opacity: 1; }
+}
+
+.alma-bot-affiliate.alma-animation-zoom {
+    animation: alma-zoom 0.6s forwards;
+}
+
+@keyframes alma-zoom {
+    from { transform: translateX(-50%) scale(0.8); opacity: 0; }
+    to { transform: translateX(-50%) scale(1); opacity: 1; }
+}
+
+.alma-bot-affiliate.alma-animation-bounce {
+    animation: alma-bounce 0.6s forwards;
+}
+
+@keyframes alma-bounce {
+    0% { transform: translateX(-50%) scale(0.3); opacity: 0; }
+    50% { transform: translateX(-50%) scale(1.05); opacity: 1; }
+    70% { transform: translateX(-50%) scale(0.95); }
+    100% { transform: translateX(-50%) scale(1); }
 }
