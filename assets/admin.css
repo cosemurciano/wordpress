@@ -603,3 +603,13 @@ button:disabled {
     color: #2271b1;
     margin-right: 2px;
 }
+
+/* Required fields */
+.alma-required label:after {
+    content: ' *';
+    color: #d63638;
+}
+
+.alma-required-field {
+    border-color: #d63638;
+}
