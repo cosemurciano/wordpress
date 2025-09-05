@@ -604,6 +604,19 @@ button:disabled {
     margin-right: 2px;
 }
 
+/* Search results layout */
+.alma-affiliate-search {
+    margin: 20px 0 10px;
+}
+
+.alma-suggested-links {
+    margin-top: 10px;
+}
+
+.alma-suggested-links .alma-suggested-link {
+    margin-bottom: 10px;
+}
+
 /* Required fields */
 .alma-required label:after {
     content: ' *';

@@ -2026,8 +2026,16 @@ class AffiliateManagerAI {
 
             <?php if ($created) : ?>
                 <div class="notice notice-success"><p><?php _e('Widget creato con successo!', 'affiliate-link-manager-ai'); ?></p></div>
-                <p><?php _e('Shortcode:', 'affiliate-link-manager-ai'); ?> <code><?php echo esc_html($shortcode); ?></code></p>
-                <p><?php _e('PHP:', 'affiliate-link-manager-ai'); ?> <code><?php echo esc_html($php_code); ?></code></p>
+                <p>
+                    <?php _e('Shortcode:', 'affiliate-link-manager-ai'); ?>
+                    <code><?php echo esc_html($shortcode); ?></code>
+                    <button type="button" class="button button-small alma-copy-btn" data-copy="<?php echo esc_attr($shortcode); ?>" style="margin-left:5px;">📋</button>
+                </p>
+                <p>
+                    <?php _e('PHP:', 'affiliate-link-manager-ai'); ?>
+                    <code><?php echo esc_html($php_code); ?></code>
+                    <button type="button" class="button button-small alma-copy-btn" data-copy="<?php echo esc_attr($php_code); ?>" style="margin-left:5px;">📋</button>
+                </p>
             <?php endif; ?>
 
             <form method="post">
