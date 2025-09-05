@@ -2687,13 +2687,44 @@ class AffiliateManagerAI {
 
         $clean = $this->extract_first_json($response['response']);
         $items = json_decode($clean, true);
-        if (!is_array($items)) {
-            error_log('JSON decode failed: ' . json_last_error_msg() . ' | Raw: ' . $response['response']);
-            wp_send_json_error(__('Risposta AI non valida.', 'affiliate-link-manager-ai'));
-        }
+        if (!is_array($items) || !isset($items['summary']) || !is_string($items['summary']) || !isset($items['results']) || !is_array($items['results'])) {
+            error_log('JSON decode failed or missing keys: ' . json_last_error_msg() . ' | Raw: ' . $response['response']);
 
-        if (!isset($items['summary']) || !is_string($items['summary']) || !isset($items['results']) || !is_array($items['results'])) {
-            wp_send_json_error(__('Risposta AI non valida.', 'affiliate-link-manager-ai'));
+            // Tratta la risposta come testo normale e cerca i link standard
+            $raw_summary = wp_strip_all_tags($response['response']);
+
+            $posts = get_posts(array(
+                'post_type'   => 'affiliate_link',
+                'post_status' => 'publish',
+                'numberposts' => $max_results,
+                's'           => $query,
+            ));
+
+            $fallback_results = array();
+            foreach ($posts as $p) {
+                $affiliate_url = get_post_meta($p->ID, '_affiliate_url', true);
+                $terms         = get_the_terms($p->ID, 'link_type');
+                $types         = array();
+                if ($terms && !is_wp_error($terms)) {
+                    foreach ($terms as $term) {
+                        $types[] = $term->name;
+                    }
+                }
+
+                $fallback_results[] = array(
+                    'title'       => get_the_title($p->ID),
+                    'url'         => $affiliate_url,
+                    'types'       => $types,
+                    'description' => wp_trim_words($p->post_content, 20),
+                    'image'       => get_the_post_thumbnail_url($p->ID, 'thumbnail'),
+                    'score'       => 0,
+                );
+            }
+
+            wp_send_json_success(array(
+                'summary' => $raw_summary,
+                'results' => $fallback_results,
+            ));
         }
 
         $summary = sanitize_text_field($items['summary']);
