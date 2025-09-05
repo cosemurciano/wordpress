@@ -1,0 +1,29 @@
+.alma-bot-affiliate {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    max-width: 500px;
+    width: 90%;
+    background: #fff;
+    border: 1px solid #ccc;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+    padding: 15px;
+    z-index: 9999;
+    display: none;
+}
+.alma-bot-affiliate ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+.alma-bot-affiliate li {
+    margin-bottom: 8px;
+}
+.alma-bot-affiliate a {
+    color: #0073aa;
+    text-decoration: none;
+}
+.alma-bot-affiliate a:hover {
+    text-decoration: underline;
+}

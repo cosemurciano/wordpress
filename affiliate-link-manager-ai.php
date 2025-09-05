@@ -103,6 +103,10 @@ class AffiliateManagerAI {
         // Carica e registra widget
         require_once ALMA_PLUGIN_DIR . 'includes/class-affiliate-links-widget.php';
 
+        // Bot Affiliate per suggerire link tramite AI
+        require_once ALMA_PLUGIN_DIR . 'includes/class-bot-affiliate.php';
+        new ALMA_Bot_Affiliate();
+
         // Shortcode per mostrare link singolo
         add_shortcode('affiliate_link', array($this, 'display_affiliate_link'));
 
