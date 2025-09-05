@@ -495,7 +495,7 @@ class ALMA_Prompt_AI_Admin {
             return array('summary' => '', 'results' => array());
         }
 
-        $max_results = intval(get_option('alma_chat_max_results', 5));
+        $max_results = 5;
 
         $message = "Richiesta utente: {$query}\n\nLinks disponibili:\n";
         foreach ($links as $link) {
