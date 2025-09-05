@@ -97,6 +97,13 @@ class ALMA_Bot_Affiliate {
                 ALMA_VERSION,
                 true
             );
+            wp_localize_script(
+                'alma-bot-affiliate',
+                'alma_bot_affiliate',
+                array(
+                    'animation' => get_option('alma_bot_affiliate_animation', 'fade')
+                )
+            );
         }
     }
 
@@ -115,7 +122,13 @@ class ALMA_Bot_Affiliate {
         if (empty($links) || !is_array($links)) {
             return;
         }
-        echo '<div id="alma-bot-affiliate" class="alma-bot-affiliate"><ul>';
+        $intro = get_option('alma_bot_affiliate_intro', '');
+        echo '<div id="alma-bot-affiliate" class="alma-bot-affiliate">';
+        echo '<button type="button" class="alma-bot-affiliate-close" aria-label="' . esc_attr__('Chiudi', 'affiliate-link-manager-ai') . '">&times;</button>';
+        if (!empty($intro)) {
+            echo '<p class="alma-bot-intro">' . wp_kses_post($intro) . '</p>';
+        }
+        echo '<ul>';
         foreach (array_slice($links, 0, 3) as $link) {
             $url   = esc_url($link['url'] ?? '#');
             $title = esc_html($link['title'] ?? $link['url'] ?? '');

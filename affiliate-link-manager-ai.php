@@ -1095,6 +1095,16 @@ class AffiliateManagerAI {
             array($this, 'render_widget_shortcode_page')
         );
 
+        // BotAffiliate Post settings
+        add_submenu_page(
+            'edit.php?post_type=affiliate_link',
+            __('BotAffiliate Post', 'affiliate-link-manager-ai'),
+            __('BotAffiliate Post', 'affiliate-link-manager-ai'),
+            'manage_options',
+            'alma-bot-affiliate-settings',
+            array($this, 'render_bot_affiliate_settings_page')
+        );
+
         // Affiliate Chat AI
         add_submenu_page(
             'edit.php?post_type=affiliate_link',
@@ -1145,6 +1155,7 @@ class AffiliateManagerAI {
             'edit-tags.php?taxonomy=link_type&post_type=affiliate_link',
             'alma-create-widget',
             'affiliate-link-widgets',
+            'alma-bot-affiliate-settings',
             'affiliate-chat-ai',
             'affiliate-link-import',
             'alma-prompt-ai-settings',
@@ -1173,6 +1184,9 @@ class AffiliateManagerAI {
                             break;
                         case 'affiliate-link-widgets':
                             $item[0] = __('Shortcode Widget', 'affiliate-link-manager-ai');
+                            break;
+                        case 'alma-bot-affiliate-settings':
+                            $item[0] = __('BotAffiliate Post', 'affiliate-link-manager-ai');
                             break;
                         case 'affiliate-chat-ai':
                             $item[0] = __('Affiliate Chat AI', 'affiliate-link-manager-ai');
@@ -2382,6 +2396,53 @@ class AffiliateManagerAI {
                     </tbody>
                 </table>
             <?php endif; ?>
+        </div>
+        <?php
+    }
+
+    public function render_bot_affiliate_settings_page() {
+        if (!current_user_can('manage_options')) {
+            wp_die(__('Non hai i permessi per accedere a questa pagina.'));
+        }
+
+        if (isset($_POST['alma_bot_affiliate_settings_nonce']) && wp_verify_nonce($_POST['alma_bot_affiliate_settings_nonce'], 'alma_bot_affiliate_settings')) {
+            $animation = sanitize_text_field($_POST['alma_bot_affiliate_animation'] ?? 'fade');
+            $intro     = sanitize_textarea_field($_POST['alma_bot_affiliate_intro'] ?? '');
+            update_option('alma_bot_affiliate_animation', $animation);
+            update_option('alma_bot_affiliate_intro', $intro);
+            echo '<div class="notice notice-success"><p>' . esc_html__('Impostazioni salvate.', 'affiliate-link-manager-ai') . '</p></div>';
+        }
+
+        $current_animation = get_option('alma_bot_affiliate_animation', 'fade');
+        $intro_text        = get_option('alma_bot_affiliate_intro', '');
+
+        ?>
+        <div class="wrap">
+            <h1><?php _e('BotAffiliate Post', 'affiliate-link-manager-ai'); ?></h1>
+            <form method="post">
+                <?php wp_nonce_field('alma_bot_affiliate_settings', 'alma_bot_affiliate_settings_nonce'); ?>
+                <table class="form-table">
+                    <tr>
+                        <th scope="row"><?php _e('Animazione popup', 'affiliate-link-manager-ai'); ?></th>
+                        <td>
+                            <select name="alma_bot_affiliate_animation">
+                                <option value="fade" <?php selected($current_animation, 'fade'); ?>><?php _e('Dissolvenza', 'affiliate-link-manager-ai'); ?></option>
+                                <option value="slide" <?php selected($current_animation, 'slide'); ?>><?php _e('Scorrimento', 'affiliate-link-manager-ai'); ?></option>
+                                <option value="zoom" <?php selected($current_animation, 'zoom'); ?>><?php _e('Zoom', 'affiliate-link-manager-ai'); ?></option>
+                                <option value="bounce" <?php selected($current_animation, 'bounce'); ?>><?php _e('Rimbalzo', 'affiliate-link-manager-ai'); ?></option>
+                            </select>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><?php _e('Testo introduttivo', 'affiliate-link-manager-ai'); ?></th>
+                        <td>
+                            <textarea name="alma_bot_affiliate_intro" rows="4" class="large-text"><?php echo esc_textarea($intro_text); ?></textarea>
+                            <p class="description"><?php _e('Testo mostrato prima dei link affiliati.', 'affiliate-link-manager-ai'); ?></p>
+                        </td>
+                    </tr>
+                </table>
+                <?php submit_button(); ?>
+            </form>
         </div>
         <?php
     }
