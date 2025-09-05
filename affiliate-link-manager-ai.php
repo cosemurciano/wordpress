@@ -2637,9 +2637,46 @@ class AffiliateManagerAI {
         $prompt = ALMA_Prompt_AI_Admin::build_prompt($message, 'search');
 
         $response = $this->call_claude_api($prompt);
+
+        // Se l'AI non risponde correttamente, esegui una ricerca standard dei link
         if (empty($response['success'])) {
-            $msg = $response['error'] ?? __('Errore AI', 'affiliate-link-manager-ai');
-            wp_send_json_error($msg);
+            $posts = get_posts(array(
+                'post_type'   => 'affiliate_link',
+                'post_status' => 'publish',
+                'numberposts' => $max_results,
+                's'           => $query,
+            ));
+
+            if (empty($posts)) {
+                $msg = $response['error'] ?? __('Errore AI', 'affiliate-link-manager-ai');
+                wp_send_json_error($msg);
+            }
+
+            $fallback_results = array();
+            foreach ($posts as $p) {
+                $affiliate_url = get_post_meta($p->ID, '_affiliate_url', true);
+                $terms         = get_the_terms($p->ID, 'link_type');
+                $types         = array();
+                if ($terms && !is_wp_error($terms)) {
+                    foreach ($terms as $term) {
+                        $types[] = $term->name;
+                    }
+                }
+
+                $fallback_results[] = array(
+                    'title'       => get_the_title($p->ID),
+                    'url'         => $affiliate_url,
+                    'types'       => $types,
+                    'description' => wp_trim_words($p->post_content, 20),
+                    'image'       => get_the_post_thumbnail_url($p->ID, 'thumbnail'),
+                    'score'       => 0,
+                );
+            }
+
+            wp_send_json_success(array(
+                'summary' => sprintf(__('Risultati per "%s":', 'affiliate-link-manager-ai'), $query),
+                'results' => $fallback_results,
+            ));
         }
 
         $items = json_decode($this->extract_first_json($response['response']), true);
