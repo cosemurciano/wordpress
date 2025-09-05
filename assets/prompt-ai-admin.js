@@ -61,6 +61,28 @@ jQuery(document).ready(function($){
             if(resp.success){
                 $('#alma-claude-response').text(resp.data.response);
                 $('#alma-final-prompt').text(resp.data.prompt);
+                var links = resp.data.links || {};
+                var container = $('#alma-affiliate-links');
+                container.empty();
+                if(links.summary){
+                    container.append($('<p>').text(links.summary));
+                }
+                if(Array.isArray(links.results)){
+                    var list = $('<ul>');
+                    links.results.forEach(function(item){
+                        var li = $('<li>');
+                        if(item.url){
+                            li.append($('<a>').attr({href:item.url,target:'_blank'}).text(item.title));
+                        } else {
+                            li.text(item.title);
+                        }
+                        if(item.description){
+                            li.append(' - ' + item.description);
+                        }
+                        list.append(li);
+                    });
+                    container.append(list);
+                }
                 $('#alma-test-result').show();
             } else {
                 alert(resp.data);

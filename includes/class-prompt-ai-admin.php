@@ -243,6 +243,7 @@ class ALMA_Prompt_AI_Admin {
             <div id="alma-test-result" style="display:none;">
                 <h3><?php esc_html_e('Risposta Claude', 'affiliate-link-manager-ai'); ?></h3>
                 <div id="alma-claude-response"></div>
+                <div id="alma-affiliate-links"></div>
                 <details>
                     <summary><?php esc_html_e('Prompt Finale', 'affiliate-link-manager-ai'); ?></summary>
                     <pre id="alma-final-prompt"></pre>
@@ -318,13 +319,18 @@ class ALMA_Prompt_AI_Admin {
         $context = isset($_POST['context']) ? sanitize_text_field(wp_unslash($_POST['context'])) : 'general';
 
         $final_prompt = self::build_prompt($message, $context);
-        $response = $this->call_claude_api($final_prompt);
+        $response     = $this->call_claude_api($final_prompt);
+
         if (empty($response['success'])) {
             wp_send_json_error($response['error'] ?? __('Errore AI', 'affiliate-link-manager-ai'));
         }
+
+        $links = $this->find_affiliate_links($message);
+
         wp_send_json_success(array(
             'response' => $response['response'],
             'prompt'   => $final_prompt,
+            'links'    => $links,
         ));
     }
 
@@ -466,5 +472,131 @@ class ALMA_Prompt_AI_Admin {
             'success'  => true,
             'response' => $data['content'][0]['text'],
         );
+    }
+
+    private function find_affiliate_links($query) {
+        $links = get_posts(array(
+            'post_type'   => 'affiliate_link',
+            'post_status' => 'publish',
+            'numberposts' => 50,
+            'orderby'     => 'title',
+            'order'       => 'ASC',
+        ));
+
+        if (empty($links)) {
+            return array('summary' => '', 'results' => array());
+        }
+
+        $max_results = intval(get_option('alma_chat_max_results', 5));
+
+        $message = "Richiesta utente: {$query}\n\nLinks disponibili:\n";
+        foreach ($links as $link) {
+            $terms = get_the_terms($link->ID, 'link_type');
+            $types = array();
+            if ($terms && !is_wp_error($terms)) {
+                foreach ($terms as $term) {
+                    $types[] = $term->name;
+                }
+            }
+            $message .= 'ID ' . $link->ID . ': ' . $link->post_title;
+            if ($types) {
+                $message .= ' [' . implode(', ', $types) . ']';
+            }
+            $message .= "\n";
+        }
+        $message .= "\nRispondi esclusivamente con un oggetto JSON con i campi \"summary\" e \"results\". \"summary\" deve contenere una breve frase in italiano che spiega perché hai scelto i link. \"results\" è un array con massimo {$max_results} oggetti{\"id\":ID,\"description\":\"testo\",\"score\":COERENZA} dove COERENZA è 0-100. Non includere testo fuori dal JSON.\n";
+
+        $prompt   = self::build_prompt($message, 'search');
+        $response = $this->call_claude_api($prompt);
+
+        if (empty($response['success'])) {
+            return array('summary' => '', 'results' => array());
+        }
+
+        $clean = $this->extract_first_json($response['response']);
+        $items = json_decode($clean, true);
+        if (!is_array($items) || !isset($items['results']) || !is_array($items['results'])) {
+            return array('summary' => '', 'results' => array());
+        }
+
+        $summary = sanitize_text_field($items['summary']);
+        $results = array();
+        foreach (array_slice($items['results'], 0, $max_results) as $item) {
+            if (!isset($item['id'])) {
+                continue;
+            }
+            $id          = intval($item['id']);
+            $description = isset($item['description']) ? wp_strip_all_tags($item['description']) : '';
+            $score       = isset($item['score']) ? floatval($item['score']) : 0;
+
+            $post = get_post($id);
+            if (!$post || $post->post_type !== 'affiliate_link') {
+                continue;
+            }
+
+            $affiliate_url = get_post_meta($id, '_affiliate_url', true);
+            $results[]     = array(
+                'title'       => get_the_title($id),
+                'url'         => $affiliate_url,
+                'description' => $description,
+                'score'       => max(0, min(100, round($score))),
+            );
+        }
+
+        return array(
+            'summary' => $summary,
+            'results' => $results,
+        );
+    }
+
+    private function extract_first_json($text) {
+        $text = preg_replace('/```json\s*(.+?)\s*```/is', '$1', $text);
+        $text = preg_replace('/```\s*(.+?)\s*```/is', '$1', $text);
+
+        $len = strlen($text);
+        for ($i = 0; $i < $len; $i++) {
+            $char = $text[$i];
+            if ($char !== '{' && $char !== '[') {
+                continue;
+            }
+
+            $open      = $char;
+            $close     = $char === '{' ? '}' : ']';
+            $depth     = 0;
+            $in_string = false;
+            $escape    = false;
+
+            for ($j = $i; $j < $len; $j++) {
+                $c = $text[$j];
+
+                if ($in_string) {
+                    if ($c === '\\' && !$escape) {
+                        $escape = true;
+                        continue;
+                    }
+                    if ($c === '"' && !$escape) {
+                        $in_string = false;
+                    }
+                    $escape = false;
+                    continue;
+                }
+
+                if ($c === '"') {
+                    $in_string = true;
+                    continue;
+                }
+
+                if ($c === $open) {
+                    $depth++;
+                } elseif ($c === $close) {
+                    $depth--;
+                    if ($depth === 0) {
+                        return substr($text, $i, $j - $i + 1);
+                    }
+                }
+            }
+        }
+
+        return '';
     }
 }
