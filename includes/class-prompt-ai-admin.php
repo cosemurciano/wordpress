@@ -4,6 +4,8 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
+require_once ALMA_PLUGIN_DIR . 'includes/class-ai-utils.php';
+
 /**
  * Gestione impostazioni prompt AI per Claude
  */
@@ -317,8 +319,8 @@ class ALMA_Prompt_AI_Admin {
         $message = isset($_POST['message']) ? sanitize_text_field(wp_unslash($_POST['message'])) : '';
         $context = isset($_POST['context']) ? sanitize_text_field(wp_unslash($_POST['context'])) : 'general';
 
-        $final_prompt = self::build_prompt($message, $context);
-        $response     = $this->call_claude_api($final_prompt);
+        $prompts  = self::build_prompt($message, $context);
+        $response = ALMA_AI_Utils::call_claude_api($prompts['user'], $prompts['system']);
 
         if (empty($response['success'])) {
             wp_send_json_error($response['error'] ?? __('Errore AI', 'affiliate-link-manager-ai'));
@@ -331,7 +333,7 @@ class ALMA_Prompt_AI_Admin {
 
         wp_send_json_success(array(
             'response' => $response['response'],
-            'prompt'   => $final_prompt,
+            'prompt'   => $prompts['system'] . "\n\n" . $prompts['user'],
             'links'    => $links,
         ));
     }
@@ -393,6 +395,7 @@ class ALMA_Prompt_AI_Admin {
         }
         if (!empty($settings['primary_language'])) {
             $parts[] = 'Lingua principale: ' . $settings['primary_language'] . '.';
+            $parts[] = 'Rispondi esclusivamente in ' . $settings['primary_language'] . '.';
         }
         if (!empty($settings['off_topic'])) {
             if ($settings['off_topic'] === 'rifiuta') {
@@ -417,67 +420,10 @@ class ALMA_Prompt_AI_Admin {
         }
 
         $parts[] = 'Informazioni sito: nome ' . get_bloginfo('name') . ', URL ' . home_url() . ', descrizione ' . get_bloginfo('description') . ', data ' . current_time('Y-m-d') . '.';
-        if ($message) {
-            $parts[] = 'Messaggio utente: ' . $message;
-        }
-        return implode("\n\n", array_filter($parts));
-    }
 
-    /**
-     * Chiamata a Claude API
-     */
-    private function call_claude_api($prompt) {
-        $api_key = trim(get_option('alma_claude_api_key'));
-        if (empty($api_key)) {
-            return array('success' => false, 'error' => 'API Key non configurata');
-        }
-
-        $model       = get_option('alma_claude_model', 'claude-3-haiku-20240307');
-        $temperature = (float) get_option('alma_claude_temperature', 0.7);
-
-        $body = array(
-            'model'       => $model,
-            'max_tokens'  => 300,
-            'temperature' => $temperature,
-            'messages'    => array(
-                array(
-                    'role'    => 'user',
-                    'content' => array(
-                        array(
-                            'type' => 'text',
-                            'text' => $prompt,
-                        )
-                    )
-                )
-            )
-        );
-
-        $response = wp_remote_post('https://api.anthropic.com/v1/messages', array(
-            'headers' => array(
-                'Content-Type'      => 'application/json',
-                'Accept'            => 'application/json',
-                'x-api-key'         => $api_key,
-                'anthropic-version' => '2023-06-01',
-            ),
-            'body'    => wp_json_encode($body, JSON_UNESCAPED_UNICODE),
-            'timeout' => 30,
-        ));
-
-        if (is_wp_error($response)) {
-            return array('success' => false, 'error' => $response->get_error_message());
-        }
-        $code = wp_remote_retrieve_response_code($response);
-        $data = json_decode(wp_remote_retrieve_body($response), true);
-        if (200 !== $code) {
-            $error = $data['error']['message'] ?? 'Errore di connessione a Claude';
-            return array('success' => false, 'error' => $error);
-        }
-        if (empty($data['content'][0]['text'])) {
-            return array('success' => false, 'error' => 'Risposta non valida da Claude');
-        }
         return array(
-            'success'  => true,
-            'response' => $data['content'][0]['text'],
+            'system' => implode("\n\n", array_filter($parts)),
+            'user'   => $message,
         );
     }
 
@@ -511,16 +457,16 @@ class ALMA_Prompt_AI_Admin {
             }
             $message .= "\n";
         }
-        $message .= "\nRispondi esclusivamente con un oggetto JSON con i campi \"summary\" e \"results\". \"summary\" deve contenere una breve frase in italiano che spiega perché hai scelto i link. \"results\" è un array con massimo {$max_results} oggetti{\"id\":ID,\"description\":\"testo\",\"score\":COERENZA} dove COERENZA è 0-100. Non includere testo fuori dal JSON.\n";
+        $message .= "\nRispondi esclusivamente con un oggetto JSON con i campi \"summary\" e \"results\". \"summary\" deve contenere una breve frase in italiano che spiega perché hai scelto i link. \"results\" è un array con massimo {$max_results} oggetti{\"id\":ID,\"description\":\"testo\",\"score\":COERENZA} dove COERENZA è 0-100. Rispondi esclusivamente con JSON valido, senza testo aggiuntivo.\n";
 
-        $prompt   = self::build_prompt($message, 'search');
-        $response = $this->call_claude_api($prompt);
+        $prompts  = self::build_prompt($message, 'search');
+        $response = ALMA_AI_Utils::call_claude_api($prompts['user'], $prompts['system'], 'json');
 
         if (empty($response['success'])) {
             return new \WP_Error('claude_error', $response['error'] ?? __('Errore AI', 'affiliate-link-manager-ai'));
         }
 
-        $clean = $this->extract_first_json($response['response']);
+        $clean = ALMA_AI_Utils::extract_first_json($response['response']);
         $items = json_decode($clean, true);
         if (!is_array($items) || !isset($items['results']) || !is_array($items['results'])) {
             return new \WP_Error('claude_parse_error', __('Risposta non valida da Claude', 'affiliate-link-manager-ai'));
@@ -556,54 +502,4 @@ class ALMA_Prompt_AI_Admin {
         );
     }
 
-    private function extract_first_json($text) {
-        $text = preg_replace('/```json\s*(.+?)\s*```/is', '$1', $text);
-        $text = preg_replace('/```\s*(.+?)\s*```/is', '$1', $text);
-
-        $len = strlen($text);
-        for ($i = 0; $i < $len; $i++) {
-            $char = $text[$i];
-            if ($char !== '{' && $char !== '[') {
-                continue;
-            }
-
-            $open      = $char;
-            $close     = $char === '{' ? '}' : ']';
-            $depth     = 0;
-            $in_string = false;
-            $escape    = false;
-
-            for ($j = $i; $j < $len; $j++) {
-                $c = $text[$j];
-
-                if ($in_string) {
-                    if ($c === '\\' && !$escape) {
-                        $escape = true;
-                        continue;
-                    }
-                    if ($c === '"' && !$escape) {
-                        $in_string = false;
-                    }
-                    $escape = false;
-                    continue;
-                }
-
-                if ($c === '"') {
-                    $in_string = true;
-                    continue;
-                }
-
-                if ($c === $open) {
-                    $depth++;
-                } elseif ($c === $close) {
-                    $depth--;
-                    if ($depth === 0) {
-                        return substr($text, $i, $j - $i + 1);
-                    }
-                }
-            }
-        }
-
-        return '';
-    }
 }
