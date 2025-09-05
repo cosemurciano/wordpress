@@ -41,7 +41,11 @@ jQuery(document).ready(function($) {
             },
             success: function(response) {
                 if (response.success) {
-                    displayAISuggestions(response.data.suggestions, container);
+                    displayAISuggestions(
+                        response.data.title_suggestions,
+                        response.data.content_suggestions,
+                        container
+                    );
                     showSuccessMessage(alma_ai.messages.generated);
                 } else {
                     showErrorMessage(response.data || alma_ai.messages.error);
@@ -63,69 +67,83 @@ jQuery(document).ready(function($) {
     /**
      * Mostra suggerimenti AI generati
      */
-    function displayAISuggestions(suggestions, container) {
-        if (!suggestions || suggestions.length === 0) {
+    function displayAISuggestions(titleSuggestions, contentSuggestions, container) {
+        if ((!titleSuggestions || titleSuggestions.length === 0) && (!contentSuggestions || contentSuggestions.length === 0)) {
             container.html('<p style="color:#646970;">Nessun suggerimento generato.</p>');
             return;
         }
-        
-        let html = '<div class="alma-ai-suggestions">';
-        
-        suggestions.forEach(function(suggestion, index) {
-            const confidenceColor = suggestion.confidence >= 80 ? '#00a32a' : 
-                                   suggestion.confidence >= 60 ? '#dba617' : '#d63638';
-            
-            html += `
-                <div class="alma-suggestion-item" style="
-                    background: #f0f6fc;
-                    padding: 15px;
-                    margin: 10px 0;
-                    border-radius: 6px;
-                    position: relative;
-                    border-left: 4px solid ${confidenceColor};
-                    transition: transform 0.2s ease;
-                " data-suggestion-index="${index}">
-                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
-                        <strong style="color: #1d2327;">Variante ${index + 1}:</strong>
-                        <div style="display: flex; gap: 8px; align-items: center;">
-                            <span style="
-                                background: ${confidenceColor};
-                                color: white;
-                                padding: 3px 8px;
-                                border-radius: 12px;
-                                font-size: 11px;
-                                font-weight: 600;
-                            ">${Math.round(suggestion.confidence)}% AI</span>
-                            <button class="alma-copy-suggestion" data-text="${escapeHtml(suggestion.text)}" 
-                                    style="background: #2271b1; color: white; border: none; padding: 4px 8px; 
-                                           border-radius: 3px; font-size: 11px; cursor: pointer;">
-                                📋 Copia
-                            </button>
+
+        function renderItems(suggestions) {
+            let html = '';
+            suggestions.forEach(function(suggestion, index) {
+                const confidenceColor = suggestion.confidence >= 80 ? '#00a32a' :
+                                       suggestion.confidence >= 60 ? '#dba617' : '#d63638';
+
+                html += `
+                    <div class="alma-suggestion-item" style="
+                        background: #f0f6fc;
+                        padding: 15px;
+                        margin: 10px 0;
+                        border-radius: 6px;
+                        position: relative;
+                        border-left: 4px solid ${confidenceColor};
+                        transition: transform 0.2s ease;
+                    " data-suggestion-index="${index}">
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
+                            <strong style="color: #1d2327;">Variante ${index + 1}:</strong>
+                            <div style="display: flex; gap: 8px; align-items: center;">
+                                <span style="
+                                    background: ${confidenceColor};
+                                    color: white;
+                                    padding: 3px 8px;
+                                    border-radius: 12px;
+                                    font-size: 11px;
+                                    font-weight: 600;
+                                ">${Math.round(suggestion.confidence)}% AI</span>
+                                <button class="alma-copy-suggestion" data-text="${escapeHtml(suggestion.text)}"
+                                        style="background: #2271b1; color: white; border: none; padding: 4px 8px;
+                                               border-radius: 3px; font-size: 11px; cursor: pointer;">
+                                    📋 Copia
+                                </button>
+                            </div>
                         </div>
+                        <div style="
+                            background: white;
+                            padding: 12px;
+                            border-radius: 4px;
+                            border: 1px solid #e0e0e0;
+                            font-style: italic;
+                            color: #1d2327;
+                            font-size: 14px;
+                        ">
+                            "${escapeHtml(suggestion.text)}"
+                        </div>
+                        ${suggestion.pattern ? `<small style="color: #646970; margin-top: 8px; display: block;">Pattern: ${suggestion.pattern}</small>` : ''}
                     </div>
-                    <div style="
-                        background: white;
-                        padding: 12px;
-                        border-radius: 4px;
-                        border: 1px solid #e0e0e0;
-                        font-style: italic;
-                        color: #1d2327;
-                        font-size: 14px;
-                    ">
-                        "${escapeHtml(suggestion.text)}"
-                    </div>
-                    ${suggestion.pattern ? `<small style="color: #646970; margin-top: 8px; display: block;">Pattern: ${suggestion.pattern}</small>` : ''}
-                </div>
-            `;
-        });
-        
-        html += '</div>';
-        
-        // Aggiungi sezione azioni
+                `;
+            });
+            return html;
+        }
+
+        let html = '';
+
+        if (titleSuggestions && titleSuggestions.length) {
+            html += '<h3 style="margin-top:0;">Titoli suggeriti</h3>';
+            html += '<div class="alma-ai-suggestions">';
+            html += renderItems(titleSuggestions);
+            html += '</div>';
+        }
+
+        if (contentSuggestions && contentSuggestions.length) {
+            html += '<h3>Contenuti suggeriti</h3>';
+            html += '<div class="alma-ai-suggestions">';
+            html += renderItems(contentSuggestions);
+            html += '</div>';
+        }
+
         html += `
             <div class="alma-suggestions-actions" style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #e0e0e0;">
-                <button type="button" class="button alma-start-ab-test-from-suggestions" 
-                        style="margin-right: 10px;">
+                <button type="button" class="button alma-start-ab-test-from-suggestions" style="margin-right: 10px;">
                     🧪 Avvia A/B Test con queste varianti
                 </button>
                 <button type="button" class="button alma-regenerate-suggestions">
@@ -133,10 +151,9 @@ jQuery(document).ready(function($) {
                 </button>
             </div>
         `;
-        
+
         container.html(html);
-        
-        // Aggiungi hover effects
+
         $('.alma-suggestion-item').hover(
             function() { $(this).css('transform', 'translateY(-2px)'); },
             function() { $(this).css('transform', 'translateY(0)'); }
@@ -315,7 +332,10 @@ jQuery(document).ready(function($) {
             },
             success: function(response) {
                 if (response.success) {
-                    showAISuggestionsModal(response.data.suggestions);
+                    showAISuggestionsModal(
+                        response.data.title_suggestions,
+                        response.data.content_suggestions
+                    );
                 } else {
                     showErrorMessage(response.data || 'Errore durante la generazione suggerimenti.');
                 }
@@ -332,7 +352,7 @@ jQuery(document).ready(function($) {
     /**
      * Mostra modal con suggerimenti AI
      */
-    function showAISuggestionsModal(suggestions) {
+    function showAISuggestionsModal(titleSuggestions, contentSuggestions) {
         const modal = $(`
             <div class="alma-modal-overlay" style="
                 position: fixed;
@@ -381,7 +401,7 @@ jQuery(document).ready(function($) {
         $('body').append(modal);
         
         // Popola i suggerimenti
-        displayAISuggestions(suggestions, modal.find('.suggestions-container'));
+        displayAISuggestions(titleSuggestions, contentSuggestions, modal.find('.suggestions-container'));
         
         // Gestisci chiusura
         modal.on('click', '.alma-modal-close', function() {
