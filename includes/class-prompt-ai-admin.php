@@ -428,7 +428,7 @@ class ALMA_Prompt_AI_Admin {
      * Chiamata a Claude API
      */
     private function call_claude_api($prompt) {
-        $api_key = get_option('alma_claude_api_key');
+        $api_key = trim(get_option('alma_claude_api_key'));
         if (empty($api_key)) {
             return array('success' => false, 'error' => 'API Key non configurata');
         }
@@ -453,9 +453,10 @@ class ALMA_Prompt_AI_Admin {
             )
         );
 
-        $response = wp_safe_remote_post('https://api.anthropic.com/v1/messages', array(
+        $response = wp_remote_post('https://api.anthropic.com/v1/messages', array(
             'headers' => array(
                 'Content-Type'      => 'application/json',
+                'Accept'            => 'application/json',
                 'x-api-key'         => $api_key,
                 'anthropic-version' => '2023-06-01',
             ),
@@ -468,7 +469,11 @@ class ALMA_Prompt_AI_Admin {
         }
         $code = wp_remote_retrieve_response_code($response);
         $data = json_decode(wp_remote_retrieve_body($response), true);
-        if (200 !== $code || empty($data['content'][0]['text'])) {
+        if (200 !== $code) {
+            $error = $data['error']['message'] ?? 'Errore di connessione a Claude';
+            return array('success' => false, 'error' => $error);
+        }
+        if (empty($data['content'][0]['text'])) {
             return array('success' => false, 'error' => 'Risposta non valida da Claude');
         }
         return array(
