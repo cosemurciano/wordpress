@@ -13,9 +13,10 @@ class ALMA_AI_Utils {
      *
      * @param string $user_prompt   Messaggio dell'utente
      * @param string $system_prompt Istruzioni di sistema opzionali
+     * @param array  $conversation  Array di messaggi precedenti per mantenere il contesto
      * @return array Risultato con chiavi success, response, model, response_time
      */
-    public static function call_claude_api($user_prompt, $system_prompt = '') {
+    public static function call_claude_api($user_prompt, $system_prompt = '', $conversation = array()) {
         $api_key = trim(get_option('alma_claude_api_key'));
         if (empty($api_key)) {
             return array('success' => false, 'error' => 'API Key non configurata');
@@ -28,15 +29,27 @@ class ALMA_AI_Utils {
             'model'       => $model,
             'max_tokens'  => 300,
             'temperature' => $temperature,
-            'messages'    => array(
-                array(
-                    'role'    => 'user',
-                    'content' => array(
-                        array(
-                            'type' => 'text',
-                            'text' => $user_prompt,
-                        )
+            'messages'    => array()
+        );
+
+        foreach ($conversation as $msg) {
+            $body['messages'][] = array(
+                'role'    => $msg['role'],
+                'content' => array(
+                    array(
+                        'type' => 'text',
+                        'text' => $msg['content'],
                     )
+                )
+            );
+        }
+
+        $body['messages'][] = array(
+            'role'    => 'user',
+            'content' => array(
+                array(
+                    'type' => 'text',
+                    'text' => $user_prompt,
                 )
             )
         );
