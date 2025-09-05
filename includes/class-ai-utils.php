@@ -13,10 +13,9 @@ class ALMA_AI_Utils {
      *
      * @param string $user_prompt   Messaggio dell'utente
      * @param string $system_prompt Istruzioni di sistema opzionali
-     * @param string|null $response_format Formato della risposta (es. 'json')
-     * @return array Risultato con chiavi success, response, model
+     * @return array Risultato con chiavi success, response, model, response_time
      */
-    public static function call_claude_api($user_prompt, $system_prompt = '', $response_format = null) {
+    public static function call_claude_api($user_prompt, $system_prompt = '') {
         $api_key = trim(get_option('alma_claude_api_key'));
         if (empty($api_key)) {
             return array('success' => false, 'error' => 'API Key non configurata');
@@ -45,12 +44,8 @@ class ALMA_AI_Utils {
         if (!empty($system_prompt)) {
             $body['system'] = $system_prompt;
         }
-
-        if ($response_format === 'json') {
-            $body['response_format'] = array('type' => 'json_object');
-        }
-
-        $response = wp_remote_post('https://api.anthropic.com/v1/messages', array(
+        $start_time = microtime(true);
+        $response   = wp_remote_post('https://api.anthropic.com/v1/messages', array(
             'headers' => array(
                 'Content-Type'      => 'application/json',
                 'Accept'            => 'application/json',
@@ -60,9 +55,10 @@ class ALMA_AI_Utils {
             'body'    => wp_json_encode($body, JSON_UNESCAPED_UNICODE),
             'timeout' => 30,
         ));
+        $response_time = round((microtime(true) - $start_time) * 1000);
 
         if (is_wp_error($response)) {
-            return array('success' => false, 'error' => $response->get_error_message());
+            return array('success' => false, 'error' => $response->get_error_message(), 'response_time' => $response_time);
         }
 
         $code = wp_remote_retrieve_response_code($response);
@@ -70,17 +66,18 @@ class ALMA_AI_Utils {
 
         if (200 !== $code) {
             $error = $data['error']['message'] ?? 'Errore di connessione a Claude';
-            return array('success' => false, 'error' => $error);
+            return array('success' => false, 'error' => $error, 'response_time' => $response_time);
         }
 
         if (empty($data['content'][0]['text'])) {
-            return array('success' => false, 'error' => 'Risposta non valida da Claude');
+            return array('success' => false, 'error' => 'Risposta non valida da Claude', 'response_time' => $response_time);
         }
 
         return array(
-            'success'  => true,
-            'response' => $data['content'][0]['text'],
-            'model'    => $data['model'] ?? $model,
+            'success'       => true,
+            'response'      => $data['content'][0]['text'],
+            'model'         => $data['model'] ?? $model,
+            'response_time' => $response_time,
         );
     }
 
