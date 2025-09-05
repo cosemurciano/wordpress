@@ -1918,11 +1918,14 @@ class AffiliateManagerAI {
             wp_die(__('Non hai i permessi per accedere a questa pagina.'));
         }
 
-        $created     = false;
-        $shortcode   = '';
-        $php_code    = '';
-        $suggestions = array();
-        $instance    = array(
+        $created       = false;
+        $shortcode     = '';
+        $php_code      = '';
+        $suggestions   = array();
+        $search_links  = array();
+        $search_keyword = '';
+        $search_page   = 1;
+        $instance      = array(
             'title'        => '',
             'custom_content' => '',
             'show_image'   => 0,
@@ -1936,7 +1939,7 @@ class AffiliateManagerAI {
             'manual_ids'   => array(),
         );
 
-        if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['alma_create_widget'])) {
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             check_admin_referer('alma_create_widget');
 
             $instance['title']        = sanitize_text_field($_POST['title'] ?? '');
@@ -1953,9 +1956,47 @@ class AffiliateManagerAI {
             $manual_ids = array_filter(array_map('intval', explode(',', $_POST['manual_ids'] ?? '')));
             $manual_ids = array_slice(array_unique($manual_ids), 0, 20);
 
-                $instance['manual_ids'] = $manual_ids;
-                $instance['links']      = array_unique(array_merge($suggested_links, $manual_ids));
+            $instance['manual_ids'] = $manual_ids;
+            $instance['links']      = array_unique(array_merge($suggested_links, $manual_ids));
 
+            if (isset($_POST['alma_generate_suggestions']) || (!empty($_POST['suggestions_generated']) && !isset($_POST['alma_create_widget']))) {
+                $suggestions = $this->generate_widget_ai_suggestions($instance['title']);
+            }
+
+            if (isset($_POST['alma_search_links']) || isset($_POST['search_page'])) {
+                $search_keyword = sanitize_text_field($_POST['affiliate_search_keyword'] ?? '');
+                $search_page    = max(1, intval($_POST['search_page'] ?? 1));
+                if ($search_keyword !== '') {
+                    $posts = get_posts(array(
+                        'post_type'   => 'affiliate_link',
+                        'post_status' => 'publish',
+                        's'           => $search_keyword,
+                        'numberposts' => 100,
+                        'orderby'     => 'title',
+                        'order'       => 'ASC',
+                    ));
+                    foreach ($posts as $post) {
+                        $click_count = get_post_meta($post->ID, '_click_count', true) ?: 0;
+                        $usage_data  = $this->get_shortcode_usage_stats($post->ID);
+                        $terms       = get_the_terms($post->ID, 'link_type');
+                        $types       = array();
+                        if ($terms && !is_wp_error($terms)) {
+                            foreach ($terms as $term) {
+                                $types[] = $term->name;
+                            }
+                        }
+                        $search_links[] = array(
+                            'id'     => $post->ID,
+                            'title'  => get_the_title($post->ID),
+                            'types'  => $types,
+                            'clicks' => $click_count,
+                            'usage'  => $usage_data,
+                        );
+                    }
+                }
+            }
+
+            if (isset($_POST['alma_create_widget'])) {
                 if (empty($instance['links'])) {
                     $suggestions = $this->generate_widget_ai_suggestions($instance['title']);
                 } else {
@@ -1977,6 +2018,7 @@ class AffiliateManagerAI {
                     $shortcode = '[affiliate_links_widget id="' . $id . '"]';
                     $php_code  = "<?php echo do_shortcode('" . $shortcode . "'); ?>";
                 }
+            }
         }
         ?>
         <div class="wrap">
@@ -1993,8 +2035,8 @@ class AffiliateManagerAI {
                 <table class="form-table" role="presentation">
                     <tbody>
                         <tr>
-                            <th scope="row"><label for="alma_widget_title"><?php _e('Titolo', 'affiliate-link-manager-ai'); ?></label></th>
-                            <td><input name="title" type="text" id="alma_widget_title" value="<?php echo esc_attr($instance['title']); ?>" class="regular-text"></td>
+                            <th scope="row" class="alma-required"><label for="alma_widget_title"><?php _e('Titolo', 'affiliate-link-manager-ai'); ?></label></th>
+                            <td><input name="title" type="text" id="alma_widget_title" value="<?php echo esc_attr($instance['title']); ?>" class="regular-text alma-required-field" required></td>
                         </tr>
                         <tr>
                             <th scope="row"><label for="alma_widget_content"><?php _e('Contenuto', 'affiliate-link-manager-ai'); ?></label></th>
@@ -2014,18 +2056,18 @@ class AffiliateManagerAI {
                             <td><input name="button_text" type="text" id="alma_widget_button_text" value="<?php echo esc_attr($instance['button_text']); ?>" class="regular-text"></td>
                         </tr>
                         <tr>
-                            <th scope="row"><label for="alma_widget_format"><?php _e('Formato', 'affiliate-link-manager-ai'); ?></label></th>
+                            <th scope="row" class="alma-required"><label for="alma_widget_format"><?php _e('Formato', 'affiliate-link-manager-ai'); ?></label></th>
                             <td>
-                                <select name="format" id="alma_widget_format">
+                                <select name="format" id="alma_widget_format" class="alma-required-field" required>
                                     <option value="large" <?php selected($instance['format'], 'large'); ?>><?php _e('Immagine grande, titolo e contenuto', 'affiliate-link-manager-ai'); ?></option>
                                     <option value="small" <?php selected($instance['format'], 'small'); ?>><?php _e('Immagine piccola e titolo', 'affiliate-link-manager-ai'); ?></option>
                                 </select>
                             </td>
                         </tr>
                         <tr>
-                            <th scope="row"><label for="alma_widget_orientation"><?php _e('Orientamento', 'affiliate-link-manager-ai'); ?></label></th>
+                            <th scope="row" class="alma-required"><label for="alma_widget_orientation"><?php _e('Orientamento', 'affiliate-link-manager-ai'); ?></label></th>
                             <td>
-                                <select name="orientation" id="alma_widget_orientation">
+                                <select name="orientation" id="alma_widget_orientation" class="alma-required-field" required>
                                     <option value="vertical" <?php selected($instance['orientation'], 'vertical'); ?>><?php _e('Verticale', 'affiliate-link-manager-ai'); ?></option>
                                     <option value="horizontal" <?php selected($instance['orientation'], 'horizontal'); ?>><?php _e('Orizzontale', 'affiliate-link-manager-ai'); ?></option>
                                 </select>
@@ -2063,7 +2105,42 @@ class AffiliateManagerAI {
                     </tbody>
                 </table>
                 <?php if (!$created) : ?>
-                <p><input type="submit" name="alma_create_widget" class="button-primary" value="<?php echo empty($suggestions) ? esc_attr__('Genera suggerimenti', 'affiliate-link-manager-ai') : esc_attr__('Crea Widget AI', 'affiliate-link-manager-ai'); ?>"></p>
+                <?php if (!empty($suggestions)) : ?>
+                    <input type="hidden" name="suggestions_generated" value="1">
+                <?php endif; ?>
+                <p><input type="submit" name="alma_generate_suggestions" class="button" value="<?php esc_attr_e('Genera suggerimenti AI', 'affiliate-link-manager-ai'); ?>"></p>
+                <div class="alma-affiliate-search">
+                    <label for="alma_affiliate_search"><?php _e('Ricerca Link Affiliati', 'affiliate-link-manager-ai'); ?></label>
+                    <input type="text" name="affiliate_search_keyword" id="alma_affiliate_search" value="<?php echo esc_attr($search_keyword); ?>" class="regular-text">
+                    <input type="submit" name="alma_search_links" class="button" value="<?php esc_attr_e('Cerca', 'affiliate-link-manager-ai'); ?>">
+                </div>
+                <?php
+                $search_total = count($search_links);
+                $search_pages = max(1, ceil($search_total / 20));
+                $display_links = array_slice($search_links, ($search_page - 1) * 20, 20);
+                if (!empty($search_links)) : ?>
+                <div class="alma-suggested-links">
+                    <?php foreach ($display_links as $s) : ?>
+                        <label class="alma-suggested-link">
+                            <input type="checkbox" name="links[]" value="<?php echo esc_attr($s['id']); ?>" <?php checked(in_array($s['id'], $instance['links'])); ?>>
+                            <?php echo esc_html($s['title']); ?><br>
+                            <small>
+                                <span class="dashicons dashicons-admin-links"></span>
+                                <?php _e('Tipologia', 'affiliate-link-manager-ai'); ?>: <?php echo !empty($s['types']) ? esc_html(implode(', ', $s['types'])) : '-'; ?> -
+                                <?php printf(__('In %d Articoli, Click: %d', 'affiliate-link-manager-ai'), $s['usage']['post_count'], $s['clicks']); ?>
+                            </small>
+                        </label>
+                    <?php endforeach; ?>
+                    <?php if ($search_pages > 1) : ?>
+                        <p class="alma-pagination">
+                            <?php for ($p = 1; $p <= $search_pages; $p++) : ?>
+                                <button type="submit" name="search_page" value="<?php echo $p; ?>" class="button <?php echo $p === $search_page ? 'button-primary' : ''; ?>"><?php echo $p; ?></button>
+                            <?php endfor; ?>
+                        </p>
+                    <?php endif; ?>
+                </div>
+                <?php endif; ?>
+                <p><input type="submit" name="alma_create_widget" class="button-primary" value="<?php esc_attr_e('Crea Widget AI', 'affiliate-link-manager-ai'); ?>"></p>
                 <?php endif; ?>
             </form>
         </div>
