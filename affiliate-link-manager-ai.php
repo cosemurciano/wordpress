@@ -2638,6 +2638,10 @@ class AffiliateManagerAI {
 
         $response = $this->call_claude_api($prompt);
 
+        if (!empty($response['error']) && $response['error'] === 'API Key non configurata') {
+            wp_send_json_error('AI non configurata');
+        }
+
         // Se l'AI non risponde correttamente, esegui una ricerca standard dei link
         if (empty($response['success'])) {
             $posts = get_posts(array(

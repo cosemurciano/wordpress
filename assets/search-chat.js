@@ -34,10 +34,12 @@ jQuery( document ).ready( function( $ ) {
     }
 
     function handleError( msg ) {
-      if ( almaChat.fallback ) {
+      if ( msg ) {
+        addMessage( $( '<div>' ).text( msg ), 'bot' );
+      } else if ( almaChat.fallback ) {
         addMessage( $( '<div>' ).html( almaChat.fallback ), 'bot' );
       } else {
-        addMessage( $( '<div>' ).text( msg || almaChat.strings.error ), 'bot' );
+        addMessage( $( '<div>' ).text( almaChat.strings.error ), 'bot' );
       }
     }
 
@@ -107,7 +109,10 @@ jQuery( document ).ready( function( $ ) {
             } );
 
             if ( ! hasResults ) {
-              if ( almaChat.ai_active ) {
+              var errMsg = data && ( typeof data === 'string' ? data : data.error );
+              if ( errMsg ) {
+                handleError( errMsg );
+              } else if ( almaChat.ai_active ) {
                 addMessage( $( '<div>' ).text( almaChat.strings.no_results ), 'bot' );
               } else if ( almaChat.fallback ) {
                 addMessage( $( '<div>' ).html( almaChat.fallback ), 'bot' );
