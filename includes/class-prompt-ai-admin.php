@@ -326,6 +326,9 @@ class ALMA_Prompt_AI_Admin {
         }
 
         $links = $this->find_affiliate_links($message);
+        if (is_wp_error($links)) {
+            wp_send_json_error($links->get_error_message());
+        }
 
         wp_send_json_success(array(
             'response' => $response['response'],
@@ -510,13 +513,13 @@ class ALMA_Prompt_AI_Admin {
         $response = $this->call_claude_api($prompt);
 
         if (empty($response['success'])) {
-            return array('summary' => '', 'results' => array());
+            return new \WP_Error('claude_error', $response['error'] ?? __('Errore AI', 'affiliate-link-manager-ai'));
         }
 
         $clean = $this->extract_first_json($response['response']);
         $items = json_decode($clean, true);
         if (!is_array($items) || !isset($items['results']) || !is_array($items['results'])) {
-            return array('summary' => '', 'results' => array());
+            return new \WP_Error('claude_parse_error', __('Risposta non valida da Claude', 'affiliate-link-manager-ai'));
         }
 
         $summary = sanitize_text_field($items['summary']);
