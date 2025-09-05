@@ -2597,16 +2597,20 @@ class AffiliateManagerAI {
             return;
         }
 
-        $suggestions = $this->generate_title_suggestions($title, $description);
+        $title_suggestions   = $this->generate_title_suggestions($title, $description);
+        $content_suggestions = $this->generate_content_suggestions($title);
 
-        if (is_wp_error($suggestions) || empty($suggestions)) {
-            $msg = is_wp_error($suggestions)
-                ? $suggestions->get_error_message()
-                : __('Impossibile generare suggerimenti con Claude.', 'affiliate-link-manager-ai');
+        if (is_wp_error($title_suggestions) || is_wp_error($content_suggestions) ||
+            (empty($title_suggestions) && empty($content_suggestions))) {
+            $error = is_wp_error($title_suggestions) ? $title_suggestions : $content_suggestions;
+            $msg   = $error ? $error->get_error_message() : __('Impossibile generare suggerimenti con Claude.', 'affiliate-link-manager-ai');
             wp_send_json_error($msg);
         }
 
-        wp_send_json_success(array('suggestions' => $suggestions));
+        wp_send_json_success(array(
+            'title_suggestions'   => $title_suggestions,
+            'content_suggestions' => $content_suggestions
+        ));
     }
     
     public function ajax_test_claude_api() {
@@ -3188,6 +3192,46 @@ class AffiliateManagerAI {
         foreach (array_slice($decoded, 0, 3) as $text) {
             $suggestions[] = array(
                 'text'       => sanitize_text_field($text),
+                'confidence' => 90,
+                'pattern'    => 'ai'
+            );
+        }
+
+        if (empty($suggestions)) {
+            return new \WP_Error('empty_suggestions', __('Risposta non valida da Claude', 'affiliate-link-manager-ai'));
+        }
+
+        return $suggestions;
+    }
+
+    private function generate_content_suggestions($title) {
+        $title = wp_strip_all_tags($title);
+
+        $prompt = sprintf(
+            'Sei un copywriter SEO. Basandoti sul titolo "%s", genera 3 possibili contenuti descrittivi in italiano, massimo 50 parole ciascuno, per accompagnare un link affiliato. Rispondi con un array JSON contenente esclusivamente i tre contenuti. Rispondi esclusivamente con JSON valido, senza testo aggiuntivo.',
+            $title
+        );
+
+        $response = ALMA_AI_Utils::call_claude_api($prompt, 'Rispondi esclusivamente con JSON valido, senza testo aggiuntivo');
+
+        if (empty($response['success'])) {
+            return new \WP_Error('claude_error', $response['error'] ?? __('Errore sconosciuto', 'affiliate-link-manager-ai'));
+        }
+
+        $clean   = ALMA_AI_Utils::extract_first_json($response['response']);
+        $decoded = json_decode($clean, true);
+
+        if (!is_array($decoded)) {
+            error_log('JSON decode failed: ' . json_last_error_msg() . ' | Raw: ' . $response['response']);
+            return new \WP_Error('claude_parse_error', __('Risposta non valida da Claude', 'affiliate-link-manager-ai'));
+        }
+
+        $suggestions = array();
+        foreach (array_slice($decoded, 0, 3) as $text) {
+            $sanitized = sanitize_text_field($text);
+            $sanitized = wp_trim_words($sanitized, 50, '');
+            $suggestions[] = array(
+                'text'       => $sanitized,
                 'confidence' => 90,
                 'pattern'    => 'ai'
             );
