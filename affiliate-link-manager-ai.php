@@ -287,11 +287,13 @@ class AffiliateManagerAI {
 
         ob_start();
         ?>
-        <form id="alma-chat-form">
-            <input type="text" id="alma-chat-query" placeholder="<?php esc_attr_e('Cerca link affiliati...', 'affiliate-link-manager-ai'); ?>" required />
-            <button type="submit"><?php esc_html_e('Cerca', 'affiliate-link-manager-ai'); ?></button>
-        </form>
-        <div id="alma-chat-response"></div>
+        <div id="alma-chat-container">
+            <iframe id="alma-chat-frame"></iframe>
+            <form id="alma-chat-form">
+                <input type="text" id="alma-chat-query" placeholder="<?php esc_attr_e('Cerca link affiliati...', 'affiliate-link-manager-ai'); ?>" required />
+                <button type="submit" id="alma-chat-submit"><?php esc_html_e('Chiedi', 'affiliate-link-manager-ai'); ?></button>
+            </form>
+        </div>
         <?php
         return ob_get_clean();
     }
