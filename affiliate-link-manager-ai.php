@@ -2543,8 +2543,10 @@ class AffiliateManagerAI {
             wp_send_json_error($msg);
         }
 
-        $items = json_decode($this->extract_first_json($response['response']), true);
+        $clean = $this->extract_first_json($response['response']);
+        $items = json_decode($clean, true);
         if (!is_array($items)) {
+            error_log('JSON decode failed: ' . json_last_error_msg() . ' | Raw: ' . $response['response']);
             wp_send_json_error(__('Risposta AI non valida.', 'affiliate-link-manager-ai'));
         }
 
@@ -2683,8 +2685,14 @@ class AffiliateManagerAI {
             ));
         }
 
-        $items = json_decode($this->extract_first_json($response['response']), true);
-        if (!is_array($items) || !isset($items['summary']) || !is_string($items['summary']) || !isset($items['results']) || !is_array($items['results'])) {
+        $clean = $this->extract_first_json($response['response']);
+        $items = json_decode($clean, true);
+        if (!is_array($items)) {
+            error_log('JSON decode failed: ' . json_last_error_msg() . ' | Raw: ' . $response['response']);
+            wp_send_json_error(__('Risposta AI non valida.', 'affiliate-link-manager-ai'));
+        }
+
+        if (!isset($items['summary']) || !is_string($items['summary']) || !isset($items['results']) || !is_array($items['results'])) {
             wp_send_json_error(__('Risposta AI non valida.', 'affiliate-link-manager-ai'));
         }
 
@@ -3257,8 +3265,10 @@ class AffiliateManagerAI {
             return array();
         }
 
-        $items = json_decode($this->extract_first_json($response['response']), true);
+        $clean = $this->extract_first_json($response['response']);
+        $items = json_decode($clean, true);
         if (!is_array($items)) {
+            error_log('JSON decode failed: ' . json_last_error_msg() . ' | Raw: ' . $response['response']);
             return array();
         }
 
@@ -3322,6 +3332,7 @@ class AffiliateManagerAI {
         $decoded = json_decode($clean, true);
 
         if (!is_array($decoded)) {
+            error_log('JSON decode failed: ' . json_last_error_msg() . ' | Raw: ' . $response['response']);
             return new \WP_Error('claude_parse_error', __('Risposta non valida da Claude', 'affiliate-link-manager-ai'));
         }
 
@@ -3364,6 +3375,7 @@ class AffiliateManagerAI {
         $decoded = json_decode($clean, true);
 
         if (!is_array($decoded)) {
+            error_log('JSON decode failed: ' . json_last_error_msg() . ' | Raw: ' . $response['response']);
             return new \WP_Error('claude_parse_error', __('Risposta non valida da Claude', 'affiliate-link-manager-ai'));
         }
 
@@ -3386,9 +3398,51 @@ class AffiliateManagerAI {
     private function extract_first_json($text) {
         $text = preg_replace('/```json\s*(.+?)\s*```/is', '$1', $text);
         $text = preg_replace('/```\s*(.+?)\s*```/is', '$1', $text);
-        if (preg_match('/(\{.*\}|\[.*\])/s', $text, $matches)) {
-            return $matches[1];
+
+        $len = strlen($text);
+        for ($i = 0; $i < $len; $i++) {
+            $char = $text[$i];
+            if ($char !== '{' && $char !== '[') {
+                continue;
+            }
+
+            $open  = $char;
+            $close = $char === '{' ? '}' : ']';
+            $depth = 0;
+            $in_string = false;
+            $escape = false;
+
+            for ($j = $i; $j < $len; $j++) {
+                $c = $text[$j];
+
+                if ($in_string) {
+                    if ($c === '\\' && !$escape) {
+                        $escape = true;
+                        continue;
+                    }
+                    if ($c === '"' && !$escape) {
+                        $in_string = false;
+                    }
+                    $escape = false;
+                    continue;
+                }
+
+                if ($c === '"') {
+                    $in_string = true;
+                    continue;
+                }
+
+                if ($c === $open) {
+                    $depth++;
+                } elseif ($c === $close) {
+                    $depth--;
+                    if ($depth === 0) {
+                        return substr($text, $i, $j - $i + 1);
+                    }
+                }
+            }
         }
+
         return '';
     }
     
@@ -3435,6 +3489,15 @@ class AffiliateManagerAI {
             'max_tokens'  => 300,
             'temperature' => $temperature,
             'messages'    => array(
+                array(
+                    'role'    => 'system',
+                    'content' => array(
+                        array(
+                            'type' => 'text',
+                            'text' => 'Rispondi esclusivamente con JSON valido',
+                        )
+                    )
+                ),
                 array(
                     'role'    => 'user',
                     'content' => array(
