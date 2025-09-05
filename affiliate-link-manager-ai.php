@@ -109,6 +109,11 @@ class AffiliateManagerAI {
         // Shortcode per mostrare elenco di link tramite widget
         add_shortcode('affiliate_links_widget', array('ALMA_Affiliate_Links_Widget', 'shortcode'));
 
+        // Shortcode e AJAX per Affiliate Chat AI
+        add_shortcode('affiliate_chat_ai', array($this, 'render_affiliate_chat_shortcode'));
+        add_action('wp_ajax_alma_affiliate_chat', array($this, 'ajax_affiliate_chat'));
+        add_action('wp_ajax_nopriv_alma_affiliate_chat', array($this, 'ajax_affiliate_chat'));
+
         // Registra il widget
         add_action('widgets_init', array($this, 'register_widget'));
         
@@ -267,6 +272,90 @@ class AffiliateManagerAI {
         return $link_html;
     }
 
+    public function render_affiliate_chat_shortcode() {
+        wp_enqueue_script(
+            'alma-chat-ai',
+            ALMA_PLUGIN_URL . 'assets/chat-ai.js',
+            array('jquery'),
+            ALMA_VERSION,
+            true
+        );
+        wp_localize_script('alma-chat-ai', 'alma_chat_ai', array(
+            'ajax_url' => admin_url('admin-ajax.php'),
+            'nonce'    => wp_create_nonce('alma_affiliate_chat'),
+        ));
+
+        ob_start();
+        ?>
+        <form id="alma-chat-form">
+            <input type="text" id="alma-chat-query" placeholder="<?php esc_attr_e('Cerca link affiliati...', 'affiliate-link-manager-ai'); ?>" required />
+            <button type="submit"><?php esc_html_e('Cerca', 'affiliate-link-manager-ai'); ?></button>
+        </form>
+        <div id="alma-chat-response"></div>
+        <?php
+        return ob_get_clean();
+    }
+
+    public function ajax_affiliate_chat() {
+        if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'alma_affiliate_chat')) {
+            wp_send_json_error(__('Nonce non valida', 'affiliate-link-manager-ai'));
+        }
+
+        $query = sanitize_text_field($_POST['query'] ?? '');
+        if (empty($query)) {
+            wp_send_json_error(__('Richiesta mancante', 'affiliate-link-manager-ai'));
+        }
+
+        $posts = get_posts(array(
+            'post_type'      => 'affiliate_link',
+            'numberposts'    => -1,
+            'post_status'    => 'publish',
+        ));
+
+        $links = array();
+        foreach ($posts as $p) {
+            $types = wp_get_post_terms($p->ID, 'link_type', array('fields' => 'names'));
+            if (empty($types)) {
+                $types = array(__('Generale', 'affiliate-link-manager-ai'));
+            }
+            $url = get_post_meta($p->ID, '_affiliate_url', true);
+            foreach ($types as $type) {
+                $links[$type][] = array(
+                    'title' => get_the_title($p->ID),
+                    'url'   => esc_url_raw($url),
+                );
+            }
+        }
+
+        $links_text = '';
+        foreach ($links as $type => $items) {
+            $links_text .= "$type:\n";
+            foreach ($items as $item) {
+                $links_text .= '- ' . $item['title'] . ': ' . $item['url'] . "\n";
+            }
+        }
+
+        $settings      = get_option('alma_prompt_ai_settings', array());
+        $system_prompt  = $settings['base_prompt'] ?? '';
+        if (!empty($settings['personality'])) {
+            $system_prompt .= '\nTono: ' . $settings['personality'];
+            if ($settings['personality'] === 'personalizzato' && !empty($settings['personality_custom'])) {
+                $system_prompt .= ' (' . $settings['personality_custom'] . ')';
+            }
+        }
+
+        $user_prompt = "Richiesta utente: $query\nLink disponibili:\n$links_text\n" .
+            'Suggerisci i link più pertinenti organizzati per tipologia e spiega brevemente le tue scelte prima della lista.';
+
+        $result = ALMA_AI_Utils::call_claude_api($user_prompt, $system_prompt);
+
+        if (!$result['success']) {
+            wp_send_json_error($result['error']);
+        }
+
+        wp_send_json_success(array('reply' => $result['response']));
+    }
+
     /**
      * AJAX handler per tracking click - NUOVO
      */
@@ -399,7 +488,7 @@ class AffiliateManagerAI {
                 'search_items' => __('Cerca Link', 'affiliate-link-manager-ai'),
                 'not_found' => __('Nessun link trovato', 'affiliate-link-manager-ai'),
                 'not_found_in_trash' => __('Nessun link nel cestino', 'affiliate-link-manager-ai'),
-                'menu_name' => __('🔗 Affiliate AI', 'affiliate-link-manager-ai'),
+                'menu_name' => __('Affiliate AI', 'affiliate-link-manager-ai'),
             ),
             'public' => false,
             'show_ui' => true,
@@ -984,6 +1073,16 @@ class AffiliateManagerAI {
             array($this, 'render_widget_shortcode_page')
         );
 
+        // Affiliate Chat AI
+        add_submenu_page(
+            'edit.php?post_type=affiliate_link',
+            __('Affiliate Chat AI', 'affiliate-link-manager-ai'),
+            __('Affiliate Chat AI', 'affiliate-link-manager-ai'),
+            'manage_options',
+            'affiliate-chat-ai',
+            array($this, 'render_affiliate_chat_ai_page')
+        );
+
         // Pagina nascosta per modifica widget
         add_submenu_page(
             null,
@@ -1024,6 +1123,7 @@ class AffiliateManagerAI {
             'edit-tags.php?taxonomy=link_type&post_type=affiliate_link',
             'alma-create-widget',
             'affiliate-link-widgets',
+            'affiliate-chat-ai',
             'affiliate-link-import',
             'alma-prompt-ai-settings',
             'affiliate-link-manager-settings',
@@ -1051,6 +1151,9 @@ class AffiliateManagerAI {
                             break;
                         case 'affiliate-link-widgets':
                             $item[0] = __('Shortcode Widget', 'affiliate-link-manager-ai');
+                            break;
+                        case 'affiliate-chat-ai':
+                            $item[0] = __('Affiliate Chat AI', 'affiliate-link-manager-ai');
                             break;
                         case 'affiliate-link-import':
                             $item[0] = __('Importa Link', 'affiliate-link-manager-ai');
@@ -2166,6 +2269,19 @@ class AffiliateManagerAI {
                     </tbody>
                 </table>
             <?php endif; ?>
+        </div>
+        <?php
+    }
+
+    public function render_affiliate_chat_ai_page() {
+        if (!current_user_can('manage_options')) {
+            wp_die(__('Non hai i permessi per accedere a questa pagina.'));
+        }
+
+        ?>
+        <div class="wrap">
+            <h1><?php _e('Affiliate Chat AI', 'affiliate-link-manager-ai'); ?></h1>
+            <p><?php _e('Utilizza lo shortcode <code>[affiliate_chat_ai]</code> per mostrare il modulo di ricerca AI nelle pagine o nei post.', 'affiliate-link-manager-ai'); ?></p>
         </div>
         <?php
     }
