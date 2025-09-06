@@ -10,12 +10,14 @@ require_once ALMA_PLUGIN_DIR . 'includes/class-ai-utils.php';
  * Suggerisce link affiliati con l'AI e li mostra in un popup.
  */
 class ALMA_Bot_Affiliate {
-    const META_ENABLED   = '_alma_bot_affiliate_enabled';
-    const META_LINKS     = '_alma_bot_affiliate_links';
-    const META_DELAY     = '_alma_bot_affiliate_delay';
-    const META_INTRO     = '_alma_bot_affiliate_intro';
-    const META_ANIMATION = '_alma_bot_affiliate_animation';
-    const META_NUM_LINKS = '_alma_bot_affiliate_num_links';
+    const META_ENABLED    = '_alma_bot_affiliate_enabled';
+    const META_LINKS      = '_alma_bot_affiliate_links';
+    const META_DELAY      = '_alma_bot_affiliate_delay';
+    const META_INTRO      = '_alma_bot_affiliate_intro';
+    const META_ANIMATION  = '_alma_bot_affiliate_animation';
+    const META_NUM_LINKS  = '_alma_bot_affiliate_num_links';
+    const META_MODE       = '_alma_bot_affiliate_mode';
+    const META_MANUAL_IDS = '_alma_bot_affiliate_manual_ids';
 
     public function __construct() {
         add_action('add_meta_boxes', array($this, 'add_meta_box'));
@@ -41,11 +43,16 @@ class ALMA_Bot_Affiliate {
      * Render della metabox.
      */
     public function render_meta_box($post) {
-        $enabled   = get_post_meta($post->ID, self::META_ENABLED, true);
-        $delay     = get_post_meta($post->ID, self::META_DELAY, true);
-        $intro     = get_post_meta($post->ID, self::META_INTRO, true);
-        $animation = get_post_meta($post->ID, self::META_ANIMATION, true);
-        $num_links = get_post_meta($post->ID, self::META_NUM_LINKS, true);
+        $enabled    = get_post_meta($post->ID, self::META_ENABLED, true);
+        $delay      = get_post_meta($post->ID, self::META_DELAY, true);
+        $intro      = get_post_meta($post->ID, self::META_INTRO, true);
+        $animation  = get_post_meta($post->ID, self::META_ANIMATION, true);
+        $num_links  = get_post_meta($post->ID, self::META_NUM_LINKS, true);
+        $mode       = get_post_meta($post->ID, self::META_MODE, true);
+        if ($mode === '') {
+            $mode = 'ai';
+        }
+        $manual_ids = get_post_meta($post->ID, self::META_MANUAL_IDS, true);
         wp_nonce_field('alma_bot_affiliate_nonce', 'alma_bot_affiliate_nonce_field');
         ?>
         <label>
@@ -67,6 +74,22 @@ class ALMA_Bot_Affiliate {
                 <?php esc_html_e('Testo personalizzato', 'affiliate-link-manager-ai'); ?>
             </label>
             <textarea name="alma_bot_affiliate_intro" id="alma_bot_affiliate_intro" rows="3" class="widefat"><?php echo esc_textarea($intro); ?></textarea>
+        </p>
+        <p>
+            <label>
+                <input type="radio" name="alma_bot_affiliate_mode" value="ai" <?php checked($mode, 'ai'); ?> />
+                <?php esc_html_e('AI Affiliate', 'affiliate-link-manager-ai'); ?>
+            </label><br />
+            <label>
+                <input type="radio" name="alma_bot_affiliate_mode" value="manual" <?php checked($mode, 'manual'); ?> />
+                <?php esc_html_e('ID Link Affiliate', 'affiliate-link-manager-ai'); ?>
+            </label>
+        </p>
+        <p>
+            <label for="alma_bot_affiliate_manual_ids">
+                <?php esc_html_e('ID Link Affiliati (max 10, separati da virgola)', 'affiliate-link-manager-ai'); ?>
+            </label>
+            <input type="text" name="alma_bot_affiliate_manual_ids" id="alma_bot_affiliate_manual_ids" value="<?php echo esc_attr($manual_ids); ?>" class="widefat" />
         </p>
         <p>
             <label for="alma_bot_affiliate_num_links">
@@ -125,6 +148,22 @@ class ALMA_Bot_Affiliate {
             $animation = '';
         }
         update_post_meta($post_id, self::META_ANIMATION, $animation);
+
+        $mode = isset($_POST['alma_bot_affiliate_mode']) && $_POST['alma_bot_affiliate_mode'] === 'manual' ? 'manual' : 'ai';
+        update_post_meta($post_id, self::META_MODE, $mode);
+        if ($mode === 'manual') {
+            $ids_raw = sanitize_text_field($_POST['alma_bot_affiliate_manual_ids'] ?? '');
+            $ids     = array_filter(array_map('intval', array_map('trim', explode(',', $ids_raw))));
+            $ids     = array_slice($ids, 0, 10);
+            if (!empty($ids)) {
+                update_post_meta($post_id, self::META_MANUAL_IDS, implode(',', $ids));
+            } else {
+                delete_post_meta($post_id, self::META_MANUAL_IDS);
+            }
+            delete_post_meta($post_id, self::META_LINKS);
+        } else {
+            delete_post_meta($post_id, self::META_MANUAL_IDS);
+        }
 
         $num_links = isset($_POST['alma_bot_affiliate_num_links']) ? (int) $_POST['alma_bot_affiliate_num_links'] : 0;
         if ($num_links < 0 || $num_links > 10) {
@@ -197,13 +236,38 @@ class ALMA_Bot_Affiliate {
         if (!$post || get_post_meta($post->ID, self::META_ENABLED, true) !== '1') {
             return;
         }
-        $num_links = (int) get_post_meta($post->ID, self::META_NUM_LINKS, true);
-        if ($num_links <= 0) {
-            $num_links = (int) get_option('alma_bot_affiliate_num_links', 3);
-        }
-        $links = $this->get_links($post->ID, $num_links);
-        if (empty($links) || !is_array($links)) {
-            return;
+        $mode = get_post_meta($post->ID, self::META_MODE, true);
+        if ($mode === 'manual') {
+            $ids_raw = get_post_meta($post->ID, self::META_MANUAL_IDS, true);
+            $ids     = array_filter(array_map('intval', array_map('trim', explode(',', (string) $ids_raw))));
+            $ids     = array_slice($ids, 0, 10);
+            if (empty($ids)) {
+                return;
+            }
+            $links = array();
+            foreach ($ids as $id) {
+                $url = get_post_meta($id, '_affiliate_url', true);
+                if (!$url) {
+                    continue;
+                }
+                $links[] = array(
+                    'title' => get_the_title($id),
+                    'url'   => esc_url_raw($url),
+                );
+            }
+            if (empty($links)) {
+                return;
+            }
+            $num_links = count($links);
+        } else {
+            $num_links = (int) get_post_meta($post->ID, self::META_NUM_LINKS, true);
+            if ($num_links <= 0) {
+                $num_links = (int) get_option('alma_bot_affiliate_num_links', 3);
+            }
+            $links = $this->get_links($post->ID, $num_links);
+            if (empty($links) || !is_array($links)) {
+                return;
+            }
         }
         $intro = get_post_meta($post->ID, self::META_INTRO, true);
         if (trim($intro) === '') {
