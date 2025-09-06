@@ -55,4 +55,33 @@ class ALMA_Content_Analysis_AI {
 
         return $data;
     }
+
+    /**
+     * Cerca nei contenuti in cache in base a una query testuale
+     *
+     * @param string $query Testo da cercare
+     * @param int    $limit Numero massimo di risultati
+     * @return array Contenuti trovati (title, content)
+     */
+    public static function search_cache($query, $limit = 5) {
+        $query = trim($query);
+        if ($query === '') {
+            return array();
+        }
+
+        $cache = self::get_cache();
+        if (empty($cache)) {
+            return array();
+        }
+
+        $results = array();
+        foreach ($cache as $item) {
+            $haystack = $item['title'] . ' ' . $item['content'];
+            if (stripos($haystack, $query) !== false) {
+                $results[] = $item;
+            }
+        }
+
+        return array_slice($results, 0, $limit);
+    }
 }
