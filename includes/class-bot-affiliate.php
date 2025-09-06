@@ -10,10 +10,11 @@ require_once ALMA_PLUGIN_DIR . 'includes/class-ai-utils.php';
  * Suggerisce link affiliati con l'AI e li mostra in un popup.
  */
 class ALMA_Bot_Affiliate {
-    const META_ENABLED = '_alma_bot_affiliate_enabled';
-    const META_LINKS   = '_alma_bot_affiliate_links';
-    const META_DELAY   = '_alma_bot_affiliate_delay';
-    const META_INTRO   = '_alma_bot_affiliate_intro';
+    const META_ENABLED   = '_alma_bot_affiliate_enabled';
+    const META_LINKS     = '_alma_bot_affiliate_links';
+    const META_DELAY     = '_alma_bot_affiliate_delay';
+    const META_INTRO     = '_alma_bot_affiliate_intro';
+    const META_ANIMATION = '_alma_bot_affiliate_animation';
 
     public function __construct() {
         add_action('add_meta_boxes', array($this, 'add_meta_box'));
@@ -39,9 +40,10 @@ class ALMA_Bot_Affiliate {
      * Render della metabox.
      */
     public function render_meta_box($post) {
-        $enabled = get_post_meta($post->ID, self::META_ENABLED, true);
-        $delay   = get_post_meta($post->ID, self::META_DELAY, true);
-        $intro   = get_post_meta($post->ID, self::META_INTRO, true);
+        $enabled   = get_post_meta($post->ID, self::META_ENABLED, true);
+        $delay     = get_post_meta($post->ID, self::META_DELAY, true);
+        $intro     = get_post_meta($post->ID, self::META_INTRO, true);
+        $animation = get_post_meta($post->ID, self::META_ANIMATION, true);
         wp_nonce_field('alma_bot_affiliate_nonce', 'alma_bot_affiliate_nonce_field');
         ?>
         <label>
@@ -63,6 +65,17 @@ class ALMA_Bot_Affiliate {
                 <?php esc_html_e('Testo personalizzato', 'affiliate-link-manager-ai'); ?>
             </label>
             <textarea name="alma_bot_affiliate_intro" id="alma_bot_affiliate_intro" rows="3" class="widefat"><?php echo esc_textarea($intro); ?></textarea>
+        </p>
+        <p>
+            <label for="alma_bot_affiliate_animation">
+                <?php esc_html_e('Animazione popup', 'affiliate-link-manager-ai'); ?>
+            </label>
+            <select name="alma_bot_affiliate_animation" id="alma_bot_affiliate_animation" class="widefat">
+                <option value="fade" <?php selected($animation, 'fade'); ?>><?php esc_html_e('Dissolvenza', 'affiliate-link-manager-ai'); ?></option>
+                <option value="slide" <?php selected($animation, 'slide'); ?>><?php esc_html_e('Scorrimento', 'affiliate-link-manager-ai'); ?></option>
+                <option value="zoom" <?php selected($animation, 'zoom'); ?>><?php esc_html_e('Zoom', 'affiliate-link-manager-ai'); ?></option>
+                <option value="left" <?php selected($animation, 'left'); ?>><?php esc_html_e('Entrata da sinistra', 'affiliate-link-manager-ai'); ?></option>
+            </select>
         </p>
         <?php
     }
@@ -93,6 +106,13 @@ class ALMA_Bot_Affiliate {
         $intro = isset($_POST['alma_bot_affiliate_intro']) ? sanitize_textarea_field($_POST['alma_bot_affiliate_intro']) : '';
         update_post_meta($post_id, self::META_INTRO, $intro);
 
+        $animation = sanitize_text_field($_POST['alma_bot_affiliate_animation'] ?? '');
+        $allowed_animations = array('fade', 'slide', 'zoom', 'left');
+        if (!in_array($animation, $allowed_animations, true)) {
+            $animation = '';
+        }
+        update_post_meta($post_id, self::META_ANIMATION, $animation);
+
         if (!$enabled) {
             delete_post_meta($post_id, self::META_LINKS);
         }
@@ -109,7 +129,11 @@ class ALMA_Bot_Affiliate {
         if (!$post || get_post_meta($post->ID, self::META_ENABLED, true) !== '1') {
             return;
         }
-        $delay = (int) get_post_meta($post->ID, self::META_DELAY, true);
+        $delay     = (int) get_post_meta($post->ID, self::META_DELAY, true);
+        $animation = get_post_meta($post->ID, self::META_ANIMATION, true);
+        if ($animation === '') {
+            $animation = get_option('alma_bot_affiliate_animation', 'fade');
+        }
         $css = ALMA_PLUGIN_DIR . 'assets/bot-affiliate.css';
         if (file_exists($css)) {
             wp_enqueue_style(
@@ -132,7 +156,7 @@ class ALMA_Bot_Affiliate {
                 'alma-bot-affiliate',
                 'alma_bot_affiliate',
                 array(
-                    'animation' => get_option('alma_bot_affiliate_animation', 'fade'),
+                    'animation' => $animation,
                     'delay'     => $delay
                 )
             );
@@ -155,7 +179,7 @@ class ALMA_Bot_Affiliate {
             return;
         }
         $intro = get_post_meta($post->ID, self::META_INTRO, true);
-        if ($intro === '') {
+        if (trim($intro) === '') {
             $intro = get_option('alma_bot_affiliate_intro', '');
         }
         echo '<div id="alma-bot-affiliate" class="alma-bot-affiliate">';
