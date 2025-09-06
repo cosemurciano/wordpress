@@ -1696,7 +1696,6 @@ class AffiliateManagerAI {
                             <td>
                                 <?php
                                 $post_types = get_post_types(array('show_ui' => true), 'objects');
-                                unset($post_types['affiliate_link']);
                                 $selected_analysis = get_option('alma_content_analysis_post_types', array());
                                 foreach ($post_types as $pt) {
                                     $checked = in_array($pt->name, $selected_analysis, true) ? 'checked' : '';
