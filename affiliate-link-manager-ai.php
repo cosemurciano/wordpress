@@ -2429,7 +2429,7 @@ class AffiliateManagerAI {
                                 <option value="fade" <?php selected($current_animation, 'fade'); ?>><?php _e('Dissolvenza', 'affiliate-link-manager-ai'); ?></option>
                                 <option value="slide" <?php selected($current_animation, 'slide'); ?>><?php _e('Scorrimento', 'affiliate-link-manager-ai'); ?></option>
                                 <option value="zoom" <?php selected($current_animation, 'zoom'); ?>><?php _e('Zoom', 'affiliate-link-manager-ai'); ?></option>
-                                <option value="bounce" <?php selected($current_animation, 'bounce'); ?>><?php _e('Rimbalzo', 'affiliate-link-manager-ai'); ?></option>
+                                <option value="left" <?php selected($current_animation, 'left'); ?>><?php _e('Entrata da sinistra', 'affiliate-link-manager-ai'); ?></option>
                             </select>
                         </td>
                     </tr>
