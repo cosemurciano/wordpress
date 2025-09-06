@@ -2408,13 +2408,19 @@ class AffiliateManagerAI {
         if (isset($_POST['alma_bot_affiliate_settings_nonce']) && wp_verify_nonce($_POST['alma_bot_affiliate_settings_nonce'], 'alma_bot_affiliate_settings')) {
             $animation = sanitize_text_field($_POST['alma_bot_affiliate_animation'] ?? 'fade');
             $intro     = sanitize_textarea_field($_POST['alma_bot_affiliate_intro'] ?? '');
+            $num_links = isset($_POST['alma_bot_affiliate_num_links']) ? (int) $_POST['alma_bot_affiliate_num_links'] : 3;
+            if ($num_links < 1 || $num_links > 10) {
+                $num_links = 3;
+            }
             update_option('alma_bot_affiliate_animation', $animation);
             update_option('alma_bot_affiliate_intro', $intro);
+            update_option('alma_bot_affiliate_num_links', $num_links);
             echo '<div class="notice notice-success"><p>' . esc_html__('Impostazioni salvate.', 'affiliate-link-manager-ai') . '</p></div>';
         }
 
         $current_animation = get_option('alma_bot_affiliate_animation', 'fade');
         $intro_text        = get_option('alma_bot_affiliate_intro', '');
+        $current_num_links = get_option('alma_bot_affiliate_num_links', 3);
 
         ?>
         <div class="wrap">
@@ -2431,6 +2437,17 @@ class AffiliateManagerAI {
                                 <option value="zoom" <?php selected($current_animation, 'zoom'); ?>><?php _e('Zoom', 'affiliate-link-manager-ai'); ?></option>
                                 <option value="left" <?php selected($current_animation, 'left'); ?>><?php _e('Entrata da sinistra', 'affiliate-link-manager-ai'); ?></option>
                             </select>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><?php _e('Numero di link', 'affiliate-link-manager-ai'); ?></th>
+                        <td>
+                            <select name="alma_bot_affiliate_num_links">
+                                <?php for ($i = 1; $i <= 10; $i++): ?>
+                                    <option value="<?php echo $i; ?>" <?php selected($current_num_links, $i); ?>><?php echo $i; ?></option>
+                                <?php endfor; ?>
+                            </select>
+                            <p class="description"><?php _e('Quantità di link affiliati da mostrare.', 'affiliate-link-manager-ai'); ?></p>
                         </td>
                     </tr>
                     <tr>

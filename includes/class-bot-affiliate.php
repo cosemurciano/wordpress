@@ -15,6 +15,7 @@ class ALMA_Bot_Affiliate {
     const META_DELAY     = '_alma_bot_affiliate_delay';
     const META_INTRO     = '_alma_bot_affiliate_intro';
     const META_ANIMATION = '_alma_bot_affiliate_animation';
+    const META_NUM_LINKS = '_alma_bot_affiliate_num_links';
 
     public function __construct() {
         add_action('add_meta_boxes', array($this, 'add_meta_box'));
@@ -44,6 +45,7 @@ class ALMA_Bot_Affiliate {
         $delay     = get_post_meta($post->ID, self::META_DELAY, true);
         $intro     = get_post_meta($post->ID, self::META_INTRO, true);
         $animation = get_post_meta($post->ID, self::META_ANIMATION, true);
+        $num_links = get_post_meta($post->ID, self::META_NUM_LINKS, true);
         wp_nonce_field('alma_bot_affiliate_nonce', 'alma_bot_affiliate_nonce_field');
         ?>
         <label>
@@ -65,6 +67,17 @@ class ALMA_Bot_Affiliate {
                 <?php esc_html_e('Testo personalizzato', 'affiliate-link-manager-ai'); ?>
             </label>
             <textarea name="alma_bot_affiliate_intro" id="alma_bot_affiliate_intro" rows="3" class="widefat"><?php echo esc_textarea($intro); ?></textarea>
+        </p>
+        <p>
+            <label for="alma_bot_affiliate_num_links">
+                <?php esc_html_e('Numero di link da mostrare', 'affiliate-link-manager-ai'); ?>
+            </label>
+            <select name="alma_bot_affiliate_num_links" id="alma_bot_affiliate_num_links">
+                <option value="0" <?php selected((string) $num_links, '0'); ?>><?php esc_html_e('Usa impostazioni generali', 'affiliate-link-manager-ai'); ?></option>
+                <?php for ($i = 1; $i <= 10; $i++): ?>
+                    <option value="<?php echo $i; ?>" <?php selected((string) $num_links, (string) $i); ?>><?php echo $i; ?></option>
+                <?php endfor; ?>
+            </select>
         </p>
         <p>
             <label for="alma_bot_affiliate_animation">
@@ -112,6 +125,16 @@ class ALMA_Bot_Affiliate {
             $animation = '';
         }
         update_post_meta($post_id, self::META_ANIMATION, $animation);
+
+        $num_links = isset($_POST['alma_bot_affiliate_num_links']) ? (int) $_POST['alma_bot_affiliate_num_links'] : 0;
+        if ($num_links < 0 || $num_links > 10) {
+            $num_links = 0;
+        }
+        if ($num_links === 0) {
+            delete_post_meta($post_id, self::META_NUM_LINKS);
+        } else {
+            update_post_meta($post_id, self::META_NUM_LINKS, $num_links);
+        }
 
         if (!$enabled) {
             delete_post_meta($post_id, self::META_LINKS);
@@ -174,7 +197,11 @@ class ALMA_Bot_Affiliate {
         if (!$post || get_post_meta($post->ID, self::META_ENABLED, true) !== '1') {
             return;
         }
-        $links = $this->get_links($post->ID);
+        $num_links = (int) get_post_meta($post->ID, self::META_NUM_LINKS, true);
+        if ($num_links <= 0) {
+            $num_links = (int) get_option('alma_bot_affiliate_num_links', 3);
+        }
+        $links = $this->get_links($post->ID, $num_links);
         if (empty($links) || !is_array($links)) {
             return;
         }
@@ -188,7 +215,7 @@ class ALMA_Bot_Affiliate {
             echo '<p class="alma-bot-intro">' . wp_kses_post($intro) . '</p>';
         }
         echo '<ul>';
-        foreach (array_slice($links, 0, 3) as $link) {
+        foreach (array_slice($links, 0, $num_links) as $link) {
             $url   = esc_url($link['url'] ?? '#');
             $title = esc_html($link['title'] ?? $link['url'] ?? '');
             echo "<li><a href='{$url}' target='_blank' rel='sponsored noopener'>{$title}</a></li>";
@@ -199,13 +226,13 @@ class ALMA_Bot_Affiliate {
     /**
      * Recupera o genera i link affiliati.
      */
-    private function get_links($post_id) {
+    private function get_links($post_id, $num_links) {
         $links = get_post_meta($post_id, self::META_LINKS, true);
-        if (!empty($links)) {
-            return $links;
+        if (is_array($links) && count($links) >= $num_links) {
+            return array_slice($links, 0, $num_links);
         }
         $content = get_post_field('post_content', $post_id);
-        $prompt = "Analizza il seguente contenuto e restituisci 3 link affiliati pertinenti in formato JSON: [{\"title\":\"Titolo\",\"url\":\"https://esempio.com\"}]\nContenuto:\n" . wp_strip_all_tags($content);
+        $prompt = "Analizza il seguente contenuto e restituisci {$num_links} link affiliati pertinenti in formato JSON: [{\\\"title\\\":\\\"Titolo\\\",\\\"url\\\":\\\"https://esempio.com\\\"}]\\nContenuto:\\n" . wp_strip_all_tags($content);
         $result = ALMA_AI_Utils::call_claude_api($prompt);
         if (!$result['success']) {
             return array();
@@ -216,6 +243,6 @@ class ALMA_Bot_Affiliate {
             return array();
         }
         update_post_meta($post_id, self::META_LINKS, $links);
-        return $links;
+        return array_slice($links, 0, $num_links);
     }
 }
