@@ -367,7 +367,9 @@ class AffiliateManagerAI {
         }
 
         $user_prompt = "Richiesta utente: $query\nLink disponibili:\n$links_text\n" .
-            'Suggerisci i link più pertinenti organizzati per tipologia e spiega brevemente le tue scelte prima della lista.';
+            "Sulla base esclusiva dei link forniti, suggerisci quelli più pertinenti organizzati per tipologia. " .
+            "Non menzionare o generare link esterni alla lista. Se nessun link è adatto, segnala che non sono disponibili suggerimenti. " .
+            "Spiega brevemente le tue scelte prima della lista.";
 
         $result = ALMA_AI_Utils::call_claude_api($user_prompt, $system_prompt, $conversation);
 

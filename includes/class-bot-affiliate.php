@@ -224,24 +224,63 @@ class ALMA_Bot_Affiliate {
     }
 
     /**
-     * Recupera o genera i link affiliati.
+     * Recupera i link affiliati pertinenti dal database.
      */
     private function get_links($post_id, $num_links) {
         $links = get_post_meta($post_id, self::META_LINKS, true);
         if (is_array($links) && count($links) >= $num_links) {
             return array_slice($links, 0, $num_links);
         }
+
         $content = get_post_field('post_content', $post_id);
-        $prompt = "Analizza il seguente contenuto e restituisci {$num_links} link affiliati pertinenti in formato JSON: [{\\\"title\\\":\\\"Titolo\\\",\\\"url\\\":\\\"https://esempio.com\\\"}]\\nContenuto:\\n" . wp_strip_all_tags($content);
+
+        $posts = get_posts(array(
+            'post_type'   => 'affiliate_link',
+            'numberposts' => -1,
+            'post_status' => 'publish',
+        ));
+
+        $available = array();
+        foreach ($posts as $p) {
+            $url = get_post_meta($p->ID, '_affiliate_url', true);
+            if (!$url) {
+                continue;
+            }
+            $available[] = array(
+                'title' => get_the_title($p->ID),
+                'url'   => esc_url_raw($url),
+            );
+        }
+
+        if (empty($available)) {
+            return array();
+        }
+
+        $list_text = '';
+        foreach ($available as $a) {
+            $list_text .= '- ' . $a['title'] . ': ' . $a['url'] . "\n";
+        }
+
+        $prompt = "Analizza il seguente contenuto e scegli {$num_links} link pertinenti esclusivamente dalla lista fornita. " .
+            "Non generare o menzionare link esterni o non presenti nella lista. Rispondi in formato JSON: [{\\\"title\\\":\\\"Titolo\\\",\\\"url\\\":\\\"https://esempio.com\\\"}]\n" .
+            "Link disponibili:\n{$list_text}\nContenuto:\n" . wp_strip_all_tags($content);
+
         $result = ALMA_AI_Utils::call_claude_api($prompt);
         if (!$result['success']) {
             return array();
         }
+
         $json  = ALMA_AI_Utils::extract_first_json($result['response']);
         $links = json_decode($json, true);
         if (json_last_error() !== JSON_ERROR_NONE || !is_array($links)) {
             return array();
         }
+
+        $allowed_urls = wp_list_pluck($available, 'url');
+        $links = array_values(array_filter($links, function ($link) use ($allowed_urls) {
+            return isset($link['url']) && in_array($link['url'], $allowed_urls, true);
+        }));
+
         update_post_meta($post_id, self::META_LINKS, $links);
         return array_slice($links, 0, $num_links);
     }
