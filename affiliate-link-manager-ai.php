@@ -2457,22 +2457,27 @@ class AffiliateManagerAI {
             wp_die(__('Non hai i permessi per accedere a questa pagina.'));
         }
 
+        wp_enqueue_media();
+
         if (isset($_POST['alma_bot_affiliate_settings_nonce']) && wp_verify_nonce($_POST['alma_bot_affiliate_settings_nonce'], 'alma_bot_affiliate_settings')) {
-            $animation = sanitize_text_field($_POST['alma_bot_affiliate_animation'] ?? 'fade');
-            $intro     = sanitize_textarea_field($_POST['alma_bot_affiliate_intro'] ?? '');
-            $num_links = isset($_POST['alma_bot_affiliate_num_links']) ? (int) $_POST['alma_bot_affiliate_num_links'] : 3;
+            $animation  = sanitize_text_field($_POST['alma_bot_affiliate_animation'] ?? 'fade');
+            $intro      = sanitize_textarea_field($_POST['alma_bot_affiliate_intro'] ?? '');
+            $num_links  = isset($_POST['alma_bot_affiliate_num_links']) ? (int) $_POST['alma_bot_affiliate_num_links'] : 3;
+            $intro_img  = esc_url_raw($_POST['alma_bot_affiliate_intro_img'] ?? '');
             if ($num_links < 1 || $num_links > 10) {
                 $num_links = 3;
             }
             update_option('alma_bot_affiliate_animation', $animation);
             update_option('alma_bot_affiliate_intro', $intro);
             update_option('alma_bot_affiliate_num_links', $num_links);
+            update_option('alma_bot_affiliate_intro_img', $intro_img);
             echo '<div class="notice notice-success"><p>' . esc_html__('Impostazioni salvate.', 'affiliate-link-manager-ai') . '</p></div>';
         }
 
         $current_animation = get_option('alma_bot_affiliate_animation', 'fade');
         $intro_text        = get_option('alma_bot_affiliate_intro', '');
         $current_num_links = get_option('alma_bot_affiliate_num_links', 3);
+        $intro_img         = get_option('alma_bot_affiliate_intro_img', '');
 
         ?>
         <div class="wrap">
@@ -2503,6 +2508,14 @@ class AffiliateManagerAI {
                         </td>
                     </tr>
                     <tr>
+                        <th scope="row"><?php _e('Immagine profilo', 'affiliate-link-manager-ai'); ?></th>
+                        <td>
+                            <input type="text" name="alma_bot_affiliate_intro_img" id="alma_bot_affiliate_intro_img" value="<?php echo esc_attr($intro_img); ?>" class="regular-text" />
+                            <button class="button" id="alma_bot_affiliate_intro_img_button"><?php _e('Scegli immagine', 'affiliate-link-manager-ai'); ?></button>
+                            <p class="description"><?php _e('Immagine mostrata accanto al testo introduttivo.', 'affiliate-link-manager-ai'); ?></p>
+                        </td>
+                    </tr>
+                    <tr>
                         <th scope="row"><?php _e('Testo introduttivo', 'affiliate-link-manager-ai'); ?></th>
                         <td>
                             <textarea name="alma_bot_affiliate_intro" rows="4" class="large-text"><?php echo esc_textarea($intro_text); ?></textarea>
@@ -2512,6 +2525,28 @@ class AffiliateManagerAI {
                 </table>
                 <?php submit_button(); ?>
             </form>
+            <script>
+            jQuery(document).ready(function($){
+                var frame;
+                $('#alma_bot_affiliate_intro_img_button').on('click', function(e){
+                    e.preventDefault();
+                    if(frame){
+                        frame.open();
+                        return;
+                    }
+                    frame = wp.media({
+                        title: '<?php echo esc_js(__('Seleziona immagine', 'affiliate-link-manager-ai')); ?>',
+                        button: { text: '<?php echo esc_js(__('Usa questa immagine', 'affiliate-link-manager-ai')); ?>' },
+                        multiple: false
+                    });
+                    frame.on('select', function(){
+                        var attachment = frame.state().get('selection').first().toJSON();
+                        $('#alma_bot_affiliate_intro_img').val(attachment.url);
+                    });
+                    frame.open();
+                });
+            });
+            </script>
         </div>
         <?php
     }

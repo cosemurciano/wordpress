@@ -5,17 +5,43 @@
     transform: translateX(-50%);
     max-width: 500px;
     width: 90%;
-    background: #fff;
-    border: none;
-    border-radius: 8px;
-    box-shadow: 0 4px 10px rgba(0,0,0,0.15);
-    padding: 15px;
     z-index: 9999;
     display: none;
     opacity: 0;
 }
 
-.alma-bot-affiliate .alma-bot-affiliate-close {
+.alma-bot-intro-wrapper {
+    display: flex;
+    align-items: flex-start;
+    margin-bottom: 10px;
+}
+
+.alma-bot-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    object-fit: cover;
+    margin-right: 8px;
+}
+
+.alma-bot-bubble {
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    padding: 8px 12px;
+    max-width: 80%;
+}
+
+.alma-bot-box {
+    background: #fff;
+    border: none;
+    border-radius: 8px;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+    padding: 15px;
+    position: relative;
+}
+
+.alma-bot-box .alma-bot-affiliate-close {
     position: absolute;
     top: 5px;
     right: 8px;
@@ -25,24 +51,24 @@
     cursor: pointer;
 }
 
-.alma-bot-intro {
-    margin: 0 0 10px;
-}
-.alma-bot-affiliate ul {
+.alma-bot-box ul {
     list-style: none;
     margin: 0;
     padding: 0;
 }
-.alma-bot-affiliate li {
+
+.alma-bot-box li {
     margin-bottom: 8px;
     display: flex;
     align-items: center;
 }
-.alma-bot-affiliate a {
+
+.alma-bot-box a {
     color: #0073aa;
     text-decoration: none;
 }
-.alma-bot-affiliate a:hover {
+
+.alma-bot-box a:hover {
     text-decoration: underline;
 }
 
