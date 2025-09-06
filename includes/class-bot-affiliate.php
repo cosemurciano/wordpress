@@ -12,6 +12,8 @@ require_once ALMA_PLUGIN_DIR . 'includes/class-ai-utils.php';
 class ALMA_Bot_Affiliate {
     const META_ENABLED = '_alma_bot_affiliate_enabled';
     const META_LINKS   = '_alma_bot_affiliate_links';
+    const META_DELAY   = '_alma_bot_affiliate_delay';
+    const META_INTRO   = '_alma_bot_affiliate_intro';
 
     public function __construct() {
         add_action('add_meta_boxes', array($this, 'add_meta_box'));
@@ -38,12 +40,30 @@ class ALMA_Bot_Affiliate {
      */
     public function render_meta_box($post) {
         $enabled = get_post_meta($post->ID, self::META_ENABLED, true);
+        $delay   = get_post_meta($post->ID, self::META_DELAY, true);
+        $intro   = get_post_meta($post->ID, self::META_INTRO, true);
         wp_nonce_field('alma_bot_affiliate_nonce', 'alma_bot_affiliate_nonce_field');
         ?>
         <label>
             <input type="checkbox" name="alma_bot_affiliate_enabled" value="1" <?php checked($enabled, '1'); ?> />
             <?php esc_html_e('Abilita suggerimenti affiliati automatici', 'affiliate-link-manager-ai'); ?>
         </label>
+        <p>
+            <label for="alma_bot_affiliate_delay">
+                <?php esc_html_e('Ritardo popup (secondi)', 'affiliate-link-manager-ai'); ?>
+            </label>
+            <select name="alma_bot_affiliate_delay" id="alma_bot_affiliate_delay">
+                <?php for ($i = 0; $i <= 5; $i++): ?>
+                    <option value="<?php echo $i; ?>" <?php selected((string) $delay, (string) $i); ?>><?php echo $i; ?></option>
+                <?php endfor; ?>
+            </select>
+        </p>
+        <p>
+            <label for="alma_bot_affiliate_intro">
+                <?php esc_html_e('Testo personalizzato', 'affiliate-link-manager-ai'); ?>
+            </label>
+            <textarea name="alma_bot_affiliate_intro" id="alma_bot_affiliate_intro" rows="3" class="widefat"><?php echo esc_textarea($intro); ?></textarea>
+        </p>
         <?php
     }
 
@@ -63,6 +83,16 @@ class ALMA_Bot_Affiliate {
         }
         $enabled = isset($_POST['alma_bot_affiliate_enabled']) ? '1' : '';
         update_post_meta($post_id, self::META_ENABLED, $enabled);
+
+        $delay = isset($_POST['alma_bot_affiliate_delay']) ? (int) $_POST['alma_bot_affiliate_delay'] : 0;
+        if ($delay < 0 || $delay > 5) {
+            $delay = 0;
+        }
+        update_post_meta($post_id, self::META_DELAY, $delay);
+
+        $intro = isset($_POST['alma_bot_affiliate_intro']) ? sanitize_textarea_field($_POST['alma_bot_affiliate_intro']) : '';
+        update_post_meta($post_id, self::META_INTRO, $intro);
+
         if (!$enabled) {
             delete_post_meta($post_id, self::META_LINKS);
         }
@@ -79,6 +109,7 @@ class ALMA_Bot_Affiliate {
         if (!$post || get_post_meta($post->ID, self::META_ENABLED, true) !== '1') {
             return;
         }
+        $delay = (int) get_post_meta($post->ID, self::META_DELAY, true);
         $css = ALMA_PLUGIN_DIR . 'assets/bot-affiliate.css';
         if (file_exists($css)) {
             wp_enqueue_style(
@@ -101,7 +132,8 @@ class ALMA_Bot_Affiliate {
                 'alma-bot-affiliate',
                 'alma_bot_affiliate',
                 array(
-                    'animation' => get_option('alma_bot_affiliate_animation', 'fade')
+                    'animation' => get_option('alma_bot_affiliate_animation', 'fade'),
+                    'delay'     => $delay
                 )
             );
         }
@@ -122,7 +154,10 @@ class ALMA_Bot_Affiliate {
         if (empty($links) || !is_array($links)) {
             return;
         }
-        $intro = get_option('alma_bot_affiliate_intro', '');
+        $intro = get_post_meta($post->ID, self::META_INTRO, true);
+        if ($intro === '') {
+            $intro = get_option('alma_bot_affiliate_intro', '');
+        }
         echo '<div id="alma-bot-affiliate" class="alma-bot-affiliate">';
         echo '<button type="button" class="alma-bot-affiliate-close" aria-label="' . esc_attr__('Chiudi', 'affiliate-link-manager-ai') . '">&times;</button>';
         if (!empty($intro)) {
