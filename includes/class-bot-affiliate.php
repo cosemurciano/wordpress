@@ -309,6 +309,47 @@ class ALMA_Bot_Affiliate {
     private function get_links($post_id, $num_links) {
         $links = get_post_meta($post_id, self::META_LINKS, true);
         if (is_array($links) && count($links) >= $num_links) {
+            $needs_update = false;
+            foreach ($links as &$link) {
+                $missing_img  = empty($link['img']);
+                $missing_type = empty($link['type']);
+                if ($missing_img || $missing_type) {
+                    $url = $link['url'] ?? '';
+                    if ($url) {
+                        $posts = get_posts(array(
+                            'post_type'      => 'affiliate_link',
+                            'meta_key'       => '_affiliate_url',
+                            'meta_value'     => $url,
+                            'posts_per_page' => 1,
+                            'post_status'    => 'publish',
+                        ));
+                        if ($posts) {
+                            $p = $posts[0];
+                            if ($missing_img) {
+                                $img         = get_the_post_thumbnail_url($p->ID, 'thumbnail');
+                                $link['img'] = $img ? esc_url_raw($img) : '';
+                            }
+                            if ($missing_type) {
+                                $type_terms   = get_the_terms($p->ID, 'link_type');
+                                $link['type'] = ($type_terms && !is_wp_error($type_terms)) ? $type_terms[0]->name : '';
+                            }
+                            $needs_update = true;
+                        } else {
+                            if ($missing_img) {
+                                $link['img'] = '';
+                            }
+                            if ($missing_type) {
+                                $link['type'] = '';
+                            }
+                            $needs_update = true;
+                        }
+                    }
+                }
+            }
+            unset($link);
+            if ($needs_update) {
+                update_post_meta($post_id, self::META_LINKS, $links);
+            }
             return array_slice($links, 0, $num_links);
         }
 
