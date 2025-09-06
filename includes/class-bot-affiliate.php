@@ -250,9 +250,14 @@ class ALMA_Bot_Affiliate {
                 if (!$url) {
                     continue;
                 }
-                $links[] = array(
+                $img        = get_the_post_thumbnail_url($id, 'thumbnail');
+                $type_terms = get_the_terms($id, 'link_type');
+                $type       = ($type_terms && !is_wp_error($type_terms)) ? $type_terms[0]->name : '';
+                $links[]    = array(
                     'title' => get_the_title($id),
                     'url'   => esc_url_raw($url),
+                    'img'   => $img ? esc_url_raw($img) : '',
+                    'type'  => $type,
                 );
             }
             if (empty($links)) {
@@ -282,7 +287,18 @@ class ALMA_Bot_Affiliate {
         foreach (array_slice($links, 0, $num_links) as $link) {
             $url   = esc_url($link['url'] ?? '#');
             $title = esc_html($link['title'] ?? $link['url'] ?? '');
-            echo "<li><a href='{$url}' target='_blank' rel='sponsored noopener'>{$title}</a></li>";
+            $img   = esc_url($link['img'] ?? '');
+            $type  = esc_html($link['type'] ?? '');
+            echo '<li class="alma-bot-link-item">';
+            if ($img) {
+                echo "<img src='{$img}' alt='{$title}' class='alma-bot-thumb' width='60' height='60' />";
+            }
+            echo '<div class="alma-bot-link-info">';
+            echo "<a href='{$url}' target='_blank' rel='sponsored noopener' class='alma-bot-link-title'>{$title}</a>";
+            if ($type !== '') {
+                echo "<div class=\"alma-bot-link-type\">{$type}</div>";
+            }
+            echo '</div></li>';
         }
         echo '</ul></div>';
     }
@@ -310,9 +326,14 @@ class ALMA_Bot_Affiliate {
             if (!$url) {
                 continue;
             }
+            $img        = get_the_post_thumbnail_url($p->ID, 'thumbnail');
+            $type_terms = get_the_terms($p->ID, 'link_type');
+            $type       = ($type_terms && !is_wp_error($type_terms)) ? $type_terms[0]->name : '';
             $available[] = array(
                 'title' => get_the_title($p->ID),
                 'url'   => esc_url_raw($url),
+                'img'   => $img ? esc_url_raw($img) : '',
+                'type'  => $type,
             );
         }
 
@@ -340,10 +361,17 @@ class ALMA_Bot_Affiliate {
             return array();
         }
 
-        $allowed_urls = wp_list_pluck($available, 'url');
-        $links = array_values(array_filter($links, function ($link) use ($allowed_urls) {
-            return isset($link['url']) && in_array($link['url'], $allowed_urls, true);
+        $available_by_url = array();
+        foreach ($available as $a) {
+            $available_by_url[$a['url']] = $a;
+        }
+        $links = array_values(array_filter($links, function ($link) use ($available_by_url) {
+            return isset($link['url']) && isset($available_by_url[$link['url']]);
         }));
+        foreach ($links as &$link) {
+            $link = $available_by_url[$link['url']];
+        }
+        unset($link);
 
         update_post_meta($post_id, self::META_LINKS, $links);
         return array_slice($links, 0, $num_links);

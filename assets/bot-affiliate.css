@@ -6,8 +6,9 @@
     max-width: 500px;
     width: 90%;
     background: #fff;
-    border: 1px solid #ccc;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+    border: none;
+    border-radius: 8px;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.15);
     padding: 15px;
     z-index: 9999;
     display: none;
@@ -34,6 +35,8 @@
 }
 .alma-bot-affiliate li {
     margin-bottom: 8px;
+    display: flex;
+    align-items: center;
 }
 .alma-bot-affiliate a {
     color: #0073aa;
@@ -41,6 +44,30 @@
 }
 .alma-bot-affiliate a:hover {
     text-decoration: underline;
+}
+
+.alma-bot-thumb {
+    width: 60px;
+    height: 60px;
+    object-fit: cover;
+    margin-right: 10px;
+    border-radius: 4px;
+}
+
+.alma-bot-link-info {
+    display: flex;
+    flex-direction: column;
+}
+
+.alma-bot-link-title {
+    font-weight: bold;
+    display: block;
+}
+
+.alma-bot-link-type {
+    font-size: 0.85em;
+    color: #666;
+    margin-top: 2px;
 }
 
 .alma-bot-affiliate.alma-animation-fade {
