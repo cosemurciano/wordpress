@@ -313,6 +313,14 @@ class AffiliateManagerAI {
             wp_send_json_error(__('Richiesta mancante', 'affiliate-link-manager-ai'));
         }
 
+        // Recupera contenuti pertinenti dalla cache
+        $cached       = ALMA_Content_Analysis_AI::search_cache($query);
+        $content_text = '';
+        foreach ($cached as $item) {
+            $snippet = mb_substr($item['content'], 0, 200);
+            $content_text .= '- ' . $item['title'] . ': ' . $snippet . "\n";
+        }
+
         $conversation = array();
         if (!empty($_POST['conversation'])) {
             $decoded = json_decode(stripslashes($_POST['conversation']), true);
@@ -367,7 +375,11 @@ class AffiliateManagerAI {
             }
         }
 
-        $user_prompt = "Richiesta utente: $query\nLink disponibili:\n$links_text\n" .
+        $user_prompt = "Richiesta utente: $query\n";
+        if ($content_text !== '') {
+            $user_prompt .= "Contenuti disponibili:\n$content_text\n";
+        }
+        $user_prompt .= "Link disponibili:\n$links_text\n" .
             "Sulla base esclusiva dei link forniti, suggerisci quelli più pertinenti organizzati per tipologia. " .
             "Non menzionare o generare link esterni alla lista. Se nessun link è adatto, segnala che non sono disponibili suggerimenti. " .
             "Spiega brevemente le tue scelte prima della lista.";
