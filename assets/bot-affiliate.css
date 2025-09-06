@@ -70,13 +70,11 @@
     to { transform: translateX(-50%) scale(1); opacity: 1; }
 }
 
-.alma-bot-affiliate.alma-animation-bounce {
-    animation: alma-bounce 0.6s forwards;
+.alma-bot-affiliate.alma-animation-left {
+    animation: alma-left 0.6s forwards;
 }
 
-@keyframes alma-bounce {
-    0% { transform: translateX(-50%) scale(0.3); opacity: 0; }
-    50% { transform: translateX(-50%) scale(1.05); opacity: 1; }
-    70% { transform: translateX(-50%) scale(0.95); }
-    100% { transform: translateX(-50%) scale(1); }
+@keyframes alma-left {
+    from { transform: translate(-200%, 0); opacity: 0; }
+    to { transform: translate(-50%, 0); opacity: 1; }
 }
