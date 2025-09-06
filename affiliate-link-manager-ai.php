@@ -22,6 +22,7 @@ define('ALMA_PLUGIN_FILE', __FILE__);
 
 // Utilità comuni per le interazioni con l'AI
 require_once ALMA_PLUGIN_DIR . 'includes/class-ai-utils.php';
+require_once ALMA_PLUGIN_DIR . 'includes/class-content-analysis-ai.php';
 
 /**
  * Classe principale del plugin
@@ -1491,6 +1492,17 @@ class AffiliateManagerAI {
             }
         }
 
+        // Aggiorna cache analisi contenuti
+        if (isset($_POST['alma_refresh_content_cache']) &&
+            isset($_POST['alma_settings_nonce']) &&
+            wp_verify_nonce($_POST['alma_settings_nonce'], 'alma_save_settings')) {
+
+            $analysis_types = array_map('sanitize_text_field', $_POST['alma_content_analysis_post_types'] ?? array());
+            update_option('alma_content_analysis_post_types', $analysis_types);
+            $cache = ALMA_Content_Analysis_AI::build_cache($analysis_types);
+            echo "<div class=\"notice notice-success\"><p>" . sprintf(__('Analizzati %d contenuti e cache aggiornata.', 'affiliate-link-manager-ai'), count($cache)) . "</p></div>";
+        }
+
         // Salva impostazioni se form inviato
         if (isset($_POST['alma_save_settings']) &&
             isset($_POST['alma_settings_nonce']) &&
@@ -1503,6 +1515,9 @@ class AffiliateManagerAI {
             // Editor integration
             $selected_types = array_map('sanitize_text_field', $_POST['alma_link_post_types'] ?? array());
             update_option('alma_link_post_types', $selected_types);
+            // Content analysis settings
+            $analysis_types = array_map('sanitize_text_field', $_POST['alma_content_analysis_post_types'] ?? array());
+            update_option('alma_content_analysis_post_types', $analysis_types);
 
             // Claude API settings
             update_option('alma_claude_api_key', sanitize_text_field($_POST['claude_api_key'] ?? ''));
@@ -1535,6 +1550,7 @@ class AffiliateManagerAI {
                     <a href="#tracking" class="nav-tab">Tracking</a>
                     <a href="#ai" class="nav-tab">AI Settings</a>
                     <a href="#claude" class="nav-tab">Claude API</a>
+                    <a href="#content-analysis" class="nav-tab">Content Analysis AI</a>
                     <a href="#editor" class="nav-tab">Editor</a>
                     <a href="#cleanup" class="nav-tab">Pulizia</a>
                 </h2>
@@ -1666,6 +1682,29 @@ class AffiliateManagerAI {
                                     🧪 Testa Connessione
                                 </button>
                                 <div id="claude-test-result" style="margin-top:10px;"></div>
+                            </td>
+                        </tr>
+                    </table>
+                </div>
+
+                <!-- Content Analysis AI -->
+                <div id="content-analysis" class="alma-settings-section" style="display:none;">
+                    <h2><?php _e('Content Analysis AI', 'affiliate-link-manager-ai'); ?></h2>
+                    <table class="form-table">
+                        <tr>
+                            <th scope="row"><?php _e('Tipi di contenuto da analizzare', 'affiliate-link-manager-ai'); ?></th>
+                            <td>
+                                <?php
+                                $post_types = get_post_types(array('show_ui' => true), 'objects');
+                                unset($post_types['affiliate_link']);
+                                $selected_analysis = get_option('alma_content_analysis_post_types', array());
+                                foreach ($post_types as $pt) {
+                                    $checked = in_array($pt->name, $selected_analysis, true) ? 'checked' : '';
+                                    echo '<label><input type="checkbox" name="alma_content_analysis_post_types[]" value="' . esc_attr($pt->name) . '" ' . $checked . '> ' . esc_html($pt->labels->singular_name) . '</label><br />';
+                                }
+                                ?>
+                                <p class="description"><?php _e('Seleziona i contenuti da analizzare e memorizzare in cache.', 'affiliate-link-manager-ai'); ?></p>
+                                <?php submit_button(__('Analizza e aggiorna cache', 'affiliate-link-manager-ai'), 'secondary', 'alma_refresh_content_cache', false); ?>
                             </td>
                         </tr>
                     </table>
