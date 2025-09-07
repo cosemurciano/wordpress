@@ -2458,12 +2458,15 @@ class AffiliateManagerAI {
         }
 
         wp_enqueue_media();
+        wp_enqueue_style('wp-color-picker');
+        wp_enqueue_script('wp-color-picker');
 
         if (isset($_POST['alma_bot_affiliate_settings_nonce']) && wp_verify_nonce($_POST['alma_bot_affiliate_settings_nonce'], 'alma_bot_affiliate_settings')) {
             $animation  = sanitize_text_field($_POST['alma_bot_affiliate_animation'] ?? 'fade');
             $intro      = sanitize_textarea_field($_POST['alma_bot_affiliate_intro'] ?? '');
             $num_links  = isset($_POST['alma_bot_affiliate_num_links']) ? (int) $_POST['alma_bot_affiliate_num_links'] : 3;
             $intro_img  = esc_url_raw($_POST['alma_bot_affiliate_intro_img'] ?? '');
+            $intro_bg   = sanitize_hex_color($_POST['alma_bot_affiliate_intro_bg'] ?? '#ffffff');
             if ($num_links < 1 || $num_links > 10) {
                 $num_links = 3;
             }
@@ -2471,6 +2474,7 @@ class AffiliateManagerAI {
             update_option('alma_bot_affiliate_intro', $intro);
             update_option('alma_bot_affiliate_num_links', $num_links);
             update_option('alma_bot_affiliate_intro_img', $intro_img);
+            update_option('alma_bot_affiliate_intro_bg', $intro_bg ?: '#ffffff');
             echo '<div class="notice notice-success"><p>' . esc_html__('Impostazioni salvate.', 'affiliate-link-manager-ai') . '</p></div>';
         }
 
@@ -2478,6 +2482,7 @@ class AffiliateManagerAI {
         $intro_text        = get_option('alma_bot_affiliate_intro', '');
         $current_num_links = get_option('alma_bot_affiliate_num_links', 3);
         $intro_img         = get_option('alma_bot_affiliate_intro_img', '');
+        $intro_bg          = get_option('alma_bot_affiliate_intro_bg', '#ffffff');
 
         ?>
         <div class="wrap">
@@ -2516,6 +2521,13 @@ class AffiliateManagerAI {
                         </td>
                     </tr>
                     <tr>
+                        <th scope="row"><?php _e('Colore sfondo testo', 'affiliate-link-manager-ai'); ?></th>
+                        <td>
+                            <input type="text" name="alma_bot_affiliate_intro_bg" value="<?php echo esc_attr($intro_bg); ?>" class="alma-color-field" />
+                            <p class="description"><?php _e('Colore di sfondo del testo introduttivo.', 'affiliate-link-manager-ai'); ?></p>
+                        </td>
+                    </tr>
+                    <tr>
                         <th scope="row"><?php _e('Testo introduttivo', 'affiliate-link-manager-ai'); ?></th>
                         <td>
                             <textarea name="alma_bot_affiliate_intro" rows="4" class="large-text"><?php echo esc_textarea($intro_text); ?></textarea>
@@ -2545,6 +2557,7 @@ class AffiliateManagerAI {
                     });
                     frame.open();
                 });
+                $('.alma-color-field').wpColorPicker();
             });
             </script>
         </div>

@@ -12,5 +12,14 @@
         box.on('click', '.alma-bot-affiliate-close', function(){
             box.hide();
         });
+        box.on('click', '.alma-bot-affiliate-minimize', function(){
+            box.find('.alma-bot-box').slideUp();
+        });
+        box.on('click', '.alma-bot-intro-wrapper', function(){
+            var content = box.find('.alma-bot-box');
+            if(content.is(':hidden')){
+                content.slideDown();
+            }
+        });
     });
 })(jQuery);

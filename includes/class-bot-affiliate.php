@@ -279,16 +279,18 @@ class ALMA_Bot_Affiliate {
             $intro = get_option('alma_bot_affiliate_intro', '');
         }
         $intro_img = esc_url(get_option('alma_bot_affiliate_intro_img', ''));
+        $intro_bg  = sanitize_hex_color(get_option('alma_bot_affiliate_intro_bg', '#ffffff'));
         echo '<div id="alma-bot-affiliate" class="alma-bot-affiliate">';
         if (!empty($intro)) {
             echo '<div class="alma-bot-intro-wrapper">';
             if ($intro_img !== '') {
                 echo "<img src='{$intro_img}' alt='' class='alma-bot-avatar' width='40' height='40' />";
             }
-            echo '<div class="alma-bot-bubble">' . wp_kses_post($intro) . '</div>';
+            echo '<div class="alma-bot-bubble" style="background:' . esc_attr($intro_bg) . ';">' . wp_kses_post($intro) . '</div>';
             echo '</div>';
         }
         echo '<div class="alma-bot-box">';
+        echo '<button type="button" class="alma-bot-affiliate-minimize" aria-label="' . esc_attr__('Riduci', 'affiliate-link-manager-ai') . '">&#x25BC;</button>';
         echo '<button type="button" class="alma-bot-affiliate-close" aria-label="' . esc_attr__('Chiudi', 'affiliate-link-manager-ai') . '">&times;</button>';
         echo '<ul>';
         foreach (array_slice($links, 0, $num_links) as $link) {
