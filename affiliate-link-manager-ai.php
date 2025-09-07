@@ -165,7 +165,8 @@ class AffiliateManagerAI {
             'button' => 'no',
             'button_text' => '',
             'button_size' => 'medium',
-            'button_align' => 'left'
+            'button_align' => 'left',
+            'source' => 'shortcode'
         ), $atts);
         
         if (!$atts['id']) {
@@ -192,6 +193,10 @@ class AffiliateManagerAI {
 
         $link_target = get_post_meta($atts['id'], '_link_target', true) ?: '_blank';
         $link_title = get_post_meta($atts['id'], '_link_title', true);
+        $source = sanitize_key($atts['source']);
+        if ($source === '') {
+            $source = 'shortcode';
+        }
 
         if (empty($link_title)) {
             $link_title = get_the_title($atts['id']);
@@ -243,6 +248,7 @@ class AffiliateManagerAI {
         $link_html .= ' class="' . esc_attr($atts['class']) . ' alma-affiliate-link"';
         $link_html .= ' data-link-id="' . esc_attr($atts['id']) . '"';
         $link_html .= ' data-track="1"'; // Flag per tracking JavaScript
+        $link_html .= ' data-source="' . esc_attr($source) . '"';
         if ($link_rel !== '') {
             $link_html .= ' rel="' . esc_attr($link_rel) . '"';
         }
@@ -265,6 +271,7 @@ class AffiliateManagerAI {
             $button_html .= ' class="' . $btn_classes . '"';
             $button_html .= ' data-link-id="' . esc_attr($atts['id']) . '"';
             $button_html .= ' data-track="1"';
+            $button_html .= ' data-source="' . esc_attr($source) . '"';
             if ($link_rel !== '') {
                 $button_html .= ' rel="' . esc_attr($link_rel) . '"';
             }
@@ -404,6 +411,7 @@ class AffiliateManagerAI {
         }
         
         $link_id = isset($_POST['link_id']) ? intval($_POST['link_id']) : 0;
+        $source  = sanitize_key($_POST['source'] ?? 'unknown');
         
         if (!$link_id) {
             wp_send_json_error('Invalid link ID');
@@ -436,7 +444,8 @@ class AffiliateManagerAI {
                 'click_time' => current_time('mysql'),
                 'user_ip' => $this->get_user_ip(),
                 'user_agent' => isset($_SERVER['HTTP_USER_AGENT']) ? sanitize_text_field($_SERVER['HTTP_USER_AGENT']) : '',
-                'referrer' => isset($_POST['referrer']) ? esc_url_raw($_POST['referrer']) : ''
+                'referrer' => isset($_POST['referrer']) ? esc_url_raw($_POST['referrer']) : '',
+                'source' => $source
             ));
         }
         
@@ -1334,6 +1343,13 @@ class AffiliateManagerAI {
                 </div>
             </div>
 
+            <!-- Origine dei Click -->
+            <div style="background:#fff;padding:20px;border:1px solid #ccd0d4;border-radius:8px;margin-bottom:30px;">
+                <h2>🔍 Origine dei Click</h2>
+                <p style="margin-top:0;color:#666;">Distribuzione dei click per funzionalità di presentazione.</p>
+                <canvas id="alma-clicks-source"></canvas>
+            </div>
+
             <script>
             document.addEventListener('DOMContentLoaded', function() {
                 var ctx = document.getElementById('alma-posts-pie');
@@ -1398,6 +1414,37 @@ class AffiliateManagerAI {
                 fetchChart('clicks', 'weekly', 'alma-clicks-weekly', 'Click Settimanali', '#00a32a');
                 fetchChart('links', 'monthly', 'alma-links-trend', 'Link Attivi', '#00a32a');
                 fetchChart('ctr', 'monthly', 'alma-ctr-trend', 'CTR Medio', '#d63638');
+
+                fetch(ajaxurl, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                    body: new URLSearchParams({
+                        action: 'alma_get_chart_data',
+                        nonce: '<?php echo wp_create_nonce('alma_admin_nonce'); ?>',
+                        metric: 'sources'
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (!data.success) return;
+                    var canvas = document.getElementById('alma-clicks-source');
+                    if (!canvas) return;
+                    new Chart(canvas, {
+                        type: 'pie',
+                        data: {
+                            labels: data.data.labels,
+                            datasets: [{
+                                data: data.data.data,
+                                backgroundColor: ['#2271b1','#00a32a','#d63638','#8e44ad','#ff9800']
+                            }]
+                        },
+                        options: {
+                            plugins: {
+                                legend: { position: 'bottom' }
+                            }
+                        }
+                    });
+                });
             });
             </script>
 
@@ -2992,6 +3039,16 @@ class AffiliateManagerAI {
                     }
                 }
                 break;
+            case 'sources':
+                $table = $wpdb->prefix . 'alma_analytics';
+                $results = $wpdb->get_results("SELECT source, COUNT(*) as c FROM $table GROUP BY source");
+                if ($results) {
+                    foreach ($results as $row) {
+                        $labels[] = $row->source ? $row->source : 'unknown';
+                        $data[]   = intval($row->c);
+                    }
+                }
+                break;
             case 'links':
                 for ($i = 11; $i >= 0; $i--) {
                     $month = date('n', strtotime("-$i months"));
@@ -3682,6 +3739,7 @@ class AffiliateManagerAI {
             user_ip varchar(45) DEFAULT '' NOT NULL,
             user_agent text DEFAULT '' NOT NULL,
             referrer varchar(255) DEFAULT '' NOT NULL,
+            source varchar(50) DEFAULT '' NOT NULL,
             PRIMARY KEY (id),
             KEY link_id (link_id),
             KEY click_time (click_time)

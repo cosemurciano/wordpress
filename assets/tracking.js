@@ -39,6 +39,7 @@
         $('.alma-affiliate-link[data-track="1"]').each(function() {
             const $link = $(this);
             const linkId = $link.data('link-id');
+            const source = $link.data('source') || 'unknown';
             
             // Evita doppio binding
             if (trackedLinks.has(linkId + '_' + $link.get(0))) {
@@ -50,18 +51,18 @@
             // Bind eventi click
             $link.on('click', function(e) {
                 // Non bloccare il click, traccia in background
-                trackAffiliateClick(linkId, $link.attr('href'));
+                trackAffiliateClick(linkId, $link.attr('href'), 'click', source);
             });
             
             // Traccia anche right-click (apri in nuova scheda)
             $link.on('contextmenu', function(e) {
-                trackAffiliateClick(linkId, $link.attr('href'), 'contextmenu');
+                trackAffiliateClick(linkId, $link.attr('href'), 'contextmenu', source);
             });
             
             // Traccia middle-click (apri in nuova scheda)
             $link.on('mousedown', function(e) {
                 if (e.which === 2) {
-                    trackAffiliateClick(linkId, $link.attr('href'), 'middleclick');
+                    trackAffiliateClick(linkId, $link.attr('href'), 'middleclick', source);
                 }
             });
         });
@@ -75,7 +76,7 @@
     /**
      * Traccia click su link affiliato
      */
-    function trackAffiliateClick(linkId, url, clickType = 'click') {
+    function trackAffiliateClick(linkId, url, clickType = 'click', source = 'unknown') {
         // Evita tracking multipli simultanei
         if (isTracking) {
             return;
@@ -95,6 +96,7 @@
             link_id: linkId,
             referrer: document.referrer || window.location.href,
             click_type: clickType,
+            source: source,
             timestamp: Date.now()
         };
         
@@ -181,13 +183,13 @@
      */
     window.ALMA = window.ALMA || {};
     
-    window.ALMA.trackClick = function(linkId) {
+    window.ALMA.trackClick = function(linkId, source) {
         if (!linkId) {
             console.error('ALMA: ID link richiesto per tracking manuale');
             return;
         }
-        
-        trackAffiliateClick(linkId, '', 'manual');
+
+        trackAffiliateClick(linkId, '', 'manual', source || 'manual');
     };
     
     window.ALMA.getLocalStats = function() {
