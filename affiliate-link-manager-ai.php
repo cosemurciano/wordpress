@@ -530,6 +530,7 @@ class AffiliateManagerAI {
             'hierarchical' => true,
             'show_ui' => true,
             'show_admin_column' => true,
+            'show_in_menu' => true,
             'query_var' => true,
             'rewrite' => array('slug' => 'link-type'),
         ));
@@ -1132,6 +1133,15 @@ class AffiliateManagerAI {
             'manage_options',
             'affiliate-link-import',
             array($this, 'render_import_page')
+        );
+
+        // Tipologie Link
+        add_submenu_page(
+            'edit.php?post_type=affiliate_link',
+            __('Tipologie Link', 'affiliate-link-manager-ai'),
+            __('Tipologie Link', 'affiliate-link-manager-ai'),
+            'manage_categories',
+            'edit-tags.php?taxonomy=link_type&post_type=affiliate_link'
         );
 
         // Creazione widget
