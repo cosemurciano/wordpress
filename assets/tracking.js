@@ -100,53 +100,94 @@
             timestamp: Date.now()
         };
         
-        // Invia richiesta AJAX asincrona
+        const params = new URLSearchParams(trackingData);
+
+        const handleSuccess = function(responseData) {
+            if (window.alma_debug) {
+                console.log('ALMA: Click tracciato per link #' + linkId);
+            }
+
+            // Trigger evento personalizzato per integrazioni
+            $(document).trigger('alma:click_tracked', {
+                link_id: linkId,
+                url: url,
+                response: responseData
+            });
+
+            // Se c'è Google Analytics, invia evento
+            if (typeof gtag !== 'undefined') {
+                gtag('event', 'affiliate_click', {
+                    'event_category': 'Affiliate',
+                    'event_label': 'Link #' + linkId,
+                    'value': 1
+                });
+            }
+
+            // Se c'è Google Analytics Universal
+            if (typeof ga !== 'undefined') {
+                ga('send', 'event', 'Affiliate', 'Click', 'Link #' + linkId, 1);
+            }
+        };
+
+        const finalize = function() {
+            setTimeout(function() {
+                isTracking = false;
+            }, 100);
+        };
+
+        // Usa navigator.sendBeacon se disponibile per evitare perdita di dati durante il redirect
+        if (navigator.sendBeacon) {
+            const formData = new FormData();
+            for (const [key, value] of params) {
+                formData.append(key, value);
+            }
+            navigator.sendBeacon(alma_tracking.ajax_url, formData);
+            handleSuccess({});
+            finalize();
+            return;
+        }
+
+        // Fallback con fetch e keepalive
+        if (window.fetch) {
+            fetch(alma_tracking.ajax_url, {
+                method: 'POST',
+                body: params,
+                credentials: 'same-origin',
+                keepalive: true
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data && data.success) {
+                    handleSuccess(data.data);
+                }
+            })
+            .catch(function(error) {
+                if (window.alma_debug) {
+                    console.warn('ALMA: Errore tracking click', error);
+                }
+            })
+            .finally(finalize);
+            return;
+        }
+
+        // Ultimo fallback con jQuery.ajax
         $.ajax({
             url: alma_tracking.ajax_url,
             type: 'POST',
             data: trackingData,
-            timeout: 2000, // Timeout breve per non rallentare navigazione
+            async: true,
+            timeout: 2000,
             success: function(response) {
                 if (response.success) {
-                    // Tracking completato con successo
-                    if (window.alma_debug) {
-                        console.log('ALMA: Click tracciato per link #' + linkId);
-                    }
-                    
-                    // Trigger evento personalizzato per integrazioni
-                    $(document).trigger('alma:click_tracked', {
-                        link_id: linkId,
-                        url: url,
-                        response: response.data
-                    });
-                    
-                    // Se c'è Google Analytics, invia evento
-                    if (typeof gtag !== 'undefined') {
-                        gtag('event', 'affiliate_click', {
-                            'event_category': 'Affiliate',
-                            'event_label': 'Link #' + linkId,
-                            'value': 1
-                        });
-                    }
-                    
-                    // Se c'è Google Analytics Universal
-                    if (typeof ga !== 'undefined') {
-                        ga('send', 'event', 'Affiliate', 'Click', 'Link #' + linkId, 1);
-                    }
+                    handleSuccess(response.data);
                 }
             },
             error: function(xhr, status, error) {
-                // Non bloccare navigazione per errori di tracking
                 if (window.alma_debug) {
                     console.warn('ALMA: Errore tracking click', error);
                 }
             },
-            complete: function() {
-                // Reset flag tracking
-                setTimeout(function() {
-                    isTracking = false;
-                }, 100);
-            }
+            complete: finalize
         });
         
         // Tracking locale per statistiche immediate (localStorage)
