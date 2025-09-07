@@ -322,7 +322,7 @@ jQuery(document).ready(function($) {
         
         const modalHtml = `
         <div id="alma-link-modal" class="alma-modal-overlay" style="display:none;position:fixed !important;top:0;left:0;right:0;bottom:0;z-index:999999 !important;background:rgba(0,0,0,0.7);">
-            <div class="alma-modal-content alma-link-selector" style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:white;border-radius:8px;box-shadow:0 10px 40px rgba(0,0,0,0.2);max-width:800px;width:90%;max-height:90vh;overflow:hidden;display:flex;flex-direction:column;z-index:999999;">
+            <div class="alma-modal-content alma-link-selector" style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:white;border-radius:8px;box-shadow:0 10px 40px rgba(0,0,0,0.2);max-width:800px;width:90%;max-height:90vh;overflow-y:auto;display:flex;flex-direction:column;z-index:999999;">
                 <div class="alma-modal-header" style="display:flex;justify-content:space-between;align-items:center;padding:20px 25px;border-bottom:1px solid #e0e0e0;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:white;">
                     <h2 style="margin:0;color:white;font-size:20px;">🔗 Inserisci Link Affiliato</h2>
                     <button class="alma-modal-close" type="button" style="background:none;border:none;color:white;font-size:28px;cursor:pointer;padding:0;width:30px;height:30px;line-height:1;">&times;</button>
