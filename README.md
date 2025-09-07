@@ -1,6 +1,6 @@
 # Affiliate Link Manager AI
 
-Versione 2.5
+Versione 2.6
 
 Questo plugin gestisce e ottimizza i link affiliati all'interno di WordPress.
 
@@ -13,17 +13,15 @@ Questo plugin gestisce e ottimizza i link affiliati all'interno di WordPress.
 - Assegnazione di tipologie personalizzate con creazione automatica delle categorie più comuni.
 - Pulizia automatica degli shortcode quando i link vengono eliminati o spostati nel cestino.
 - Dashboard riassuntiva con conteggio dei link attivi e dei click totali.
-- Grafico “Origine dei Click” per visualizzare la distribuzione dei click per fonte (post, widget, bot, ecc.).
+- Grafico a colonne dei click mensili sui link affiliati.
 
-## Origine dei Click
+## Click Mensili sui Link Affiliati
 
-Ogni link generato dal plugin include l'attributo `data-source`, che identifica la modalità di presentazione del link. Lo script di tracciamento invia questo valore all'endpoint AJAX `alma_track_click`, che lo salva nella tabella `wp_alma_analytics`.
-
-La dashboard admin offre il grafico “Origine dei Click” tramite l'endpoint `alma_get_chart_data` con `metric=sources`, aggregando i click per ciascuna fonte. È possibile ottenere gli stessi dati con la seguente query SQL (sostituire `wp_` con il prefisso delle tabelle):
+La dashboard admin mostra un grafico a colonne dei click mensili sui link affiliati, ottenuto dall'endpoint `alma_get_chart_data` con `metric=clicks` e `range=monthly`. È possibile ottenere gli stessi dati con la seguente query SQL (sostituire `wp_` con il prefisso delle tabelle):
 
 ```sql
-SELECT source, COUNT(*) AS clicks
+SELECT YEAR(click_time) AS anno, MONTH(click_time) AS mese, COUNT(*) AS clicks
 FROM wp_alma_analytics
-GROUP BY source;
+GROUP BY anno, mese;
 ```
 
