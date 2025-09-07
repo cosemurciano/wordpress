@@ -45,19 +45,26 @@
 .alma-bot-box .alma-bot-affiliate-close,
 .alma-bot-box .alma-bot-affiliate-minimize {
     position: absolute;
-    top: 5px;
-    background: transparent;
-    border: none;
+    top: 8px;
+    background: #fff;
+    border: 1px solid #ccc;
+    width: 24px;
+    height: 24px;
+    border-radius: 4px;
     font-size: 16px;
     cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #666;
 }
 
 .alma-bot-box .alma-bot-affiliate-close {
-    right: 8px;
+    right: 10px;
 }
 
 .alma-bot-box .alma-bot-affiliate-minimize {
-    right: 28px;
+    right: 44px;
 }
 
 .alma-bot-box ul {

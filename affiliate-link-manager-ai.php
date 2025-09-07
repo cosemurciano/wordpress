@@ -2462,11 +2462,12 @@ class AffiliateManagerAI {
         wp_enqueue_script('wp-color-picker');
 
         if (isset($_POST['alma_bot_affiliate_settings_nonce']) && wp_verify_nonce($_POST['alma_bot_affiliate_settings_nonce'], 'alma_bot_affiliate_settings')) {
-            $animation  = sanitize_text_field($_POST['alma_bot_affiliate_animation'] ?? 'fade');
-            $intro      = sanitize_textarea_field($_POST['alma_bot_affiliate_intro'] ?? '');
-            $num_links  = isset($_POST['alma_bot_affiliate_num_links']) ? (int) $_POST['alma_bot_affiliate_num_links'] : 3;
-            $intro_img  = esc_url_raw($_POST['alma_bot_affiliate_intro_img'] ?? '');
-            $intro_bg   = sanitize_hex_color($_POST['alma_bot_affiliate_intro_bg'] ?? '#ffffff');
+            $animation   = sanitize_text_field($_POST['alma_bot_affiliate_animation'] ?? 'fade');
+            $intro       = sanitize_textarea_field($_POST['alma_bot_affiliate_intro'] ?? '');
+            $num_links   = isset($_POST['alma_bot_affiliate_num_links']) ? (int) $_POST['alma_bot_affiliate_num_links'] : 3;
+            $intro_img   = esc_url_raw($_POST['alma_bot_affiliate_intro_img'] ?? '');
+            $intro_bg    = sanitize_hex_color($_POST['alma_bot_affiliate_intro_bg'] ?? '#ffffff');
+            $intro_color = sanitize_hex_color($_POST['alma_bot_affiliate_intro_color'] ?? '#000000');
             if ($num_links < 1 || $num_links > 10) {
                 $num_links = 3;
             }
@@ -2475,6 +2476,7 @@ class AffiliateManagerAI {
             update_option('alma_bot_affiliate_num_links', $num_links);
             update_option('alma_bot_affiliate_intro_img', $intro_img);
             update_option('alma_bot_affiliate_intro_bg', $intro_bg ?: '#ffffff');
+            update_option('alma_bot_affiliate_intro_color', $intro_color ?: '#000000');
             echo '<div class="notice notice-success"><p>' . esc_html__('Impostazioni salvate.', 'affiliate-link-manager-ai') . '</p></div>';
         }
 
@@ -2483,6 +2485,7 @@ class AffiliateManagerAI {
         $current_num_links = get_option('alma_bot_affiliate_num_links', 3);
         $intro_img         = get_option('alma_bot_affiliate_intro_img', '');
         $intro_bg          = get_option('alma_bot_affiliate_intro_bg', '#ffffff');
+        $intro_color       = get_option('alma_bot_affiliate_intro_color', '#000000');
 
         ?>
         <div class="wrap">
@@ -2525,6 +2528,13 @@ class AffiliateManagerAI {
                         <td>
                             <input type="text" name="alma_bot_affiliate_intro_bg" value="<?php echo esc_attr($intro_bg); ?>" class="alma-color-field" />
                             <p class="description"><?php _e('Colore di sfondo del testo introduttivo.', 'affiliate-link-manager-ai'); ?></p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><?php _e('Colore testo', 'affiliate-link-manager-ai'); ?></th>
+                        <td>
+                            <input type="text" name="alma_bot_affiliate_intro_color" value="<?php echo esc_attr($intro_color); ?>" class="alma-color-field" />
+                            <p class="description"><?php _e('Colore del testo introduttivo.', 'affiliate-link-manager-ai'); ?></p>
                         </td>
                     </tr>
                     <tr>
