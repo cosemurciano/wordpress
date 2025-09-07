@@ -60,6 +60,7 @@ class AffiliateManagerAI {
         // Frontend hooks per tracking
         if (!is_admin()) {
             add_action('wp_enqueue_scripts', array($this, 'enqueue_frontend_scripts'));
+            add_action('wp_head', array($this, 'output_custom_css'), 100);
         }
     }
     
@@ -94,6 +95,16 @@ class AffiliateManagerAI {
                 array(),
                 ALMA_VERSION
             );
+        }
+    }
+
+    /**
+     * Stampa il CSS personalizzato nel frontend
+     */
+    public function output_custom_css() {
+        $css = get_option('alma_custom_css', '');
+        if (!empty($css)) {
+            echo "<style id='alma-custom-css'>" . wp_strip_all_tags($css) . '</style>';
         }
     }
     
@@ -643,21 +654,21 @@ class AffiliateManagerAI {
                         ALMA_VERSION
                     );
                 }
-                if (file_exists(ALMA_PLUGIN_DIR . 'assets/import-wizard.js')) {
-                    wp_enqueue_script(
-                        'alma-import-wizard',
-                        ALMA_PLUGIN_URL . 'assets/import-wizard.js',
-                        array('jquery'),
-                        ALMA_VERSION,
-                        true
-                    );
-                    wp_localize_script('alma-import-wizard', 'almaImport', array(
-                        'ajax_url' => admin_url('admin-ajax.php'),
-                        'nonce'    => wp_create_nonce('alma_import_links'),
-                        'msg_success' => __('Importato: %s', 'affiliate-link-manager-ai'),
-                        'msg_error' => __('Errore: %s', 'affiliate-link-manager-ai'),
-                        'msg_duplicate' => __('Duplicato: %s', 'affiliate-link-manager-ai'),
-                        'msg_no_title' => __('Titolo mancante', 'affiliate-link-manager-ai'),
+            if (file_exists(ALMA_PLUGIN_DIR . 'assets/import-wizard.js')) {
+                wp_enqueue_script(
+                    'alma-import-wizard',
+                    ALMA_PLUGIN_URL . 'assets/import-wizard.js',
+                    array('jquery'),
+                    ALMA_VERSION,
+                    true
+                );
+                wp_localize_script('alma-import-wizard', 'almaImport', array(
+                    'ajax_url' => admin_url('admin-ajax.php'),
+                    'nonce'    => wp_create_nonce('alma_import_links'),
+                    'msg_success' => __('Importato: %s', 'affiliate-link-manager-ai'),
+                    'msg_error' => __('Errore: %s', 'affiliate-link-manager-ai'),
+                    'msg_duplicate' => __('Duplicato: %s', 'affiliate-link-manager-ai'),
+                    'msg_no_title' => __('Titolo mancante', 'affiliate-link-manager-ai'),
                         'msg_no_url' => __('URL mancante', 'affiliate-link-manager-ai'),
                         'msg_bad_url' => __('URL non valido', 'affiliate-link-manager-ai'),
                         'msg_ajax' => __('Errore di comunicazione', 'affiliate-link-manager-ai'),
@@ -700,6 +711,18 @@ class AffiliateManagerAI {
                         'loading' => __('Caricamento...', 'affiliate-link-manager-ai')
                     )
                 ));
+            }
+        }
+
+        if ($hook === 'affiliate_link_page_alma-css-editor' && function_exists('wp_enqueue_code_editor')) {
+            $editor_settings = wp_enqueue_code_editor(array('type' => 'text/css'));
+            wp_enqueue_script('code-editor');
+            wp_enqueue_style('wp-codemirror');
+            if ($editor_settings) {
+                if (isset($editor_settings['codemirror'])) {
+                    $editor_settings['codemirror']['lineNumbers'] = true;
+                }
+                wp_add_inline_script('code-editor', 'jQuery(function($){wp.codeEditor.initialize("alma-custom-css", ' . wp_json_encode($editor_settings) . ');});');
             }
         }
     }
@@ -1091,6 +1114,16 @@ class AffiliateManagerAI {
             array($this, 'render_settings_page')
         );
 
+        // Editor CSS
+        add_submenu_page(
+            'edit.php?post_type=affiliate_link',
+            __('Editor CSS', 'affiliate-link-manager-ai'),
+            __('Editor CSS', 'affiliate-link-manager-ai'),
+            'manage_options',
+            'alma-css-editor',
+            array($this, 'render_css_editor_page')
+        );
+
         // Importazione massiva
         add_submenu_page(
             'edit.php?post_type=affiliate_link',
@@ -1186,6 +1219,7 @@ class AffiliateManagerAI {
             'affiliate-link-import',
             'alma-prompt-ai-settings',
             'affiliate-link-manager-settings',
+            'alma-css-editor',
         );
 
         $new = array();
@@ -1225,6 +1259,9 @@ class AffiliateManagerAI {
                             break;
                         case 'affiliate-link-manager-settings':
                             $item[0] = __('Impostazioni', 'affiliate-link-manager-ai');
+                            break;
+                        case 'alma-css-editor':
+                            $item[0] = __('Editor CSS', 'affiliate-link-manager-ai');
                             break;
                     }
                     $new[] = $item;
@@ -1848,6 +1885,34 @@ class AffiliateManagerAI {
             });
         });
         </script>
+        <?php
+    }
+
+    /**
+     * Renderizza la pagina dell'editor CSS
+     */
+    public function render_css_editor_page() {
+        if (!current_user_can('manage_options')) {
+            return;
+        }
+
+        $css = get_option('alma_custom_css', '');
+        if (isset($_POST['alma_save_css']) && isset($_POST['alma_css_nonce']) && wp_verify_nonce($_POST['alma_css_nonce'], 'alma_save_css')) {
+            $css = wp_unslash($_POST['alma_custom_css']);
+            update_option('alma_custom_css', wp_strip_all_tags($css));
+            echo '<div class="notice notice-success"><p>' . __('CSS salvato.', 'affiliate-link-manager-ai') . '</p></div>';
+        }
+
+        ?>
+        <div class="wrap">
+            <h1><?php esc_html_e('Editor CSS', 'affiliate-link-manager-ai'); ?></h1>
+            <form method="post" action="">
+                <?php wp_nonce_field('alma_save_css', 'alma_css_nonce'); ?>
+                <textarea id="alma-custom-css" name="alma_custom_css" rows="20" class="widefat" style="min-height:400px;">
+<?php echo esc_textarea($css); ?></textarea>
+                <?php submit_button(__('Salva CSS', 'affiliate-link-manager-ai'), 'primary', 'alma_save_css'); ?>
+            </form>
+        </div>
         <?php
     }
     
