@@ -278,15 +278,16 @@ class ALMA_Bot_Affiliate {
         if (trim($intro) === '') {
             $intro = get_option('alma_bot_affiliate_intro', '');
         }
-        $intro_img = esc_url(get_option('alma_bot_affiliate_intro_img', ''));
-        $intro_bg  = sanitize_hex_color(get_option('alma_bot_affiliate_intro_bg', '#ffffff'));
+        $intro_img   = esc_url(get_option('alma_bot_affiliate_intro_img', ''));
+        $intro_bg    = sanitize_hex_color(get_option('alma_bot_affiliate_intro_bg', '#ffffff'));
+        $intro_color = sanitize_hex_color(get_option('alma_bot_affiliate_intro_color', '#000000'));
         echo '<div id="alma-bot-affiliate" class="alma-bot-affiliate">';
         if (!empty($intro)) {
             echo '<div class="alma-bot-intro-wrapper">';
             if ($intro_img !== '') {
                 echo "<img src='{$intro_img}' alt='' class='alma-bot-avatar' width='40' height='40' />";
             }
-            echo '<div class="alma-bot-bubble" style="background:' . esc_attr($intro_bg) . ';">' . wp_kses_post($intro) . '</div>';
+            echo '<div class="alma-bot-bubble" style="background:' . esc_attr($intro_bg) . ';color:' . esc_attr($intro_color) . ';font-weight:bold;">' . wp_kses_post($intro) . '</div>';
             echo '</div>';
         }
         echo '<div class="alma-bot-box">';
