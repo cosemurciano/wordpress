@@ -436,18 +436,20 @@ class AffiliateManagerAI {
         // Registra dati analytics dettagliati
         global $wpdb;
         $table_name = $wpdb->prefix . 'alma_analytics';
-        
-        // Verifica se la tabella esiste
-        if ($wpdb->get_var("SHOW TABLES LIKE '$table_name'") == $table_name) {
-            $wpdb->insert($table_name, array(
-                'link_id' => $link_id,
-                'click_time' => current_time('mysql'),
-                'user_ip' => $this->get_user_ip(),
-                'user_agent' => isset($_SERVER['HTTP_USER_AGENT']) ? sanitize_text_field($_SERVER['HTTP_USER_AGENT']) : '',
-                'referrer' => isset($_POST['referrer']) ? esc_url_raw($_POST['referrer']) : '',
-                'source' => $source
-            ));
+
+        // Crea la tabella se non esiste
+        if ($wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $table_name)) != $table_name) {
+            $this->create_analytics_table();
         }
+
+        $wpdb->insert($table_name, array(
+            'link_id' => $link_id,
+            'click_time' => current_time('mysql'),
+            'user_ip' => $this->get_user_ip(),
+            'user_agent' => isset($_SERVER['HTTP_USER_AGENT']) ? sanitize_text_field($_SERVER['HTTP_USER_AGENT']) : '',
+            'referrer' => isset($_POST['referrer']) ? esc_url_raw($_POST['referrer']) : '',
+            'source' => $source
+        ));
         
         wp_send_json_success(array(
             'link_id' => $link_id,
@@ -3009,71 +3011,82 @@ class AffiliateManagerAI {
 
         $labels = array();
         $data   = array();
+        $current_time = current_time('timestamp');
 
         switch ($metric) {
             case 'clicks':
                 $table = $wpdb->prefix . 'alma_analytics';
+                if ($wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $table)) != $table) {
+                    break;
+                }
                 if ($range === 'weekly') {
                     for ($i = 11; $i >= 0; $i--) {
-                        $start = date('Y-m-d', strtotime("monday -$i week"));
-                        $end   = date('Y-m-d', strtotime("sunday -$i week"));
+                        $week_start = strtotime("monday -$i week", $current_time);
+                        $week_end   = strtotime("sunday -$i week", $current_time);
+                        $start = wp_date('Y-m-d', $week_start);
+                        $end   = wp_date('Y-m-d', $week_end);
                         $count = $wpdb->get_var($wpdb->prepare(
                             "SELECT COUNT(*) FROM $table WHERE click_time BETWEEN %s AND %s",
                             $start . ' 00:00:00',
                             $end . ' 23:59:59'
                         ));
-                        $labels[] = 'W' . date('W', strtotime($start));
+                        $labels[] = 'W' . wp_date('W', $week_start);
                         $data[]   = intval($count);
                     }
                 } else {
                     for ($i = 11; $i >= 0; $i--) {
-                        $month = date('n', strtotime("-$i months"));
-                        $year  = date('Y', strtotime("-$i months"));
+                        $month_time = strtotime("-$i months", $current_time);
+                        $year  = (int) wp_date('Y', $month_time);
+                        $month = (int) wp_date('n', $month_time);
                         $count = $wpdb->get_var($wpdb->prepare(
                             "SELECT COUNT(*) FROM $table WHERE YEAR(click_time)=%d AND MONTH(click_time)=%d",
                             $year,
                             $month
                         ));
-                        $labels[] = date_i18n('M', strtotime("$year-$month-01"));
+                        $labels[] = wp_date('M', $month_time);
                         $data[]   = intval($count);
                     }
                 }
                 break;
             case 'sources':
                 $table = $wpdb->prefix . 'alma_analytics';
-                $results = $wpdb->get_results("SELECT source, COUNT(*) as c FROM $table GROUP BY source");
-                if ($results) {
-                    foreach ($results as $row) {
-                        $labels[] = $row->source ? $row->source : 'unknown';
-                        $data[]   = intval($row->c);
+                if ($wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $table)) == $table) {
+                    $results = $wpdb->get_results("SELECT source, COUNT(*) as c FROM $table GROUP BY source");
+                    if ($results) {
+                        foreach ($results as $row) {
+                            $labels[] = $row->source ? $row->source : 'unknown';
+                            $data[]   = intval($row->c);
+                        }
                     }
                 }
                 break;
             case 'links':
                 for ($i = 11; $i >= 0; $i--) {
-                    $month = date('n', strtotime("-$i months"));
-                    $year  = date('Y', strtotime("-$i months"));
+                    $month_time = strtotime("-$i months", $current_time);
+                    $month = (int) wp_date('n', $month_time);
+                    $year  = (int) wp_date('Y', $month_time);
                     $count = $wpdb->get_var($wpdb->prepare(
                         "SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_type='affiliate_link' AND post_status='publish' AND YEAR(post_date)=%d AND MONTH(post_date)=%d",
                         $year,
                         $month
                     ));
-                    $labels[] = date_i18n('M', strtotime("$year-$month-01"));
+                    $labels[] = wp_date('M', $month_time);
                     $data[]   = intval($count);
                 }
                 break;
             case 'ctr':
                 $total_occurrences = $this->get_total_link_occurrences();
                 for ($i = 11; $i >= 0; $i--) {
-                    $month = date('n', strtotime("-$i months"));
-                    $year  = date('Y', strtotime("-$i months"));
+                    $month_time = strtotime("-$i months", $current_time);
+                    $month = (int) wp_date('n', $month_time);
+                    $year  = (int) wp_date('Y', $month_time);
                     $clicks = $wpdb->get_var($wpdb->prepare(
                         "SELECT COUNT(*) FROM {$wpdb->prefix}alma_analytics WHERE YEAR(click_time)=%d AND MONTH(click_time)=%d",
                         $year,
                         $month
                     ));
                     $ctr = $total_occurrences > 0 ? ($clicks / $total_occurrences) * 100 : 0;
-                    $labels[] = date_i18n('M', strtotime("$year-$month-01"));
+                    $labels[] = wp_date('M', $month_time);
                     $data[]   = round($ctr, 2);
                 }
                 break;
