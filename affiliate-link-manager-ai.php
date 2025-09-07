@@ -771,10 +771,9 @@ class AffiliateManagerAI {
         wp_nonce_field('save_affiliate_link', 'affiliate_link_nonce');
         
         $affiliate_url = get_post_meta($post->ID, '_affiliate_url', true);
+        // Imposta "sponsored noopener" come valore predefinito solo alla creazione
         $link_rel = get_post_meta($post->ID, '_link_rel', true);
-        if ($link_rel === '') {
-            // Link interno: nessun attributo rel
-        } elseif (!$link_rel) {
+        if (!metadata_exists('post', $post->ID, '_link_rel')) {
             $link_rel = 'sponsored noopener';
         }
         $link_target = get_post_meta($post->ID, '_link_target', true) ?: '_blank';
@@ -2954,7 +2953,7 @@ class AffiliateManagerAI {
         foreach ($links as $link) {
             $prompt .= 'ID ' . $link->ID . ': ' . $link->post_title . "\n";
         }
-        $prompt .= "\nRestituisci un array JSON con massimo 3 oggetti {\"id\": ID, \"score\": COERENZA}, dove COERENZA è un numero da 0 a 100 che indica quanto il link è coerente con l'articolo. Rispondi esclusivamente con JSON valido, senza testo aggiuntivo.\n";
+        $prompt .= "\nRestituisci un array JSON con massimo 10 oggetti {\"id\": ID, \"score\": COERENZA}, dove COERENZA è un numero da 0 a 100 che indica quanto il link è coerente con l'articolo. Rispondi esclusivamente con JSON valido, senza testo aggiuntivo.\n";
 
         $response = ALMA_AI_Utils::call_claude_api($prompt, 'Rispondi esclusivamente con JSON valido, senza testo aggiuntivo');
         if (empty($response['success'])) {
@@ -2971,7 +2970,7 @@ class AffiliateManagerAI {
         }
 
         $results = array();
-        foreach (array_slice($items, 0, 3) as $item) {
+        foreach (array_slice($items, 0, 10) as $item) {
             $id    = isset($item['id']) ? intval($item['id']) : 0;
             $score = isset($item['score']) ? floatval($item['score']) : 0;
 

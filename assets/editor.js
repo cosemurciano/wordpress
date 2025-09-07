@@ -558,7 +558,8 @@ jQuery(document).ready(function($) {
             },
             success: function(response) {
                 if (response.success && response.data.length > 0) {
-                    displaySearchResults(response.data);
+                    const limited = response.data.slice(0, 10);
+                    displaySearchResults(limited);
                 } else {
                     displayNoResults();
                 }
