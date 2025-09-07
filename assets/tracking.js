@@ -41,12 +41,12 @@
             const linkId = $link.data('link-id');
             const source = $link.data('source') || 'unknown';
             
-            // Evita doppio binding
-            if (trackedLinks.has(linkId + '_' + $link.get(0))) {
+            // Evita doppio binding utilizzando direttamente l'elemento DOM
+            if (trackedLinks.has($link.get(0))) {
                 return;
             }
-            
-            trackedLinks.add(linkId + '_' + $link.get(0));
+
+            trackedLinks.add($link.get(0));
             
             // Bind eventi click
             $link.on('click', function(e) {
@@ -137,11 +137,9 @@
 
         // Usa navigator.sendBeacon se disponibile per evitare perdita di dati durante il redirect
         if (navigator.sendBeacon) {
-            const formData = new FormData();
-            for (const [key, value] of params) {
-                formData.append(key, value);
-            }
-            navigator.sendBeacon(alma_tracking.ajax_url, formData);
+            const beaconData = params.toString();
+            const blob = new Blob([beaconData], { type: 'application/x-www-form-urlencoded' });
+            navigator.sendBeacon(alma_tracking.ajax_url, blob);
             handleSuccess({});
             finalize();
             return;
