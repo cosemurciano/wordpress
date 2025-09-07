@@ -254,6 +254,7 @@ class ALMA_Bot_Affiliate {
                 $type_terms = get_the_terms($id, 'link_type');
                 $type       = ($type_terms && !is_wp_error($type_terms)) ? $type_terms[0]->name : '';
                 $links[]    = array(
+                    'id'    => $id,
                     'title' => get_the_title($id),
                     'url'   => esc_url_raw($url),
                     'img'   => $img ? esc_url_raw($img) : '',
@@ -299,12 +300,20 @@ class ALMA_Bot_Affiliate {
             $title = esc_html($link['title'] ?? $link['url'] ?? '');
             $img   = esc_url($link['img'] ?? '');
             $type  = esc_html($link['type'] ?? '');
+            $id    = intval($link['id'] ?? 0);
             echo '<li class="alma-bot-link-item">';
             if ($img) {
                 echo "<img src='{$img}' alt='{$title}' class='alma-bot-thumb' width='60' height='60' />";
             }
             echo '<div class="alma-bot-link-info">';
-            echo "<a href='{$url}' target='_blank' rel='sponsored noopener' class='alma-bot-link-title'>{$title}</a>";
+            $link_attrs = "href='{$url}' target='_blank' rel='sponsored noopener' class='alma-bot-link-title";
+            if ($id) {
+                $link_attrs .= " alma-affiliate-link";
+                $link_attrs .= "' data-link-id='{$id}' data-track='1' data-source='bot'";
+            } else {
+                $link_attrs .= "'";
+            }
+            echo '<a ' . $link_attrs . '>' . $title . '</a>';
             if ($type !== '') {
                 echo "<div class=\"alma-bot-link-type\">{$type}</div>";
             }
@@ -323,7 +332,8 @@ class ALMA_Bot_Affiliate {
             foreach ($links as &$link) {
                 $missing_img  = empty($link['img']);
                 $missing_type = empty($link['type']);
-                if ($missing_img || $missing_type) {
+                $missing_id   = empty($link['id']);
+                if ($missing_img || $missing_type || $missing_id) {
                     $url = $link['url'] ?? '';
                     if ($url) {
                         $posts = get_posts(array(
@@ -342,6 +352,9 @@ class ALMA_Bot_Affiliate {
                             if ($missing_type) {
                                 $type_terms   = get_the_terms($p->ID, 'link_type');
                                 $link['type'] = ($type_terms && !is_wp_error($type_terms)) ? $type_terms[0]->name : '';
+                            }
+                            if ($missing_id) {
+                                $link['id'] = $p->ID;
                             }
                             $needs_update = true;
                         } else {
@@ -381,6 +394,7 @@ class ALMA_Bot_Affiliate {
             $type_terms = get_the_terms($p->ID, 'link_type');
             $type       = ($type_terms && !is_wp_error($type_terms)) ? $type_terms[0]->name : '';
             $available[] = array(
+                'id'    => $p->ID,
                 'title' => get_the_title($p->ID),
                 'url'   => esc_url_raw($url),
                 'img'   => $img ? esc_url_raw($img) : '',
