@@ -3,7 +3,7 @@
  * Plugin Name: Affiliate Link Manager AI
  * Plugin URI: https://your-website.com
  * Description: Gestisce link affiliati con intelligenza artificiale per ottimizzazione e tracking automatico.
- * Version: 2.5
+ * Version: 2.6
  * Author: Cosè Murciano
  * License: GPL v2 or later
  * Text Domain: affiliate-link-manager-ai
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Definisci costanti del plugin
-define('ALMA_VERSION', '2.5');
+define('ALMA_VERSION', '2.6');
 define('ALMA_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('ALMA_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('ALMA_PLUGIN_FILE', __FILE__);
@@ -1323,8 +1323,8 @@ class AffiliateManagerAI {
                         <canvas id="alma-clicks-monthly"></canvas>
                     </div>
                     <div style="flex:1 1 300px;">
-                        <h3>Settimanale</h3>
-                        <canvas id="alma-clicks-weekly"></canvas>
+                        <h3>Giornaliero</h3>
+                        <canvas id="alma-clicks-daily"></canvas>
                     </div>
                 </div>
             </div>
@@ -1345,11 +1345,11 @@ class AffiliateManagerAI {
                 </div>
             </div>
 
-            <!-- Origine dei Click -->
+            <!-- Click Mensili per Link Affiliati -->
             <div style="background:#fff;padding:20px;border:1px solid #ccd0d4;border-radius:8px;margin-bottom:30px;">
-                <h2>🔍 Origine dei Click</h2>
-                <p style="margin-top:0;color:#666;">Distribuzione dei click per funzionalità di presentazione.</p>
-                <canvas id="alma-clicks-source"></canvas>
+                <h2>📊 Click Mensili sui Link Affiliati</h2>
+                <p style="margin-top:0;color:#666;">Numero di click sui link affiliati per mese.</p>
+                <canvas id="alma-clicks-bar"></canvas>
             </div>
 
             <script>
@@ -1375,7 +1375,7 @@ class AffiliateManagerAI {
                     });
                 }
 
-                function fetchChart(metric, range, canvasId, label, color) {
+                function fetchChart(metric, range, canvasId, label, color, type = 'line') {
                     var canvas = document.getElementById(canvasId);
                     if (!canvas) return;
                     fetch(ajaxurl, {
@@ -1392,7 +1392,7 @@ class AffiliateManagerAI {
                     .then(data => {
                         if (!data.success) return;
                         new Chart(canvas, {
-                            type: 'line',
+                            type: type,
                             data: {
                                 labels: data.data.labels,
                                 datasets: [{
@@ -1413,40 +1413,10 @@ class AffiliateManagerAI {
                 }
 
                 fetchChart('clicks', 'monthly', 'alma-clicks-monthly', 'Click Mensili', '#2271b1');
-                fetchChart('clicks', 'weekly', 'alma-clicks-weekly', 'Click Settimanali', '#00a32a');
+                fetchChart('clicks', 'daily', 'alma-clicks-daily', 'Click Giornalieri', '#00a32a');
                 fetchChart('links', 'monthly', 'alma-links-trend', 'Link Attivi', '#00a32a');
                 fetchChart('ctr', 'monthly', 'alma-ctr-trend', 'CTR Medio', '#d63638');
-
-                fetch(ajaxurl, {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-                    body: new URLSearchParams({
-                        action: 'alma_get_chart_data',
-                        nonce: '<?php echo wp_create_nonce('alma_admin_nonce'); ?>',
-                        metric: 'sources'
-                    })
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (!data.success) return;
-                    var canvas = document.getElementById('alma-clicks-source');
-                    if (!canvas) return;
-                    new Chart(canvas, {
-                        type: 'pie',
-                        data: {
-                            labels: data.data.labels,
-                            datasets: [{
-                                data: data.data.data,
-                                backgroundColor: ['#2271b1','#00a32a','#d63638','#8e44ad','#ff9800']
-                            }]
-                        },
-                        options: {
-                            plugins: {
-                                legend: { position: 'bottom' }
-                            }
-                        }
-                    });
-                });
+                fetchChart('clicks', 'monthly', 'alma-clicks-bar', 'Click Mensili', '#2271b1', 'bar');
             });
             </script>
 
@@ -2631,6 +2601,7 @@ class AffiliateManagerAI {
         ?>
         <div class="wrap">
             <h1><?php _e('Affiliate Chat AI', 'affiliate-link-manager-ai'); ?></h1>
+            <p style="color:#d63638;font-weight:bold;">Funzione in BETA TEST, non ancora rilasciata.</p>
             <p><?php _e('Utilizza lo shortcode <code>[affiliate_chat_ai]</code> per mostrare il modulo di ricerca AI nelle pagine o nei post.', 'affiliate-link-manager-ai'); ?></p>
         </div>
         <?php
@@ -3019,7 +2990,18 @@ class AffiliateManagerAI {
                 if ($wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $table)) != $table) {
                     break;
                 }
-                if ($range === 'weekly') {
+                if ($range === 'daily') {
+                    for ($i = 29; $i >= 0; $i--) {
+                        $day_time = strtotime("-$i days", $current_time);
+                        $date = wp_date('Y-m-d', $day_time);
+                        $count = $wpdb->get_var($wpdb->prepare(
+                            "SELECT COUNT(*) FROM $table WHERE DATE(click_time)=%s",
+                            $date
+                        ));
+                        $labels[] = wp_date('d/m', $day_time);
+                        $data[]   = intval($count);
+                    }
+                } elseif ($range === 'weekly') {
                     for ($i = 11; $i >= 0; $i--) {
                         $week_start = strtotime("monday -$i week", $current_time);
                         $week_end   = strtotime("sunday -$i week", $current_time);
