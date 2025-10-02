@@ -2103,7 +2103,6 @@ class AffiliateManagerAI {
             'button_text'  => '',
             'template_desktop_columns' => 1,
             'template_mobile_columns'  => 1,
-            'orientation'  => 'vertical',
             'links'        => array(),
             'manual_ids'   => array(),
         );
@@ -2128,8 +2127,6 @@ class AffiliateManagerAI {
             }
             $instance['template_desktop_columns'] = $desktop_columns;
             $instance['template_mobile_columns']  = $mobile_columns;
-            $instance['orientation']  = ($_POST['orientation'] ?? 'vertical') === 'horizontal' ? 'horizontal' : 'vertical';
-
             $suggested_links = array_map('intval', $_POST['links'] ?? array());
 
             $raw_manual_ids = array_filter(array_map('intval', explode(',', $_POST['manual_ids'] ?? '')));
@@ -2301,15 +2298,6 @@ class AffiliateManagerAI {
                                 </fieldset>
                             </td>
                         </tr>
-                        <tr>
-                            <th scope="row" class="alma-required"><label for="alma_widget_orientation"><?php _e('Orientamento', 'affiliate-link-manager-ai'); ?></label></th>
-                            <td>
-                                <select name="orientation" id="alma_widget_orientation" class="alma-required-field" required>
-                                    <option value="vertical" <?php selected($instance['orientation'], 'vertical'); ?>><?php _e('Verticale', 'affiliate-link-manager-ai'); ?></option>
-                                    <option value="horizontal" <?php selected($instance['orientation'], 'horizontal'); ?>><?php _e('Orizzontale', 'affiliate-link-manager-ai'); ?></option>
-                                </select>
-                            </td>
-                        </tr>
                         <?php if (!empty($suggestions)) : ?>
                         <tr>
                             <th scope="row"><?php _e('Link suggeriti', 'affiliate-link-manager-ai'); ?></th>
@@ -2442,8 +2430,6 @@ class AffiliateManagerAI {
             }
             $instance['template_desktop_columns'] = $desktop_columns;
             $instance['template_mobile_columns']  = $mobile_columns;
-            $instance['orientation']  = ($_POST['orientation'] ?? 'vertical') === 'horizontal' ? 'horizontal' : 'vertical';
-
             $suggested_links = array_map('intval', $_POST['links'] ?? array());
             $raw_manual_ids = array_filter(array_map('intval', explode(',', $_POST['manual_ids'] ?? '')));
             $manual_ids = array();
@@ -2554,15 +2540,6 @@ class AffiliateManagerAI {
                                     </select>
                                     <p class="description"><?php _e('Imposta il numero di link da mostrare per riga su desktop e smartphone.', 'affiliate-link-manager-ai'); ?></p>
                                 </fieldset>
-                            </td>
-                        </tr>
-                        <tr>
-                            <th scope="row"><label for="alma_widget_orientation"><?php _e('Orientamento', 'affiliate-link-manager-ai'); ?></label></th>
-                            <td>
-                                <select name="orientation" id="alma_widget_orientation">
-                                    <option value="vertical" <?php selected($instance['orientation'], 'vertical'); ?>><?php _e('Verticale', 'affiliate-link-manager-ai'); ?></option>
-                                    <option value="horizontal" <?php selected($instance['orientation'], 'horizontal'); ?>><?php _e('Orizzontale', 'affiliate-link-manager-ai'); ?></option>
-                                </select>
                             </td>
                         </tr>
                         <?php if (!empty($suggestions)) : ?>
