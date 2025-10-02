@@ -2101,7 +2101,8 @@ class AffiliateManagerAI {
             'show_content' => 0,
             'show_button'  => 0,
             'button_text'  => '',
-            'format'       => 'large',
+            'template_desktop_columns' => 1,
+            'template_mobile_columns'  => 1,
             'orientation'  => 'vertical',
             'links'        => array(),
             'manual_ids'   => array(),
@@ -2117,7 +2118,16 @@ class AffiliateManagerAI {
             $instance['show_content'] = !empty($_POST['show_content']) ? 1 : 0;
             $instance['show_button']  = !empty($_POST['show_button']) ? 1 : 0;
             $instance['button_text']  = sanitize_text_field($_POST['button_text'] ?? '');
-            $instance['format']       = ($_POST['format'] ?? 'large') === 'small' ? 'small' : 'large';
+            $desktop_columns = isset($_POST['template_desktop_columns']) ? intval($_POST['template_desktop_columns']) : 1;
+            if ($desktop_columns < 1 || $desktop_columns > 6) {
+                $desktop_columns = 1;
+            }
+            $mobile_columns = isset($_POST['template_mobile_columns']) ? intval($_POST['template_mobile_columns']) : 1;
+            if ($mobile_columns < 1 || $mobile_columns > 4) {
+                $mobile_columns = 1;
+            }
+            $instance['template_desktop_columns'] = $desktop_columns;
+            $instance['template_mobile_columns']  = $mobile_columns;
             $instance['orientation']  = ($_POST['orientation'] ?? 'vertical') === 'horizontal' ? 'horizontal' : 'vertical';
 
             $suggested_links = array_map('intval', $_POST['links'] ?? array());
@@ -2270,12 +2280,25 @@ class AffiliateManagerAI {
                             <td><input name="button_text" type="text" id="alma_widget_button_text" value="<?php echo esc_attr($instance['button_text']); ?>" class="regular-text"></td>
                         </tr>
                         <tr>
-                            <th scope="row" class="alma-required"><label for="alma_widget_format"><?php _e('Formato', 'affiliate-link-manager-ai'); ?></label></th>
+                            <th scope="row" class="alma-required"><label for="alma_widget_template_desktop"><?php _e('Template Widget', 'affiliate-link-manager-ai'); ?></label></th>
                             <td>
-                                <select name="format" id="alma_widget_format" class="alma-required-field" required>
-                                    <option value="large" <?php selected($instance['format'], 'large'); ?>><?php _e('Immagine grande, titolo e contenuto', 'affiliate-link-manager-ai'); ?></option>
-                                    <option value="small" <?php selected($instance['format'], 'small'); ?>><?php _e('Immagine piccola e titolo', 'affiliate-link-manager-ai'); ?></option>
-                                </select>
+                                <fieldset>
+                                    <legend class="screen-reader-text"><span><?php _e('Template Widget', 'affiliate-link-manager-ai'); ?></span></legend>
+                                    <label for="alma_widget_template_desktop"><?php _e('Link per riga (Desktop)', 'affiliate-link-manager-ai'); ?></label>
+                                    <select name="template_desktop_columns" id="alma_widget_template_desktop" class="alma-required-field" required>
+                                        <?php for ($i = 1; $i <= 6; $i++) : ?>
+                                            <option value="<?php echo esc_attr($i); ?>" <?php selected((int) $instance['template_desktop_columns'], $i); ?>><?php echo esc_html($i); ?></option>
+                                        <?php endfor; ?>
+                                    </select>
+                                    <br>
+                                    <label for="alma_widget_template_mobile"><?php _e('Link per riga (Mobile)', 'affiliate-link-manager-ai'); ?></label>
+                                    <select name="template_mobile_columns" id="alma_widget_template_mobile" required>
+                                        <?php for ($i = 1; $i <= 4; $i++) : ?>
+                                            <option value="<?php echo esc_attr($i); ?>" <?php selected((int) $instance['template_mobile_columns'], $i); ?>><?php echo esc_html($i); ?></option>
+                                        <?php endfor; ?>
+                                    </select>
+                                    <p class="description"><?php _e('Imposta il numero di link da mostrare per riga su desktop e smartphone.', 'affiliate-link-manager-ai'); ?></p>
+                                </fieldset>
                             </td>
                         </tr>
                         <tr>
@@ -2377,7 +2400,21 @@ class AffiliateManagerAI {
             'manual_ids'     => array(),
             'show_button'    => 0,
             'button_text'    => '',
+            'template_desktop_columns' => 1,
+            'template_mobile_columns'  => 1,
         );
+        if (!array_key_exists('template_desktop_columns', $instances[$widget_id])) {
+            if (!empty($instance['format']) && $instance['format'] === 'small') {
+                $instance['template_desktop_columns'] = 2;
+            } elseif (($instance['orientation'] ?? 'vertical') === 'horizontal') {
+                $instance['template_desktop_columns'] = 2;
+            } else {
+                $instance['template_desktop_columns'] = 1;
+            }
+        }
+        if (!array_key_exists('template_mobile_columns', $instances[$widget_id])) {
+            $instance['template_mobile_columns'] = 1;
+        }
         $saved       = false;
         $suggestions = array();
         $suggestions_error = null;
@@ -2395,7 +2432,16 @@ class AffiliateManagerAI {
             $instance['show_content'] = !empty($_POST['show_content']) ? 1 : 0;
             $instance['show_button']  = !empty($_POST['show_button']) ? 1 : 0;
             $instance['button_text']  = sanitize_text_field($_POST['button_text'] ?? '');
-            $instance['format']       = ($_POST['format'] ?? 'large') === 'small' ? 'small' : 'large';
+            $desktop_columns = isset($_POST['template_desktop_columns']) ? intval($_POST['template_desktop_columns']) : (int) ($instance['template_desktop_columns'] ?? 1);
+            if ($desktop_columns < 1 || $desktop_columns > 6) {
+                $desktop_columns = 1;
+            }
+            $mobile_columns = isset($_POST['template_mobile_columns']) ? intval($_POST['template_mobile_columns']) : (int) ($instance['template_mobile_columns'] ?? 1);
+            if ($mobile_columns < 1 || $mobile_columns > 4) {
+                $mobile_columns = 1;
+            }
+            $instance['template_desktop_columns'] = $desktop_columns;
+            $instance['template_mobile_columns']  = $mobile_columns;
             $instance['orientation']  = ($_POST['orientation'] ?? 'vertical') === 'horizontal' ? 'horizontal' : 'vertical';
 
             $suggested_links = array_map('intval', $_POST['links'] ?? array());
@@ -2489,12 +2535,25 @@ class AffiliateManagerAI {
                             <td><input name="button_text" type="text" id="alma_widget_button_text" value="<?php echo esc_attr($instance['button_text']); ?>" class="regular-text"></td>
                         </tr>
                         <tr>
-                            <th scope="row"><label for="alma_widget_format"><?php _e('Formato', 'affiliate-link-manager-ai'); ?></label></th>
+                            <th scope="row"><label for="alma_widget_template_desktop"><?php _e('Template Widget', 'affiliate-link-manager-ai'); ?></label></th>
                             <td>
-                                <select name="format" id="alma_widget_format">
-                                    <option value="large" <?php selected($instance['format'], 'large'); ?>><?php _e('Immagine grande, titolo e contenuto', 'affiliate-link-manager-ai'); ?></option>
-                                    <option value="small" <?php selected($instance['format'], 'small'); ?>><?php _e('Immagine piccola e titolo', 'affiliate-link-manager-ai'); ?></option>
-                                </select>
+                                <fieldset>
+                                    <legend class="screen-reader-text"><span><?php _e('Template Widget', 'affiliate-link-manager-ai'); ?></span></legend>
+                                    <label for="alma_widget_template_desktop"><?php _e('Link per riga (Desktop)', 'affiliate-link-manager-ai'); ?></label>
+                                    <select name="template_desktop_columns" id="alma_widget_template_desktop">
+                                        <?php for ($i = 1; $i <= 6; $i++) : ?>
+                                            <option value="<?php echo esc_attr($i); ?>" <?php selected((int) $instance['template_desktop_columns'], $i); ?>><?php echo esc_html($i); ?></option>
+                                        <?php endfor; ?>
+                                    </select>
+                                    <br>
+                                    <label for="alma_widget_template_mobile"><?php _e('Link per riga (Mobile)', 'affiliate-link-manager-ai'); ?></label>
+                                    <select name="template_mobile_columns" id="alma_widget_template_mobile">
+                                        <?php for ($i = 1; $i <= 4; $i++) : ?>
+                                            <option value="<?php echo esc_attr($i); ?>" <?php selected((int) $instance['template_mobile_columns'], $i); ?>><?php echo esc_html($i); ?></option>
+                                        <?php endfor; ?>
+                                    </select>
+                                    <p class="description"><?php _e('Imposta il numero di link da mostrare per riga su desktop e smartphone.', 'affiliate-link-manager-ai'); ?></p>
+                                </fieldset>
                             </td>
                         </tr>
                         <tr>
