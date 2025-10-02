@@ -20,15 +20,16 @@ class ALMA_Affiliate_Links_Widget extends WP_Widget {
         $show_content = !empty($instance['show_content']);
         $show_button = !empty($instance['show_button']);
         $button_text = isset($instance['button_text']) ? sanitize_text_field($instance['button_text']) : '';
-        $orientation = isset($instance['orientation']) && $instance['orientation'] === 'horizontal' ? 'horizontal' : 'vertical';
         $desktop_columns = isset($instance['template_desktop_columns']) ? intval($instance['template_desktop_columns']) : 0;
         $mobile_columns = isset($instance['template_mobile_columns']) ? intval($instance['template_mobile_columns']) : 0;
 
         if ($desktop_columns < 1) {
             if (!empty($instance['format']) && $instance['format'] === 'small') {
                 $desktop_columns = 2;
+            } elseif (!empty($instance['orientation']) && $instance['orientation'] === 'horizontal') {
+                $desktop_columns = 2;
             } else {
-                $desktop_columns = $orientation === 'horizontal' ? 2 : 1;
+                $desktop_columns = 1;
             }
         }
         $desktop_columns = max(1, min(6, $desktop_columns));
@@ -66,7 +67,7 @@ class ALMA_Affiliate_Links_Widget extends WP_Widget {
         $img = $show_image ? 'yes' : 'no';
         $img_size = $desktop_columns > 2 ? 'thumbnail' : 'full';
 
-        $container_classes = 'alma-affiliate-widget orientation-' . $orientation . ' template-desktop-' . $desktop_columns . ' template-mobile-' . $mobile_columns;
+        $container_classes = 'alma-affiliate-widget template-desktop-' . $desktop_columns . ' template-mobile-' . $mobile_columns;
         $container_style = '--alma-desktop-columns:' . $desktop_columns . ';--alma-mobile-columns:' . $mobile_columns . ';display:grid;gap:20px;';
 
         static $styles_printed = false;
@@ -120,11 +121,14 @@ class ALMA_Affiliate_Links_Widget extends WP_Widget {
         $show_content = !empty($instance['show_content']);
         $show_button = !empty($instance['show_button']);
         $button_text = $instance['button_text'] ?? '';
-        $orientation = $instance['orientation'] ?? 'vertical';
         $desktop_columns = isset($instance['template_desktop_columns']) ? intval($instance['template_desktop_columns']) : 0;
         $mobile_columns = isset($instance['template_mobile_columns']) ? intval($instance['template_mobile_columns']) : 0;
         if ($desktop_columns < 1) {
-            $desktop_columns = $orientation === 'horizontal' ? 2 : 1;
+            if (!empty($instance['orientation']) && $instance['orientation'] === 'horizontal') {
+                $desktop_columns = 2;
+            } else {
+                $desktop_columns = 1;
+            }
         }
         $desktop_columns = max(1, min(6, $desktop_columns));
         if ($mobile_columns < 1) {
@@ -181,13 +185,6 @@ class ALMA_Affiliate_Links_Widget extends WP_Widget {
             </select>
         </p>
         <p>
-            <label for="<?php echo esc_attr($this->get_field_id('orientation')); ?>"><?php _e('Orientamento:', 'affiliate-link-manager-ai'); ?></label>
-            <select class="widefat" id="<?php echo esc_attr($this->get_field_id('orientation')); ?>" name="<?php echo esc_attr($this->get_field_name('orientation')); ?>">
-                <option value="vertical" <?php selected($orientation, 'vertical'); ?>><?php _e('Verticale', 'affiliate-link-manager-ai'); ?></option>
-                <option value="horizontal" <?php selected($orientation, 'horizontal'); ?>><?php _e('Orizzontale', 'affiliate-link-manager-ai'); ?></option>
-            </select>
-        </p>
-        <p>
             <label for="<?php echo esc_attr($this->get_field_id('links')); ?>"><?php _e('ID Link (separati da virgola, max 20):', 'affiliate-link-manager-ai'); ?></label>
             <input class="widefat" id="<?php echo esc_attr($this->get_field_id('links')); ?>" name="<?php echo esc_attr($this->get_field_name('links')); ?>" type="text" value="<?php echo esc_attr($links); ?>">
         </p>
@@ -203,7 +200,9 @@ class ALMA_Affiliate_Links_Widget extends WP_Widget {
         $instance['show_content'] = !empty($new_instance['show_content']) ? 1 : 0;
         $instance['show_button'] = !empty($new_instance['show_button']) ? 1 : 0;
         $instance['button_text'] = sanitize_text_field($new_instance['button_text'] ?? '');
-        $instance['orientation'] = $new_instance['orientation'] === 'horizontal' ? 'horizontal' : 'vertical';
+        if (isset($old_instance['orientation'])) {
+            $instance['orientation'] = $old_instance['orientation'] === 'horizontal' ? 'horizontal' : 'vertical';
+        }
         $desktop_columns = isset($new_instance['template_desktop_columns']) ? intval($new_instance['template_desktop_columns']) : 1;
         $desktop_columns = max(1, min(6, $desktop_columns));
         $mobile_columns = isset($new_instance['template_mobile_columns']) ? intval($new_instance['template_mobile_columns']) : 1;
