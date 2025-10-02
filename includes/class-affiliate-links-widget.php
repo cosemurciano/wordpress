@@ -20,8 +20,23 @@ class ALMA_Affiliate_Links_Widget extends WP_Widget {
         $show_content = !empty($instance['show_content']);
         $show_button = !empty($instance['show_button']);
         $button_text = isset($instance['button_text']) ? sanitize_text_field($instance['button_text']) : '';
-        $format = isset($instance['format']) && $instance['format'] === 'small' ? 'small' : 'large';
         $orientation = isset($instance['orientation']) && $instance['orientation'] === 'horizontal' ? 'horizontal' : 'vertical';
+        $desktop_columns = isset($instance['template_desktop_columns']) ? intval($instance['template_desktop_columns']) : 0;
+        $mobile_columns = isset($instance['template_mobile_columns']) ? intval($instance['template_mobile_columns']) : 0;
+
+        if ($desktop_columns < 1) {
+            if (!empty($instance['format']) && $instance['format'] === 'small') {
+                $desktop_columns = 2;
+            } else {
+                $desktop_columns = $orientation === 'horizontal' ? 2 : 1;
+            }
+        }
+        $desktop_columns = max(1, min(6, $desktop_columns));
+
+        if ($mobile_columns < 1) {
+            $mobile_columns = 1;
+        }
+        $mobile_columns = max(1, min(4, $mobile_columns));
 
         if (empty($links)) {
             return '';
@@ -49,13 +64,22 @@ class ALMA_Affiliate_Links_Widget extends WP_Widget {
         }
 
         $img = $show_image ? 'yes' : 'no';
-        $img_size = $format === 'small' ? 'thumbnail' : 'full';
+        $img_size = $desktop_columns > 2 ? 'thumbnail' : 'full';
 
-        $container_classes = 'alma-affiliate-widget format-' . $format . ' orientation-' . $orientation;
-        $container_style = $orientation === 'horizontal' ? 'display:flex;flex-wrap:wrap;' : '';
-        $item_style = $orientation === 'horizontal' ? 'width:50%;padding:10px;box-sizing:border-box;' : 'margin-bottom:10px;';
+        $container_classes = 'alma-affiliate-widget orientation-' . $orientation . ' template-desktop-' . $desktop_columns . ' template-mobile-' . $mobile_columns;
+        $container_style = '--alma-desktop-columns:' . $desktop_columns . ';--alma-mobile-columns:' . $mobile_columns . ';display:grid;gap:20px;';
 
-        $output = '<div class="' . esc_attr($container_classes) . '" style="' . esc_attr($container_style) . '">';
+        static $styles_printed = false;
+        $output = '';
+        if (!$styles_printed) {
+            $styles_printed = true;
+            $inline_css = '.alma-affiliate-widget{display:grid;gap:20px;grid-template-columns:repeat(var(--alma-desktop-columns,1),minmax(0,1fr));}'
+                . '.alma-affiliate-item{min-width:0;}'
+                . '@media (max-width:782px){.alma-affiliate-widget{grid-template-columns:repeat(var(--alma-mobile-columns,1),minmax(0,1fr));}}';
+            $output .= '<style id="alma-affiliate-widget-template-styles">' . esc_html($inline_css) . '</style>';
+        }
+
+        $output .= '<div class="' . esc_attr($container_classes) . '" style="' . esc_attr($container_style) . '">';
 
         while ($q->have_posts()) {
             $q->the_post();
@@ -67,7 +91,7 @@ class ALMA_Affiliate_Links_Widget extends WP_Widget {
             $shortcode = '[affiliate_link id="' . $id . '" img="' . $img . '" img_size="' . $img_size . '"' . $fields_attr . $button_attr . $text_attr . ' source="widget"]';
             $link_html = do_shortcode($shortcode);
 
-            $output .= '<div class="alma-affiliate-item" style="' . esc_attr($item_style) . '">' . $link_html . '</div>';
+            $output .= '<div class="alma-affiliate-item">' . $link_html . '</div>';
         }
         wp_reset_postdata();
 
@@ -96,8 +120,17 @@ class ALMA_Affiliate_Links_Widget extends WP_Widget {
         $show_content = !empty($instance['show_content']);
         $show_button = !empty($instance['show_button']);
         $button_text = $instance['button_text'] ?? '';
-        $format = $instance['format'] ?? 'large';
         $orientation = $instance['orientation'] ?? 'vertical';
+        $desktop_columns = isset($instance['template_desktop_columns']) ? intval($instance['template_desktop_columns']) : 0;
+        $mobile_columns = isset($instance['template_mobile_columns']) ? intval($instance['template_mobile_columns']) : 0;
+        if ($desktop_columns < 1) {
+            $desktop_columns = $orientation === 'horizontal' ? 2 : 1;
+        }
+        $desktop_columns = max(1, min(6, $desktop_columns));
+        if ($mobile_columns < 1) {
+            $mobile_columns = 1;
+        }
+        $mobile_columns = max(1, min(4, $mobile_columns));
         $links = isset($instance['links']) ? implode(',', array_map('intval', (array) $instance['links'])) : '';
         ?>
         <p>
@@ -129,10 +162,22 @@ class ALMA_Affiliate_Links_Widget extends WP_Widget {
             <input class="widefat" id="<?php echo esc_attr($this->get_field_id('button_text')); ?>" name="<?php echo esc_attr($this->get_field_name('button_text')); ?>" type="text" value="<?php echo esc_attr($button_text); ?>">
         </p>
         <p>
-            <label for="<?php echo esc_attr($this->get_field_id('format')); ?>"><?php _e('Formato:', 'affiliate-link-manager-ai'); ?></label>
-            <select class="widefat" id="<?php echo esc_attr($this->get_field_id('format')); ?>" name="<?php echo esc_attr($this->get_field_name('format')); ?>">
-                <option value="large" <?php selected($format, 'large'); ?>><?php _e('Immagine grande, titolo e contenuto', 'affiliate-link-manager-ai'); ?></option>
-                <option value="small" <?php selected($format, 'small'); ?>><?php _e('Immagine piccola e titolo', 'affiliate-link-manager-ai'); ?></option>
+            <strong><?php _e('Template Widget', 'affiliate-link-manager-ai'); ?></strong>
+        </p>
+        <p>
+            <label for="<?php echo esc_attr($this->get_field_id('template_desktop_columns')); ?>"><?php _e('Link per riga (Desktop)', 'affiliate-link-manager-ai'); ?></label>
+            <select class="widefat" id="<?php echo esc_attr($this->get_field_id('template_desktop_columns')); ?>" name="<?php echo esc_attr($this->get_field_name('template_desktop_columns')); ?>">
+                <?php for ($i = 1; $i <= 6; $i++) : ?>
+                    <option value="<?php echo esc_attr($i); ?>" <?php selected($desktop_columns, $i); ?>><?php echo esc_html($i); ?></option>
+                <?php endfor; ?>
+            </select>
+        </p>
+        <p>
+            <label for="<?php echo esc_attr($this->get_field_id('template_mobile_columns')); ?>"><?php _e('Link per riga (Mobile)', 'affiliate-link-manager-ai'); ?></label>
+            <select class="widefat" id="<?php echo esc_attr($this->get_field_id('template_mobile_columns')); ?>" name="<?php echo esc_attr($this->get_field_name('template_mobile_columns')); ?>">
+                <?php for ($i = 1; $i <= 4; $i++) : ?>
+                    <option value="<?php echo esc_attr($i); ?>" <?php selected($mobile_columns, $i); ?>><?php echo esc_html($i); ?></option>
+                <?php endfor; ?>
             </select>
         </p>
         <p>
@@ -158,8 +203,13 @@ class ALMA_Affiliate_Links_Widget extends WP_Widget {
         $instance['show_content'] = !empty($new_instance['show_content']) ? 1 : 0;
         $instance['show_button'] = !empty($new_instance['show_button']) ? 1 : 0;
         $instance['button_text'] = sanitize_text_field($new_instance['button_text'] ?? '');
-        $instance['format'] = $new_instance['format'] === 'small' ? 'small' : 'large';
         $instance['orientation'] = $new_instance['orientation'] === 'horizontal' ? 'horizontal' : 'vertical';
+        $desktop_columns = isset($new_instance['template_desktop_columns']) ? intval($new_instance['template_desktop_columns']) : 1;
+        $desktop_columns = max(1, min(6, $desktop_columns));
+        $mobile_columns = isset($new_instance['template_mobile_columns']) ? intval($new_instance['template_mobile_columns']) : 1;
+        $mobile_columns = max(1, min(4, $mobile_columns));
+        $instance['template_desktop_columns'] = $desktop_columns;
+        $instance['template_mobile_columns'] = $mobile_columns;
         $links = array_filter(array_map('intval', explode(',', $new_instance['links'] ?? '')));
         $instance['links'] = array_slice(array_unique($links), 0, 20);
         return $instance;
