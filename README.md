@@ -25,3 +25,14 @@ FROM wp_alma_analytics
 GROUP BY anno, mese;
 ```
 
+## Dashboard admin ottimizzata (refactor performance)
+
+La dashboard ora usa una classe dedicata (`includes/class-dashboard-stats.php`) che centralizza il calcolo delle statistiche e applica cache transient con TTL configurabile tramite filtro WordPress `alma_dashboard_cache_ttl`.
+
+Miglioramenti principali:
+- rendering iniziale leggero con shell in loading;
+- caricamento dati via AJAX (`alma_get_dashboard_data`) con payload completo;
+- grafici caricati tramite query aggregate e cache (`alma_get_chart_data`);
+- riduzione query ripetute su shortcode grazie a mappa usage cache-izzata;
+- invalidazione cache su save/delete/trash/untrash di post e pagine;
+- indici DB aggiuntivi su `alma_analytics`: `(link_id, click_time)` e `(source, click_time)`.
