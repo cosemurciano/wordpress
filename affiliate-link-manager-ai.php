@@ -23,13 +23,17 @@ define('ALMA_PLUGIN_FILE', __FILE__);
 // Utilità comuni per le interazioni con l'AI
 require_once ALMA_PLUGIN_DIR . 'includes/class-ai-utils.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-content-analysis-ai.php';
+require_once ALMA_PLUGIN_DIR . 'includes/class-dashboard-stats.php';
 
 /**
  * Classe principale del plugin
  */
 class AffiliateManagerAI {
+    private $dashboard_stats;
     
     public function __construct() {
+        global $wpdb;
+        $this->dashboard_stats = new ALMA_Dashboard_Stats($wpdb);
         add_action('init', array($this, 'init'));
         register_activation_hook(__FILE__, array($this, 'activate'));
         register_deactivation_hook(__FILE__, array($this, 'deactivate'));
@@ -151,6 +155,11 @@ class AffiliateManagerAI {
             wp_schedule_event(time(), 'daily', 'alma_daily_optimization');
         }
         
+        add_action('save_post', array($this, 'invalidate_dashboard_cache'));
+        add_action('deleted_post', array($this, 'invalidate_dashboard_cache'));
+        add_action('trashed_post', array($this, 'invalidate_dashboard_cache'));
+        add_action('untrashed_post', array($this, 'invalidate_dashboard_cache'));
+
         // Editor integration
         add_action('admin_footer-post.php', array($this, 'add_editor_integration'));
         add_action('admin_footer-post-new.php', array($this, 'add_editor_integration'));
@@ -1289,242 +1298,26 @@ class AffiliateManagerAI {
         if (!current_user_can('manage_options')) {
             wp_die(__('Non hai i permessi per accedere a questa pagina.'));
         }
-        
-        $total_clicks = $this->get_total_clicks();
-        $total_links = wp_count_posts('affiliate_link')->publish;
-        $unused_links = $this->get_unused_links_count();
-        $top_links = $this->get_top_performing_links(10);
-
-        global $wpdb;
-        $total_posts = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_type='post' AND post_status='publish'");
-        $like = $wpdb->esc_like('[affiliate_link');
-        $posts_with_links = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_type='post' AND post_status='publish' AND post_content LIKE %s", '%' . $like . '%'));
-        $posts_without_links = $total_posts - $posts_with_links;
-        $no_affiliate_url = admin_url('edit.php?post_type=post&alma_no_affiliates=1');
-        
         ?>
         <div class="wrap">
             <h1><?php _e('Dashboard Link - Affiliate Link Manager', 'affiliate-link-manager-ai'); ?></h1>
-            <p style="font-size:14px;color:#666;margin:5px 0 10px;">
-                <?php _e('Gestione e monitoraggio dei link affiliati direttamente dal tuo sito.', 'affiliate-link-manager-ai'); ?>
-            </p>
-            <p style="font-size:14px;color:#666;">Versione <?php echo ALMA_VERSION; ?></p>
-
-            <!-- Statistiche Principali -->
-            <div style="display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:auto auto;gap:20px;margin:30px 0;">
-
-                <div style="background:#fff;padding:20px;border:1px solid #ccd0d4;border-radius:8px;grid-row:span 2;">
-                    <h3 style="margin:0 0 10px 0;color:#23282d;">📝 Stato Articoli</h3>
-                    <p style="margin:0 0 5px 0;color:#23282d;">
-                        <strong><?php echo number_format($posts_with_links); ?></strong> articoli con link affiliati
-                    </p>
-                    <p style="margin:0;color:#23282d;">
-                        <a href="<?php echo esc_url($no_affiliate_url); ?>">
-                            <strong><?php echo number_format($posts_without_links); ?></strong> articoli senza link affiliati
-                        </a>
-                    </p>
-                    <canvas id="alma-posts-pie" style="max-width:200px;margin-top:15px;"></canvas>
-                </div>
-
-                <div style="background:#fff;padding:20px;border:1px solid #ccd0d4;border-radius:8px;">
-                    <h3 style="margin:0 0 10px 0;color:#23282d;">🔗 Link Attivi</h3>
-                    <div style="font-size:36px;font-weight:bold;color:#00a32a;"><?php echo number_format($total_links); ?></div>
-                    <p style="color:#666;margin:5px 0 0 0;">Link pubblicati</p>
-                </div>
-
-                <div style="background:#fff;padding:20px;border:1px solid #ccd0d4;border-radius:8px;">
-                    <h3 style="margin:0 0 10px 0;color:#23282d;">📊 Click Totali</h3>
-                    <div style="font-size:36px;font-weight:bold;color:#2271b1;"><?php echo number_format($total_clicks); ?></div>
-                    <p style="color:#666;margin:5px 0 0 0;">Su tutti i link affiliati</p>
-                </div>
-
-                <div style="background:#fff;padding:20px;border:1px solid #ccd0d4;border-radius:8px;">
-                    <h3 style="margin:0 0 10px 0;color:#23282d;">🚫 Link Non Utilizzati</h3>
-                    <div style="font-size:36px;font-weight:bold;color:#8e44ad;">
-                        <?php echo number_format($unused_links); ?>
-                    </div>
-                    <p style="color:#666;margin:5px 0 0 0;">Link senza utilizzo</p>
-                </div>
-
-                <div style="background:#fff;padding:20px;border:1px solid #ccd0d4;border-radius:8px;">
-                    <h3 style="margin:0 0 10px 0;color:#23282d;">🎯 CTR Medio</h3>
-                    <div style="font-size:36px;font-weight:bold;color:#d63638;">
-                        <?php
-                        $avg_ctr = $this->get_average_ctr();
-                        echo $avg_ctr . '%';
-                        ?>
-                    </div>
-                    <p style="color:#666;margin:5px 0 0 0;">Click-through rate</p>
-                </div>
-
-            </div>
-
-            <!-- Andamento Click Totali -->
-            <div style="background:#fff;padding:20px;border:1px solid #ccd0d4;border-radius:8px;margin-bottom:30px;">
-                <h2>📈 Andamento Click Totali</h2>
-                <p style="margin-top:0;color:#666;">Grafico dell'evoluzione reale dei click sui link affiliati.</p>
-                <div style="display:flex;flex-wrap:wrap;gap:20px;">
-                    <div style="flex:1 1 300px;">
-                        <h3>Mensile</h3>
-                        <canvas id="alma-clicks-monthly"></canvas>
-                    </div>
-                    <div style="flex:1 1 300px;">
-                        <h3>Giornaliero</h3>
-                        <canvas id="alma-clicks-daily"></canvas>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Altre Statistiche -->
-            <div style="background:#fff;padding:20px;border:1px solid #ccd0d4;border-radius:8px;margin-bottom:30px;">
-                <h2>📊 Altre Statistiche</h2>
-                <p style="margin-top:0;color:#666;">Andamento dei link pubblicati e del CTR medio nel tempo.</p>
-                <div style="display:flex;flex-wrap:wrap;gap:20px;">
-                    <div style="flex:1 1 300px;">
-                        <h3>Link Attivi</h3>
-                        <canvas id="alma-links-trend"></canvas>
-                    </div>
-                    <div style="flex:1 1 300px;">
-                        <h3>CTR Medio</h3>
-                        <canvas id="alma-ctr-trend"></canvas>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Click Mensili per Link Affiliati -->
-            <div style="background:#fff;padding:20px;border:1px solid #ccd0d4;border-radius:8px;margin-bottom:30px;">
-                <h2>📊 Click Mensili sui Link Affiliati</h2>
-                <p style="margin-top:0;color:#666;">Numero di click sui link affiliati per mese.</p>
-                <canvas id="alma-clicks-bar"></canvas>
-            </div>
-
-            <script>
-            document.addEventListener('DOMContentLoaded', function() {
-                var ctx = document.getElementById('alma-posts-pie');
-                if (ctx) {
-                    new Chart(ctx, {
-                        type: 'pie',
-                        data: {
-                            labels: ['Con link affiliati', 'Senza link affiliati'],
-                            datasets: [{
-                                data: [<?php echo $posts_with_links; ?>, <?php echo $posts_without_links; ?>],
-                                backgroundColor: ['#16a34a', '#dc2626']
-                            }]
-                        },
-                        options: {
-                            plugins: {
-                                legend: {
-                                    position: 'bottom'
-                                }
-                            }
-                        }
-                    });
-                }
-
-                function fetchChart(metric, range, canvasId, label, color, type = 'line') {
-                    var canvas = document.getElementById(canvasId);
-                    if (!canvas) return;
-                    fetch(ajaxurl, {
-                        method: 'POST',
-                        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-                        body: new URLSearchParams({
-                            action: 'alma_get_chart_data',
-                            nonce: '<?php echo wp_create_nonce('alma_admin_nonce'); ?>',
-                            metric: metric,
-                            range: range
-                        })
-                    })
-                    .then(response => response.json())
-                    .then(data => {
-                        if (!data.success) return;
-                        new Chart(canvas, {
-                            type: type,
-                            data: {
-                                labels: data.data.labels,
-                                datasets: [{
-                                    label: label,
-                                    data: data.data.data,
-                                    borderColor: color,
-                                    backgroundColor: color,
-                                    fill: false
-                                }]
-                            },
-                            options: {
-                                scales: {
-                                    y: { beginAtZero: true }
-                                }
-                            }
-                        });
-                    });
-                }
-
-                fetchChart('clicks', 'monthly', 'alma-clicks-monthly', 'Click Mensili', '#2271b1');
-                fetchChart('clicks', 'daily', 'alma-clicks-daily', 'Click Giornalieri', '#00a32a');
-                fetchChart('links', 'monthly', 'alma-links-trend', 'Link Attivi', '#00a32a');
-                fetchChart('ctr', 'monthly', 'alma-ctr-trend', 'CTR Medio', '#d63638');
-                fetchChart('clicks', 'monthly', 'alma-clicks-bar', 'Click Mensili', '#2271b1', 'bar');
-            });
-            </script>
-
-            <!-- Top Performing Links -->
-            <div style="background:#fff;padding:20px;border:1px solid #ccd0d4;border-radius:8px;margin-bottom:30px;">
-                <h2>🏆 Top 10 Link Performanti</h2>
-                <?php if (!empty($top_links)) : ?>
-                    <table class="wp-list-table widefat fixed striped">
-                        <thead>
-                            <tr>
-                                <th>Link</th>
-                                <th style="width:100px;">Click</th>
-                                <th style="width:100px;">AI Score</th>
-                                <th style="width:150px;">Azioni</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php foreach ($top_links as $link) : 
-                                $ai_score = get_post_meta($link->ID, '_ai_performance_score', true) ?: 0;
-                            ?>
-                                <tr>
-                                    <td>
-                                        <strong>
-                                            <a href="<?php echo get_edit_post_link($link->ID); ?>">
-                                                <?php echo esc_html($link->post_title); ?>
-                                            </a>
-                                        </strong>
-                                    </td>
-                                    <td><strong><?php echo number_format($link->click_count); ?></strong></td>
-                                    <td>
-                                        <?php
-                                        $color = $ai_score > 70 ? '#16a34a' : ($ai_score > 40 ? '#eab308' : '#dc2626');
-                                        echo '<span style="color:' . $color . ';font-weight:bold;">' . $ai_score . '%</span>';
-                                        ?>
-                                    </td>
-                                    <td>
-                                        <a href="<?php echo get_edit_post_link($link->ID); ?>" class="button button-small">Modifica</a>
-                                        <a href="<?php echo admin_url('admin.php?page=alma-usage-details&link_id=' . $link->ID); ?>" class="button button-small">Dettagli</a>
-                                    </td>
-                                </tr>
-                            <?php endforeach; ?>
-                        </tbody>
-                    </table>
-                <?php else : ?>
-                    <p>Nessun dato disponibile.</p>
-                <?php endif; ?>
-            </div>
-            
-            <!-- AI Insights -->
-            <div style="background:#fff;padding:20px;border:1px solid #ccd0d4;border-radius:8px;">
-                <h2>🤖 AI Insights & Suggerimenti</h2>
-                <div style="padding:15px;background:#f0f6fc;border-left:4px solid #2271b1;margin:15px 0;">
-                    <strong>💡 Suggerimento del giorno:</strong><br>
-                    I link con CTR inferiore al 2% potrebbero beneficiare di un testo più accattivante. 
-                    Prova a usare parole d'azione come "Scopri", "Ottieni" o "Risparmia".
-                </div>
-                <div style="padding:15px;background:#f0fdf4;border-left:4px solid #16a34a;margin:15px 0;">
-                    <strong>📈 Trend positivo:</strong><br>
-                    I tuoi link hanno registrato un aumento del 15% nei click nell'ultima settimana.
-                </div>
-            </div>
+            <p style="font-size:14px;color:#666;">Versione <?php echo esc_html(ALMA_VERSION); ?></p>
+            <div id="alma-dashboard-root"><p><?php _e('Caricamento statistiche dashboard…', 'affiliate-link-manager-ai'); ?></p></div>
         </div>
+        <script>
+        jQuery(function($){
+            var nonce = '<?php echo esc_js(wp_create_nonce('alma_admin_nonce')); ?>';
+            $.post(ajaxurl,{action:'alma_get_dashboard_data',nonce:nonce}, function(resp){
+                if(!resp || !resp.success){ $('#alma-dashboard-root').html('<div class="notice notice-error"><p>Errore caricamento dashboard.</p></div>'); return; }
+                var d=resp.data;
+                $('#alma-dashboard-root').html('<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:20px;"><div class="postbox"><div class="inside"><h3>🔗 Link Attivi</h3><strong>'+d.total_links+'</strong></div></div><div class="postbox"><div class="inside"><h3>📊 Click Totali</h3><strong>'+d.total_clicks+'</strong></div></div><div class="postbox"><div class="inside"><h3>🎯 CTR Medio</h3><strong>'+d.avg_ctr+'%</strong></div></div></div><div class="postbox"><div class="inside"><h3>🏆 Top Link</h3><ul id="alma-top"></ul></div></div><div class="postbox"><div class="inside"><h3>📈 Click mensili</h3><canvas id="alma-clicks-monthly"></canvas></div></div>');
+                (d.top_links||[]).forEach(function(l){ $('#alma-top').append('<li><a href="'+l.edit_url+'">'+l.title+'</a> ('+l.click_count+')</li>');});
+                $.post(ajaxurl,{action:'alma_get_chart_data',nonce:nonce,metric:'clicks',range:'monthly'}, function(c){
+                    if(c && c.success && window.Chart){new Chart(document.getElementById('alma-clicks-monthly'),{type:'line',data:{labels:c.data.labels,datasets:[{label:'Click Mensili',data:c.data.data,borderColor:'#2271b1'}]}});}
+                });
+            });
+        });
+        </script>
         <?php
     }    
     /**
@@ -1589,7 +1382,6 @@ class AffiliateManagerAI {
             update_option('alma_track_logged_out', sanitize_text_field($_POST['track_logged_out'] ?? 'yes'));
             update_option('alma_enable_ai', sanitize_text_field($_POST['enable_ai'] ?? 'yes'));
 
-            // Editor integration
             $selected_types = array_map('sanitize_text_field', $_POST['alma_link_post_types'] ?? array());
             update_option('alma_link_post_types', $selected_types);
             // Content analysis settings
@@ -3145,129 +2937,42 @@ class AffiliateManagerAI {
     
     public function ajax_get_dashboard_data() {
         if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'alma_admin_nonce')) {
-            wp_send_json_error('Invalid nonce');
+            wp_send_json_error(array('message' => 'Invalid nonce'), 403);
             return;
         }
-        
-        $data = array(
-            'total_clicks' => $this->get_total_clicks(),
-            'total_links' => wp_count_posts('affiliate_link')->publish,
-            'avg_ctr' => $this->get_average_ctr(),
-            'top_links' => $this->get_top_performing_links(5)
-        );
-        
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(array('message' => __('Permessi insufficienti.', 'affiliate-link-manager-ai')), 403);
+            return;
+        }
+        $data = $this->dashboard_stats->get_summary(5);
+        $data['top_links'] = array_map(function($item) {
+            return array(
+                'id' => (int) $item['ID'],
+                'title' => get_the_title((int) $item['ID']),
+                'click_count' => (int) $item['click_count'],
+                'edit_url' => get_edit_post_link((int) $item['ID'])
+            );
+        }, (array) $data['top_links']);
         wp_send_json_success($data);
     }
     
     public function ajax_get_chart_data() {
         if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'alma_admin_nonce')) {
-            wp_send_json_error('Invalid nonce');
+            wp_send_json_error(array('message' => 'Invalid nonce'), 403);
             return;
         }
-        
-        global $wpdb;
-
-        $metric = sanitize_text_field($_POST['metric'] ?? 'clicks');
-        $range  = sanitize_text_field($_POST['range'] ?? 'monthly');
-
-        $labels = array();
-        $data   = array();
-        $current_time = current_time('timestamp');
-
-        switch ($metric) {
-            case 'clicks':
-                $table = $wpdb->prefix . 'alma_analytics';
-                if ($wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $table)) != $table) {
-                    break;
-                }
-                if ($range === 'daily') {
-                    for ($i = 29; $i >= 0; $i--) {
-                        $day_time = strtotime("-$i days", $current_time);
-                        $date = wp_date('Y-m-d', $day_time);
-                        $count = $wpdb->get_var($wpdb->prepare(
-                            "SELECT COUNT(*) FROM $table WHERE DATE(click_time)=%s",
-                            $date
-                        ));
-                        $labels[] = wp_date('d/m', $day_time);
-                        $data[]   = intval($count);
-                    }
-                } elseif ($range === 'weekly') {
-                    for ($i = 11; $i >= 0; $i--) {
-                        $week_start = strtotime("monday -$i week", $current_time);
-                        $week_end   = strtotime("sunday -$i week", $current_time);
-                        $start = wp_date('Y-m-d', $week_start);
-                        $end   = wp_date('Y-m-d', $week_end);
-                        $count = $wpdb->get_var($wpdb->prepare(
-                            "SELECT COUNT(*) FROM $table WHERE click_time BETWEEN %s AND %s",
-                            $start . ' 00:00:00',
-                            $end . ' 23:59:59'
-                        ));
-                        $labels[] = 'W' . wp_date('W', $week_start);
-                        $data[]   = intval($count);
-                    }
-                } else {
-                    for ($i = 11; $i >= 0; $i--) {
-                        $month_time = strtotime("-$i months", $current_time);
-                        $year  = (int) wp_date('Y', $month_time);
-                        $month = (int) wp_date('n', $month_time);
-                        $count = $wpdb->get_var($wpdb->prepare(
-                            "SELECT COUNT(*) FROM $table WHERE YEAR(click_time)=%d AND MONTH(click_time)=%d",
-                            $year,
-                            $month
-                        ));
-                        $labels[] = wp_date('M', $month_time);
-                        $data[]   = intval($count);
-                    }
-                }
-                break;
-            case 'sources':
-                $table = $wpdb->prefix . 'alma_analytics';
-                if ($wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $table)) == $table) {
-                    $results = $wpdb->get_results("SELECT source, COUNT(*) as c FROM $table GROUP BY source");
-                    if ($results) {
-                        foreach ($results as $row) {
-                            $labels[] = $row->source ? $row->source : 'unknown';
-                            $data[]   = intval($row->c);
-                        }
-                    }
-                }
-                break;
-            case 'links':
-                for ($i = 11; $i >= 0; $i--) {
-                    $month_time = strtotime("-$i months", $current_time);
-                    $month = (int) wp_date('n', $month_time);
-                    $year  = (int) wp_date('Y', $month_time);
-                    $count = $wpdb->get_var($wpdb->prepare(
-                        "SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_type='affiliate_link' AND post_status='publish' AND YEAR(post_date)=%d AND MONTH(post_date)=%d",
-                        $year,
-                        $month
-                    ));
-                    $labels[] = wp_date('M', $month_time);
-                    $data[]   = intval($count);
-                }
-                break;
-            case 'ctr':
-                $total_occurrences = $this->get_total_link_occurrences();
-                for ($i = 11; $i >= 0; $i--) {
-                    $month_time = strtotime("-$i months", $current_time);
-                    $month = (int) wp_date('n', $month_time);
-                    $year  = (int) wp_date('Y', $month_time);
-                    $clicks = $wpdb->get_var($wpdb->prepare(
-                        "SELECT COUNT(*) FROM {$wpdb->prefix}alma_analytics WHERE YEAR(click_time)=%d AND MONTH(click_time)=%d",
-                        $year,
-                        $month
-                    ));
-                    $ctr = $total_occurrences > 0 ? ($clicks / $total_occurrences) * 100 : 0;
-                    $labels[] = wp_date('M', $month_time);
-                    $data[]   = round($ctr, 2);
-                }
-                break;
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(array('message' => __('Permessi insufficienti.', 'affiliate-link-manager-ai')), 403);
+            return;
         }
-
-        wp_send_json_success(array(
-            'labels' => $labels,
-            'data'   => $data
-        ));
+        $metric = sanitize_key($_POST['metric'] ?? 'clicks');
+        $range  = sanitize_key($_POST['range'] ?? 'monthly');
+        $chart = $this->dashboard_stats->get_chart_data($metric, $range);
+        if (is_wp_error($chart)) {
+            wp_send_json_error(array('message' => $chart->get_error_message()), 400);
+            return;
+        }
+        wp_send_json_success($chart);
     }
     
     public function ajax_get_link_types() {
@@ -3298,26 +3003,21 @@ class AffiliateManagerAI {
     
     public function ajax_get_link_stats() {
         if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'alma_admin_nonce')) {
-            wp_send_json_error('Invalid nonce');
+            wp_send_json_error(array('message' => 'Invalid nonce'), 403);
             return;
         }
-        
-        $link_id = intval($_POST['link_id']);
-        
-        $clicks = get_post_meta($link_id, '_click_count', true) ?: 0;
-        $usage_data = $this->get_shortcode_usage_stats($link_id);
-        $ai_score = get_post_meta($link_id, '_ai_performance_score', true) ?: 0;
-        
-        $ctr = 0;
-        if ($usage_data['total_occurrences'] > 0) {
-            $ctr = round(($clicks / $usage_data['total_occurrences']) * 100, 2);
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(array('message' => __('Permessi insufficienti.', 'affiliate-link-manager-ai')), 403);
+            return;
         }
-        
-        wp_send_json_success(array(
-            'clicks' => $clicks,
-            'ctr' => $ctr,
-            'ai_score' => $ai_score
-        ));
+        $link_id = isset($_POST['link_id']) ? absint($_POST['link_id']) : 0;
+        if (!$link_id) {
+            wp_send_json_error(array('message' => __('ID link non valido.', 'affiliate-link-manager-ai')), 400);
+            return;
+        }
+        $stats = $this->dashboard_stats->get_link_stats($link_id);
+        $ai_score = get_post_meta($link_id, '_ai_performance_score', true) ?: 0;
+        wp_send_json_success(array('clicks' => $stats['clicks'], 'ctr' => $stats['ctr'], 'ai_score' => $ai_score));
     }
 
     public function ajax_import_affiliate_link() {
@@ -3375,15 +3075,7 @@ class AffiliateManagerAI {
     /**
      * Helper Functions
      */
-    private function get_total_clicks() {
-        global $wpdb;
-        $result = $wpdb->get_var("
-            SELECT SUM(meta_value) 
-            FROM {$wpdb->postmeta} 
-            WHERE meta_key = '_click_count'
-        ");
-        return intval($result ?: 0);
-    }
+    private function get_total_clicks() { return $this->dashboard_stats->get_total_clicks(); }
     
     private function get_recent_clicks($days = 7) {
         global $wpdb;
@@ -3406,109 +3098,15 @@ class AffiliateManagerAI {
         return round($result ?: 50);
     }
 
-    private function get_average_ctr() {
-        $links = get_posts(array(
-            'post_type'   => 'affiliate_link',
-            'post_status' => 'publish',
-            'numberposts' => -1,
-            'fields'      => 'ids',
-        ));
+    private function get_average_ctr() { return $this->dashboard_stats->get_average_ctr(); }
 
-        $total = 0;
-        $count = 0;
-        foreach ($links as $id) {
-            $clicks = get_post_meta($id, '_click_count', true) ?: 0;
-            $usage  = $this->get_shortcode_usage_stats($id);
-            if ($usage['total_occurrences'] > 0) {
-                $total += ($clicks / $usage['total_occurrences']) * 100;
-                $count++;
-            }
-        }
+    private function get_top_performing_links($limit = 5) { return $this->dashboard_stats->get_top_performing_links($limit); }
 
-        return $count > 0 ? round($total / $count, 2) : 0;
-    }
+    private function get_unused_links_count() { return $this->dashboard_stats->get_unused_links_count(); }
 
-    private function get_top_performing_links($limit = 5) {
-        global $wpdb;
-        
-        $query = "
-            SELECT p.ID, p.post_title, pm.meta_value as click_count
-            FROM {$wpdb->posts} p
-            INNER JOIN {$wpdb->postmeta} pm ON p.ID = pm.post_id
-            WHERE p.post_type = 'affiliate_link'
-            AND p.post_status = 'publish'
-            AND pm.meta_key = '_click_count'
-            AND pm.meta_value > 0
-            ORDER BY CAST(pm.meta_value AS UNSIGNED) DESC
-            LIMIT %d
-        ";
-        
-        return $wpdb->get_results($wpdb->prepare($query, $limit));
-    }
-
-    private function get_unused_links_count() {
-        $links = get_posts(array(
-            'post_type'   => 'affiliate_link',
-            'post_status' => 'publish',
-            'numberposts' => -1,
-            'fields'      => 'ids',
-        ));
-
-        $unused = 0;
-        foreach ($links as $id) {
-            $usage = $this->get_shortcode_usage_stats($id);
-            if ($usage['total_occurrences'] == 0) {
-                $unused++;
-            }
-        }
-        return $unused;
-    }
-
-    private function get_total_link_occurrences() {
-        global $wpdb;
-        $pattern = '[affiliate_link';
-        $query = "
-            SELECT SUM((LENGTH(post_content) - LENGTH(REPLACE(post_content, %s, ''))) / LENGTH(%s)) as total_occurrences
-            FROM {$wpdb->posts}
-            WHERE post_status='publish'
-            AND post_type IN ('post','page')
-            AND post_content LIKE %s
-        ";
-        $result = $wpdb->get_var($wpdb->prepare(
-            $query,
-            $pattern,
-            $pattern,
-            '%' . $wpdb->esc_like($pattern) . '%'
-        ));
-        return $result ? intval($result) : 0;
-    }
+    private function get_total_link_occurrences() { return $this->dashboard_stats->get_total_link_occurrences(); }
     
-    private function get_shortcode_usage_stats($link_id) {
-        global $wpdb;
-        
-        $shortcode_pattern = '[affiliate_link id="' . $link_id . '"';
-        
-        $query = "
-            SELECT COUNT(*) as post_count, 
-                   SUM((LENGTH(post_content) - LENGTH(REPLACE(post_content, %s, ''))) / LENGTH(%s)) as total_occurrences
-            FROM {$wpdb->posts}
-            WHERE post_content LIKE %s
-            AND post_status = 'publish'
-            AND post_type IN ('post', 'page')
-        ";
-        
-        $results = $wpdb->get_row($wpdb->prepare(
-            $query,
-            $shortcode_pattern,
-            $shortcode_pattern,
-            '%' . $wpdb->esc_like($shortcode_pattern) . '%'
-        ));
-        
-        return array(
-            'post_count' => $results ? intval($results->post_count) : 0,
-            'total_occurrences' => $results ? intval($results->total_occurrences) : 0
-        );
-    }
+    private function get_shortcode_usage_stats($link_id) { return $this->dashboard_stats->get_shortcode_usage_stats($link_id); }
     
     private function get_detailed_shortcode_usage($link_id) {
         global $wpdb;
@@ -3900,6 +3498,12 @@ class AffiliateManagerAI {
         }
     }
 
+    public function invalidate_dashboard_cache() {
+        if ($this->dashboard_stats) {
+            $this->dashboard_stats->clear_cache();
+        }
+    }
+
     /**
      * Activation/Deactivation
      */
@@ -3931,7 +3535,9 @@ class AffiliateManagerAI {
             source varchar(50) DEFAULT '' NOT NULL,
             PRIMARY KEY (id),
             KEY link_id (link_id),
-            KEY click_time (click_time)
+            KEY click_time (click_time),
+            KEY link_time (link_id, click_time),
+            KEY source_time (source, click_time)
         ) $charset_collate;";
         
         require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
