@@ -1,3 +1,6 @@
-.alma-source-form-wrap{margin:16px 0;padding:16px;background:#fff;border:1px solid #dcdcde;border-radius:6px}
-.alma-source-form-wrap h2{margin-top:0}
-.alma-source-form-wrap .form-table th{width:220px}
+.alma-sections{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:12px}
+.alma-section{background:#fff;border:1px solid #dcdcde;padding:12px;border-radius:4px}
+.alma-section h3{margin-top:0}
+.alma-section .description{color:#50575e}
+#destination_term_ids{min-width:100%;}
+label strong{display:inline-block;margin-bottom:4px}

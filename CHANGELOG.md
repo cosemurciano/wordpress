@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.8.0 - Provider connection profiles and multi-destination Affiliate Sources
+- provider trasformato in campo testo libero con `provider_label` + `provider` tecnico normalizzato
+- aggiunti provider presets e schema centralizzato (`class-affiliate-source-provider-presets.php`)
+- supporto multi-destination terms (`destination_term_ids`) con fallback legacy `destination_term_id`
+- nuova UI guidata per settings/credentials con pannello JSON avanzato
+- masking e preservazione sicura credenziali in fase di edit
+- migrazione DB incrementale per nuove colonne senza rompere installazioni legacy
+- importer aggiornato per assegnare tutti i termini `link_type` configurati
+- backward compatibility mantenuta per `_alma_provider`, `_alma_source_id`, shortcode e tracking
+
 ## 2.7.2 - Affiliate Sources admin fatal hotfix
 - fix fatal nella pagina admin `Affiliate Sources` quando la tabella `alma_affiliate_sources` manca o la source in edit non esiste
 - aggiunte guard clauses su provider registry, query DB e rendering metabox tecnica per evitare errori critici in admin
