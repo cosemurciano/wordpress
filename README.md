@@ -1,6 +1,6 @@
 # Affiliate Link Manager AI
 
-Versione 2.8.0
+Versione 2.8.1
 
 Questo plugin gestisce e ottimizza i link affiliati all'interno di WordPress.
 
@@ -69,3 +69,11 @@ Miglioramenti principali:
 - UI guidata con sezioni `Configurazione provider` e `Credenziali`; JSON avanzato disponibile solo come pannello tecnico.
 - Credenziali mascherate in edit: mai renderizzate in chiaro, preservate se campo vuoto, aggiornate solo su input nuovo.
 - Nota: molte API reali richiedono approvazione commerciale e provisioning credenziali lato provider.
+
+
+## Affiliate Sources hotfix 2.8.1
+
+- In modifica source, i `settings` esistenti vengono preservati e uniti ai nuovi campi guidati/JSON avanzato valido senza cancellazioni involontarie.
+- Le `credentials` esistenti restano salvate quando i campi password restano vuoti; i valori segreti non vengono mai precompilati o localizzati in JavaScript.
+- Lo stato `Attivo/Disattivo` è ora gestito in UI e persistito correttamente in salvataggio (checkbox reale).
+- Flusso Post/Redirect/Get dopo create/update con notice native WordPress (`created`, `updated`, `error`, `invalid_json`) e ritorno alla lista sorgenti.
