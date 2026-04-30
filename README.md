@@ -103,3 +103,11 @@ Miglioramenti principali:
 - `Testa connessione`, `Campi importabili` e refresh discovery condividono la stessa risoluzione canonica del provider nella factory.
 - Storico ultimo test connessione spostato in option aggregata unica `alma_last_connection_tests` non-autoloaded (chiavi per source ID, pruning automatico).
 - Nessun segreto memorizzato nello storico diagnostico: solo stato controllato, codice/messaggio, timestamp, durata e provider canonico.
+
+
+## Affiliate Sources 2.9.2
+
+- Dopo creazione/modifica source, redirect PRG verso una vista di conferma GET dedicata (niente pagina vuota e niente doppio submit al refresh).
+- Schermata conferma con messaggio chiaro e riepilogo source: nome, provider, preset e stato attivo/disattivo.
+- Azioni rapide disponibili: `Torna alla lista Sources`, `Modifica questa Source`, `Campi importabili` e `Testa connessione`.
+- URL di conferma sicura (solo parametri non sensibili: `alma_view`, `status`, `source_id`).

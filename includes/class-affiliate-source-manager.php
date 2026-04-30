@@ -21,6 +21,8 @@ class ALMA_Affiliate_Source_Manager {
     private function norm_provider($label){ $k=sanitize_key($label); return $k!==''?$k:'custom'; }
     private function render_field($name,$label,$value,$required=false,$secret=false,$exists=false){ $type=$secret?'password':'text'; $input_value=$secret?'':(string)$value; $ph=$secret&&$exists?'già salvato':''; echo '<p><label><strong>'.esc_html($label).($required?' *':'').'</strong><br/><input type="'.$type.'" name="'.esc_attr($name).'" value="'.esc_attr($input_value).'" placeholder="'.esc_attr($ph).'" class="regular-text" autocomplete="off"></label></p>'; }
     public function render_sources_page(){ if(!current_user_can('manage_options')) wp_die('Unauthorized'); $this->maybe_ensure_sources_table(); $this->maybe_handle_source_form(); settings_errors('alma_source'); global $wpdb; $terms=get_terms(array('taxonomy'=>'link_type','hide_empty'=>false)); if(is_wp_error($terms)||!is_array($terms))$terms=array(); $presets=$this->get_provider_presets();
+        $view=sanitize_key($_GET['alma_view']??'');
+        if($view==='save_confirmation'){ $this->render_post_save_confirmation(); return; }
         $editing_id=absint($_GET['edit_source']??0); $editing=$editing_id?$wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}alma_affiliate_sources WHERE id=%d",$editing_id),ARRAY_A):array(); if(!is_array($editing))$editing=array(); $rows=$this->sources_table_exists()?$wpdb->get_results("SELECT * FROM {$wpdb->prefix}alma_affiliate_sources ORDER BY id DESC LIMIT 100",ARRAY_A):array();
         $es=$this->decode_db_json($editing['settings']??''); $ec=$this->decode_db_json($editing['credentials']??''); $sel=json_decode($editing['destination_term_ids']??'',true); if(!is_array($sel))$sel=array(); if(empty($sel)&&!empty($editing['destination_term_id']))$sel=array((int)$editing['destination_term_id']);
         $result=sanitize_key($_GET['alma_result']??'');
@@ -52,7 +54,7 @@ class ALMA_Affiliate_Source_Manager {
         // Backward compatibility: accept advanced settings JSON, but never let it override guided fields.
         $sa=$this->parse_json($_POST['settings_advanced']??'');
         $ca=$this->parse_json($_POST['credentials_advanced']??'');
-        if(isset($sa['__invalid'])||isset($ca['__invalid'])){ wp_safe_redirect(add_query_arg(array('post_type'=>'affiliate_link','page'=>'alma-affiliate-sources','alma_result'=>'invalid_json'),admin_url('edit.php'))); exit; }
+        if(isset($sa['__invalid'])||isset($ca['__invalid'])){ wp_safe_redirect(add_query_arg(array('post_type'=>'affiliate_link','page'=>'alma-affiliate-sources','alma_view'=>'save_confirmation','status'=>'invalid_json'),admin_url('edit.php'))); exit; }
 
         foreach($sa as $k=>$v){
             $kk=sanitize_key($k);
@@ -70,8 +72,48 @@ class ALMA_Affiliate_Source_Manager {
         $data=array('name'=>sanitize_text_field(wp_unslash($_POST['name']??'')),'provider'=>$provider,'provider_preset'=>$provider_preset,'provider_label'=>$provider_label,'is_active'=>isset($_POST['is_active'])?1:0,'language'=>sanitize_text_field(wp_unslash($_POST['language']??'')),'market'=>sanitize_text_field(wp_unslash($_POST['market']??'')),'import_mode'=>sanitize_key($_POST['import_mode']??'create_update'),'destination_term_id'=>(int)($term_ids[0]??0),'destination_term_ids'=>!empty($term_ids)?wp_json_encode($term_ids):null,'settings'=>wp_json_encode($settings),'credentials'=>wp_json_encode($credentials),'updated_at'=>current_time('mysql'));
         $ok=false; $result='error';
         if($source_id>0){ $ok=$wpdb->update("{$wpdb->prefix}alma_affiliate_sources",$data,array('id'=>$source_id)); $result=($ok!==false)?'updated':'error'; }
-        else { $data['created_at']=current_time('mysql'); $ok=$wpdb->insert("{$wpdb->prefix}alma_affiliate_sources",$data); $result=($ok!==false)?'created':'error'; }
-        wp_safe_redirect(add_query_arg(array('post_type'=>'affiliate_link','page'=>'alma-affiliate-sources','alma_result'=>$result),admin_url('edit.php'))); exit; }
+        else { $data['created_at']=current_time('mysql'); $ok=$wpdb->insert("{$wpdb->prefix}alma_affiliate_sources",$data); $result=($ok!==false)?'created':'error'; if($ok!==false){ $source_id=(int)$wpdb->insert_id; } }
+        $redirect=array('post_type'=>'affiliate_link','page'=>'alma-affiliate-sources','alma_view'=>'save_confirmation','status'=>$result);
+        if($source_id>0){ $redirect['source_id']=$source_id; }
+        wp_safe_redirect(add_query_arg($redirect,admin_url('edit.php'))); exit; }
+
+    private function render_post_save_confirmation(){
+        if(!current_user_can('manage_options')) wp_die('Unauthorized');
+        global $wpdb;
+        $status=sanitize_key($_GET['status']??'error');
+        $source_id=absint($_GET['source_id']??0);
+        $source=array();
+        if($source_id>0){
+            $source=$wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}alma_affiliate_sources WHERE id=%d",$source_id),ARRAY_A);
+            if(!is_array($source)) $source=array();
+        }
+        $list_url=add_query_arg(array('post_type'=>'affiliate_link','page'=>'alma-affiliate-sources'),admin_url('edit.php'));
+        $edit_url=$source_id>0?add_query_arg(array('post_type'=>'affiliate_link','page'=>'alma-affiliate-sources','edit_source'=>$source_id),admin_url('edit.php')):'';
+        $fields_url=$source_id>0?add_query_arg(array('post_type'=>'affiliate_link','page'=>'alma-importable-fields','source_id'=>$source_id),admin_url('edit.php')):'';
+        $is_success=in_array($status,array('created','updated'),true);
+        $title='Errore salvataggio Source';
+        $message='Si è verificato un errore durante il salvataggio della source.';
+        if($status==='created'){ $title='Source creata'; $message='Source creata correttamente.'; }
+        elseif($status==='updated'){ $title='Source aggiornata'; $message='Source aggiornata correttamente.'; }
+        elseif($status==='invalid_json'){ $message='JSON avanzato non valido.'; }
+        elseif($source_id>0 && empty($source)){ $message='La source non è più disponibile.'; }
+        echo '<div class="wrap"><h1>'.esc_html($title).'</h1>';
+        echo '<div class="notice '.($is_success?'notice-success':'notice-error').'"><p>'.esc_html($message).'</p></div>';
+        echo '<div class="alma-section" style="max-width:820px;">';
+        if($source_id>0 && !empty($source)){
+            echo '<ul><li><strong>Nome Source:</strong> '.esc_html($source['name']??'').'</li><li><strong>Provider:</strong> '.esc_html(($source['provider_label']??'')?:($source['provider']??'')).'</li><li><strong>Preset:</strong> '.esc_html(($source['provider_preset']??'')!==''?$source['provider_preset']:'—').'</li><li><strong>Stato:</strong> '.(((int)($source['is_active']??0)===1)?'Attivo':'Disattivo').'</li></ul>';
+        } else {
+            echo '<p>Dettagli source non disponibili.</p>';
+        }
+        echo '<p><a class="button button-primary" href="'.esc_url($list_url).'">Torna alla lista Sources</a> ';
+        if($source_id>0 && !empty($source)){ echo '<a class="button" href="'.esc_url($edit_url).'">Modifica questa Source</a> '; }
+        if($source_id>0 && !empty($source)){ echo '<a class="button" href="'.esc_url($fields_url).'">Campi importabili</a> '; }
+        if($source_id>0 && !empty($source)){ echo '<button type="button" class="button alma-test-connection" data-source-id="'.(int)$source_id.'">Testa connessione</button><span class="alma-inline-result" aria-live="polite"></span>'; }
+        echo '</p>';
+        if(!$is_success){ echo '<p class="description">Puoi tornare alla lista Sources e riprovare la modifica o creare una nuova Source.</p>'; }
+        else { echo '<p class="description">Puoi ora testare la connessione o tornare all\'elenco.</p>'; }
+        echo '</div></div>';
+    }
     public function register_technical_metabox(){ add_meta_box('alma_affiliate_source_tech',__('Affiliate Source (tecnico)','affiliate-link-manager-ai'),array($this,'render_technical_metabox'),'affiliate_link','side','default'); }
     public function render_technical_metabox($post){ $provider=get_post_meta($post->ID,'_alma_provider',true)?:'manual'; echo '<p><strong>Provider:</strong> '.esc_html($provider).'</p>'; }
     public function save_technical_meta($post_id){ if(!isset($_POST['alma_source_meta_nonce'])||!wp_verify_nonce($_POST['alma_source_meta_nonce'],'alma_source_meta'))return; }
