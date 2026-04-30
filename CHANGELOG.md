@@ -6,6 +6,10 @@
 - introdotti pulsanti/azioni: `Torna alla lista Sources`, `Modifica questa Source`, `Campi importabili` e `Testa connessione` (riuso endpoint AJAX esistente)
 - URL di conferma ridotta a parametri sicuri (`alma_view`, `status`, `source_id`) senza esposizione dati sensibili
 - gestione errori/fallback senza pagina vuota (error/invalid_json/source non trovata)
+- allineamento reale versione plugin a `2.9.2` (header plugin, costante `ALMA_VERSION`, README)
+- fix feedback AJAX `Testa connessione` quando il pulsante è fuori tabella (schermata conferma post-save)
+- aggiunto filtro Sources nell'elenco Link Affiliati con meta key `_alma_source_id` e preservazione query admin esistenti
+- compatibilità mantenuta per link manuali (`_alma_source_id=0`) e link legacy senza metadato
 
 ## 2.9.1 - Provider routing canonico e storage diagnostico sicuro
 - risoluzione provider centralizzata in factory: priorità `provider_preset` valido, poi `provider`, alias legacy (`customapi -> custom_api`) e fallback client
