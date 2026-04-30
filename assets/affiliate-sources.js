@@ -12,8 +12,20 @@ jQuery(function($){
   }
   $('#provider_preset').on('change', renderGuided); renderGuided();
   $('#alma-source-form').on('submit', function(e){ const name=$('#name').val().trim(); const provider=$('#provider_label').val().trim(); if(!name||!provider){ e.preventDefault(); alert('Name e provider sono obbligatori.'); }});
+  function getInlineResultTarget($btn){
+    const $context=$btn.closest('tr, .alma-source-actions, .alma-test-connection-wrap');
+    if($context.length){
+      const $contextResult=$context.find('.alma-inline-result').first();
+      if($contextResult.length){ return $contextResult; }
+    }
+    const $siblings=$btn.siblings('.alma-inline-result').first();
+    if($siblings.length){ return $siblings; }
+    const $nearest=$btn.parent().find('.alma-inline-result').first();
+    if($nearest.length){ return $nearest; }
+    return $('<span class=\"alma-inline-result\" aria-live=\"polite\"></span>').insertAfter($btn);
+  }
   $(document).on('click','.alma-test-connection', function(){
-    const $btn=$(this); const sourceId=$btn.data('source-id'); const $row=$btn.closest('tr'); const $res=$row.find('.alma-inline-result');
+    const $btn=$(this); const sourceId=$btn.data('source-id'); const $res=getInlineResultTarget($btn);
     $btn.prop('disabled',true).addClass('updating-message'); $res.removeClass('error success').text('Test in corso...');
     $.post(almaSourcePresets.ajax_url,{action:'alma_test_source_connection',nonce:almaSourcePresets.nonce,source_id:sourceId})
       .done(function(resp){ if(resp&&resp.success){$res.addClass('success').text(resp.data.message||'Connessione riuscita');} else {$res.addClass('error').text(resp?.data?.message||'Errore interno');} })

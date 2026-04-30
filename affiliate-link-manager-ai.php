@@ -3,7 +3,7 @@
  * Plugin Name: Affiliate Link Manager AI
  * Plugin URI: https://your-website.com
  * Description: Gestisce link affiliati con intelligenza artificiale per ottimizzazione e tracking automatico.
- * Version: 2.9.1
+ * Version: 2.9.2
  * Author: Cosè Murciano
  * License: GPL v2 or later
  * Text Domain: affiliate-link-manager-ai
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Definisci costanti del plugin
-define('ALMA_VERSION', '2.9.1');
+define('ALMA_VERSION', '2.9.2');
 define('ALMA_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('ALMA_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('ALMA_PLUGIN_FILE', __FILE__);
@@ -41,6 +41,7 @@ require_once ALMA_PLUGIN_DIR . 'includes/class-affiliate-source-field-discovery-
 require_once ALMA_PLUGIN_DIR . 'includes/class-affiliate-source-normalizer.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-affiliate-source-importer.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-affiliate-source-manager.php';
+require_once ALMA_PLUGIN_DIR . 'includes/class-affiliate-links-source-filter.php';
 
 /**
  * Classe principale del plugin
@@ -48,11 +49,13 @@ require_once ALMA_PLUGIN_DIR . 'includes/class-affiliate-source-manager.php';
 class AffiliateManagerAI {
     private $dashboard_stats;
     private $source_manager;
+    private $affiliate_links_source_filter;
     
     public function __construct() {
         global $wpdb;
         $this->dashboard_stats = new ALMA_Dashboard_Stats($wpdb);
         $this->source_manager = new ALMA_Affiliate_Source_Manager();
+        $this->affiliate_links_source_filter = new ALMA_Affiliate_Links_Source_Filter();
         add_action('init', array($this, 'init'));
         register_activation_hook(__FILE__, array($this, 'activate'));
         register_deactivation_hook(__FILE__, array($this, 'deactivate'));
@@ -79,6 +82,7 @@ class AffiliateManagerAI {
         // Admin hooks
         if (is_admin()) {
             $this->init_admin_hooks();
+            $this->affiliate_links_source_filter->init();
         }
         
         // Frontend hooks per tracking

@@ -1,6 +1,6 @@
 # Affiliate Link Manager AI
 
-Versione 2.9.1
+Versione 2.9.2
 
 Questo plugin gestisce e ottimizza i link affiliati all'interno di WordPress.
 
@@ -111,3 +111,6 @@ Miglioramenti principali:
 - Schermata conferma con messaggio chiaro e riepilogo source: nome, provider, preset e stato attivo/disattivo.
 - Azioni rapide disponibili: `Torna alla lista Sources`, `Modifica questa Source`, `Campi importabili` e `Testa connessione`.
 - URL di conferma sicura (solo parametri non sensibili: `alma_view`, `status`, `source_id`).
+- Fix feedback AJAX `Testa connessione` anche nella schermata conferma post-save (fuori tabella) con target `.alma-inline-result` sempre risolto.
+- Nuovo filtro **Sources** nell'elenco admin Link Affiliati (`edit.php?post_type=affiliate_link`) basato su meta key `_alma_source_id`.
+- Compatibilità mantenuta per link manuali/legacy e nessun impatto su frontend/tracking click.
