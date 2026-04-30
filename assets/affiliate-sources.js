@@ -2,15 +2,32 @@ jQuery(function($){
   const $wrap = $('#alma-source-form-wrap');
   $('.alma-toggle-source-form').on('click', function(){ $wrap.toggle(); });
 
+  function parseHidden(id){
+    const raw = $(id).val();
+    if(!raw){ return {}; }
+    try { return JSON.parse(raw); } catch(err){ return {}; }
+  }
+
   function renderGuided(){
     const presets=(window.almaSourcePresets&&almaSourcePresets.presets)||{};
     const key=$('#provider_preset').val();
     const preset=presets[key]||null;
+    const existingSettings = parseHidden('#alma-existing-settings');
+    const credentialFlags = parseHidden('#alma-existing-credentials-flags');
     const $s=$('#alma-guided-settings').empty();
     const $c=$('#alma-guided-credentials').empty();
     if(!preset) return;
-    (preset.settings_fields||[]).forEach(function(f){ $s.append('<p><label><strong>'+f+'</strong><br/><input class="regular-text" type="text" name="settings_fields['+f+']"></label></p>'); });
-    (preset.credentials_fields||[]).forEach(function(f){ $c.prepend('<p><label><strong>'+f+'</strong><br/><input class="regular-text" type="password" name="credentials_fields['+f+']" value="" placeholder="già salvato" autocomplete="off"></label></p>'); });
+
+    (preset.settings_fields||[]).forEach(function(f){
+      const value = typeof existingSettings[f] === 'string' ? existingSettings[f] : '';
+      $s.append('<p><label><strong>'+f+'</strong><br/><input class="regular-text" type="text" name="settings_fields['+f+']" value="'+$('<div/>').text(value).html()+'"></label></p>');
+    });
+
+    (preset.credentials_fields||[]).forEach(function(f){
+      const placeholder = credentialFlags[f] ? 'già salvato' : '';
+      $c.append('<p><label><strong>'+f+'</strong><br/><input class="regular-text alma-guided-credential" data-key="'+f+'" type="password" name="credentials_fields['+f+']" value="" placeholder="'+placeholder+'" autocomplete="off"></label></p>');
+    });
+
     if(preset.help_text){ $s.append('<p class="description">'+preset.help_text+'</p>'); }
   }
   $('#provider_preset').on('change', renderGuided); renderGuided();

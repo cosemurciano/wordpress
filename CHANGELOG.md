@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.8.1 - Stabilizzazione salvataggio Affiliate Sources
+- preservazione `settings` esistenti in edit con merge sicuro tra DB, `settings_fields` e JSON avanzato valido
+- preservazione `credentials` esistenti: campi password vuoti non sovrascrivono, overwrite solo su nuovo valore non vuoto
+- eliminata collisione dei nomi credential fields tra UI guidata e fallback (`credentials_fields` vs `credentials_extra_fields`)
+- gestione corretta dello stato `is_active` (checkbox: 1 se selezionato, 0 se non selezionato)
+- flusso PRG completo dopo insert/update con redirect alla lista e admin notice di esito
+- fix UX: niente pagina vuota dopo salvataggio/errore JSON avanzato
+
 ## 2.8.0 - Provider connection profiles and multi-destination Affiliate Sources
 - provider trasformato in campo testo libero con `provider_label` + `provider` tecnico normalizzato
 - aggiunti provider presets e schema centralizzato (`class-affiliate-source-provider-presets.php`)
