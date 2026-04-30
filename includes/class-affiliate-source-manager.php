@@ -3,6 +3,7 @@ if (!defined('ABSPATH')) { exit; }
 
 class ALMA_Affiliate_Source_Manager {
     private $registry;
+    private $table_error = '';
 
     public function __construct() {
         $this->registry = new ALMA_Affiliate_Source_Provider_Registry();
@@ -27,17 +28,37 @@ class ALMA_Affiliate_Source_Manager {
 
     public function render_sources_page() {
         if (!current_user_can('manage_options')) { wp_die('Unauthorized'); }
+        $this->maybe_ensure_sources_table();
         $this->maybe_handle_source_form();
         global $wpdb;
-        $providers = $this->registry->get_registered_providers();
+        $providers = array();
+        if ($this->registry && method_exists($this->registry, 'get_registered_providers')) {
+            $providers = (array) $this->registry->get_registered_providers();
+        }
         $terms = get_terms(array('taxonomy' => 'link_type', 'hide_empty' => false));
+        if (is_wp_error($terms) || !is_array($terms)) {
+            $terms = array();
+        }
         $editing_id = isset($_GET['edit_source']) ? absint($_GET['edit_source']) : 0;
         $editing = array();
-        if ($editing_id > 0) {
+        if ($editing_id > 0 && $this->sources_table_exists()) {
             $editing = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}alma_affiliate_sources WHERE id = %d", $editing_id), ARRAY_A);
+            if (!is_array($editing) || empty($editing)) {
+                $editing = array();
+                echo '<div class="notice notice-warning"><p>La source richiesta non esiste più. Modalità creazione attivata.</p></div>';
+            }
         }
-        $rows = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}alma_affiliate_sources ORDER BY id DESC LIMIT 100", ARRAY_A);
+        $rows = array();
+        if ($this->sources_table_exists()) {
+            $rows = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}alma_affiliate_sources ORDER BY id DESC LIMIT 100", ARRAY_A);
+            if (!is_array($rows)) {
+                $rows = array();
+            }
+        }
         echo '<div class="wrap"><h1>Affiliate Sources</h1>';
+        if ($this->table_error !== '') {
+            echo '<div class="notice notice-error"><p>' . esc_html($this->table_error) . '</p></div>';
+        }
         echo '<button type="button" class="button button-primary alma-toggle-source-form">Aggiungi nuova source</button>';
         echo '<div id="alma-source-form-wrap" class="alma-source-form-wrap" style="' . ($editing ? '' : 'display:none;') . '">';
         echo '<h2>' . ($editing ? 'Modifica source' : 'Nuova source') . '</h2>';
@@ -48,7 +69,10 @@ class ALMA_Affiliate_Source_Manager {
         echo '<table class="form-table"><tbody>';
         $this->render_input_row('name', 'Name', $editing['name'] ?? '');
         echo '<tr><th><label for="provider">Provider</label></th><td><select name="provider" id="provider" required>';
-        foreach ($providers as $key => $provider) { echo '<option value="' . esc_attr($key) . '"' . selected($editing['provider'] ?? '', $key, false) . '>' . esc_html($provider->get_name()) . '</option>'; }
+        foreach ($providers as $key => $provider) {
+            if (!is_object($provider) || !method_exists($provider, 'get_name')) { continue; }
+            echo '<option value="' . esc_attr($key) . '"' . selected($editing['provider'] ?? '', $key, false) . '>' . esc_html($provider->get_name()) . '</option>';
+        }
         echo '</select></td></tr>';
         echo '<tr><th><label for="is_active">is_active</label></th><td><label><input type="checkbox" name="is_active" id="is_active" value="1" ' . checked((int)($editing['is_active'] ?? 1), 1, false) . '> Active</label></td></tr>';
         $this->render_input_row('language', 'Language', $editing['language'] ?? '');
@@ -74,6 +98,8 @@ class ALMA_Affiliate_Source_Manager {
     private function decode_json_input($raw) { $raw = trim((string)$raw); if ($raw === '') { return ''; } $decoded = json_decode(wp_unslash($raw), true); if (!is_array($decoded)) { return ''; } return wp_json_encode($decoded); }
     private function maybe_handle_source_form() {
         if ($_SERVER['REQUEST_METHOD'] !== 'POST' || !isset($_POST['action_type']) || $_POST['action_type'] !== 'save_source') { return; }
+        $this->maybe_ensure_sources_table();
+        if (!$this->sources_table_exists()) { return; }
         if (!isset($_POST['alma_source_nonce']) || !wp_verify_nonce($_POST['alma_source_nonce'], 'alma_save_source')) { wp_die('Nonce non valido'); }
         if (!current_user_can('manage_options')) { wp_die('Unauthorized'); }
         global $wpdb;
@@ -107,7 +133,7 @@ class ALMA_Affiliate_Source_Manager {
         $provider = get_post_meta($post->ID, '_alma_provider', true) ?: 'manual';
         $source_id = (int)get_post_meta($post->ID, '_alma_source_id', true);
         $source_name = 'Manuale';
-        if ($source_id > 0) { $source_name = (string)$wpdb->get_var($wpdb->prepare("SELECT name FROM {$wpdb->prefix}alma_affiliate_sources WHERE id = %d", $source_id)); }
+        if ($source_id > 0 && $this->sources_table_exists()) { $source_name = (string)$wpdb->get_var($wpdb->prepare("SELECT name FROM {$wpdb->prefix}alma_affiliate_sources WHERE id = %d", $source_id)); }
         echo '<p><strong>Provider:</strong> ' . esc_html($provider) . '</p>';
         echo '<p><strong>Source name:</strong> ' . esc_html($source_name ?: 'Manuale') . '</p>';
         echo '<p><strong>Import status:</strong> ' . esc_html(get_post_meta($post->ID, '_alma_import_status', true) ?: 'manual') . '</p>';
@@ -120,5 +146,21 @@ class ALMA_Affiliate_Source_Manager {
         if (get_post_type($post_id) !== 'affiliate_link') { return; }
         if (!metadata_exists('post', $post_id, '_alma_ai_visibility')) { update_post_meta($post_id, '_alma_ai_visibility', 'available'); }
         if (!metadata_exists('post', $post_id, '_alma_import_status')) { update_post_meta($post_id, '_alma_import_status', 'manual'); }
+    }
+
+    private function sources_table_exists() {
+        global $wpdb;
+        $table_name = $wpdb->prefix . 'alma_affiliate_sources';
+        return $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $table_name)) === $table_name;
+    }
+
+    private function maybe_ensure_sources_table() {
+        if ($this->sources_table_exists()) {
+            return;
+        }
+        self::create_tables();
+        if (!$this->sources_table_exists()) {
+            $this->table_error = 'Tabella Affiliate Sources non disponibile. Tentativo di creazione eseguito, controlla permessi DB.';
+        }
     }
 }

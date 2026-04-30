@@ -3,7 +3,7 @@
  * Plugin Name: Affiliate Link Manager AI
  * Plugin URI: https://your-website.com
  * Description: Gestisce link affiliati con intelligenza artificiale per ottimizzazione e tracking automatico.
- * Version: 2.7.1
+ * Version: 2.7.2
  * Author: Cosè Murciano
  * License: GPL v2 or later
  * Text Domain: affiliate-link-manager-ai
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Definisci costanti del plugin
-define('ALMA_VERSION', '2.7.1');
+define('ALMA_VERSION', '2.7.2');
 define('ALMA_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('ALMA_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('ALMA_PLUGIN_FILE', __FILE__);
@@ -49,6 +49,7 @@ class AffiliateManagerAI {
         add_action('init', array($this, 'init'));
         register_activation_hook(__FILE__, array($this, 'activate'));
         register_deactivation_hook(__FILE__, array($this, 'deactivate'));
+        add_action('plugins_loaded', array($this, 'maybe_run_update_tasks'));
         
         // Hook per gestire eliminazione link
         add_action('before_delete_post', array($this, 'before_delete_link'));
@@ -630,7 +631,7 @@ class AffiliateManagerAI {
      */
     public function admin_enqueue_scripts($hook) {
         // Solo nelle pagine del plugin
-        $screen = get_current_screen();
+        $screen = function_exists('get_current_screen') ? get_current_screen() : null;
         $allowed_types = get_option('alma_link_post_types', array('post', 'page'));
         
         if ($screen && ($screen->post_type === 'affiliate_link' || 
@@ -3510,6 +3511,7 @@ class AffiliateManagerAI {
         $this->create_analytics_table();
         ALMA_Affiliate_Source_Manager::create_tables();
         $this->create_default_categories();
+        update_option('alma_plugin_version', ALMA_VERSION);
         flush_rewrite_rules();
     }
     
@@ -3517,6 +3519,15 @@ class AffiliateManagerAI {
         // Rimuovi cron jobs
         wp_clear_scheduled_hook('alma_daily_optimization');
         flush_rewrite_rules();
+    }
+
+    public function maybe_run_update_tasks() {
+        $installed_version = get_option('alma_plugin_version', '0.0.0');
+        if (version_compare($installed_version, ALMA_VERSION, '<')) {
+            $this->create_analytics_table();
+            ALMA_Affiliate_Source_Manager::create_tables();
+            update_option('alma_plugin_version', ALMA_VERSION);
+        }
     }
     
     private function create_analytics_table() {
