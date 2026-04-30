@@ -36,7 +36,7 @@ jQuery(function($){
     const name = $('#name').val().trim();
     const provider = $('#provider_label').val().trim();
     if (!name || !provider) { e.preventDefault(); window.alert('Name e provider sono obbligatori.'); return; }
-    ['settings_advanced', 'credentials_advanced'].forEach(function(id){
+    ['credentials_advanced'].forEach(function(id){
       const raw = $('#' + id).val().trim(); if (!raw) return;
       try { JSON.parse(raw); } catch (err) { e.preventDefault(); window.alert('JSON non valido nel campo: ' + id); }
     });
