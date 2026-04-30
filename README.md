@@ -1,6 +1,6 @@
 # Affiliate Link Manager AI
 
-Versione 2.9.0
+Versione 2.9.1
 
 Questo plugin gestisce e ottimizza i link affiliati all'interno di WordPress.
 
@@ -94,3 +94,12 @@ Miglioramenti principali:
 - Supporto reale iniziale: `custom_api`; altri provider mostrano stato *non ancora supportato*.
 - Sicurezza credenziali: nessun segreto esposto in HTML/JS/URL/notice, esempi redatti e troncati.
 - Limiti discovery: payload JSON richiesto, timeout breve, risposta troppo grande/invalid JSON gestiti con messaggi chiari.
+
+
+## Affiliate Sources 2.9.1
+
+- La diagnostica provider usa `provider_preset` come chiave tecnica primaria; fallback su `provider` valido, alias legacy controllati e infine fallback client per provider non supportati.
+- Fix routing `Custom API`: funzionano `provider_preset=custom_api`, `provider=custom_api`, legacy `provider=customapi` e label libera con preset valido.
+- `Testa connessione`, `Campi importabili` e refresh discovery condividono la stessa risoluzione canonica del provider nella factory.
+- Storico ultimo test connessione spostato in option aggregata unica `alma_last_connection_tests` non-autoloaded (chiavi per source ID, pruning automatico).
+- Nessun segreto memorizzato nello storico diagnostico: solo stato controllato, codice/messaggio, timestamp, durata e provider canonico.

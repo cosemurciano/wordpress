@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.9.1 - Provider routing canonico e storage diagnostico sicuro
+- risoluzione provider centralizzata in factory: priorità `provider_preset` valido, poi `provider`, alias legacy (`customapi -> custom_api`) e fallback client
+- fix completo routing Custom API per connection test e field discovery (incluso refresh)
+- introdotto storage aggregato non-autoloaded `alma_last_connection_tests` per ultimo test connessione con payload minimale/sanitizzato
+- cleanup/migrazione soft delle option legacy per-source `alma_last_connection_test_{id}`
+- nessun segreto salvato nello storico diagnostico (no token/header/body/raw response)
+
 ## 2.9.0 - Connection test & importable fields discovery
 - aggiunta azione AJAX `Testa connessione` nella lista Affiliate Sources con nonce, capability check e source validation
 - aggiunta pagina admin `Campi importabili` con field discovery diagnostica, refresh e tabella campi
