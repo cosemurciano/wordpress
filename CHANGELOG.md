@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.9.2 - Conferma post-save Affiliate Sources (UX + PRG hardening)
+- aggiunta vista GET di conferma dopo create/update con flusso Post/Redirect/Get completo (nessun rendering diretto dopo POST)
+- schermata di conferma con messaggio esplicito, riepilogo source (nome, provider, preset, stato) e azioni rapide
+- introdotti pulsanti/azioni: `Torna alla lista Sources`, `Modifica questa Source`, `Campi importabili` e `Testa connessione` (riuso endpoint AJAX esistente)
+- URL di conferma ridotta a parametri sicuri (`alma_view`, `status`, `source_id`) senza esposizione dati sensibili
+- gestione errori/fallback senza pagina vuota (error/invalid_json/source non trovata)
+
 ## 2.9.1 - Provider routing canonico e storage diagnostico sicuro
 - risoluzione provider centralizzata in factory: priorità `provider_preset` valido, poi `provider`, alias legacy (`customapi -> custom_api`) e fallback client
 - fix completo routing Custom API per connection test e field discovery (incluso refresh)
