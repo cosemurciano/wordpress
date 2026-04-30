@@ -51,6 +51,21 @@ class ALMA_Affiliate_Source_Importer {
             update_post_meta($post_id, '_alma_ai_visibility', 'available');
         }
 
+        $term_ids = array();
+        $raw_multi = $source['destination_term_ids'] ?? '';
+        if (is_string($raw_multi) && $raw_multi !== '') {
+            $decoded = json_decode($raw_multi, true);
+            if (is_array($decoded)) {
+                $term_ids = array_values(array_unique(array_filter(array_map('absint', $decoded))));
+            }
+        }
+        if (empty($term_ids) && !empty($source['destination_term_id'])) {
+            $term_ids = array(absint($source['destination_term_id']));
+        }
+        if (!empty($term_ids)) {
+            wp_set_object_terms($post_id, $term_ids, 'link_type', true);
+        }
+
         return array('status' => $status, 'post_id' => $post_id);
     }
 

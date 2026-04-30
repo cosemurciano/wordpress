@@ -3,7 +3,7 @@
  * Plugin Name: Affiliate Link Manager AI
  * Plugin URI: https://your-website.com
  * Description: Gestisce link affiliati con intelligenza artificiale per ottimizzazione e tracking automatico.
- * Version: 2.7.2
+ * Version: 2.8.0
  * Author: Cosè Murciano
  * License: GPL v2 or later
  * Text Domain: affiliate-link-manager-ai
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Definisci costanti del plugin
-define('ALMA_VERSION', '2.7.2');
+define('ALMA_VERSION', '2.8.0');
 define('ALMA_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('ALMA_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('ALMA_PLUGIN_FILE', __FILE__);
@@ -31,6 +31,7 @@ require_once ALMA_PLUGIN_DIR . 'includes/providers/class-affiliate-source-provid
 require_once ALMA_PLUGIN_DIR . 'includes/providers/class-affiliate-source-provider-generic-api.php';
 require_once ALMA_PLUGIN_DIR . 'includes/providers/class-affiliate-source-provider-custom-api.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-affiliate-source-provider-registry.php';
+require_once ALMA_PLUGIN_DIR . 'includes/class-affiliate-source-provider-presets.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-affiliate-source-normalizer.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-affiliate-source-importer.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-affiliate-source-manager.php';
@@ -675,6 +676,9 @@ class AffiliateManagerAI {
                 }
                 if (file_exists(ALMA_PLUGIN_DIR . 'assets/affiliate-sources.js')) {
                     wp_enqueue_script('alma-affiliate-sources', ALMA_PLUGIN_URL . 'assets/affiliate-sources.js', array('jquery'), ALMA_VERSION, true);
+                    if ($this->source_manager && method_exists($this->source_manager, 'get_provider_presets')) {
+                        wp_localize_script('alma-affiliate-sources', 'almaSourcePresets', array('presets' => $this->source_manager->get_provider_presets()));
+                    }
                 }
             }
 

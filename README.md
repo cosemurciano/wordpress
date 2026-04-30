@@ -1,6 +1,6 @@
 # Affiliate Link Manager AI
 
-Versione 2.7.2
+Versione 2.8.0
 
 Questo plugin gestisce e ottimizza i link affiliati all'interno di WordPress.
 
@@ -59,3 +59,13 @@ Miglioramenti principali:
 
 - Fix fatal error nella pagina admin `Affiliate Sources` con gestione resiliente di tabella mancante, source non trovata, provider/registry non disponibili e JSON non valido.
 - Aggiunto tentativo sicuro di repair/creazione tabella `alma_affiliate_sources` quando la pagina viene aperta.
+
+
+## Affiliate Sources 2.8.0
+
+- Provider editabile: campo testo libero con chiave tecnica normalizzata in `provider` e label leggibile in `provider_label`.
+- Preset provider opzionali (manual, custom_api, viator, getyourguide, tiqets, booking_com, agoda, aviasales, discovercars, airalo, omio, safetywing) per compilazione guidata di settings/credentials.
+- Destination term multiplo con `destination_term_ids[]` (JSON array) e retrocompatibilità su `destination_term_id`.
+- UI guidata con sezioni `Configurazione provider` e `Credenziali`; JSON avanzato disponibile solo come pannello tecnico.
+- Credenziali mascherate in edit: mai renderizzate in chiaro, preservate se campo vuoto, aggiornate solo su input nuovo.
+- Nota: molte API reali richiedono approvazione commerciale e provisioning credenziali lato provider.
