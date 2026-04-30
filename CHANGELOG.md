@@ -77,3 +77,14 @@
 - query analytics aggregate per grafici e metriche
 - nuovi indici DB su `alma_analytics` (`link_id, click_time` e `source, click_time`)
 - miglioramento UX dashboard con loading state e caricamento AJAX
+
+## [Hotfix] - 2026-04-30
+### Fixed
+- Blank page dopo create/update Affiliate Source: POST ora gestito pre-render su `load-<page_hook>` con PRG.
+
+### Added
+- Flusso di archiviazione Source (soft-delete) senza cancellare i link affiliati importati.
+- Conferma eliminazione Source con conteggio link associati e checkbox obbligatoria.
+- Snapshot metadata source sui link associati e rimozione credenziali source archiviata.
+- Gestione Source eliminate nel filtro admin Link Affiliati.
+

@@ -31,6 +31,7 @@ class ALMA_Affiliate_Links_Source_Filter {
         foreach ($sources as $source) {
             $source_id   = (int) ($source['id'] ?? 0);
             $source_name = sanitize_text_field($source['name'] ?? '');
+            if (!empty($source['deleted_at'])) { $source_name .= ' (eliminata)'; }
 
             if ($source_id <= 0 || $source_name === '') {
                 continue;
@@ -93,7 +94,7 @@ class ALMA_Affiliate_Links_Source_Filter {
         global $wpdb;
 
         return (array) $wpdb->get_results(
-            "SELECT id, name FROM {$wpdb->prefix}alma_affiliate_sources ORDER BY name ASC",
+            "SELECT id, name, deleted_at FROM {$wpdb->prefix}alma_affiliate_sources ORDER BY name ASC",
             ARRAY_A
         );
     }
