@@ -1,6 +1,7 @@
 .alma-sections{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:12px}
 .alma-section{background:#fff;border:1px solid #dcdcde;padding:12px;border-radius:4px}
-.alma-section h3{margin-top:0}
-.alma-section .description{color:#50575e}
-#destination_term_ids{min-width:100%;}
-label strong{display:inline-block;margin-bottom:4px}
+.alma-section h3{margin-top:0}.alma-section .description{color:#50575e}
+#destination_term_ids{min-width:100%;} label strong{display:inline-block;margin-bottom:4px}
+.alma-inline-result{margin-top:6px;font-size:12px}
+.alma-inline-result.success{color:#008a20}
+.alma-inline-result.error{color:#b32d2e}
