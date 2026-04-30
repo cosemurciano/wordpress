@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.9.0 - Connection test & importable fields discovery
+- aggiunta azione AJAX `Testa connessione` nella lista Affiliate Sources con nonce, capability check e source validation
+- aggiunta pagina admin `Campi importabili` con field discovery diagnostica, refresh e tabella campi
+- introdotti service/client/factory dedicati per separare la logica provider dalla manager class
+- supporto operativo per provider `custom_api`; fallback controllato per provider non ancora supportati
+- caching transient su field discovery legato a source/configurazione e hardening output sensibile
+
+
 ## 2.8.2 - Guided settings authoritative hotfix
 - guided `settings_fields` resi autoritativi: applicati per ultimi e non sovrascrivibili da JSON avanzato/legacy
 - rimossa la textarea precompilata con JSON completo `settings` dalla UI standard Affiliate Sources

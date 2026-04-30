@@ -9,12 +9,13 @@ class ALMA_Affiliate_Source_Manager {
         add_action('admin_menu', array($this, 'register_submenu'), 11);
         add_action('add_meta_boxes', array($this, 'register_technical_metabox'));
         add_action('save_post_affiliate_link', array($this, 'save_technical_meta'));
+        add_action('wp_ajax_alma_test_source_connection', array($this, 'ajax_test_source_connection'));
     }
     public static function create_tables() { global $wpdb; require_once ABSPATH.'wp-admin/includes/upgrade.php'; $c=$wpdb->get_charset_collate();
         dbDelta("CREATE TABLE {$wpdb->prefix}alma_affiliate_sources (id bigint(20) unsigned NOT NULL AUTO_INCREMENT, name varchar(191) NOT NULL, provider varchar(50) NOT NULL, provider_label varchar(191) DEFAULT '', is_active tinyint(1) NOT NULL DEFAULT 1, language varchar(20) DEFAULT '', market varchar(20) DEFAULT '', destination_term_id bigint(20) unsigned DEFAULT 0, destination_term_ids longtext NULL, import_mode varchar(30) DEFAULT 'create_update', settings longtext NULL, credentials longtext NULL, last_sync_at datetime NULL, last_sync_status varchar(20) DEFAULT 'manual', created_at datetime NOT NULL, updated_at datetime NOT NULL, PRIMARY KEY  (id)) $c;");
     }
     public function get_provider_presets(){ return ALMA_Affiliate_Source_Provider_Presets::get_schema(); }
-    public function register_submenu(){ add_submenu_page('edit.php?post_type=affiliate_link',__('Affiliate Sources','affiliate-link-manager-ai'),__('Affiliate Sources','affiliate-link-manager-ai'),'manage_options','alma-affiliate-sources',array($this,'render_sources_page')); }
+    public function register_submenu(){ add_submenu_page('edit.php?post_type=affiliate_link',__('Affiliate Sources','affiliate-link-manager-ai'),__('Affiliate Sources','affiliate-link-manager-ai'),'manage_options','alma-affiliate-sources',array($this,'render_sources_page')); add_submenu_page(null,__('Campi importabili','affiliate-link-manager-ai'),__('Campi importabili','affiliate-link-manager-ai'),'manage_options','alma-importable-fields',array($this,'render_importable_fields_page')); }
     private function parse_json($raw){ $raw=trim((string)$raw); if($raw==='') return array(); $d=json_decode(wp_unslash($raw),true); return is_array($d)?$d:array('__invalid'=>1); }
     private function decode_db_json($raw){ $d=json_decode((string)$raw,true); return is_array($d)?$d:array(); }
     private function norm_provider($label){ $k=sanitize_key($label); return $k!==''?$k:'custom'; }
@@ -38,8 +39,8 @@ class ALMA_Affiliate_Source_Manager {
         echo '</div><div class="alma-section"><h3>Credenziali avanzate (opzionale)</h3><p class="description">Inserisci solo chiavi extra non coperte dai campi guidati.</p><textarea name="credentials_advanced" id="credentials_advanced" rows="4" class="large-text code"></textarea></div></div><p><button class="button button-primary">Salva source</button></p></form></div>';
         echo '<table class="widefat striped"><thead><tr><th>Nome</th><th>Provider</th><th>Destination</th><th>Mode</th><th>Stato</th><th>Lingua</th><th>Mercato</th><th>Ultimo Sync</th><th>Stato Sync</th><th>Azioni</th></tr></thead><tbody>';
         foreach((array)$rows as $r){ $s=$this->decode_db_json($r['settings']??''); $ids=json_decode($r['destination_term_ids']??'',true); if(!is_array($ids))$ids=array(); if(empty($ids)&&!empty($r['destination_term_id']))$ids=array((int)$r['destination_term_id']); $names=array(); foreach($ids as $tid){ $term=get_term((int)$tid,'link_type'); if($term&&!is_wp_error($term))$names[]=$term->name; }
-            $provider_label=$r['provider_label']?:$r['provider']; $edit_link=add_query_arg(array('post_type'=>'affiliate_link','page'=>'alma-affiliate-sources','edit_source'=>(int)$r['id']),admin_url('edit.php'));
-            echo '<tr><td>'.esc_html($r['name']).'</td><td>'.esc_html($provider_label).'<br/><small>'.esc_html($r['provider']).'</small></td><td>'.esc_html($names?implode(', ',$names):'—').'</td><td>'.esc_html($s['mode']??$s['integration_mode']??'—').'</td><td>'.((int)$r['is_active']===1?'Attivo':'Disattivo').'</td><td>'.esc_html($r['language']).'</td><td>'.esc_html($r['market']).'</td><td>'.esc_html($r['last_sync_at']).'</td><td>'.esc_html($r['last_sync_status']).'</td><td><a class="button button-small" href="'.esc_url($edit_link).'">Modifica</a></td></tr>'; }
+            $provider_label=$r['provider_label']?:$r['provider']; $edit_link=add_query_arg(array('post_type'=>'affiliate_link','page'=>'alma-affiliate-sources','edit_source'=>(int)$r['id']),admin_url('edit.php')); $fields_link=add_query_arg(array('post_type'=>'affiliate_link','page'=>'alma-importable-fields','source_id'=>(int)$r['id']),admin_url('edit.php'));
+            echo '<tr data-source-id="'.(int)$r['id'].'"><td>'.esc_html($r['name']).'</td><td>'.esc_html($provider_label).'<br/><small>'.esc_html($r['provider']).'</small></td><td>'.esc_html($names?implode(', ',$names):'—').'</td><td>'.esc_html($s['mode']??$s['integration_mode']??'—').'</td><td>'.((int)$r['is_active']===1?'Attivo':'Disattivo').'</td><td>'.esc_html($r['language']).'</td><td>'.esc_html($r['market']).'</td><td>'.esc_html($r['last_sync_at']).'</td><td>'.esc_html($r['last_sync_status']).'</td><td><a class="button button-small" href="'.esc_url($edit_link).'">Modifica</a> <button type="button" class="button button-small alma-test-connection" data-source-id="'.(int)$r['id'].'">Testa connessione</button> <a class="button button-small" href="'.esc_url($fields_link).'">Campi importabili</a><div class="alma-inline-result" aria-live="polite"></div></td></tr>'; }
         echo '</tbody></table></div>'; }
     private function render_input_row($n,$l,$v,$req=false){ echo '<p><label><strong>'.esc_html($l).($req?' *':'').'</strong><br/><input type="text" id="'.esc_attr($n).'" name="'.esc_attr($n).'" value="'.esc_attr($v).'" class="regular-text"'.($req?' required':'').'></label></p>'; }
     private function maybe_handle_source_form(){ if(($_SERVER['REQUEST_METHOD']??'')!=='POST'||($_POST['action_type']??'')!=='save_source')return; if(!wp_verify_nonce($_POST['alma_source_nonce']??'','alma_save_source'))wp_die('Nonce non valido'); if(!current_user_can('manage_options'))wp_die('Unauthorized'); global $wpdb;
@@ -75,6 +76,41 @@ class ALMA_Affiliate_Source_Manager {
     public function render_technical_metabox($post){ $provider=get_post_meta($post->ID,'_alma_provider',true)?:'manual'; echo '<p><strong>Provider:</strong> '.esc_html($provider).'</p>'; }
     public function save_technical_meta($post_id){ if(!isset($_POST['alma_source_meta_nonce'])||!wp_verify_nonce($_POST['alma_source_meta_nonce'],'alma_source_meta'))return; }
     private function sources_table_exists(){ global $wpdb; $t=$wpdb->prefix.'alma_affiliate_sources'; return $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s',$t))===$t; }
+
+    public function ajax_test_source_connection(){
+        if(!current_user_can('manage_options')) wp_send_json_error(array('message'=>'Non autorizzato'),403);
+        check_ajax_referer('alma_test_connection_nonce','nonce');
+        $source_id = absint($_POST['source_id'] ?? 0);
+        if($source_id<=0) wp_send_json_error(array('message'=>'Source non valida'));
+        global $wpdb;
+        $source = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}alma_affiliate_sources WHERE id=%d",$source_id),ARRAY_A);
+        if(!is_array($source)) wp_send_json_error(array('message'=>'Source non trovata'));
+        if(empty($source['provider'])) wp_send_json_error(array('message'=>'Provider o preset non valido'));
+        $service = new ALMA_Affiliate_Source_Connection_Service();
+        $result = $service->test($source);
+        if(is_wp_error($result)) wp_send_json_error(array('message'=>$this->map_error($result->get_error_code(),$result->get_error_message())));
+        wp_send_json_success(array('message'=>'Connessione riuscita'));
+    }
+    private function map_error($code,$fallback){
+        $map=array('missing_credentials'=>'Credenziali mancanti','missing_endpoint'=>'Endpoint mancante','invalid_endpoint'=>'Endpoint non valido','provider_unsupported'=>'Provider non ancora supportato','timeout'=>'Timeout','api_error'=>'Errore API','internal_error'=>'Errore interno');
+        return $map[$code] ?? sanitize_text_field($fallback ?: 'Errore interno');
+    }
+    public function render_importable_fields_page(){
+        if(!current_user_can('manage_options')) wp_die('Unauthorized');
+        global $wpdb; $source_id=absint($_GET['source_id']??0); if($source_id<=0) wp_die('Source non valida');
+        $source=$wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}alma_affiliate_sources WHERE id=%d",$source_id),ARRAY_A); if(!is_array($source)) wp_die('Source non trovata');
+        $force = isset($_GET['refresh']) && $_GET['refresh']==='1';
+        $svc=new ALMA_Affiliate_Source_Field_Discovery_Service(); $result=$svc->discover($source,$force);
+        $last_test=get_option('alma_last_connection_test_'.(int)$source_id);
+        echo '<div class="wrap"><h1>Campi importabili</h1><p><a class="button" href="'.esc_url(add_query_arg(array('post_type'=>'affiliate_link','page'=>'alma-affiliate-sources'),admin_url('edit.php'))).'">Torna alle Affiliate Sources</a> <a class="button button-primary" href="'.esc_url(add_query_arg(array('post_type'=>'affiliate_link','page'=>'alma-importable-fields','source_id'=>$source_id,'refresh'=>'1'),admin_url('edit.php'))).'">Aggiorna campi</a></p>';
+        echo '<ul><li><strong>Source:</strong> '.esc_html($source['name']).'</li><li><strong>Provider:</strong> '.esc_html($source['provider_label']).'</li><li><strong>Preset:</strong> '.esc_html($source['provider']).'</li><li><strong>Stato:</strong> '.(((int)$source['is_active'])?'Attivo':'Disattivo').'</li><li><strong>Ultimo test connessione:</strong> '.esc_html(is_array($last_test)?($last_test['at'].' ('.(!empty($last_test['ok'])?'ok':'ko').')'):'n/d').'</li></ul>';
+        if(is_wp_error($result)){ echo '<div class="notice notice-warning"><p>'.esc_html($this->map_error($result->get_error_code(),$result->get_error_message())).'</p></div></div>'; return; }
+        $fields=(array)($result['fields']??array()); if(empty($fields)){ echo '<p>Nessun campo rilevato.</p></div>'; return; }
+        echo '<table class="widefat striped"><thead><tr><th>Path</th><th>Label</th><th>Tipo</th><th>Esempio</th><th>Origine</th><th>Suggerimento mapping</th></tr></thead><tbody>';
+        foreach($fields as $f){ echo '<tr><td>'.esc_html($f['path']??'').'</td><td>'.esc_html($f['label']??'').'</td><td>'.esc_html($f['type']??'').'</td><td>'.esc_html($f['example']??'').'</td><td>'.esc_html($result['origin']??'').'</td><td>'.esc_html($f['mapping_hint']??'—').'</td></tr>'; }
+        echo '</tbody></table></div>';
+    }
+
     private function maybe_ensure_sources_table(){ global $wpdb; if(!$this->sources_table_exists()){ self::create_tables(); } if($this->sources_table_exists()){ $cols=$wpdb->get_col("SHOW COLUMNS FROM {$wpdb->prefix}alma_affiliate_sources"); if(!in_array('provider_label',$cols,true)){$wpdb->query("ALTER TABLE {$wpdb->prefix}alma_affiliate_sources ADD provider_label varchar(191) DEFAULT ''");}
         if(!in_array('destination_term_ids',$cols,true)){$wpdb->query("ALTER TABLE {$wpdb->prefix}alma_affiliate_sources ADD destination_term_ids longtext NULL");}
         $wpdb->query("UPDATE {$wpdb->prefix}alma_affiliate_sources SET provider_label = provider WHERE provider_label = ''");
