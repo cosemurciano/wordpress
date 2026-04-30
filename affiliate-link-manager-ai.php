@@ -3,7 +3,7 @@
  * Plugin Name: Affiliate Link Manager AI
  * Plugin URI: https://your-website.com
  * Description: Gestisce link affiliati con intelligenza artificiale per ottimizzazione e tracking automatico.
- * Version: 2.6
+ * Version: 2.7
  * Author: Cosè Murciano
  * License: GPL v2 or later
  * Text Domain: affiliate-link-manager-ai
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Definisci costanti del plugin
-define('ALMA_VERSION', '2.6');
+define('ALMA_VERSION', '2.7');
 define('ALMA_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('ALMA_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('ALMA_PLUGIN_FILE', __FILE__);
@@ -25,15 +25,27 @@ require_once ALMA_PLUGIN_DIR . 'includes/class-ai-utils.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-content-analysis-ai.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-dashboard-stats.php';
 
+require_once ALMA_PLUGIN_DIR . 'includes/class-affiliate-source-provider-interface.php';
+require_once ALMA_PLUGIN_DIR . 'includes/providers/class-affiliate-source-provider-manual.php';
+require_once ALMA_PLUGIN_DIR . 'includes/providers/class-affiliate-source-provider-csv.php';
+require_once ALMA_PLUGIN_DIR . 'includes/providers/class-affiliate-source-provider-generic-api.php';
+require_once ALMA_PLUGIN_DIR . 'includes/providers/class-affiliate-source-provider-custom-api.php';
+require_once ALMA_PLUGIN_DIR . 'includes/class-affiliate-source-provider-registry.php';
+require_once ALMA_PLUGIN_DIR . 'includes/class-affiliate-source-normalizer.php';
+require_once ALMA_PLUGIN_DIR . 'includes/class-affiliate-source-importer.php';
+require_once ALMA_PLUGIN_DIR . 'includes/class-affiliate-source-manager.php';
+
 /**
  * Classe principale del plugin
  */
 class AffiliateManagerAI {
     private $dashboard_stats;
+    private $source_manager;
     
     public function __construct() {
         global $wpdb;
         $this->dashboard_stats = new ALMA_Dashboard_Stats($wpdb);
+        $this->source_manager = new ALMA_Affiliate_Source_Manager();
         add_action('init', array($this, 'init'));
         register_activation_hook(__FILE__, array($this, 'activate'));
         register_deactivation_hook(__FILE__, array($this, 'deactivate'));
@@ -460,6 +472,7 @@ class AffiliateManagerAI {
         // Crea la tabella se non esiste
         if ($wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $table_name)) != $table_name) {
             $this->create_analytics_table();
+        ALMA_Affiliate_Source_Manager::create_tables();
         }
 
         $wpdb->insert($table_name, array(
@@ -655,7 +668,13 @@ class AffiliateManagerAI {
                 ));
             }
 
-            if ($hook === 'affiliate_link_page_affiliate-link-import') {
+            if ($hook === 'affiliate_link_page_affiliate-link-import' || $hook === 'affiliate_link_page_alma-affiliate-sources') {
+                if ($hook === 'affiliate_link_page_alma-affiliate-sources' && file_exists(ALMA_PLUGIN_DIR . 'assets/affiliate-sources.css')) {
+                    wp_enqueue_style('alma-affiliate-sources', ALMA_PLUGIN_URL . 'assets/affiliate-sources.css', array(), ALMA_VERSION);
+                }
+                if ($hook === 'affiliate_link_page_alma-affiliate-sources' && file_exists(ALMA_PLUGIN_DIR . 'assets/affiliate-sources.js')) {
+                    wp_enqueue_script('alma-affiliate-sources', ALMA_PLUGIN_URL . 'assets/affiliate-sources.js', array('jquery'), ALMA_VERSION, true);
+                }
                 if (file_exists(ALMA_PLUGIN_DIR . 'assets/import-wizard.css')) {
                     wp_enqueue_style(
                         'alma-import-wizard',
@@ -1235,6 +1254,7 @@ class AffiliateManagerAI {
             'alma-bot-affiliate-settings',
             'affiliate-chat-ai',
             'affiliate-link-import',
+            'alma-affiliate-sources',
             'alma-prompt-ai-settings',
             'affiliate-link-manager-settings',
             'alma-css-editor',
@@ -1271,6 +1291,9 @@ class AffiliateManagerAI {
                             break;
                         case 'affiliate-link-import':
                             $item[0] = __('Importa Link', 'affiliate-link-manager-ai');
+                            break;
+                        case 'alma-affiliate-sources':
+                            $item[0] = __('Affiliate Sources', 'affiliate-link-manager-ai');
                             break;
                         case 'alma-prompt-ai-settings':
                             $item[0] = __('Prompt AI', 'affiliate-link-manager-ai');
@@ -3509,6 +3532,7 @@ class AffiliateManagerAI {
      */
     public function activate() {
         $this->create_analytics_table();
+        ALMA_Affiliate_Source_Manager::create_tables();
         $this->create_default_categories();
         flush_rewrite_rules();
     }

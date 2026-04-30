@@ -1,6 +1,6 @@
 # Affiliate Link Manager AI
 
-Versione 2.6
+Versione 2.7
 
 Questo plugin gestisce e ottimizza i link affiliati all'interno di WordPress.
 
@@ -36,3 +36,13 @@ Miglioramenti principali:
 - riduzione query ripetute su shortcode grazie a mappa usage cache-izzata;
 - invalidazione cache su save/delete/trash/untrash di post e pagine;
 - indici DB aggiuntivi su `alma_analytics`: `(link_id, click_time)` e `(source, click_time)`.
+
+
+## Affiliate Source Manager (2.7)
+
+- Nuovo modulo **Affiliate Sources** sotto il menu del CPT `affiliate_link` (senza creare un archivio parallelo).
+- Nuove tabelle dedicate a fonti, log sync e mapping categorie: `alma_affiliate_sources`, `alma_affiliate_source_logs`, `alma_affiliate_category_map`.
+- Architettura provider-based estendibile con registry + provider nativi: `manual`, `csv`, `custom_api`, `generic_api`.
+- Deduplicazione import con priorità: `provider+external_id`, `provider+sync_hash`, fallback su `_affiliate_url`.
+- Sincronizzazione tra `_alma_affiliate_url` e `_affiliate_url` per garantire backward compatibility con shortcode e tracking esistenti.
+- Nuova metabox tecnica nel singolo `affiliate_link` con metadati sorgente e readiness AI Agent.

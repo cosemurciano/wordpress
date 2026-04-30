@@ -1,0 +1,87 @@
+<?php
+if (!defined('ABSPATH')) { exit; }
+
+class ALMA_Affiliate_Source_Importer {
+    public function import_item($normalized, $source) {
+        $mode = $source['import_mode'] ?? 'create_update';
+        $existing_id = $this->find_existing_link($normalized);
+
+        if ($existing_id && $mode === 'create_only') {
+            return array('status' => 'skipped', 'post_id' => $existing_id);
+        }
+        if (!$existing_id && $mode === 'update_existing') {
+            return array('status' => 'skipped', 'post_id' => 0);
+        }
+
+        $postarr = array(
+            'post_type' => 'affiliate_link',
+            'post_status' => 'publish',
+            'post_title' => $normalized['post_title'] ?: __('Senza titolo', 'affiliate-link-manager-ai'),
+            'post_content' => $normalized['post_content'],
+        );
+
+        if ($existing_id) {
+            $postarr['ID'] = $existing_id;
+            $post_id = wp_update_post($postarr, true);
+            $status = 'updated';
+        } else {
+            $post_id = wp_insert_post($postarr, true);
+            $status = 'imported';
+        }
+
+        if (is_wp_error($post_id)) {
+            return $post_id;
+        }
+
+        $affiliate_url = $normalized['affiliate_url'];
+        if (!empty($affiliate_url)) {
+            update_post_meta($post_id, '_affiliate_url', $affiliate_url);
+            update_post_meta($post_id, '_alma_affiliate_url', $affiliate_url);
+        }
+        update_post_meta($post_id, '_alma_original_url', $normalized['original_url']);
+        update_post_meta($post_id, '_alma_import_status', $status);
+        update_post_meta($post_id, '_alma_last_sync_at', current_time('mysql'));
+        update_post_meta($post_id, '_alma_import_mode', sanitize_text_field($mode));
+
+        foreach ($normalized['meta'] as $key => $value) {
+            update_post_meta($post_id, $key, $value);
+        }
+
+        if (empty(get_post_meta($post_id, '_alma_ai_visibility', true))) {
+            update_post_meta($post_id, '_alma_ai_visibility', 'available');
+        }
+
+        return array('status' => $status, 'post_id' => $post_id);
+    }
+
+    private function find_existing_link($normalized) {
+        global $wpdb;
+        $provider = $normalized['meta']['_alma_provider'] ?? '';
+        $external_id = $normalized['meta']['_alma_external_id'] ?? '';
+        $sync_hash = $normalized['meta']['_alma_sync_hash'] ?? '';
+        $affiliate_url = $normalized['affiliate_url'] ?? '';
+
+        if ($provider && $external_id) {
+            $post_id = $wpdb->get_var($wpdb->prepare(
+                "SELECT pm1.post_id FROM {$wpdb->postmeta} pm1 INNER JOIN {$wpdb->postmeta} pm2 ON pm1.post_id = pm2.post_id WHERE pm1.meta_key = '_alma_provider' AND pm1.meta_value = %s AND pm2.meta_key = '_alma_external_id' AND pm2.meta_value = %s LIMIT 1",
+                $provider, $external_id
+            ));
+            if ($post_id) { return (int) $post_id; }
+        }
+
+        if ($provider && $sync_hash) {
+            $post_id = $wpdb->get_var($wpdb->prepare(
+                "SELECT pm1.post_id FROM {$wpdb->postmeta} pm1 INNER JOIN {$wpdb->postmeta} pm2 ON pm1.post_id = pm2.post_id WHERE pm1.meta_key = '_alma_provider' AND pm1.meta_value = %s AND pm2.meta_key = '_alma_sync_hash' AND pm2.meta_value = %s LIMIT 1",
+                $provider, $sync_hash
+            ));
+            if ($post_id) { return (int) $post_id; }
+        }
+
+        if ($affiliate_url) {
+            $post_id = $wpdb->get_var($wpdb->prepare("SELECT post_id FROM {$wpdb->postmeta} WHERE meta_key = '_affiliate_url' AND meta_value = %s LIMIT 1", $affiliate_url));
+            if ($post_id) { return (int) $post_id; }
+        }
+
+        return 0;
+    }
+}
