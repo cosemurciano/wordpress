@@ -3,7 +3,7 @@
  * Plugin Name: Affiliate Link Manager AI
  * Plugin URI: https://your-website.com
  * Description: Gestisce link affiliati con intelligenza artificiale per ottimizzazione e tracking automatico.
- * Version: 2.7
+ * Version: 2.7.1
  * Author: Cosè Murciano
  * License: GPL v2 or later
  * Text Domain: affiliate-link-manager-ai
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Definisci costanti del plugin
-define('ALMA_VERSION', '2.7');
+define('ALMA_VERSION', '2.7.1');
 define('ALMA_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('ALMA_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('ALMA_PLUGIN_FILE', __FILE__);
@@ -668,41 +668,12 @@ class AffiliateManagerAI {
                 ));
             }
 
-            if ($hook === 'affiliate_link_page_affiliate-link-import' || $hook === 'affiliate_link_page_alma-affiliate-sources') {
-                if ($hook === 'affiliate_link_page_alma-affiliate-sources' && file_exists(ALMA_PLUGIN_DIR . 'assets/affiliate-sources.css')) {
+            if ($hook === 'affiliate_link_page_alma-affiliate-sources') {
+                if (file_exists(ALMA_PLUGIN_DIR . 'assets/affiliate-sources.css')) {
                     wp_enqueue_style('alma-affiliate-sources', ALMA_PLUGIN_URL . 'assets/affiliate-sources.css', array(), ALMA_VERSION);
                 }
-                if ($hook === 'affiliate_link_page_alma-affiliate-sources' && file_exists(ALMA_PLUGIN_DIR . 'assets/affiliate-sources.js')) {
+                if (file_exists(ALMA_PLUGIN_DIR . 'assets/affiliate-sources.js')) {
                     wp_enqueue_script('alma-affiliate-sources', ALMA_PLUGIN_URL . 'assets/affiliate-sources.js', array('jquery'), ALMA_VERSION, true);
-                }
-                if (file_exists(ALMA_PLUGIN_DIR . 'assets/import-wizard.css')) {
-                    wp_enqueue_style(
-                        'alma-import-wizard',
-                        ALMA_PLUGIN_URL . 'assets/import-wizard.css',
-                        array(),
-                        ALMA_VERSION
-                    );
-                }
-            if (file_exists(ALMA_PLUGIN_DIR . 'assets/import-wizard.js')) {
-                wp_enqueue_script(
-                    'alma-import-wizard',
-                    ALMA_PLUGIN_URL . 'assets/import-wizard.js',
-                    array('jquery'),
-                    ALMA_VERSION,
-                    true
-                );
-                wp_localize_script('alma-import-wizard', 'almaImport', array(
-                    'ajax_url' => admin_url('admin-ajax.php'),
-                    'nonce'    => wp_create_nonce('alma_import_links'),
-                    'msg_success' => __('Importato: %s', 'affiliate-link-manager-ai'),
-                    'msg_error' => __('Errore: %s', 'affiliate-link-manager-ai'),
-                    'msg_duplicate' => __('Duplicato: %s', 'affiliate-link-manager-ai'),
-                    'msg_no_title' => __('Titolo mancante', 'affiliate-link-manager-ai'),
-                        'msg_no_url' => __('URL mancante', 'affiliate-link-manager-ai'),
-                        'msg_bad_url' => __('URL non valido', 'affiliate-link-manager-ai'),
-                        'msg_ajax' => __('Errore di comunicazione', 'affiliate-link-manager-ai'),
-                        'msg_summary' => __('Totali: %total% | Importati: %success% | Duplicati: %dup% | Errori: %err%', 'affiliate-link-manager-ai'),
-                    ));
                 }
             }
 
@@ -809,6 +780,12 @@ class AffiliateManagerAI {
         $click_count = get_post_meta($post->ID, '_click_count', true) ?: 0;
         $last_click = get_post_meta($post->ID, '_last_click', true);
         $ai_score = get_post_meta($post->ID, '_ai_performance_score', true) ?: 0;
+        $source_id = (int)get_post_meta($post->ID, '_alma_source_id', true);
+        $source_name = 'Manuale';
+        if ($source_id > 0) {
+            global $wpdb;
+            $source_name = (string)$wpdb->get_var($wpdb->prepare("SELECT name FROM {$wpdb->prefix}alma_affiliate_sources WHERE id = %d", $source_id));
+        }
         
         echo '<table class="form-table">';
         
@@ -817,6 +794,11 @@ class AffiliateManagerAI {
         echo '<th><label for="affiliate_url">' . __('URL Affiliato', 'affiliate-link-manager-ai') . ' <span style="color:red;">*</span></label></th>';
         echo '<td><input type="url" id="affiliate_url" name="affiliate_url" value="' . esc_attr($affiliate_url) . '" class="large-text" required />';
         echo '<p class="description">' . __('L\'URL completo del link affiliato (es: https://www.amazon.it/dp/...?tag=...)', 'affiliate-link-manager-ai') . '</p></td>';
+        echo '</tr>';
+
+        echo '<tr>';
+        echo '<th><label>' . __('Provenienza', 'affiliate-link-manager-ai') . '</label></th>';
+        echo '<td>' . esc_html($source_name ?: 'Manuale') . '</td>';
         echo '</tr>';
         
         // Relazione Link
@@ -1009,6 +991,11 @@ class AffiliateManagerAI {
         if (isset($_POST['affiliate_url'])) {
             update_post_meta($post_id, '_affiliate_url', esc_url_raw($_POST['affiliate_url']));
         }
+        $legacy_url = get_post_meta($post_id, '_alma_affiliate_url', true);
+        $canonical_url = get_post_meta($post_id, '_affiliate_url', true);
+        if (empty($canonical_url) && !empty($legacy_url)) {
+            update_post_meta($post_id, '_affiliate_url', esc_url_raw($legacy_url));
+        }
         
         // Salva relazione link
         if (isset($_POST['link_rel'])) {
@@ -1031,6 +1018,9 @@ class AffiliateManagerAI {
             wp_set_object_terms($post_id, $types, 'link_type');
         }
 
+        if (!metadata_exists('post', $post_id, '_alma_provider')) { update_post_meta($post_id, '_alma_provider', 'manual'); }
+        if (!metadata_exists('post', $post_id, '_alma_source_id')) { update_post_meta($post_id, '_alma_source_id', 0); }
+        if (!metadata_exists('post', $post_id, '_alma_import_mode')) { update_post_meta($post_id, '_alma_import_mode', 'manual'); }
         // Calcola AI Performance Score iniziale
         $this->calculate_ai_performance_score($post_id);
     }
@@ -1152,16 +1142,6 @@ class AffiliateManagerAI {
             array($this, 'render_css_editor_page')
         );
 
-        // Importazione massiva
-        add_submenu_page(
-            'edit.php?post_type=affiliate_link',
-            __('Importa Link', 'affiliate-link-manager-ai'),
-            __('Importa Link', 'affiliate-link-manager-ai'),
-            'manage_options',
-            'affiliate-link-import',
-            array($this, 'render_import_page')
-        );
-
         // Tipologie Link
         add_submenu_page(
             'edit.php?post_type=affiliate_link',
@@ -1253,7 +1233,6 @@ class AffiliateManagerAI {
             'affiliate-link-widgets',
             'alma-bot-affiliate-settings',
             'affiliate-chat-ai',
-            'affiliate-link-import',
             'alma-affiliate-sources',
             'alma-prompt-ai-settings',
             'affiliate-link-manager-settings',
@@ -1288,9 +1267,6 @@ class AffiliateManagerAI {
                             break;
                         case 'affiliate-chat-ai':
                             $item[0] = __('Affiliate Chat AI', 'affiliate-link-manager-ai');
-                            break;
-                        case 'affiliate-link-import':
-                            $item[0] = __('Importa Link', 'affiliate-link-manager-ai');
                             break;
                         case 'alma-affiliate-sources':
                             $item[0] = __('Affiliate Sources', 'affiliate-link-manager-ai');

@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.7.1 - Affiliate Sources CRUD & hardening
+- aggiunto CRUD base per `Affiliate Sources` (creazione/modifica) con form admin dedicato
+- aggiunti controlli sicurezza su salvataggio source (nonce, capability, sanitizzazione, JSON safe encode/decode)
+- rimossa la UI legacy `Importa Link` dal menu/submenu admin (backend preservato per backward compatibility)
+- aggiunta associazione visibile Source -> Affiliate Link nella UI del CPT (`Provenienza`, fallback `Manuale`)
+- aggiornata metabox tecnica con provider, source name, import status, AI visibility
+- hardening tracking URL: garanzia di uso `_affiliate_url` con fallback automatico da `_alma_affiliate_url`
+
 ## 2.7.0 - Affiliate Source Manager
 - aggiunto modulo Affiliate Sources con submenu dedicato sotto `affiliate_link`
 - introdotta architettura provider-based con interfaccia, registry, normalizer e importer

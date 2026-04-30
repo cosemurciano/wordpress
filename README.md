@@ -1,6 +1,6 @@
 # Affiliate Link Manager AI
 
-Versione 2.7
+Versione 2.7.1
 
 Questo plugin gestisce e ottimizza i link affiliati all'interno di WordPress.
 
@@ -9,7 +9,6 @@ Questo plugin gestisce e ottimizza i link affiliati all'interno di WordPress.
 - Gestione dei link affiliati tramite un Custom Post Type dedicato.
 - Tracciamento dei click con report e statistiche nel pannello di controllo.
 - Suggerimenti AI per la generazione di titoli ottimizzati per la SEO e le conversioni.
-- Importazione massiva di link tramite un flusso guidato a step.
 - Assegnazione di tipologie personalizzate con creazione automatica delle categorie più comuni.
 - Pulizia automatica degli shortcode quando i link vengono eliminati o spostati nel cestino.
 - Dashboard riassuntiva con conteggio dei link attivi e dei click totali.
@@ -46,3 +45,12 @@ Miglioramenti principali:
 - Deduplicazione import con priorità: `provider+external_id`, `provider+sync_hash`, fallback su `_affiliate_url`.
 - Sincronizzazione tra `_alma_affiliate_url` e `_affiliate_url` per garantire backward compatibility con shortcode e tracking esistenti.
 - Nuova metabox tecnica nel singolo `affiliate_link` con metadati sorgente e readiness AI Agent.
+
+## Affiliate Sources (2.7.1)
+
+- CRUD base completo per le sorgenti: creazione e modifica dalla pagina `Affiliate Sources`.
+- Form admin con campi `name`, `provider`, `is_active`, `language`, `market`, `import_mode`, `destination_term_id`, `settings` JSON, `credentials` JSON.
+- Salvataggio sicuro con nonce, capability check e sanitizzazione lato server.
+- Rimozione della UI legacy `Importa Link` dal menu admin (classi backend mantenute per compatibilità).
+- Associazione visibile `Source -> Affiliate Link` nel CPT con campo “Provenienza” (fallback “Manuale”).
+- Hardening tracking: il frontend continua a usare `_affiliate_url`; se manca, viene riallineato automaticamente da `_alma_affiliate_url`.
