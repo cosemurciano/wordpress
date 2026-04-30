@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.7.2 - Affiliate Sources admin fatal hotfix
+- fix fatal nella pagina admin `Affiliate Sources` quando la tabella `alma_affiliate_sources` manca o la source in edit non esiste
+- aggiunte guard clauses su provider registry, query DB e rendering metabox tecnica per evitare errori critici in admin
+- aggiunto controllo update-version per creare/riparare le tabelle anche sugli aggiornamenti plugin (non solo su prima attivazione)
+
 ## 2.7.1 - Affiliate Sources CRUD & hardening
 - aggiunto CRUD base per `Affiliate Sources` (creazione/modifica) con form admin dedicato
 - aggiunti controlli sicurezza su salvataggio source (nonce, capability, sanitizzazione, JSON safe encode/decode)
