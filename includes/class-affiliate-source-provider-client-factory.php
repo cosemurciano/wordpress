@@ -3,12 +3,17 @@ if (!defined('ABSPATH')) { exit; }
 
 class ALMA_Affiliate_Source_Provider_Client_Factory {
     const PROVIDER_CUSTOM_API = 'custom_api';
+    const PROVIDER_VIATOR = 'viator';
 
     public static function make($source) {
         $provider = self::resolve_provider_key($source);
 
         if ($provider === self::PROVIDER_CUSTOM_API) {
             return new ALMA_Affiliate_Source_Provider_Client_Custom_API();
+        }
+
+        if ($provider === self::PROVIDER_VIATOR) {
+            return new ALMA_Affiliate_Source_Provider_Client_Viator();
         }
 
         return new ALMA_Affiliate_Source_Provider_Client_Fallback();

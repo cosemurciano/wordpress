@@ -6,7 +6,7 @@ class ALMA_Affiliate_Source_Provider_Presets {
         return array(
             'manual' => array('supports_connection_test'=>false,'supports_field_discovery'=>false,'provider_type'=>'manual','unsupported_message'=>'Provider non ancora supportato per test/discovery.','label'=>'Manual','provider_key'=>'manual','description'=>'Gestione manuale senza API.','modes'=>array('manual'),'settings_fields'=>array(),'credentials_fields'=>array(),'required_fields'=>array(),'optional_fields'=>array(),'help_text'=>'Usa questa modalità per inserimenti manuali.','commercial_notes'=>''),
             'custom_api' => array('supports_connection_test'=>true,'supports_field_discovery'=>true,'provider_type'=>'api','unsupported_message'=>'','label'=>'Custom API','provider_key'=>'custom_api','description'=>'Provider API personalizzato.','modes'=>array('api','deeplink','widget','xml_api','manual'),'settings_fields'=>self::common_settings(),'credentials_fields'=>self::common_credentials(),'required_fields'=>array(),'optional_fields'=>array(),'help_text'=>'Configura endpoint e credenziali del provider custom.','commercial_notes'=>''),
-            'viator' => array('supports_connection_test'=>false,'supports_field_discovery'=>false,'provider_type'=>'commercial_api','unsupported_message'=>'Supporto non ancora disponibile in questa versione.','label'=>'Viator','provider_key'=>'viator','description'=>'Viator affiliate API.','modes'=>array('api','deeplink'),'settings_fields'=>array('environment','base_url_production','base_url_sandbox','accept_language','api_version','currency','campaign_value','target_lander','partner_type'),'credentials_fields'=>array('api_key'),'required_fields'=>array('environment','accept_language','api_version','api_key'),'optional_fields'=>array('currency','campaign_value'),'help_text'=>'Header exp-api-key; Accept-Language e API version da impostare.','commercial_notes'=>'Richiede accesso commerciale partner Viator.'),
+            'viator' => array('supports_connection_test'=>true,'supports_field_discovery'=>true,'provider_type'=>'commercial_api','unsupported_message'=>'','label'=>'Viator','provider_key'=>'viator','description'=>'Viator Partner API v2 (solo flusso affiliate base).','modes'=>array('api','deeplink'),'settings_fields'=>self::viator_settings(),'credentials_fields'=>self::viator_credentials(),'required_fields'=>array('environment','accept_language','api_version','search_model','api_key'),'optional_fields'=>array('currency','default_destination_id','default_search_term','result_count','sort','sort_order','campaign_value','target_lander','partner_access_level'),'help_text'=>'La API key è una credenziale segreta: inviata solo come header exp-api-key e mai esposta in HTML/JS/URL/log.','commercial_notes'=>'Basic Affiliate supportato; booking/checkout/pagamenti esclusi in questa release.'),
             'getyourguide' => array('supports_connection_test'=>false,'supports_field_discovery'=>false,'provider_type'=>'commercial_api','unsupported_message'=>'Supporto non ancora disponibile in questa versione.','label'=>'GetYourGuide','provider_key'=>'getyourguide','description'=>'Marketplace Partner API o Connectivity.','modes'=>array('api','deeplink','widget'),'settings_fields'=>array('integration_type','base_url','currency','cnt_language','locale','mode'),'credentials_fields'=>array('access_token','username','password'),'required_fields'=>array('integration_type'),'optional_fields'=>array('access_token','username','password'),'help_text'=>'Partner API usa X-ACCESS-TOKEN; Connectivity usa Basic Auth.','commercial_notes'=>'Accesso dipende dall’approvazione partnership.'),
             'tiqets' => array('supports_connection_test'=>false,'supports_field_discovery'=>false,'provider_type'=>'commercial_api','unsupported_message'=>'Supporto non ancora disponibile in questa versione.','label'=>'Tiqets','provider_key'=>'tiqets','description'=>'Distributor API Tiqets.','modes'=>array('api','deeplink','widget'),'settings_fields'=>array('environment','base_url','user_agent','sitebrand','mode','api_version'),'credentials_fields'=>array('api_key','jwt_signing_key','jwt_key_id'),'required_fields'=>array('base_url','user_agent','api_key'),'optional_fields'=>array('jwt_signing_key','jwt_key_id'),'help_text'=>'Authorization: Token; User-Agent richiesto.','commercial_notes'=>''),
             'booking_com' => array('supports_connection_test'=>false,'supports_field_discovery'=>false,'provider_type'=>'commercial_api','unsupported_message'=>'Supporto non ancora disponibile in questa versione.','label'=>'Booking.com','provider_key'=>'booking_com','description'=>'Demand API e deeplink.','modes'=>array('demand_api','deeplink'),'settings_fields'=>array('environment','api_version','base_url','currency','language','booker_country','platform','mode'),'credentials_fields'=>array('api_key','affiliate_id'),'required_fields'=>array('mode'),'optional_fields'=>array('api_key','affiliate_id'),'help_text'=>'Bearer API key e X-Affiliate-Id per Demand API.','commercial_notes'=>'Può richiedere approvazione account partner.'),
@@ -19,5 +19,36 @@ class ALMA_Affiliate_Source_Provider_Presets {
         );
     }
     private static function common_settings(){ return array('environment','base_url','language','locale','currency','market','campaign','integration_mode','endpoint_path','user_agent','api_version'); }
+    private static function viator_settings(){ return array(
+        array('key'=>'environment','label'=>'Environment','type'=>'select','default'=>'sandbox','required'=>true,'options'=>array(
+            array('value'=>'sandbox','label'=>'Sandbox'),
+            array('value'=>'production','label'=>'Production'),
+        )),
+        array('key'=>'accept_language','label'=>'Accept-Language','type'=>'text','default'=>'it','required'=>true,'placeholder'=>'it','help'=>'Lingua di risposta Viator (es. it, en-US).'),
+        array('key'=>'api_version','label'=>'API version','type'=>'text','default'=>'2.0','required'=>true,'placeholder'=>'2.0'),
+        array('key'=>'currency','label'=>'Currency','type'=>'text','default'=>'EUR','placeholder'=>'EUR'),
+        array('key'=>'search_model','label'=>'Search model','type'=>'select','default'=>'products_search','required'=>true,'options'=>array(
+            array('value'=>'products_search','label'=>'Products Search (/products/search)'),
+            array('value'=>'freetext_search','label'=>'Freetext Search (/search/freetext)'),
+        )),
+        array('key'=>'default_destination_id','label'=>'Default destination ID (Viator)','type'=>'text','placeholder'=>'es. d57','help'=>'Usato da /products/search. È l\'ID destinazione Viator, non il termine WP.'),
+        array('key'=>'default_search_term','label'=>'Default search term','type'=>'text','placeholder'=>'es. Colosseo Roma','help'=>'Usato da /search/freetext.'),
+        array('key'=>'result_count','label'=>'Result count','type'=>'number','default'=>'5','placeholder'=>'5'),
+        array('key'=>'sort','label'=>'Sort','type'=>'text','default'=>'DEFAULT','placeholder'=>'DEFAULT'),
+        array('key'=>'sort_order','label'=>'Sort order','type'=>'text','placeholder'=>'ASC o DESC'),
+        array('key'=>'campaign_value','label'=>'Campaign value','type'=>'text','placeholder'=>'opzionale'),
+        array('key'=>'target_lander','label'=>'Target lander','type'=>'text','default'=>'','placeholder'=>'opzionale'),
+        array('key'=>'partner_access_level','label'=>'Partner access level','type'=>'select','default'=>'basic_affiliate','options'=>array(
+            array('value'=>'basic_affiliate','label'=>'Basic Affiliate'),
+            array('value'=>'full_affiliate','label'=>'Full Affiliate'),
+            array('value'=>'full_affiliate_booking','label'=>'Full Affiliate Booking'),
+            array('value'=>'merchant','label'=>'Merchant'),
+        ),'help'=>'Informativo: non è una credenziale.'),
+    ); }
+
+    private static function viator_credentials(){ return array(
+        array('key'=>'api_key','label'=>'Viator API key','type'=>'password','required'=>true,'placeholder'=>'già salvato','help'=>'Credenziale segreta inviata come header exp-api-key. Non verrà mai mostrata in chiaro.'),
+    ); }
+
     private static function common_credentials(){ return array('api_key','access_token','bearer_token','affiliate_id','site_id','client_id','client_secret','username','password','partner_id','referral_url','tracking_code','xml_api_key'); }
 }
