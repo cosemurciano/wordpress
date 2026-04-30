@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.10.0 - Integrazione Viator Partner API v2 (Affiliate Sources)
+- aggiunto client dedicato `ALMA_Affiliate_Source_Provider_Client_Viator` con gestione environment sandbox/production e header Viator
+- preset Viator aggiornato: supporto test connessione + field discovery, provider type `commercial_api`, sola credenziale `api_key`
+- UI guided fields estesa in backward compatibility con metadati (`label`, `type`, `options`, `default`, `help`, `required`, `placeholder`)
+- rimossi dalla UI Viator i campi `base_url_production` e `base_url_sandbox` (gestione interna client)
+- test connessione Viator su `/products/tags` con mapping errori (`missing_credentials`, `invalid_environment`, `invalid_api_version`, `unauthorized`, `forbidden`, `rate_limited`, `timeout`, `api_error`, `invalid_json`, `internal_error`)
+- field discovery Viator su `/products/search` o `/search/freetext` con criteri minimi, count limitato e transient cache senza segreti
+- normalizzazione aggiornata per fallback Viator (`productUrl`, `productCode`) e mapping hint per product summary
+- versione plugin aggiornata a `2.10.0`
+
 ## 2.9.2 - Conferma post-save Affiliate Sources (UX + PRG hardening)
 - aggiunta vista GET di conferma dopo create/update con flusso Post/Redirect/Get completo (nessun rendering diretto dopo POST)
 - schermata di conferma con messaggio esplicito, riepilogo source (nome, provider, preset, stato) e azioni rapide

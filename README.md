@@ -1,6 +1,6 @@
 # Affiliate Link Manager AI
 
-Versione 2.9.2
+Versione 2.10.0
 
 Questo plugin gestisce e ottimizza i link affiliati all'interno di WordPress.
 
@@ -115,6 +115,19 @@ Miglioramenti principali:
 - Nuovo filtro **Sources** nell'elenco admin Link Affiliati (`edit.php?post_type=affiliate_link`) basato su meta key `_alma_source_id`.
 - Compatibilità mantenuta per link manuali/legacy e nessun impatto su frontend/tracking click.
 
+
+
+## Affiliate Sources 2.10.0 — Viator Partner API v2
+
+- Integrazione dedicata Viator con **unica credenziale API key** (nessun OAuth, client_id/client_secret, username/password).
+- API key trattata come segreta e inviata solo via header `exp-api-key`.
+- Header `Accept` versionato (`application/json;version=2.0`) e `Accept-Language` configurabile.
+- Ambiente `sandbox/production` gestito internamente dal client, senza esporre base URL nella UI guidata.
+- `Testa connessione` su endpoint leggero `/products/tags` con errori mappati e messaggi chiari.
+- `Campi importabili` con discovery Viator su `/products/search` o `/search/freetext` e mapping suggerito.
+- Differenza esplicita tra destination term WordPress e `default_destination_id` Viator (ID Viator).
+- Uso di `productUrl` completo senza ricostruzioni o alterazioni dei parametri affiliati.
+- Booking/checkout/pagamenti/cancellation **non inclusi** in questa release.
 ## 2026-04 Hotfix Affiliate Sources
 - Fix: gestione POST create/update Source spostata su hook pre-render `load-<page_hook>` con redirect PRG sicuro.
 - Aggiunta archiviazione Source (soft-delete) con `deleted_at`/`deleted_by`, pulizia credenziali e mantenimento link importati.

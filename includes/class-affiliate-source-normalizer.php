@@ -4,16 +4,16 @@ if (!defined('ABSPATH')) { exit; }
 class ALMA_Affiliate_Source_Normalizer {
     public static function normalize($item, $source) {
         $normalized = array(
-            'post_title' => sanitize_text_field($item['title'] ?? ''),
+            'post_title' => sanitize_text_field($item['title'] ?? ($item['name'] ?? '')),
             'post_content' => wp_kses_post($item['description'] ?? ''),
             'featured_image_url' => esc_url_raw($item['image'] ?? ''),
-            'affiliate_url' => esc_url_raw($item['affiliate_url'] ?? ''),
-            'original_url' => esc_url_raw($item['original_url'] ?? ''),
+            'affiliate_url' => esc_url_raw($item['affiliate_url'] ?? ($item['productUrl'] ?? '')),
+            'original_url' => esc_url_raw($item['original_url'] ?? ($item['productUrl'] ?? '')),
             'provider_category' => sanitize_text_field($item['category'] ?? ''),
             'meta' => array(
                 '_alma_provider' => sanitize_key($source['provider'] ?? 'manual'),
                 '_alma_source_id' => (string) ($source['id'] ?? ''),
-                '_alma_external_id' => sanitize_text_field($item['external_id'] ?? ''),
+                '_alma_external_id' => sanitize_text_field($item['external_id'] ?? ($item['productCode'] ?? '')),
                 '_alma_brand' => sanitize_text_field($item['brand'] ?? ''),
                 '_alma_destination' => sanitize_text_field($item['destination'] ?? ''),
                 '_alma_country' => sanitize_text_field($item['country'] ?? ($source['market'] ?? '')),
