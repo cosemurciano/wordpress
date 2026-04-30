@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.8.2 - Guided settings authoritative hotfix
+- guided `settings_fields` resi autoritativi: applicati per ultimi e non sovrascrivibili da JSON avanzato/legacy
+- rimossa la textarea precompilata con JSON completo `settings` dalla UI standard Affiliate Sources
+- mantenuta backward compatibility: preservazione chiavi `settings` legacy/custom non renderizzate nel preset
+- merge settings in edit: DB esistente -> advanced extra espliciti -> guided fields
+
 ## 2.8.1 - Stabilizzazione salvataggio Affiliate Sources
 - preservazione `settings` esistenti in edit con merge sicuro tra DB, `settings_fields` e JSON avanzato valido
 - preservazione `credentials` esistenti: campi password vuoti non sovrascrivono, overwrite solo su nuovo valore non vuoto

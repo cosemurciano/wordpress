@@ -35,7 +35,7 @@ class ALMA_Affiliate_Source_Manager {
         echo '</div><div class="alma-section"><h3>Destination terms</h3><select multiple name="destination_term_ids[]" id="destination_term_ids" size="6">'; foreach($terms as $t){ echo '<option value="'.intval($t->term_id).'"'.(in_array((int)$t->term_id,$sel,true)?' selected':'').'>'.esc_html($t->name).'</option>'; } echo '</select></div>';
         echo '<div class="alma-section"><h3>Configurazione provider</h3><div id="alma-guided-settings"></div></div><div class="alma-section"><h3>Credenziali</h3><div id="alma-guided-credentials"></div>';
         foreach(array('api_key','access_token','bearer_token','affiliate_id','site_id','client_id','client_secret','username','password','marker','partner_id','referral_url','tracking_code','xml_api_key','xml_username','xml_password') as $f){ $this->render_field('credentials_extra_fields['.$f.']',$f,'',false,true,!empty($ec[$f])); }
-        echo '</div><div class="alma-section"><h3>Configurazione JSON avanzata</h3><textarea name="settings_advanced" id="settings_advanced" rows="4" class="large-text code">'.esc_textarea(wp_json_encode($es, JSON_PRETTY_PRINT)).'</textarea><textarea name="credentials_advanced" id="credentials_advanced" rows="4" class="large-text code"></textarea></div></div><p><button class="button button-primary">Salva source</button></p></form></div>';
+        echo '</div><div class="alma-section"><h3>Credenziali avanzate (opzionale)</h3><p class="description">Inserisci solo chiavi extra non coperte dai campi guidati.</p><textarea name="credentials_advanced" id="credentials_advanced" rows="4" class="large-text code"></textarea></div></div><p><button class="button button-primary">Salva source</button></p></form></div>';
         echo '<table class="widefat striped"><thead><tr><th>Nome</th><th>Provider</th><th>Destination</th><th>Mode</th><th>Stato</th><th>Lingua</th><th>Mercato</th><th>Ultimo Sync</th><th>Stato Sync</th><th>Azioni</th></tr></thead><tbody>';
         foreach((array)$rows as $r){ $s=$this->decode_db_json($r['settings']??''); $ids=json_decode($r['destination_term_ids']??'',true); if(!is_array($ids))$ids=array(); if(empty($ids)&&!empty($r['destination_term_id']))$ids=array((int)$r['destination_term_id']); $names=array(); foreach($ids as $tid){ $term=get_term((int)$tid,'link_type'); if($term&&!is_wp_error($term))$names[]=$term->name; }
             $provider_label=$r['provider_label']?:$r['provider']; $edit_link=add_query_arg(array('post_type'=>'affiliate_link','page'=>'alma-affiliate-sources','edit_source'=>(int)$r['id']),admin_url('edit.php'));
@@ -45,11 +45,26 @@ class ALMA_Affiliate_Source_Manager {
     private function maybe_handle_source_form(){ if(($_SERVER['REQUEST_METHOD']??'')!=='POST'||($_POST['action_type']??'')!=='save_source')return; if(!wp_verify_nonce($_POST['alma_source_nonce']??'','alma_save_source'))wp_die('Nonce non valido'); if(!current_user_can('manage_options'))wp_die('Unauthorized'); global $wpdb;
         $source_id=absint($_POST['source_id']??0); $existing=$source_id?$wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}alma_affiliate_sources WHERE id=%d",$source_id),ARRAY_A):array();
         $provider_label=sanitize_text_field(wp_unslash($_POST['provider_label']??'')); $provider=$this->norm_provider($provider_label);
-        $settings_existing=$this->decode_db_json($existing['settings']??''); $settings=$settings_existing; foreach((array)($_POST['settings_fields']??array()) as $k=>$v){ $settings[sanitize_key($k)]=sanitize_text_field(wp_unslash($v)); }
+        $settings_existing=$this->decode_db_json($existing['settings']??'');
+        $settings=$settings_existing;
+
+        // Backward compatibility: accept advanced settings JSON, but never let it override guided fields.
+        $sa=$this->parse_json($_POST['settings_advanced']??'');
+        $ca=$this->parse_json($_POST['credentials_advanced']??'');
+        if(isset($sa['__invalid'])||isset($ca['__invalid'])){ wp_safe_redirect(add_query_arg(array('post_type'=>'affiliate_link','page'=>'alma-affiliate-sources','alma_result'=>'invalid_json'),admin_url('edit.php'))); exit; }
+
+        foreach($sa as $k=>$v){
+            $kk=sanitize_key($k);
+            if($kk==='') continue;
+            $settings[$kk]=is_scalar($v)?sanitize_text_field((string)$v):wp_json_encode($v);
+        }
+        foreach((array)($_POST['settings_fields']??array()) as $k=>$v){
+            $settings[sanitize_key($k)]=sanitize_text_field(wp_unslash($v));
+        }
+
         $credentials_existing=$this->decode_db_json($existing['credentials']??''); $credentials=$credentials_existing; foreach((array)($_POST['credentials_fields']??array()) as $k=>$v){ $k=sanitize_key($k); $v=sanitize_text_field(wp_unslash($v)); if($v!=='')$credentials[$k]=$v; }
         foreach((array)($_POST['credentials_extra_fields']??array()) as $k=>$v){ $k=sanitize_key($k); $v=sanitize_text_field(wp_unslash($v)); if($v!=='')$credentials[$k]=$v; }
-        $sa=$this->parse_json($_POST['settings_advanced']??''); $ca=$this->parse_json($_POST['credentials_advanced']??''); if(isset($sa['__invalid'])||isset($ca['__invalid'])){ wp_safe_redirect(add_query_arg(array('post_type'=>'affiliate_link','page'=>'alma-affiliate-sources','alma_result'=>'invalid_json'),admin_url('edit.php'))); exit; }
-        $settings=array_replace($settings,$sa); foreach($ca as $k=>$v){ if($v!==''&&$v!==null){ $credentials[sanitize_key($k)]=is_scalar($v)?sanitize_text_field((string)$v):wp_json_encode($v); } }
+        foreach($ca as $k=>$v){ if($v!==''&&$v!==null){ $credentials[sanitize_key($k)]=is_scalar($v)?sanitize_text_field((string)$v):wp_json_encode($v); } }
         $term_ids=array_values(array_unique(array_filter(array_map('absint',(array)($_POST['destination_term_ids']??array())))));
         $data=array('name'=>sanitize_text_field(wp_unslash($_POST['name']??'')),'provider'=>$provider,'provider_label'=>$provider_label,'is_active'=>isset($_POST['is_active'])?1:0,'language'=>sanitize_text_field(wp_unslash($_POST['language']??'')),'market'=>sanitize_text_field(wp_unslash($_POST['market']??'')),'import_mode'=>sanitize_key($_POST['import_mode']??'create_update'),'destination_term_id'=>(int)($term_ids[0]??0),'destination_term_ids'=>!empty($term_ids)?wp_json_encode($term_ids):null,'settings'=>wp_json_encode($settings),'credentials'=>wp_json_encode($credentials),'updated_at'=>current_time('mysql'));
         $ok=false; $result='error';
