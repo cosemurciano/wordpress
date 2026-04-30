@@ -114,3 +114,11 @@ Miglioramenti principali:
 - Fix feedback AJAX `Testa connessione` anche nella schermata conferma post-save (fuori tabella) con target `.alma-inline-result` sempre risolto.
 - Nuovo filtro **Sources** nell'elenco admin Link Affiliati (`edit.php?post_type=affiliate_link`) basato su meta key `_alma_source_id`.
 - Compatibilità mantenuta per link manuali/legacy e nessun impatto su frontend/tracking click.
+
+## 2026-04 Hotfix Affiliate Sources
+- Fix: gestione POST create/update Source spostata su hook pre-render `load-<page_hook>` con redirect PRG sicuro.
+- Aggiunta archiviazione Source (soft-delete) con `deleted_at`/`deleted_by`, pulizia credenziali e mantenimento link importati.
+- Aggiunta conferma eliminazione dedicata e blocchi per test connessione/discovery su Source eliminate.
+- Aggiunti snapshot source sui link (`_alma_source_name`, `_alma_source_provider`, `_alma_source_provider_label`, `_alma_source_deleted_at`).
+- Filtro Sources nei Link Affiliati aggiornato con etichetta `(eliminata)` e compatibilità retroattiva.
+

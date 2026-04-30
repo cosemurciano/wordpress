@@ -38,6 +38,7 @@ require_once ALMA_PLUGIN_DIR . 'includes/class-affiliate-source-provider-client-
 require_once ALMA_PLUGIN_DIR . 'includes/class-affiliate-source-connection-test-storage.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-affiliate-source-connection-service.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-affiliate-source-field-discovery-service.php';
+require_once ALMA_PLUGIN_DIR . 'includes/class-affiliate-source-archive-service.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-affiliate-source-normalizer.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-affiliate-source-importer.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-affiliate-source-manager.php';
@@ -799,7 +800,16 @@ class AffiliateManagerAI {
         $source_name = 'Manuale';
         if ($source_id > 0) {
             global $wpdb;
-            $source_name = (string)$wpdb->get_var($wpdb->prepare("SELECT name FROM {$wpdb->prefix}alma_affiliate_sources WHERE id = %d", $source_id));
+            $source = $wpdb->get_row($wpdb->prepare("SELECT name, deleted_at FROM {$wpdb->prefix}alma_affiliate_sources WHERE id = %d", $source_id), ARRAY_A);
+            if (is_array($source)) {
+                $source_name = (string) ($source['name'] ?? ('Source #' . $source_id));
+                if (!empty($source['deleted_at'])) {
+                    $source_name .= ' (eliminata)';
+                }
+            } else {
+                $snapshot_name = (string) get_post_meta($post->ID, '_alma_source_name', true);
+                $source_name = $snapshot_name !== '' ? ($snapshot_name . ' (source eliminata)') : ('Source non disponibile #' . $source_id);
+            }
         }
         
         echo '<table class="form-table">';
