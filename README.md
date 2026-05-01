@@ -1,6 +1,6 @@
 # Affiliate Link Manager AI
 
-Versione 2.10.3
+Versione 2.11.0
 
 Questo plugin gestisce e ottimizza i link affiliati all'interno di WordPress.
 
@@ -11,6 +11,22 @@ Questo plugin gestisce e ottimizza i link affiliati all'interno di WordPress.
 - Catalogo campi Viator documentati mostrato anche quando la chiamata runtime fallisce.
 - Correzione `sort_order` Viator con retrocompatibilità `order` legacy e normalizzazione `ASC/DESC` verso `ASCENDING/DESCENDING`.
 - Nessun impatto su frontend, tracking click, shortcode e widget.
+
+
+## Novità 2.11.0 — Contesto AI interno (Affiliate Link)
+
+- Introdotto il meta interno `_alma_ai_context` per il CPT `affiliate_link`, usato solo dall’Agente AI e **mai pubblicato nel frontend**.
+- Aggiunti anche `_alma_ai_context_updated_at` (data ultimo update) e `_alma_ai_context_hash` (hash dati sorgente).
+- Nuovo builder dedicato (`includes/class-affiliate-link-ai-context-builder.php`) che aggrega dati normalizzati/provider in testo sintetico conforme a compliance.
+- Nessun nuovo meta provider-specific separato per prezzo/rating/destinazione: i dati restano nel contesto aggregato.
+- Esclusioni compliance: niente recensioni testuali, niente raw response complete, niente API key/token, descrizioni lunghe troncate.
+- In `Affiliate Sources` nuova sezione **Istruzioni e aggiornamento AI** con:
+  - `ai_source_instructions`
+  - `ai_context_refresh_interval` (`manual|24h|72h|7d|30d`)
+  - `api_sync_interval` (`manual|24h|72h|7d|30d`)
+  - `ai_context_regeneration_policy` (`only_if_hash_changed|if_hash_changed_or_expired|always_on_import|manual_only`)
+- Regole rigenerazione contesto: hash cambiato, TTL scaduto, policy `always_on_import`, oppure rigenerazione forzata/manuale futura.
+- Metabox tecnico del Link Affiliato esteso con sezione Contesto AI (readonly), timestamp update e hash abbreviato.
 
 ## Funzionalità principali
 

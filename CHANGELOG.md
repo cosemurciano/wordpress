@@ -1,5 +1,20 @@
 # Changelog
 
+## 2.11.0 - Contesto AI interno per Affiliate Link
+- aggiunto builder dedicato `ALMA_Affiliate_Link_AI_Context_Builder` per generare `_alma_ai_context` interno e non pubblicato
+- aggiunti meta interni su `affiliate_link`: `_alma_ai_context`, `_alma_ai_context_updated_at`, `_alma_ai_context_hash`
+- integrazione nel flusso importer: calcolo hash sorgente, policy rigenerazione e TTL configurabili a livello Source
+- aggiunta sezione UI `Istruzioni e aggiornamento AI` in Affiliate Sources con campi:
+  - `ai_source_instructions`
+  - `ai_context_refresh_interval`
+  - `api_sync_interval`
+  - `ai_context_regeneration_policy`
+- mapping Viator nel contesto AI con dati aggregati (prezzo/rating/durata/destinazione/tag/flags/policy/inclusioni/esclusioni/lingue/supplier) senza creare nuovi meta provider-specific
+- metabox tecnico Link Affiliato esteso con sezione Contesto AI, timestamp, hash abbreviato e placeholder pulsante rigenerazione
+- regole compliance nel builder: no recensioni testuali, no raw provider lunghi, no segreti/API key, nota anti-copia provider
+- nessuna pubblicazione frontend del contesto AI
+- versione plugin aggiornata a `2.11.0`
+
 ## 2.10.3 - Viator importable fields: catalogo esteso e note compliance
 - pagina `Campi importabili` aggiornata con 4 box informativi: Destination ID Viator, recensioni/compliance, booking/pagamenti non implementati, campi rilevati vs documentati
 - chiarimento esplicito su errore `missing_destination_id`: richiesto ID numerico Viator (`/destinations`), non categoria WordPress né nome città

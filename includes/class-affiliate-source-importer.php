@@ -47,6 +47,9 @@ class ALMA_Affiliate_Source_Importer {
             update_post_meta($post_id, $key, $value);
         }
 
+        $builder = new ALMA_Affiliate_Link_AI_Context_Builder();
+        $builder->maybe_build_and_store($post_id, $normalized, $source);
+
         if (empty(get_post_meta($post_id, '_alma_ai_visibility', true))) {
             update_post_meta($post_id, '_alma_ai_visibility', 'available');
         }
