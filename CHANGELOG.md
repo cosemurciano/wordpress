@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.10.3 - Viator importable fields: catalogo esteso e note compliance
+- pagina `Campi importabili` aggiornata con 4 box informativi: Destination ID Viator, recensioni/compliance, booking/pagamenti non implementati, campi rilevati vs documentati
+- chiarimento esplicito su errore `missing_destination_id`: richiesto ID numerico Viator (`/destinations`), non categoria WordPress né nome città
+- catalogo `ALMA_Affiliate_Source_Viator_Field_Catalog` ampliato con campi di:
+  - identità prodotto, immagini, video, prezzi, recensioni aggregate, durata, destinazioni/tag/flags, traduzioni
+  - dettaglio `/products/{product-code}` (ticketing, pricing ageBands, logistics, inclusioni/esclusioni, policy cancellazione, booking requirements, options, supplier, viatorUniqueContent)
+  - reference data (`/destinations`, `/products/tags`, `/locations/bulk`)
+  - endpoint transazionali (`/availability/check`, `/bookings/*`) marcati `transazionale / non implementato`
+- recensioni testuali non implementate: solo dati aggregati diagnostici/compliance
+- nessun booking/checkout/pagamento/cancellazione implementato in questa release
+- nessun impatto su frontend, tracking, shortcode e widget
+
 ## 2.10.2 - Hotfix robustezza Campi importabili Viator
 - fix fatal in `Campi importabili` quando discovery Viator restituisce `WP_Error` o valore inatteso: rendering sempre sicuro con notice e fallback `n/d`
 - la tabella runtime resta renderizzata anche con discovery fallita; empty state esplicito quando non ci sono campi nel campione API
