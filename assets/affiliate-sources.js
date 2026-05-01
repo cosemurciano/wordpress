@@ -15,6 +15,8 @@ jQuery(function($){
     const presets=(window.almaSourcePresets&&almaSourcePresets.presets)||{}; const key=$('#provider_preset').val(); const preset=presets[key]||null;
     const existingSettings=parseHidden('#alma-existing-settings'); const credentialFlags=parseHidden('#alma-existing-credentials-flags');
     const $s=$('#alma-guided-settings').empty(); const $c=$('#alma-guided-credentials').empty(); if(!preset) return;
+    const isViator = key==='viator';
+    $('input[name^="credentials_extra_fields"]').closest('p').toggle(!isViator);
     (preset.settings_fields||[]).map(normalizeField).forEach(meta=>{
       const k=meta.key||''; if(!k) return;
       const value=typeof existingSettings[k]==='string'?existingSettings[k]:(meta.default||'');
@@ -22,10 +24,11 @@ jQuery(function($){
       const type = meta.type==='number'?'number':'text';
       let input = '<input class="regular-text" type="'+type+'" name="settings_fields['+k+']" value="'+esc(value)+'" placeholder="'+esc(meta.placeholder||'')+'"'+req+'>';
       if(meta.type==='select'){ input = renderSelect('settings_fields['+k+']', meta, value); }
-      $s.append('<p><label><strong>'+esc(meta.label||k)+'</strong><br/>'+input+'</label>'+(meta.help?'<br/><span class="description">'+esc(meta.help)+'</span>':'')+'</p>');
+      $s.append('<p><label><strong>'+esc(meta.label||k)+'</strong><br/>'+input+'</label>'+(meta.help?'<br/><span class="description">'+esc(meta.help)+'</span>':'')+(meta.note?'<br/><span class="description">'+esc(meta.note)+'</span>':'')+'</p>');
     });
     (preset.credentials_fields||[]).map(normalizeField).forEach(meta=>{ const k=meta.key||''; if(!k) return; const placeholder=credentialFlags[k]?'già salvato':(meta.placeholder||''); const req = meta.required ? ' required' : ''; $c.append('<p><label><strong>'+esc(meta.label||k)+'</strong><br/><input class="regular-text" type="password" name="credentials_fields['+k+']" value="" placeholder="'+esc(placeholder)+'" autocomplete="off"'+req+'></label>'+(meta.help?'<br/><span class="description">'+esc(meta.help)+'</span>':'')+'</p>'); });
     if(preset.help_text){ $s.append('<p class="description">'+esc(preset.help_text)+'</p>'); }
+    if(isViator){ $c.append('<p class="description">Viator richiede una sola API key. Non servono access token, client ID, client secret, username o password.</p>'); }
   }
   $('#provider_preset').on('change', renderGuided); renderGuided();
   $('#alma-source-form').on('submit', function(e){ const name=$('#name').val().trim(); const provider=$('#provider_label').val().trim(); if(!name||!provider){ e.preventDefault(); alert('Name e provider sono obbligatori.'); }});

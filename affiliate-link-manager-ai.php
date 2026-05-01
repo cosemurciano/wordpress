@@ -35,6 +35,7 @@ require_once ALMA_PLUGIN_DIR . 'includes/class-affiliate-source-provider-presets
 require_once ALMA_PLUGIN_DIR . 'includes/class-affiliate-source-provider-client-fallback.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-affiliate-source-provider-client-custom-api.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-affiliate-source-provider-client-viator.php';
+require_once ALMA_PLUGIN_DIR . 'includes/class-affiliate-source-viator-field-catalog.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-affiliate-source-provider-client-factory.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-affiliate-source-connection-test-storage.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-affiliate-source-connection-service.php';

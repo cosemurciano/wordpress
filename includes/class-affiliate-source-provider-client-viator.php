@@ -69,6 +69,9 @@ class ALMA_Affiliate_Source_Provider_Client_Viator {
         $fields[] = array(
             'path' => $path,
             'label' => ucwords(str_replace(array('.', '_', '[', ']'), ' ', $path)),
+            'group' => 'Campione API',
+            'origin' => 'Viator API runtime',
+            'description' => 'Campo rilevato automaticamente dal payload Viator.',
             'type' => gettype($value),
             'example' => $this->sanitize_example($value),
             'mapping_hint' => $this->mapping_hint($path),
@@ -199,7 +202,7 @@ class ALMA_Affiliate_Source_Provider_Client_Viator {
 
         $fields = array();
         $this->flatten($data, '', $fields);
-        $result = array('fields' => array_slice($fields, 0, 300), 'origin' => parse_url($endpoint, PHP_URL_HOST));
+        $result = array('fields' => array_slice($fields, 0, 300), 'origin' => parse_url($endpoint, PHP_URL_HOST), 'endpoint' => $endpoint, 'generated_at' => current_time('mysql'));
         set_transient($cache_key, $result, 10 * MINUTE_IN_SECONDS);
         return $result;
     }
