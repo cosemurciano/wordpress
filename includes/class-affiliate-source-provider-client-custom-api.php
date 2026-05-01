@@ -2,6 +2,12 @@
 if (!defined('ABSPATH')) { exit; }
 
 class ALMA_Affiliate_Source_Provider_Client_Custom_API {
+
+    private function safe_substr($text, $limit = 120) {
+        $text = (string) $text;
+        if (function_exists('mb_substr')) { return mb_substr($text, 0, $limit); }
+        return substr($text, 0, $limit);
+    }
     private function source_settings($source){ return json_decode((string)($source['settings'] ?? '{}'), true) ?: array(); }
     private function source_credentials($source){ return json_decode((string)($source['credentials'] ?? '{}'), true) ?: array(); }
 
@@ -78,7 +84,7 @@ class ALMA_Affiliate_Source_Provider_Client_Custom_API {
         $text = preg_replace('/(bearer\s+[a-z0-9\-\._~\+\/=]+)/i', '[redacted]', $text);
         $text = preg_replace('/([a-z0-9_\-]{20,})/i', '[redacted]', $text);
         $text = preg_replace('/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i', '[redacted-email]', $text);
-        return mb_substr(sanitize_text_field($text), 0, 120);
+        return $this->safe_substr(sanitize_text_field($text), 120);
     }
     private function mapping_hint($path) {
         $p = strtolower($path);
