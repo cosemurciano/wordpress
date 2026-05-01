@@ -1,6 +1,13 @@
 # Affiliate Link Manager AI
 
-Versione 2.11.0
+Versione 2.12.0
+
+## Novità 2.12.0 — Import manuale con anteprima (Source)
+
+- Introdotte regole import a livello Source: `import_limit` (max 100), `duplicate_policy`, `editorial_overwrite_policy`, `regenerate_ai_context_on_import`, `import_link_type_term_ids`.
+- Aggiunti servizi dedicati per anteprima/import manuale controllato.
+- Supporto anteprima provider Viator via client esistente e limite hard a 100 elementi.
+- Nessun cron/scheduler in questa release: solo flusso manuale.
 
 Questo plugin gestisce e ottimizza i link affiliati all'interno di WordPress.
 
