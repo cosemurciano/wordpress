@@ -63,7 +63,7 @@ class ALMA_Affiliate_Link_AI_Context_Builder {
         $meta = is_array($normalized['meta'] ?? null) ? $normalized['meta'] : array();
 
         $description = wp_strip_all_tags((string)($item['description'] ?? $normalized['post_content'] ?? ''));
-        if (strlen($description) > 600) { $description = substr($description, 0, 600) . '…'; }
+        if (strlen($description) > 400) { $description = substr($description, 0, 400) . '…'; }
 
         $lines = array(
             'Fonte: ' . ($source['provider_label'] ?? $source['provider'] ?? 'N/D') . '.',
@@ -72,25 +72,20 @@ class ALMA_Affiliate_Link_AI_Context_Builder {
             'Codice prodotto: ' . ($meta['_alma_external_id'] ?? 'N/D') . '.',
             'URL affiliato: disponibile nel campo dedicato.',
             'Descrizione sintetica: ' . ($description ?: 'N/D') . '.',
-            'Destinazione: ' . $this->join_list($item['destinations'] ?? ($item['destination'] ?? '')).'.',
-            'Durata: ' . sanitize_text_field((string)($item['duration'] ?? 'N/D')) . '.',
+            $this->format_destination($item) . '.',
+            'Durata: ' . $this->format_duration($item['duration'] ?? 'N/D') . '.',
             'Prezzo indicativo: ' . $this->format_price($item) . '.',
             'Rating aggregato: ' . sanitize_text_field((string)($item['reviews']['combinedAverageRating'] ?? $item['rating'] ?? 'N/D')) . '.',
             'Numero recensioni: ' . sanitize_text_field((string)($item['reviews']['totalReviews'] ?? 'N/D')) . '.',
-            'Categorie/tag provider: ' . $this->join_list($item['tags'] ?? array()) . '.',
+            'Tag provider IDs: ' . $this->join_list($item['tags'] ?? array()) . '.',
             'Flag rilevanti: ' . $this->join_list($item['flags'] ?? array()) . '.',
             'Incluso: ' . $this->join_list($item['inclusions'] ?? array()) . '.',
             'Escluso: ' . $this->join_list($item['exclusions'] ?? array()) . '.',
             'Policy cancellazione: ' . $this->short_text($item['cancellationPolicy']['description'] ?? '') . '.',
-            'Lingue disponibili: ' . $this->join_list($item['languageGuides'] ?? ($item['translationInfo'] ?? array())) . '.',
+            'Traduzione automatica: ' . $this->format_translation_auto($item['translationInfo'] ?? array()) . '.',
+            'Fonte traduzione: ' . $this->format_translation_source($item['translationInfo'] ?? array()) . '.',
             'Fornitore: ' . sanitize_text_field((string)($item['supplier']['name'] ?? 'N/D')) . '.',
-            'Note operative per AI:',
-            '- Non copiare il testo originale del provider.',
-            '- Non usare recensioni testuali.',
-            '- Prezzo e disponibilità possono cambiare.',
-            '- Usa queste informazioni solo come base per creare contenuti originali.',
-            '- Campo interno non pubblicato, usato dall’Agente AI.',
-            'Istruzioni Source: ' . sanitize_textarea_field((string)($source_settings['ai_source_instructions'] ?? self::DEFAULT_INSTRUCTIONS)),
+            'Nota: contesto item-only. Le source instructions sono separate nella configurazione Source.',
         );
 
         return implode("\n", array_filter($lines));
@@ -157,5 +152,23 @@ class ALMA_Affiliate_Link_AI_Context_Builder {
         }
         $flat = array_filter($flat);
         return !empty($flat) ? implode(', ', array_slice($flat, 0, 20)) : 'N/D';
+    }
+    private function format_duration($duration) {
+        if (is_array($duration)) {
+            $fixed = (int)($duration['fixedDurationInMinutes'] ?? 0);
+            if ($fixed > 0) return $fixed . ' minuti';
+            $from = (int)($duration['minDurationInMinutes'] ?? 0);
+            $to = (int)($duration['maxDurationInMinutes'] ?? 0);
+            if ($from > 0 && $to > 0) return 'da ' . $from . ' a ' . $to . ' minuti';
+            return $this->short_text(wp_json_encode($duration));
+        }
+        return $this->short_text((string)$duration);
+    }
+    private function format_translation_auto($translation_info) { return (is_array($translation_info) && !empty($translation_info['containsMachineTranslatedText'])) ? 'sì' : 'no'; }
+    private function format_translation_source($translation_info) { return is_array($translation_info) ? sanitize_text_field((string)($translation_info['translationSource'] ?? 'N/D')) : 'N/D'; }
+    private function format_destination($item) {
+        $destination = $item['destination'] ?? '';
+        if (is_scalar($destination) && preg_match('/^\d+$/', (string)$destination)) return 'Destination ID Viator: ' . sanitize_text_field((string)$destination);
+        return 'Destinazione: ' . $this->join_list($item['destinations'] ?? $destination);
     }
 }

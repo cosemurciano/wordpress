@@ -14,7 +14,42 @@ class ALMA_Affiliate_Source_Import_Preview_Service {
         }
 
         $client = new ALMA_Affiliate_Source_Provider_Client_Viator();
-        return $client->fetch_items_for_import_preview($source, $settings, $credentials, $limit, $criteria);
+        $items = $client->fetch_items_for_import_preview($source, $settings, $credentials, $limit, $criteria);
+        if (is_wp_error($items)) return $items;
+
+        $out = array();
+        foreach ((array)$items as $item) {
+            $out[] = $this->annotate_viator_item($item);
+        }
+        return $out;
+    }
+
+    private function annotate_viator_item($item) {
+        $item = is_array($item) ? $item : array();
+        $external_id = sanitize_text_field((string)($item['productCode'] ?? $item['external_id'] ?? ''));
+        $title = sanitize_text_field((string)($item['title'] ?? $item['name'] ?? ''));
+        $affiliate_url = (string)($item['productUrl'] ?? '');
+        $affiliate_url_valid = $affiliate_url !== '' && filter_var($affiliate_url, FILTER_VALIDATE_URL);
+        $contains_code = ($external_id !== '' && $affiliate_url !== '' && stripos($affiliate_url, $external_id) !== false);
+
+        $errors = array();
+        $warnings = array();
+        if ($external_id === '') $errors[] = __('productCode mancante.', 'affiliate-link-manager-ai');
+        if (!$affiliate_url_valid) $errors[] = __('productUrl mancante o non valido.', 'affiliate-link-manager-ai');
+        if ($title === '') $warnings[] = __('Titolo mancante: verrà usato fallback controllato.', 'affiliate-link-manager-ai');
+        if ($affiliate_url_valid && !$contains_code) $warnings[] = __('URL affiliato sospetto: productCode non riconoscibile nel link.', 'affiliate-link-manager-ai');
+
+        $item['_alma_validation'] = array(
+            'external_id' => $external_id,
+            'url_origin' => 'productUrl',
+            'has_affiliate_url' => $affiliate_url_valid ? 'yes' : 'no',
+            'product_code_in_url' => $contains_code,
+            'errors' => $errors,
+            'warnings' => $warnings,
+            'status' => empty($errors) ? (empty($warnings) ? 'ok' : 'warning') : 'error',
+            'selectable_default' => empty($errors),
+        );
+        return $item;
     }
 
     public function find_existing_map($source_id, $external_ids) {
