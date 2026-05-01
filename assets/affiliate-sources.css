@@ -1,7 +1,11 @@
-.alma-import-page .postbox{max-width:1200px}
-.alma-grid-3{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px 16px}
-.alma-import-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px 16px}
-.alma-import-grid p{margin:0}
-.alma-badge-warning{background:#fff3cd;color:#664d03;padding:2px 8px;border-radius:10px;font-weight:600}
-.alma-advanced-filters{grid-column:1/-1;border:1px solid #dcdcde;padding:8px;border-radius:4px}
-.alma-import-preview td{vertical-align:middle}
+.alma-import-page .postbox{border-radius:8px}
+.alma-import-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+.alma-preview-summary,.alma-pagination-box{background:#fff;border:1px solid #dcdcde;padding:12px;border-radius:8px;margin:10px 0}
+.alma-badge-new,.alma-badge-existing,.alma-badge-error,.alma-link-type-badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:12px}
+.alma-badge-new{background:#e8f7ed;color:#0a5c2f}.alma-badge-existing{background:#fff3cd;color:#664d03}.alma-badge-error{background:#f8d7da;color:#842029}
+.alma-link-type-badge{background:#eef2ff;color:#2d3a8c;margin-right:4px}
+.alma-time-reference{white-space:nowrap}
+.alma-empty-state{padding:16px;border:1px dashed #c3c4c7;background:#fcfcfc}
+.alma-load-more-wrap{display:flex;gap:10px;align-items:center}
+.alma-row-existing{background:#fffdf4}
+.alma-inline-result.ok{color:#0a5c2f}.alma-inline-result.err{color:#842029}
