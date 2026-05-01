@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.10.1 - Hotfix Viator importable fields discovery
+- fix fatal nella pagina Campi importabili quando discovery Viator fallisce o catalogo non è disponibile
+- discovery Viator aggiornata: POST JSON body corretto per /products/search e /search/freetext, query string limitata a campaign-value/target-lander
+- gestione status HTTP Viator con mapping errori leggibili (400/401/403/429/500/503)
+- normalizzazione risposta runtime per forme diverse products/search e freetext_search
+- fix required dei campi password guidati quando il segreto è già salvato
+- safe truncation senza dipendenza obbligatoria da mbstring
+- versione plugin aggiornata a 2.10.1
+
 ## 2.10.0 - Integrazione Viator Partner API v2 (Affiliate Sources)
 - aggiunto client dedicato `ALMA_Affiliate_Source_Provider_Client_Viator` con gestione environment sandbox/production e header Viator
 - preset Viator aggiornato: supporto test connessione + field discovery, provider type `commercial_api`, sola credenziale `api_key`
