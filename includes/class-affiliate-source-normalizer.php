@@ -25,6 +25,7 @@ class ALMA_Affiliate_Source_Normalizer {
                 '_alma_ai_visibility' => self::sanitize_ai_visibility($item['ai_visibility'] ?? 'available'),
                 '_alma_ai_priority' => intval($item['ai_priority'] ?? 0),
             ),
+            'raw_item' => is_array($item) ? $item : array(),
         );
 
         $hash_base = !empty($normalized['original_url']) ? $normalized['original_url'] : $normalized['affiliate_url'];
