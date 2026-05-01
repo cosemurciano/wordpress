@@ -1,3 +1,10 @@
+## Versione 2.13.1
+- Fix Viator `productUrl`: mapping diretto dall'item (`productCode`/`productUrl`) senza ricostruzioni URL canoniche o rimozione tracking.
+- Preview import mostra origine URL (`productUrl`), stato presenza URL affiliato e warning/errore item.
+- `_alma_ai_context` ora include solo dati item; source instructions restano separate in Source.
+- Deduplica import con fallback legacy: source+external_id, provider+external_id, sync_hash, URL affiliato.
+- Campi importabili Viator: catalogo documentato disponibile anche senza criteri runtime salvati.
+
 
 ## 2.13.0
 - Import contenuti con criteri runtime e limiti Viator aggiornati.

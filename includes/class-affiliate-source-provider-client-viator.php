@@ -136,7 +136,15 @@ class ALMA_Affiliate_Source_Provider_Client_Viator {
         $query = $this->build_query_params($settings);
         $endpoint = $this->base_url_for_environment($environment) . ($search_model === 'freetext_search' ? '/search/freetext' : '/products/search');
         $body = $search_model === 'freetext_search' ? $this->build_freetext_search_body($settings, 10) : $this->build_products_search_body($settings, 10);
-        if (is_wp_error($body)) return $body;
+        if (is_wp_error($body)) {
+            return array(
+                'fields' => array(),
+                'origin' => parse_url($endpoint, PHP_URL_HOST),
+                'endpoint' => $endpoint,
+                'generated_at' => current_time('mysql'),
+                'message' => __('Per rilevare campi runtime, inserisci criteri nella pagina Importa contenuti o usa un campione API.', 'affiliate-link-manager-ai'),
+            );
+        }
 
         $response = $this->send_json_post($endpoint, $query, $body, $headers);
         if (is_wp_error($response)) return new WP_Error('timeout', __('Timeout o errore di rete verso Viator.', 'affiliate-link-manager-ai'));

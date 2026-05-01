@@ -21,6 +21,12 @@ class ALMA_Affiliate_Source_Manual_Import_Service {
         foreach ((array)$items as $item) {
             $external_id = (string)($item['external_id'] ?? $item['productCode'] ?? '');
             if ($external_id === '' || !isset($selected_map[$external_id])) continue;
+            $validation = is_array($item['_alma_validation'] ?? null) ? $item['_alma_validation'] : array();
+            if (($validation['status'] ?? '') === 'error') {
+                $result['errors']++;
+                $result['processed'][] = array('external_id'=>$external_id,'status'=>'error','post_id'=>0);
+                continue;
+            }
             $exists = !empty($existing[$external_id]);
             if ($exists && $duplicate_policy === 'skip_existing') {
                 $result['skipped']++;
