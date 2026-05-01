@@ -182,6 +182,7 @@ class ALMA_Affiliate_Source_Provider_Client_Viator {
             $body = $search_model === 'freetext_search'
                 ? array('searchTerm'=>sanitize_text_field($criteria['import_search_term'] ?? ''),'searchTypes'=>array(array('searchType'=>'PRODUCTS','pagination'=>array('start'=>$start,'count'=>$count))),'currency'=>sanitize_text_field($settings['currency'] ?? 'EUR'))
                 : array('filtering'=>array('destination'=>sanitize_text_field($criteria['import_destination_id'] ?? '')),'pagination'=>array('start'=>$start,'count'=>$count),'currency'=>sanitize_text_field($settings['currency'] ?? 'EUR'));
+            $this->apply_runtime_criteria_to_body($body, $criteria, $search_model);
             $response = $this->send_json_post($endpoint, $query, $body, $headers);
             if (is_wp_error($response)) return new WP_Error('timeout', __('Timeout o errore di rete verso Viator.', 'affiliate-link-manager-ai'));
             $err = $this->map_http_error((int) wp_remote_retrieve_response_code($response)); if ($err) return $err;
@@ -192,6 +193,38 @@ class ALMA_Affiliate_Source_Provider_Client_Viator {
         }
         $dedup=array(); $out=array(); foreach($all as $it){ $k=(string)($it['productCode']??''); if($k===''||isset($dedup[$k])) continue; $dedup[$k]=1; $out[]=$it; if(count($out)>=$limit) break; }
         return $out;
+    }
+
+    private function apply_runtime_criteria_to_body(&$body, $criteria, $search_model) {
+        $flags = array_values(array_filter((array)($criteria['import_flags'] ?? array())));
+        $tags = array_values(array_filter(array_map('absint', explode(',', (string)($criteria['import_tag_ids'] ?? '')))));
+        $sort = strtoupper(sanitize_text_field($criteria['import_sort'] ?? 'DEFAULT'));
+        $order = strtoupper(sanitize_text_field($criteria['import_sort_order'] ?? ''));
+        if ($search_model === 'products_search') {
+            if (!empty($tags)) $body['filtering']['tags'] = $tags;
+            if (!empty($flags)) $body['filtering']['flags'] = $flags;
+            if ($criteria['import_rating_from'] !== '' || $criteria['import_rating_to'] !== '') $body['filtering']['rating'] = array('from'=>(float)($criteria['import_rating_from']!==''?$criteria['import_rating_from']:0),'to'=>(float)($criteria['import_rating_to']!==''?$criteria['import_rating_to']:5));
+            if ($criteria['import_duration_from'] !== '' || $criteria['import_duration_to'] !== '') $body['filtering']['durationInMinutes'] = array('from'=>(int)($criteria['import_duration_from']!==''?$criteria['import_duration_from']:0),'to'=>(int)($criteria['import_duration_to']!==''?$criteria['import_duration_to']:99999));
+            if ($criteria['import_price_from'] !== '') $body['filtering']['lowestPrice'] = (float)$criteria['import_price_from'];
+            if ($criteria['import_price_to'] !== '') $body['filtering']['highestPrice'] = (float)$criteria['import_price_to'];
+            if (!empty($criteria['import_start_date'])) $body['filtering']['startDate'] = $criteria['import_start_date'];
+            if (!empty($criteria['import_end_date'])) $body['filtering']['endDate'] = $criteria['import_end_date'];
+            $body['filtering']['includeAutomaticTranslations'] = ($criteria['import_include_automatic_translations'] ?? '1') === '1';
+            if (!empty($criteria['import_confirmation_type'])) $body['filtering']['confirmationType'] = $criteria['import_confirmation_type'];
+            if ($sort !== 'DEFAULT') { $body['sorting'] = array('sort'=>$sort); if ($order !== '') $body['sorting']['order'] = $order; }
+        } else {
+            $pf = array();
+            if (!empty($criteria['import_destination_id'])) $pf['destination'] = sanitize_text_field($criteria['import_destination_id']);
+            if (!empty($criteria['import_start_date']) || !empty($criteria['import_end_date'])) $pf['dateRange'] = array('from'=>$criteria['import_start_date'],'to'=>$criteria['import_end_date']);
+            if ($criteria['import_price_from'] !== '' || $criteria['import_price_to'] !== '') $pf['price'] = array('from'=>(float)($criteria['import_price_from']!==''?$criteria['import_price_from']:0),'to'=>(float)($criteria['import_price_to']!==''?$criteria['import_price_to']:999999));
+            if ($criteria['import_rating_from'] !== '' || $criteria['import_rating_to'] !== '') $pf['rating'] = array('from'=>(float)($criteria['import_rating_from']!==''?$criteria['import_rating_from']:0),'to'=>(float)($criteria['import_rating_to']!==''?$criteria['import_rating_to']:5));
+            if ($criteria['import_duration_from'] !== '' || $criteria['import_duration_to'] !== '') $pf['durationInMinutes'] = array('from'=>(int)($criteria['import_duration_from']!==''?$criteria['import_duration_from']:0),'to'=>(int)($criteria['import_duration_to']!==''?$criteria['import_duration_to']:99999));
+            if (!empty($tags)) $pf['tags'] = $tags;
+            if (!empty($flags)) $pf['flags'] = $flags;
+            $pf['includeAutomaticTranslations'] = ($criteria['import_include_automatic_translations'] ?? '1') === '1';
+            if (!empty($pf)) $body['productFiltering'] = $pf;
+            if ($sort !== 'DEFAULT') { $body['productSorting'] = array('sort'=>$sort); if ($order !== '') $body['productSorting']['order'] = $order; }
+        }
     }
 
 }
