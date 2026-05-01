@@ -2,10 +2,10 @@
 if (!defined('ABSPATH')) { exit; }
 
 class ALMA_Affiliate_Source_Import_Preview_Service {
-    public function get_preview_items($source) {
+    public function get_preview_items($source, $criteria = array()) {
         $settings = json_decode((string)($source['settings'] ?? '{}'), true) ?: array();
         $credentials = json_decode((string)($source['credentials'] ?? '{}'), true) ?: array();
-        $limit = isset($settings['import_limit']) ? (int)$settings['import_limit'] : 10;
+        $limit = isset($criteria['import_limit']) ? (int)$criteria['import_limit'] : (isset($settings['import_limit']) ? (int)$settings['import_limit'] : 10);
         $limit = max(1, min(100, $limit));
 
         $provider = sanitize_key($source['provider_preset'] ?: $source['provider']);
@@ -14,7 +14,7 @@ class ALMA_Affiliate_Source_Import_Preview_Service {
         }
 
         $client = new ALMA_Affiliate_Source_Provider_Client_Viator();
-        return $client->fetch_items_for_import_preview($source, $settings, $credentials, $limit);
+        return $client->fetch_items_for_import_preview($source, $settings, $credentials, $limit, $criteria);
     }
 
     public function find_existing_map($source_id, $external_ids) {

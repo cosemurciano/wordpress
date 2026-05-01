@@ -183,3 +183,7 @@ Miglioramenti principali:
 - Catalogo campi Viator documentati ampliato in modo sostanziale (identità prodotto, media, prezzi, recensioni aggregate, durata, destinazioni/tag, traduzioni, dettaglio prodotto, reference data e endpoint transazionali).
 - Endpoint booking/checkout/pagamenti/cancellazioni marcati come **transazionale / non implementato**.
 - Nessun impatto su frontend, tracking click, shortcode o widget; nessuna chiamata remota extra aggiunta.
+
+
+## Versione 2.13.0
+- Nuova UX Importa contenuti con criteri ricerca runtime (max 100).
