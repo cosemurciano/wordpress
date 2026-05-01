@@ -14,9 +14,8 @@ class ALMA_Affiliate_Source_Manual_Import_Service {
         $duplicate_policy = sanitize_key($settings['duplicate_policy'] ?? 'skip_existing');
         $regenerate_ai = !isset($settings['regenerate_ai_context_on_import']) || (string)$settings['regenerate_ai_context_on_import'] === '1';
         $source_link_type_term_ids = array_values(array_unique(array_filter(array_map('absint', array()))));
-        $existing = $preview->find_existing_map((int)$source['id'], array_keys($selected_map));
-
         $importer = new ALMA_Affiliate_Source_Importer();
+        $dedupe = new ALMA_Affiliate_Source_Import_Dedupe_Service();
         $result = array('created'=>0,'updated'=>0,'skipped'=>0,'errors'=>0,'processed'=>array());
         foreach ((array)$items as $item) {
             $external_id = (string)($item['external_id'] ?? $item['productCode'] ?? '');
@@ -27,13 +26,13 @@ class ALMA_Affiliate_Source_Manual_Import_Service {
                 $result['processed'][] = array('external_id'=>$external_id,'status'=>'error','post_id'=>0);
                 continue;
             }
-            $exists = !empty($existing[$external_id]);
-            if ($exists && $duplicate_policy === 'skip_existing') {
+            $normalized = ALMA_Affiliate_Source_Normalizer::normalize($item, $source, array('write_provider_specific_meta'=>false));
+            $match = $dedupe->find_match($normalized, $duplicate_policy);
+            if (!empty($match['post_id']) && $duplicate_policy === 'skip_existing') {
                 $result['skipped']++;
-                $result['processed'][] = array('external_id'=>$external_id,'status'=>'skipped','post_id'=>(int)$existing[$external_id]);
+                $result['processed'][] = array('external_id'=>$external_id,'status'=>'skipped','post_id'=>(int)$match['post_id'],'reason'=>(string)$match['match_label']);
                 continue;
             }
-            $normalized = ALMA_Affiliate_Source_Normalizer::normalize($item, $source, array('write_provider_specific_meta'=>false));
             $res = $importer->import_item($normalized, $source, array('build_ai_context'=>$regenerate_ai));
             if (is_wp_error($res)) { $result['errors']++; continue; }
             if (($res['status'] ?? '') === 'updated') $result['updated']++; else $result['created']++;

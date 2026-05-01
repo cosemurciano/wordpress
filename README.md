@@ -1,3 +1,12 @@
+## Versione 2.13.2
+
+- Nuova pagina **Comportamento agente AI** separata dalla configurazione principale Source.
+- Nella preview import, di default vengono mostrati solo item nuovi con toggle per mostrare i già importati.
+- Aggiunto pulsante **Carica altri risultati** nella pagina Importa contenuti.
+- Deduplica centralizzata tra preview/import/importer.
+- Fix `skip_existing` anche quando il duplicato è trovato via URL fallback.
+- Nessun filtro avanzato 2.14.0, nessun cron/booking/checkout.
+
 ## Versione 2.13.1
 - Fix Viator `productUrl`: mapping diretto dall'item (`productCode`/`productUrl`) senza ricostruzioni URL canoniche o rimozione tracking.
 - Preview import mostra origine URL (`productUrl`), stato presenza URL affiliato e warning/errore item.

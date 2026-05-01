@@ -52,6 +52,20 @@ class ALMA_Affiliate_Source_Import_Preview_Service {
         return $item;
     }
 
+
+
+    public function build_dedupe_map($source, $items, $duplicate_policy = 'skip_existing') {
+        $map = array();
+        $dedupe = new ALMA_Affiliate_Source_Import_Dedupe_Service();
+        foreach ((array)$items as $item) {
+            $eid = sanitize_text_field((string)($item['productCode'] ?? $item['external_id'] ?? ''));
+            if ($eid === '') continue;
+            $normalized = ALMA_Affiliate_Source_Normalizer::normalize($item, $source, array('write_provider_specific_meta'=>false));
+            $map[$eid] = $dedupe->find_match($normalized, $duplicate_policy);
+        }
+        return $map;
+    }
+
     public function find_existing_map($source_id, $external_ids) {
         global $wpdb;
         $source_id = (string) absint($source_id);

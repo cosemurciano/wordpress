@@ -5,8 +5,12 @@ class ALMA_Affiliate_Source_Importer {
     public function import_item($normalized, $source, $options = array()) {
         $build_ai_context = !isset($options['build_ai_context']) || (bool)$options['build_ai_context'];
         $mode = $source['import_mode'] ?? 'create_update';
-        $existing_id = $this->find_existing_link($normalized);
-        if ($existing_id && $mode === 'create_only') return array('status' => 'skipped', 'post_id' => $existing_id);
+        $settings = json_decode((string)($source['settings'] ?? '{}'), true) ?: array();
+        $duplicate_policy = sanitize_key($settings['duplicate_policy'] ?? 'skip_existing');
+        $dedupe = new ALMA_Affiliate_Source_Import_Dedupe_Service();
+        $match = $dedupe->find_match($normalized, $duplicate_policy);
+        $existing_id = (int)($match['post_id'] ?? 0);
+        if ($existing_id && ($mode === 'create_only' || !empty($match['skip_existing']))) return array('status' => 'skipped', 'post_id' => $existing_id, 'reason' => (string)($match['match_label'] ?? 'Duplicato'));
         if (!$existing_id && $mode === 'update_existing') return array('status' => 'skipped', 'post_id' => 0);
         $postarr = array('post_type'=>'affiliate_link','post_status'=>'publish','post_title'=>$normalized['post_title'] ?: __('Senza titolo','affiliate-link-manager-ai'),'post_content'=>$normalized['post_content']);
         $post_id = $existing_id ? wp_update_post(array_merge($postarr, array('ID'=>$existing_id)), true) : wp_insert_post($postarr, true);
