@@ -1,6 +1,17 @@
 # Affiliate Link Manager AI
 
-Versione 2.12.0
+Versione 2.12.1
+
+
+## Novità 2.12.1 — Pagina Importa contenuti + fix import
+
+- Nuova azione **Importa contenuti** nella lista Affiliate Sources (solo source attive/non archiviate).
+- Nuova vista dedicata `alma_view=import_contents` con anteprima, selezione elementi e submit sicuro (solo nonce, source_id, external IDs).
+- Risultato import con PRG in `alma_view=import_result`.
+- Fix Viator: import limit realmente supportato fino a 100 per preview/import manuale (discovery resta limitata).
+- Fix AI context: se `regenerate_ai_context_on_import=0`, il contesto esistente non viene cancellato.
+- Applicazione reale delle Tipologie Link da `import_link_type_term_ids` in merge con i termini già presenti.
+- Nessun cron, nessun booking/checkout/pagamenti/cancellazioni in questa release.
 
 ## Novità 2.12.0 — Import manuale con anteprima (Source)
 
