@@ -1,4 +1,4 @@
-## 2.14.1
+## 2.14.2
 - Nuova UI Importa contenuti con card/sezioni, filtri avanzati visibili, default solo nuovi, e riepilogo criteri.
 - Risultati preview organizzati e azioni selezione/import più chiare.
 - Aggiornati JS/CSS per UX Importa contenuti.

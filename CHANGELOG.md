@@ -1,3 +1,8 @@
+## 2.14.2
+- Completamento UX Importa contenuti: supporto start incrementale Viator, filtro Solo nuovi da API, toggle mostra già importati, criteria token transient e miglioramenti preview/import selezionati.
+- Correzioni su import_include_automatic_translations default=1 e limite richiesta Viator a max 50 risultati per chiamata.
+- Migliorata nomenclatura UI e basi per Carica altri risultati.
+
 ## 2.14.1
 - Nuova UI Importa contenuti con card/sezioni, filtri avanzati visibili, default solo nuovi, e riepilogo criteri.
 - Risultati preview organizzati e azioni selezione/import più chiare.
