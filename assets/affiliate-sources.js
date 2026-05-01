@@ -1,6 +1,6 @@
 jQuery(function($){
   const $wrap = $('#alma-source-form-wrap');
-  $('.alma-toggle-source-form').on('click', function(){ $wrap.toggle(); });
+  $('.alma-toggle-source-form').on('click', function(){ $wrap.toggle(); if($wrap.is(':visible')){ $('#name').trigger('focus'); } });
   function parseHidden(id){ const raw=$(id).val(); if(!raw) return {}; try{return JSON.parse(raw);}catch(e){return{};} }
   function normalizeField(field){ return typeof field === 'string' ? {key:field,label:field,type:'text'} : (field||{}); }
   function esc(v){ return $('<div/>').text(v||'').html(); }
@@ -16,7 +16,8 @@ jQuery(function($){
     const existingSettings=parseHidden('#alma-existing-settings'); const credentialFlags=parseHidden('#alma-existing-credentials-flags');
     const $s=$('#alma-guided-settings').empty(); const $c=$('#alma-guided-credentials').empty(); if(!preset) return;
     const isViator = key==='viator';
-    $('input[name^="credentials_extra_fields"]').closest('p').toggle(!isViator);
+    $('#alma-advanced-credentials').toggle(!isViator);
+    $('#alma-viator-credentials-note').toggle(isViator);
     (preset.settings_fields||[]).map(normalizeField).forEach(meta=>{
       const k=meta.key||''; if(!k) return;
       const value=typeof existingSettings[k]==='string'?existingSettings[k]:(meta.default||'');
