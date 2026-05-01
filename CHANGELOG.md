@@ -98,3 +98,10 @@
 - Snapshot metadata source sui link associati e rimozione credenziali source archiviata.
 - Gestione Source eliminate nel filtro admin Link Affiliati.
 
+
+## 2.10.0
+- Viator preset guidato con sola **Viator API key** (header `exp-api-key`) e nessuna richiesta OAuth/client_id/client_secret.
+- Test connessione Viator dedicato su `/products/tags` con gestione errori (401/403/429/timeout/json).
+- Discovery campi Viator con supporto `products_search` e `freetext_search`, cache temporanea e nessun salvataggio raw della risposta.
+- Pagina Campi importabili migliorata: campi rilevati + catalogo campi documentati Viator, mapping suggeriti e note compliance.
+- Note compliance: `productUrl` va conservato invariato; recensioni e `viatorUniqueContent` solo diagnostici; booking/checkout/pagamenti non inclusi.
