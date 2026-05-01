@@ -35,7 +35,11 @@ class ALMA_Affiliate_Source_Provider_Presets {
         array('key'=>'default_search_term','label'=>'Default search term','type'=>'text','placeholder'=>'es. Colosseo Roma','help'=>'Termine usato da /search/freetext.'),
         array('key'=>'result_count','label'=>'Result count','type'=>'number','default'=>'5','placeholder'=>'5'),
         array('key'=>'sort','label'=>'Sort','type'=>'text','default'=>'DEFAULT','placeholder'=>'DEFAULT'),
-        array('key'=>'sort_order','label'=>'Sort order','type'=>'text','placeholder'=>'ASC o DESC'),
+        array('key'=>'sort_order','label'=>'Sort order','type'=>'select','default'=>'','options'=>array(
+            array('value'=>'','label'=>'Automatico (default Viator)'),
+            array('value'=>'ASCENDING','label'=>'ASCENDING'),
+            array('value'=>'DESCENDING','label'=>'DESCENDING'),
+        ),'help'=>'Usato solo per sort che supportano ordinamento custom. Lascia vuoto per comportamento predefinito Viator.'),
         array('key'=>'campaign_value','label'=>'Campaign value','type'=>'text','placeholder'=>'opzionale'),
         array('key'=>'target_lander','label'=>'Target lander','type'=>'text','default'=>'','placeholder'=>'opzionale','help'=>'Parametro opzionale. Lascia vuoto per usare la landing affiliate ottimizzata da Viator.'),
         array('key'=>'partner_access_level','label'=>'Partner access level','type'=>'select','default'=>'basic_affiliate','options'=>array(

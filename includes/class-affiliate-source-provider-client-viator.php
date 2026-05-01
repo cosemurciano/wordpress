@@ -39,6 +39,20 @@ class ALMA_Affiliate_Source_Provider_Client_Viator {
         return $query;
     }
 
+    private function normalize_sort_order($settings) {
+        $raw = strtoupper(sanitize_text_field($settings['sort_order'] ?? ''));
+        if ($raw === '' && isset($settings['order'])) $raw = strtoupper(sanitize_text_field($settings['order']));
+        if ($raw === 'ASC') return 'ASCENDING';
+        if ($raw === 'DESC') return 'DESCENDING';
+        if (in_array($raw, array('ASCENDING', 'DESCENDING'), true)) return $raw;
+        return '';
+    }
+
+    private function sort_supports_custom_order($sort) {
+        $sort = strtoupper((string) $sort);
+        return $sort !== '' && $sort !== 'DEFAULT';
+    }
+
     private function build_products_search_body($settings) {
         $destination_id = sanitize_text_field($settings['default_destination_id'] ?? '');
         if ($destination_id === '') return new WP_Error('missing_destination_id', __('Destination ID mancante per products_search.', 'affiliate-link-manager-ai'));
@@ -46,10 +60,10 @@ class ALMA_Affiliate_Source_Provider_Client_Viator {
         $currency = sanitize_text_field($settings['currency'] ?? 'EUR');
         $body = array('filtering' => array('destination' => (string) $destination_id), 'pagination' => array('start' => 1, 'count' => $result_count), 'currency' => $currency);
         $sort = strtoupper(sanitize_text_field($settings['sort'] ?? 'DEFAULT'));
-        $order = strtoupper(sanitize_text_field($settings['order'] ?? ''));
+        $sort_order = $this->normalize_sort_order($settings);
         if ($sort !== '' && $sort !== 'DEFAULT') {
             $body['sorting'] = array('sort' => $sort);
-            if (in_array($order, array('ASC', 'DESC'), true)) $body['sorting']['order'] = $order;
+            if ($this->sort_supports_custom_order($sort) && $sort_order !== '') $body['sorting']['order'] = $sort_order;
         }
         return $body;
     }
@@ -63,10 +77,10 @@ class ALMA_Affiliate_Source_Provider_Client_Viator {
         $destination_id = sanitize_text_field($settings['default_destination_id'] ?? '');
         if ($destination_id !== '') $body['productFiltering'] = array('destination' => (string) $destination_id);
         $sort = strtoupper(sanitize_text_field($settings['sort'] ?? 'DEFAULT'));
-        $order = strtoupper(sanitize_text_field($settings['order'] ?? ''));
+        $sort_order = $this->normalize_sort_order($settings);
         if ($sort !== '' && $sort !== 'DEFAULT') {
             $body['productSorting'] = array('sort' => $sort);
-            if (in_array($order, array('ASC', 'DESC'), true)) $body['productSorting']['order'] = $order;
+            if ($this->sort_supports_custom_order($sort) && $sort_order !== '') $body['productSorting']['order'] = $sort_order;
         }
         return $body;
     }
@@ -114,7 +128,7 @@ class ALMA_Affiliate_Source_Provider_Client_Viator {
         $search_model = sanitize_key($settings['search_model'] ?? 'products_search');
         if (!in_array($search_model, array('products_search', 'freetext_search'), true)) return new WP_Error('missing_minimum_criteria', __('Modello di ricerca Viator non supportato.', 'affiliate-link-manager-ai'));
 
-        $cache_basis = array('id' => (int) ($source['id'] ?? 0), 'env' => $environment, 'model' => $search_model, 'destination' => sanitize_text_field($settings['default_destination_id'] ?? ''), 'term' => sanitize_text_field($settings['default_search_term'] ?? ''), 'currency' => sanitize_text_field($settings['currency'] ?? 'EUR'), 'count' => (int) ($settings['result_count'] ?? 5), 'sort' => sanitize_text_field($settings['sort'] ?? ''), 'order' => sanitize_text_field($settings['order'] ?? ''));
+        $cache_basis = array('id' => (int) ($source['id'] ?? 0), 'env' => $environment, 'model' => $search_model, 'destination' => sanitize_text_field($settings['default_destination_id'] ?? ''), 'term' => sanitize_text_field($settings['default_search_term'] ?? ''), 'currency' => sanitize_text_field($settings['currency'] ?? 'EUR'), 'count' => (int) ($settings['result_count'] ?? 5), 'sort' => sanitize_text_field($settings['sort'] ?? ''), 'sort_order' => sanitize_text_field($settings['sort_order'] ?? ($settings['order'] ?? '')), 'legacy_order' => sanitize_text_field($settings['order'] ?? ''));
         $cache_key = 'alma_viator_fields_' . md5(wp_json_encode($cache_basis));
         if (!$force_refresh) { $cached = get_transient($cache_key); if (is_array($cached)) return $cached; }
 
