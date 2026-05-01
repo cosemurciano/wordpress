@@ -5,3 +5,5 @@
 .alma-inline-result{margin-top:6px;font-size:12px}
 .alma-inline-result.success{color:#008a20}
 .alma-inline-result.error{color:#b32d2e}
+.alma-import-preview td{vertical-align:top}
+.alma-selected-counter{font-weight:600;margin-left:10px}

@@ -53,10 +53,10 @@ class ALMA_Affiliate_Source_Provider_Client_Viator {
         return $sort !== '' && $sort !== 'DEFAULT';
     }
 
-    private function build_products_search_body($settings) {
+    private function build_products_search_body($settings, $max_count = 10) {
         $destination_id = sanitize_text_field($settings['default_destination_id'] ?? '');
         if ($destination_id === '') return new WP_Error('missing_destination_id', __('Destination ID mancante per products_search.', 'affiliate-link-manager-ai'));
-        $result_count = max(1, min(10, (int) ($settings['result_count'] ?? 5)));
+        $result_count = max(1, min((int)$max_count, (int) ($settings['result_count'] ?? 5)));
         $currency = sanitize_text_field($settings['currency'] ?? 'EUR');
         $body = array('filtering' => array('destination' => (string) $destination_id), 'pagination' => array('start' => 1, 'count' => $result_count), 'currency' => $currency);
         $sort = strtoupper(sanitize_text_field($settings['sort'] ?? 'DEFAULT'));
@@ -68,10 +68,10 @@ class ALMA_Affiliate_Source_Provider_Client_Viator {
         return $body;
     }
 
-    private function build_freetext_search_body($settings) {
+    private function build_freetext_search_body($settings, $max_count = 10) {
         $search_term = sanitize_text_field($settings['default_search_term'] ?? '');
         if ($search_term === '') return new WP_Error('missing_search_term', __('Search term mancante per freetext_search.', 'affiliate-link-manager-ai'));
-        $result_count = max(1, min(10, (int) ($settings['result_count'] ?? 5)));
+        $result_count = max(1, min((int)$max_count, (int) ($settings['result_count'] ?? 5)));
         $currency = sanitize_text_field($settings['currency'] ?? 'EUR');
         $body = array('searchTerm' => $search_term, 'searchTypes' => array(array('searchType' => 'PRODUCTS', 'pagination' => array('start' => 1, 'count' => $result_count))), 'currency' => $currency);
         $destination_id = sanitize_text_field($settings['default_destination_id'] ?? '');
@@ -135,7 +135,7 @@ class ALMA_Affiliate_Source_Provider_Client_Viator {
         $headers = $this->build_headers($settings, $credentials, true); if (is_wp_error($headers)) return $headers;
         $query = $this->build_query_params($settings);
         $endpoint = $this->base_url_for_environment($environment) . ($search_model === 'freetext_search' ? '/search/freetext' : '/products/search');
-        $body = $search_model === 'freetext_search' ? $this->build_freetext_search_body($settings) : $this->build_products_search_body($settings);
+        $body = $search_model === 'freetext_search' ? $this->build_freetext_search_body($settings, 10) : $this->build_products_search_body($settings, 10);
         if (is_wp_error($body)) return $body;
 
         $response = $this->send_json_post($endpoint, $query, $body, $headers);
@@ -165,7 +165,7 @@ class ALMA_Affiliate_Source_Provider_Client_Viator {
         $headers = $this->build_headers($settings, $credentials, true); if (is_wp_error($headers)) return $headers;
         $query = $this->build_query_params($settings);
         $endpoint = $this->base_url_for_environment($environment) . ($search_model === 'freetext_search' ? '/search/freetext' : '/products/search');
-        $body = $search_model === 'freetext_search' ? $this->build_freetext_search_body($settings) : $this->build_products_search_body($settings);
+        $body = $search_model === 'freetext_search' ? $this->build_freetext_search_body($settings, 100) : $this->build_products_search_body($settings, 100);
         if (is_wp_error($body)) return $body;
         $response = $this->send_json_post($endpoint, $query, $body, $headers);
         if (is_wp_error($response)) return new WP_Error('timeout', __('Timeout o errore di rete verso Viator.', 'affiliate-link-manager-ai'));

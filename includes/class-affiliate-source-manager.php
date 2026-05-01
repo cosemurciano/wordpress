@@ -24,6 +24,8 @@ class ALMA_Affiliate_Source_Manager {
         $view=sanitize_key($_GET['alma_view']??'');
         if($view==='save_confirmation'){ $this->render_post_save_confirmation(); return; }
         if($view==='delete_confirmation'){ $this->render_delete_confirmation(); return; }
+        if($view==='import_contents'){ $this->render_import_contents_page(); return; }
+        if($view==='import_result'){ $this->render_import_result_page(); return; }
         $editing_id=absint($_GET['edit_source']??0); $editing=$editing_id?$wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}alma_affiliate_sources WHERE id=%d",$editing_id),ARRAY_A):array(); if(!is_array($editing))$editing=array(); $sources_view=sanitize_key($_GET['alma_sources_view']??'active'); $where=($sources_view==='deleted')?' WHERE deleted_at IS NOT NULL':(($sources_view==='all')?'':' WHERE deleted_at IS NULL'); $rows=$this->sources_table_exists()?$wpdb->get_results("SELECT * FROM {$wpdb->prefix}alma_affiliate_sources{$where} ORDER BY id DESC LIMIT 100",ARRAY_A):array();
         $es=$this->decode_db_json($editing['settings']??''); $ec=$this->decode_db_json($editing['credentials']??''); $sel=json_decode($editing['destination_term_ids']??'',true); if(!is_array($sel))$sel=array(); if(empty($sel)&&!empty($editing['destination_term_id']))$sel=array((int)$editing['destination_term_id']);
         $result=sanitize_key($_GET['alma_result']??'');
@@ -53,8 +55,9 @@ class ALMA_Affiliate_Source_Manager {
         foreach((array)$rows as $r){ $s=$this->decode_db_json($r['settings']??''); $ids=json_decode($r['destination_term_ids']??'',true); if(!is_array($ids))$ids=array(); if(empty($ids)&&!empty($r['destination_term_id']))$ids=array((int)$r['destination_term_id']); $names=array(); foreach($ids as $tid){ $term=get_term((int)$tid,'link_type'); if($term&&!is_wp_error($term))$names[]=$term->name; }
             $provider_label=$r['provider_label']?:$r['provider']; $edit_link=add_query_arg(array('post_type'=>'affiliate_link','page'=>'alma-affiliate-sources','edit_source'=>(int)$r['id']),admin_url('edit.php')); $fields_link=add_query_arg(array('post_type'=>'affiliate_link','page'=>'alma-importable-fields','source_id'=>(int)$r['id']),admin_url('edit.php'));
             $delete_link=add_query_arg(array('post_type'=>'affiliate_link','page'=>'alma-affiliate-sources','alma_view'=>'delete_confirmation','source_id'=>(int)$r['id']),admin_url('edit.php'));
+            $import_link=add_query_arg(array('post_type'=>'affiliate_link','page'=>'alma-affiliate-sources','alma_view'=>'import_contents','source_id'=>(int)$r['id']),admin_url('edit.php'));
             $is_deleted=!empty($r['deleted_at']);
-            echo '<tr data-source-id="'.(int)$r['id'].'"><td>'.esc_html($r['name']).'</td><td>'.esc_html($provider_label).'<br/><small>'.esc_html($r['provider']).'</small></td><td>'.esc_html($names?implode(', ',$names):'—').'</td><td>'.esc_html($s['mode']??$s['integration_mode']??'—').'</td><td>'.($is_deleted?'Eliminata':((int)$r['is_active']===1?'Attivo':'Disattivo')).'</td><td>'.esc_html($r['language']).'</td><td>'.esc_html($r['market']).'</td><td>'.esc_html($r['last_sync_at']).'</td><td>'.esc_html($r['last_sync_status']).'</td><td><a class="button button-small" href="'.esc_url($edit_link).'">Modifica</a> <a class="button button-small" href="'.esc_url($delete_link).'">Elimina</a> '.($is_deleted?'':'<button type="button" class="button button-small alma-test-connection" data-source-id="'.(int)$r['id'].'">Testa connessione</button> <a class="button button-small" href="'.esc_url($fields_link).'">Campi importabili</a>').'<div class="alma-inline-result" aria-live="polite"></div></td></tr>'; }
+            echo '<tr data-source-id="'.(int)$r['id'].'"><td>'.esc_html($r['name']).'</td><td>'.esc_html($provider_label).'<br/><small>'.esc_html($r['provider']).'</small></td><td>'.esc_html($names?implode(', ',$names):'—').'</td><td>'.esc_html($s['mode']??$s['integration_mode']??'—').'</td><td>'.($is_deleted?'Eliminata':((int)$r['is_active']===1?'Attivo':'Disattivo')).'</td><td>'.esc_html($r['language']).'</td><td>'.esc_html($r['market']).'</td><td>'.esc_html($r['last_sync_at']).'</td><td>'.esc_html($r['last_sync_status']).'</td><td><a class="button button-small" href="'.esc_url($edit_link).'">Modifica</a> <a class="button button-small" href="'.esc_url($delete_link).'">Elimina</a> '.($is_deleted?'':'<button type="button" class="button button-small alma-test-connection" data-source-id="'.(int)$r['id'].'">Testa connessione</button> <a class="button button-small" href="'.esc_url($fields_link).'">Campi importabili</a> <a class="button button-small" href="'.esc_url($import_link).'">Importa contenuti</a>').'<div class="alma-inline-result" aria-live="polite"></div></td></tr>'; }
         echo '</tbody></table></div>'; }
     private function render_options($options, $selected){ $html=''; foreach((array)$options as $value=>$label){ $html .= '<option value="'.esc_attr($value).'"'.selected($selected,$value,false).'>'.esc_html($label).'</option>'; } return $html; }
     private function render_input_row($n,$l,$v,$req=false){ echo '<p><label><strong>'.esc_html($l).($req?' *':'').'</strong><br/><input type="text" id="'.esc_attr($n).'" name="'.esc_attr($n).'" value="'.esc_attr($v).'" class="regular-text"'.($req?' required':'').'></label></p>'; }
@@ -109,6 +112,7 @@ class ALMA_Affiliate_Source_Manager {
         if(($_SERVER['REQUEST_METHOD']??'')!=='POST') return;
         $action=sanitize_key($_POST['action_type']??'');
         if($action==='save_source'){ $this->maybe_handle_source_form(); return; }
+        if($action==='import_selected_items'){ $this->handle_import_selected_items(); return; }
         if(!in_array($action,array('archive_source','delete_source'),true)) return;
         if(!wp_verify_nonce($_POST['alma_archive_source_nonce']??'','alma_archive_source')) wp_die('Nonce non valido');
         $source_id=absint($_POST['source_id']??0);
@@ -116,6 +120,48 @@ class ALMA_Affiliate_Source_Manager {
         $svc=new ALMA_Affiliate_Source_Archive_Service();
         $res=$svc->archive_source($source_id,get_current_user_id());
         wp_safe_redirect(add_query_arg(array('post_type'=>'affiliate_link','page'=>'alma-affiliate-sources','alma_view'=>'delete_confirmation','source_id'=>$source_id,'status'=>is_wp_error($res)?'error':'archived'),admin_url('edit.php'))); exit;
+    }
+    private function render_import_contents_page(){
+        global $wpdb; $source_id=absint($_GET['source_id']??0); $source=$source_id>0?$wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}alma_affiliate_sources WHERE id=%d",$source_id),ARRAY_A):array();
+        $list_url=add_query_arg(array('post_type'=>'affiliate_link','page'=>'alma-affiliate-sources'),admin_url('edit.php'));
+        echo '<div class="wrap"><h1>Importa contenuti</h1><p><a class="button" href="'.esc_url($list_url).'">Torna alla lista Sources</a></p>';
+        if(!is_array($source)||empty($source)||!empty($source['deleted_at'])){ echo '<div class="notice notice-warning"><p>Source non valida o archiviata.</p></div></div>'; return; }
+        $settings=$this->decode_db_json($source['settings']??'{}'); $term_ids=array_values(array_unique(array_filter(array_map('absint',(array)($settings['import_link_type_term_ids']??array())))));
+        echo '<ul><li><strong>Nome Source:</strong> '.esc_html($source['name']).'</li><li><strong>Provider:</strong> '.esc_html(($source['provider_label']?:$source['provider'])).'</li><li><strong>Preset:</strong> '.esc_html($source['provider_preset']?:'—').'</li><li><strong>Stato:</strong> '.(((int)$source['is_active']===1)?'Attivo':'Disattivo').'</li><li><strong>Import limit:</strong> '.intval($settings['import_limit']??10).'</li><li><strong>Duplicate policy:</strong> '.esc_html($settings['duplicate_policy']??'skip_existing').'</li><li><strong>Regenerate AI context on import:</strong> '.(((string)($settings['regenerate_ai_context_on_import']??'1')==='1')?'Sì':'No').'</li></ul>';
+        echo '<div class="notice notice-info"><p>Questa importazione userà le Tipologie Link configurate nella Source. I prodotti già importati vengono riconosciuti tramite ID esterno provider. Prezzo, rating e destinazione non vengono salvati come campi separati: saranno usati nel Contesto AI. Importa prima 1 elemento per testare.</p></div>';
+        if(empty($term_ids)){ echo '<div class="notice notice-warning"><p>Nessuna Tipologia Link configurata nella Source. Configura prima di importare.</p></div>'; }
+        $load_preview = isset($_GET['load_preview']) && $_GET['load_preview']==='1';
+        $base = add_query_arg(array('post_type'=>'affiliate_link','page'=>'alma-affiliate-sources','alma_view'=>'import_contents','source_id'=>$source_id),admin_url('edit.php'));
+        echo '<p><a class="button button-primary" href="'.esc_url(add_query_arg('load_preview','1',$base)).'">Carica anteprima</a></p>';
+        if($load_preview){
+            $preview_service=new ALMA_Affiliate_Source_Import_Preview_Service(); $items=$preview_service->get_preview_items($source);
+            if(is_wp_error($items)){ echo '<div class="notice notice-error"><p>'.esc_html($items->get_error_message()).'</p></div></div>'; return; }
+            $ext_ids=array(); foreach((array)$items as $it){ $eid=(string)($it['productCode']??$it['external_id']??''); if($eid!=='')$ext_ids[]=$eid; }
+            $existing=$preview_service->find_existing_map((int)$source_id,$ext_ids); $dup=sanitize_key($settings['duplicate_policy']??'skip_existing');
+            echo '<form method="post">'; wp_nonce_field('alma_import_selected','alma_import_selected_nonce');
+            echo '<input type="hidden" name="action_type" value="import_selected_items"/><input type="hidden" name="source_id" value="'.(int)$source_id.'"/>';
+            echo '<p><button type="button" class="button alma-select-all">Seleziona tutti</button> <button type="button" class="button alma-deselect-all">Deseleziona tutti</button> <span class="alma-selected-counter">0 selezionati</span></p>';
+            echo '<table class="widefat striped alma-import-preview"><thead><tr><th></th><th>Stato</th><th>Titolo</th><th>External ID</th><th>Info</th><th>URL affiliato</th><th>Azione prevista</th></tr></thead><tbody>';
+            foreach((array)$items as $it){ $eid=(string)($it['productCode']??$it['external_id']??''); if($eid==='')continue; $exists=!empty($existing[$eid]); $checked=(!$exists)||$dup==='update_existing'; if($exists&&$dup==='skip_existing')$checked=false; $st=$exists?'già importato':'nuovo'; $action=$exists?($dup==='update_existing'?'aggiorna':'salta'):'crea';
+                echo '<tr><td><input class="alma-select-item" type="checkbox" name="selected_external_ids[]" value="'.esc_attr($eid).'" '.checked($checked,true,false).'></td><td>'.esc_html($st).'</td><td>'.esc_html($it['title']??$it['name']??'—').'</td><td>'.esc_html($eid).'</td><td>'.esc_html('Prezzo: '.($it['pricing']['summary']['fromPrice']??'—').' | Rating: '.($it['reviews']['combinedAverageRating']??'—')).'</td><td>'.(!empty($it['productUrl'])?'Sì':'No').'</td><td>'.esc_html($action).'</td></tr>'; }
+            echo '</tbody></table><p><button class="button button-primary" '.(empty($term_ids)?'disabled':'').'>Importa selezionati</button></p></form>';
+        }
+        echo '</div>';
+    }
+    private function handle_import_selected_items(){
+        if(!wp_verify_nonce($_POST['alma_import_selected_nonce']??'','alma_import_selected')) wp_die('Nonce non valido');
+        $source_id=absint($_POST['source_id']??0); $selected=array_values(array_unique(array_filter(array_map('sanitize_text_field',(array)($_POST['selected_external_ids']??array())))));
+        global $wpdb; $source=$wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}alma_affiliate_sources WHERE id=%d",$source_id),ARRAY_A); if(!is_array($source)) wp_die('Source non valida');
+        $service=new ALMA_Affiliate_Source_Manual_Import_Service(); $result=$service->import_selected($source,$selected);
+        set_transient('alma_import_result_'.get_current_user_id(),array('source_id'=>$source_id,'selected'=>count($selected),'result'=>$result),5*MINUTE_IN_SECONDS);
+        wp_safe_redirect(add_query_arg(array('post_type'=>'affiliate_link','page'=>'alma-affiliate-sources','alma_view'=>'import_result','source_id'=>$source_id),admin_url('edit.php'))); exit;
+    }
+    private function render_import_result_page(){
+        $data=get_transient('alma_import_result_'.get_current_user_id()); echo '<div class="wrap"><h1>Risultato import</h1>';
+        if(!is_array($data)||!is_array($data['result']??null)){ echo '<div class="notice notice-warning"><p>Nessun risultato disponibile.</p></div></div>'; return; }
+        $r=$data['result']; $source_id=(int)$data['source_id']; $base=add_query_arg(array('post_type'=>'affiliate_link','page'=>'alma-affiliate-sources'),admin_url('edit.php'));
+        echo '<ul><li>Selezionati: '.intval($data['selected']).'</li><li>Creati: '.intval($r['created']??0).'</li><li>Aggiornati: '.intval($r['updated']??0).'</li><li>Saltati: '.intval($r['skipped']??0).'</li><li>Errori: '.intval($r['errors']??0).'</li></ul>';
+        echo '<p><a class="button button-primary" href="'.esc_url(add_query_arg(array('alma_view'=>'import_contents','source_id'=>$source_id,'load_preview'=>'1'),$base)).'">Nuova anteprima import</a> <a class="button" href="'.esc_url(add_query_arg('source_id',$source_id,$base)).'">Torna alla lista Sources</a></p></div>';
     }
 
     private function render_post_save_confirmation(){

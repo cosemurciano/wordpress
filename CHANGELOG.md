@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.12.1 - Importa contenuti (admin) + fix manual import
+- aggiunta azione `Importa contenuti` nella colonna Azioni delle Affiliate Sources non archiviate
+- nuova pagina admin `alma_view=import_contents` con riepilogo source, preview import, checkbox, seleziona/deseleziona tutti e contatore selezionati
+- submit import sicuro con soli `nonce`, `source_id`, `selected_external_ids[]`; nessun payload raw o credenziale nel form
+- nuova vista risultato `alma_view=import_result` (PRG) con contatori create/update/skip/error
+- fix Viator import limit: builder body con contesto/max count (preview/import fino a 100, discovery invariata)
+- fix AI context: disattivare rigenerazione non cancella `_alma_ai_context`
+- applicazione `import_link_type_term_ids` ai link importati con merge termini esistenti
+- deduplicazione mantenuta su `_alma_source_id` + `_alma_external_id`
+- versione plugin aggiornata a `2.12.1`
+
 ## 2.12.0 - Import manuale con anteprima controllata
 - aggiunta base per regole import a livello Source (`import_limit` con clamp 1-100, policy duplicati/editoriali, rigenerazione contesto AI, tipologie link da assegnare)
 - introdotti servizi `ALMA_Affiliate_Source_Import_Preview_Service` e `ALMA_Affiliate_Source_Manual_Import_Service` per flusso manuale
