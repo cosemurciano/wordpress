@@ -1,6 +1,6 @@
 # Affiliate Link Manager AI
 
-Versione 2.10.2
+Versione 2.10.3
 
 Questo plugin gestisce e ottimizza i link affiliati all'interno di WordPress.
 
@@ -142,3 +142,10 @@ Miglioramenti principali:
 - Aggiunta conferma eliminazione dedicata e blocchi per test connessione/discovery su Source eliminate.
 - Aggiunti snapshot source sui link (`_alma_source_name`, `_alma_source_provider`, `_alma_source_provider_label`, `_alma_source_deleted_at`).
 - Filtro Sources nei Link Affiliati aggiornato con etichetta `(eliminata)` e compatibilità retroattiva.
+## Hotfix 2.10.3 (Viator catalogo esteso)
+
+- Pagina **Campi importabili** Viator migliorata con box informativi dedicati: Destination ID, recensioni/compliance, booking non implementato, differenza tra campi rilevati e documentati.
+- Messaggio esplicito su `default_destination_id` mancante: ID numerico Viator recuperabile da `/destinations`, senza bloccare il catalogo documentato.
+- Catalogo campi Viator documentati ampliato in modo sostanziale (identità prodotto, media, prezzi, recensioni aggregate, durata, destinazioni/tag, traduzioni, dettaglio prodotto, reference data e endpoint transazionali).
+- Endpoint booking/checkout/pagamenti/cancellazioni marcati come **transazionale / non implementato**.
+- Nessun impatto su frontend, tracking click, shortcode o widget; nessuna chiamata remota extra aggiunta.
