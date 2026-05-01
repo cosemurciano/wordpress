@@ -75,7 +75,20 @@ class ALMA_Affiliate_Source_Manager {
             $settings[$kk]=is_scalar($v)?sanitize_text_field((string)$v):wp_json_encode($v);
         }
         foreach((array)($_POST['settings_fields']??array()) as $k=>$v){
-            $settings[sanitize_key($k)]=sanitize_text_field(wp_unslash($v));
+            $key = sanitize_key($k);
+            if ($key === 'import_link_type_term_ids') {
+                $settings[$key] = array_values(array_unique(array_filter(array_map('absint', (array) $v))));
+                continue;
+            }
+            if ($key === 'import_limit') {
+                $settings[$key] = max(1, min(100, (int) $v));
+                continue;
+            }
+            if ($key === 'regenerate_ai_context_on_import') {
+                $settings[$key] = sanitize_text_field(wp_unslash($v)) === '1' ? '1' : '0';
+                continue;
+            }
+            $settings[$key]=sanitize_text_field(wp_unslash($v));
         }
 
         $credentials_existing=$this->decode_db_json($existing['credentials']??''); $credentials=$credentials_existing; foreach((array)($_POST['credentials_fields']??array()) as $k=>$v){ $k=sanitize_key($k); $v=sanitize_text_field(wp_unslash($v)); if($v!=='')$credentials[$k]=$v; }

@@ -155,4 +155,25 @@ class ALMA_Affiliate_Source_Provider_Client_Viator {
         set_transient($cache_key, $result, 10 * MINUTE_IN_SECONDS);
         return $result;
     }
+
+    public function fetch_items_for_import_preview($source, $settings, $credentials, $limit) {
+        $environment = $this->resolve_environment($settings);
+        if ($environment === '') return new WP_Error('invalid_environment', __('Environment Viator non valido.', 'affiliate-link-manager-ai'));
+        $search_model = sanitize_key($settings['search_model'] ?? 'products_search');
+        if (!in_array($search_model, array('products_search', 'freetext_search'), true)) $search_model = 'products_search';
+        $settings['result_count'] = max(1, min(100, (int)$limit));
+        $headers = $this->build_headers($settings, $credentials, true); if (is_wp_error($headers)) return $headers;
+        $query = $this->build_query_params($settings);
+        $endpoint = $this->base_url_for_environment($environment) . ($search_model === 'freetext_search' ? '/search/freetext' : '/products/search');
+        $body = $search_model === 'freetext_search' ? $this->build_freetext_search_body($settings) : $this->build_products_search_body($settings);
+        if (is_wp_error($body)) return $body;
+        $response = $this->send_json_post($endpoint, $query, $body, $headers);
+        if (is_wp_error($response)) return new WP_Error('timeout', __('Timeout o errore di rete verso Viator.', 'affiliate-link-manager-ai'));
+        $code = (int) wp_remote_retrieve_response_code($response); $err = $this->map_http_error($code); if ($err) return $err;
+        $data = json_decode((string) wp_remote_retrieve_body($response), true);
+        if (!is_array($data)) return new WP_Error('invalid_json', __('Risposta Viator non JSON o non interpretabile.', 'affiliate-link-manager-ai'));
+        $items = $search_model === 'freetext_search' ? (array)($data['products']['results'] ?? array()) : (array)($data['products'] ?? array());
+        return array_slice($items, 0, max(1, min(100, (int)$limit)));
+    }
+
 }

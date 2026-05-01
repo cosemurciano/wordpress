@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.12.0 - Import manuale con anteprima controllata
+- aggiunta base per regole import a livello Source (`import_limit` con clamp 1-100, policy duplicati/editoriali, rigenerazione contesto AI, tipologie link da assegnare)
+- introdotti servizi `ALMA_Affiliate_Source_Import_Preview_Service` e `ALMA_Affiliate_Source_Manual_Import_Service` per flusso manuale
+- client Viator esteso con `fetch_items_for_import_preview(...)` per recupero sicuro lista prodotti in anteprima (no booking/checkout)
+- aggiornata versione plugin a `2.12.0`
+
 ## 2.11.0 - Contesto AI interno per Affiliate Link
 - aggiunto builder dedicato `ALMA_Affiliate_Link_AI_Context_Builder` per generare `_alma_ai_context` interno e non pubblicato
 - aggiunti meta interni su `affiliate_link`: `_alma_ai_context`, `_alma_ai_context_updated_at`, `_alma_ai_context_hash`
