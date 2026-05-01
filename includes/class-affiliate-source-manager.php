@@ -179,13 +179,23 @@ class ALMA_Affiliate_Source_Manager {
         $source=$wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}alma_affiliate_sources WHERE id=%d",$source_id),ARRAY_A); if(!is_array($source)) wp_die('Source non trovata'); if(!empty($source['deleted_at'])){ echo '<div class="wrap"><h1>Campi importabili</h1><div class="notice notice-warning"><p>Source eliminata: ripristinala prima di eseguire discovery.</p></div></div>'; return; }
         $force = isset($_GET['refresh']) && $_GET['refresh']==='1';
         $svc=new ALMA_Affiliate_Source_Field_Discovery_Service(); $result=$svc->discover($source,$force);
+        $discovery_endpoint='n/d'; $generated_at='n/d'; $fields=array(); $discovery_info=''; $discovery_error='';
+        if(is_array($result)){
+            $discovery_endpoint = (string)($result['endpoint'] ?? 'n/d');
+            $generated_at = (string)($result['generated_at'] ?? 'n/d');
+            $fields = is_array($result['fields'] ?? null) ? $result['fields'] : array();
+            $discovery_info = (string)($result['message'] ?? '');
+        }elseif(is_wp_error($result)){
+            $discovery_error = $this->map_error($result->get_error_code(),$result->get_error_message());
+        }else{
+            $discovery_error = $this->map_error('internal_error','Risultato discovery non valido.');
+        }
         $storage = new ALMA_Affiliate_Source_Connection_Test_Storage(); $storage->maybe_migrate_legacy((int)$source_id); $last_test=$storage->get((int)$source_id);
         echo '<div class="wrap"><h1>Campi importabili</h1><p><a class="button" href="'.esc_url(add_query_arg(array('post_type'=>'affiliate_link','page'=>'alma-affiliate-sources'),admin_url('edit.php'))).'">Torna alle Affiliate Sources</a> <a class="button button-primary" href="'.esc_url(add_query_arg(array('post_type'=>'affiliate_link','page'=>'alma-importable-fields','source_id'=>$source_id,'refresh'=>'1'),admin_url('edit.php'))).'">Aggiorna campi</a></p>';
-        echo '<ul><li><strong>Source:</strong> '.esc_html($source['name']).'</li><li><strong>Provider:</strong> '.esc_html($source['provider_label']).'</li><li><strong>Preset:</strong> '.esc_html(($source['provider_preset'] ?? '') !== '' ? $source['provider_preset'] : (($source['provider'] ?? '') !== '' ? $source['provider'] : '—')).'</li><li><strong>Stato:</strong> '.(((int)$source['is_active'])?'Attivo':'Disattivo').'</li><li><strong>Endpoint discovery:</strong> '.esc_html($result['endpoint']??'n/d').'</li><li><strong>Ultimo aggiornamento:</strong> '.esc_html($result['generated_at']??'n/d').'</li><li><strong>Ultimo test connessione:</strong> '.esc_html(is_array($last_test)?(($last_test['tested_at']??'n/d').' ('.(($last_test['status']??'')==='success'?'ok':'ko').')'):'n/d').'</li></ul>';
+        echo '<ul><li><strong>Source:</strong> '.esc_html($source['name']).'</li><li><strong>Provider:</strong> '.esc_html($source['provider_label']).'</li><li><strong>Preset:</strong> '.esc_html(($source['provider_preset'] ?? '') !== '' ? $source['provider_preset'] : (($source['provider'] ?? '') !== '' ? $source['provider'] : '—')).'</li><li><strong>Stato:</strong> '.(((int)$source['is_active'])?'Attivo':'Disattivo').'</li><li><strong>Endpoint discovery:</strong> '.esc_html($discovery_endpoint).'</li><li><strong>Ultimo aggiornamento:</strong> '.esc_html($generated_at).'</li><li><strong>Ultimo test connessione:</strong> '.esc_html(is_array($last_test)?(($last_test['tested_at']??'n/d').' ('.(($last_test['status']??'')==='success'?'ok':'ko').')'):'n/d').'</li></ul>';
         echo '<div class="notice notice-info"><p><strong>Compliance Viator:</strong> productUrl va salvato completo e non modificato; recensioni solo come campi disponibili; booking/checkout/pagamenti/cancellazioni non implementati in questa PR.</p></div>';
-        $fields=array();
-        if(is_wp_error($result)){ echo '<div class="notice notice-warning"><p>'.esc_html($this->map_error($result->get_error_code(),$result->get_error_message())).'</p></div>'; }
-        else { $fields=(array)($result['fields']??array()); if(!empty($result['message'])){ echo '<div class="notice notice-info"><p>'.esc_html($result['message']).'</p></div>'; } }
+        if($discovery_error!==''){ echo '<div class="notice notice-warning"><p>'.esc_html($discovery_error).'</p></div>'; }
+        if($discovery_info!==''){ echo '<div class="notice notice-info"><p>'.esc_html($discovery_info).'</p></div>'; }
         $catalog=array();
         if(class_exists('ALMA_Affiliate_Source_Viator_Field_Catalog') && is_callable(array('ALMA_Affiliate_Source_Viator_Field_Catalog','get_catalog'))){
             $catalog = ALMA_Affiliate_Source_Viator_Field_Catalog::get_catalog();
@@ -193,9 +203,10 @@ class ALMA_Affiliate_Source_Manager {
         } else {
             echo '<div class="notice notice-warning"><p>'.$this->map_error('catalog_unavailable','').'</p></div>';
         }
-        $detected_paths = array(); foreach($fields as $f){ $path=(string)($f['path']??''); if($path!==''){$detected_paths[$path]=true;} }
+        $detected_paths = array(); foreach($fields as $f){ if(!is_array($f)) continue; $path=(string)($f['path']??''); if($path!==''){$detected_paths[$path]=true;} }
         echo '<h2>Campi rilevati nel campione API</h2><table class="widefat striped"><thead><tr><th>Campo/path</th><th>Gruppo</th><th>Endpoint/origine</th><th>Tipo</th><th>Descrizione</th><th>Esempio</th><th>Mapping</th><th>Stato</th></tr></thead><tbody>';
-        foreach($fields as $f){ echo '<tr><td>'.esc_html($f['path']??'').'</td><td>'.esc_html($f['group']??'Campione API').'</td><td>'.esc_html($f['origin']??($result['endpoint']??'')).'</td><td>'.esc_html($f['type']??'').'</td><td>'.esc_html($f['description']??'Campo rilevato dal payload API.').'</td><td>'.esc_html($f['example']??'—').'</td><td>'.esc_html($f['mapping_hint']??'—').'</td><td>rilevato nel campione</td></tr>'; }
+        foreach($fields as $f){ if(!is_array($f)) continue; echo '<tr><td>'.esc_html($f['path']??'').'</td><td>'.esc_html($f['group']??'Campione API').'</td><td>'.esc_html($f['origin']??$discovery_endpoint).'</td><td>'.esc_html($f['type']??'').'</td><td>'.esc_html($f['description']??'Campo rilevato dal payload API.').'</td><td>'.esc_html($f['example']??'—').'</td><td>'.esc_html($f['mapping_hint']??'—').'</td><td>rilevato nel campione</td></tr>'; }
+        if(empty($fields)){ echo '<tr><td colspan=\"8\">Nessun campo rilevato dal campione API. Verifica i criteri di ricerca oppure consulta il catalogo documentato.</td></tr>'; }
         echo '</tbody></table>';
         echo '<h2>Catalogo campi Viator documentati</h2><table class="widefat striped"><thead><tr><th>Campo/path</th><th>Gruppo</th><th>Endpoint/origine</th><th>Tipo</th><th>Descrizione</th><th>Esempio</th><th>Mapping</th><th>Stato</th></tr></thead><tbody>';
         foreach((array)$catalog as $c){ if(!is_array($c)) continue; $path=(string)($c['path']??''); $status = !empty($detected_paths[$path]) ? 'rilevato nel campione' : (((string)($c['status']??'')==='protected')?'protetto/compliance':'documentato ma non rilevato'); $desc=(string)($c['description']??'Campo documentato Viator.'); $note=(string)($c['compliance_note']??''); echo '<tr><td>'.esc_html($path).'</td><td>'.esc_html($c['group']??'Viator').'</td><td>'.esc_html($c['endpoint']??'').'</td><td>'.esc_html($c['type']??'').'</td><td>'.esc_html($desc).($note!==''?' — '.esc_html($note):'').'</td><td>'.esc_html($c['example']??'—').'</td><td>'.esc_html($c['mapping_hint']??'—').'</td><td>'.esc_html($status).'</td></tr>'; }

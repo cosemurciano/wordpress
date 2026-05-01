@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.10.2 - Hotfix robustezza Campi importabili Viator
+- fix fatal in `Campi importabili` quando discovery Viator restituisce `WP_Error` o valore inatteso: rendering sempre sicuro con notice e fallback `n/d`
+- la tabella runtime resta renderizzata anche con discovery fallita; empty state esplicito quando non ci sono campi nel campione API
+- catalogo Viator documentato reso robusto (guard su classe/metodo/output array, fallback chiavi mancanti, skip righe non valide)
+- fix `sort_order` nel client Viator: priorità a `sort_order`, fallback legacy `order`, cache transient aggiornata includendo `sort_order`
+- normalizzazione backward-compatible `ASC/DESC` -> `ASCENDING/DESCENDING`; `order` inviato solo quando `sort` è valorizzato e non `DEFAULT`
+- nessun impatto su frontend, tracking click, shortcode e widget
+- versione plugin aggiornata a `2.10.2`
+
 ## 2.10.1 - Hotfix Viator importable fields discovery
 - fix fatal nella pagina Campi importabili quando discovery Viator fallisce o catalogo non è disponibile
 - discovery Viator aggiornata: POST JSON body corretto per /products/search e /search/freetext, query string limitata a campaign-value/target-lander
