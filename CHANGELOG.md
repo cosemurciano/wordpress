@@ -1,3 +1,8 @@
+## 2.14.1
+- Nuova UI Importa contenuti con card/sezioni, filtri avanzati visibili, default solo nuovi, e riepilogo criteri.
+- Risultati preview organizzati e azioni selezione/import più chiare.
+- Aggiornati JS/CSS per UX Importa contenuti.
+
 ## Versione 2.13.2
 
 - Nuova pagina **Comportamento agente AI** separata dalla configurazione principale Source.
