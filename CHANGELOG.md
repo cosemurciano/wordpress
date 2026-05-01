@@ -1,3 +1,7 @@
+
+## 2.13.0
+- Import contenuti con criteri runtime e limiti Viator aggiornati.
+
 # Changelog
 
 ## 2.12.1 - Importa contenuti (admin) + fix manual import
