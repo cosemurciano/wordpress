@@ -130,7 +130,7 @@ class ALMA_Affiliate_Source_Manager {
         echo '<p><label>Keyword / città / termine ricerca<br/><input type="text" name="import_search_term" value="'.esc_attr($criteria['import_search_term']).'" placeholder="es. Milano, Lecce, wine tour, Colosseo"/></label></p>';
         echo '<p><label>Destination ID Viator<br/><input type="text" name="import_destination_id" value="'.esc_attr($criteria['import_destination_id']).'"/></label></p>';
         echo '<p><label>Quantità nuovi item desiderati<br/><input type="number" name="import_limit" min="1" max="100" value="'.(int)$criteria['import_limit'].'"/></label></p>';
-        echo '<p><label><input type="checkbox" name="hide_existing" value="1" '.checked($criteria['hide_existing'],'1',false).'/> Mostra solo item non ancora importati</label></p>';
+        echo '<p><label><input type="checkbox" name="hide_existing" value="1" '.checked($criteria['hide_existing'],'1',false).'/> Solo nuovi da API</label></p>';
         echo '<details class="alma-advanced-filters"><summary>Filtri avanzati Viator</summary><div class="alma-grid-3"><p><label>Rating minimo <input type="number" step="0.1" min="0" max="5" name="import_rating_from" value="'.esc_attr((string)$criteria['import_rating_from']).'"/></label></p><p><label>Rating massimo <input type="number" step="0.1" min="0" max="5" name="import_rating_to" value="'.esc_attr((string)$criteria['import_rating_to']).'"/></label></p><p><label>Tag Viator IDs <input type="text" name="import_tag_ids" value="'.esc_attr($criteria['import_tag_ids']).'"/></label></p></div></details>';
         echo '<p><button class="button button-primary">Carica anteprima</button></p></div></form>';
         if($load_preview){

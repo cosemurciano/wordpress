@@ -9,6 +9,8 @@ class ALMA_Affiliate_Source_Import_Criteria_Service {
         $out['import_search_term'] = sanitize_text_field(wp_unslash($c['import_search_term'] ?? ''));
         $out['import_destination_id'] = sanitize_text_field(wp_unslash($c['import_destination_id'] ?? ''));
         $out['import_limit'] = max(1, min(100, (int)($c['import_limit'] ?? 10)));
+        $out['import_start'] = max(1, (int)($c['import_start'] ?? 1));
+        $out['next_start'] = max($out['import_start'], (int)($c['next_start'] ?? $out['import_start']));
         foreach (array('import_rating_from','import_rating_to') as $k) { $out[$k] = isset($c[$k]) && $c[$k] !== '' ? max(0, min(5, (float)$c[$k])) : ''; }
         foreach (array('import_price_from','import_price_to') as $k) { $out[$k] = isset($c[$k]) && $c[$k] !== '' ? max(0, (float)$c[$k]) : ''; }
         foreach (array('import_duration_from','import_duration_to') as $k) { $out[$k] = isset($c[$k]) && $c[$k] !== '' ? max(0, (int)$c[$k]) : ''; }
@@ -18,7 +20,7 @@ class ALMA_Affiliate_Source_Import_Criteria_Service {
         $allowed_flags = array('NEW_ON_VIATOR','FREE_CANCELLATION','SKIP_THE_LINE','PRIVATE_TOUR','SPECIAL_OFFER','LIKELY_TO_SELL_OUT');
         $flags = array_map('sanitize_text_field', (array)($c['import_flags'] ?? array()));
         $out['import_flags'] = array_values(array_intersect($allowed_flags, $flags));
-        $out['import_include_automatic_translations'] = isset($c['import_include_automatic_translations']) ? '1' : '0';
+        $out['import_include_automatic_translations'] = (isset($c['import_include_automatic_translations']) && (string)$c['import_include_automatic_translations'] === '0') ? '0' : '1';
         $out['import_confirmation_type'] = in_array(sanitize_text_field($c['import_confirmation_type'] ?? ''), array('','INSTANT'), true) ? sanitize_text_field($c['import_confirmation_type'] ?? '') : '';
         $out['import_availability_range'] = in_array(sanitize_key($c['import_availability_range'] ?? 'none'), array('none','next_30_days','next_90_days','custom'), true) ? sanitize_key($c['import_availability_range']) : 'none';
         $out['import_start_date'] = $this->sanitize_date($c['import_start_date'] ?? '');
