@@ -9,3 +9,5 @@
 .alma-load-more-wrap{display:flex;gap:10px;align-items:center}
 .alma-row-existing{background:#fffdf4}
 .alma-inline-result.ok{color:#0a5c2f}.alma-inline-result.err{color:#842029}
+
+.alma-badge{display:inline-block;padding:2px 8px;border-radius:10px;background:#eef3ff;margin-right:4px}.alma-import-page .alma-badge-warning{background:#fff8e5;padding:2px 8px;border-radius:10px}.alma-load-more-results{margin:8px 0}

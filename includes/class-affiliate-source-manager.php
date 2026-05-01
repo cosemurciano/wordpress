@@ -4,7 +4,7 @@ if (!defined('ABSPATH')) { exit; }
 class ALMA_Affiliate_Source_Manager {
     private $registry; private $table_error = '';
     private function make_criteria_token($source_id){ return wp_generate_password(24,false,false).dechex((int)$source_id); }
-    private function criteria_transient_key($user_id,$source_id,$token){ return 'alma_import_criteria_'.absint($user_id).'_'.absint($source_id).'_'.sanitize_key($token); }
+    private function criteria_transient_key($user_id,$source_id,$token){ return 'alma_import_preview_'.absint($user_id).'_'.absint($source_id).'_'.sanitize_key($token); }
     public function __construct() {
         $this->registry = new ALMA_Affiliate_Source_Provider_Registry();
         $this->registry->bootstrap_native_providers();
@@ -125,8 +125,18 @@ class ALMA_Affiliate_Source_Manager {
         echo '<div class="wrap alma-import-page"><h1>Importa contenuti</h1><p><a class="button" href="'.esc_url($list_url).'">Torna alla lista Sources</a></p>';
         if(!is_array($source)||empty($source)||!empty($source['deleted_at'])){ echo '<div class="notice notice-warning"><p>Source non valida o archiviata.</p></div></div>'; return; }
         $settings=$this->decode_db_json($source['settings']??'{}'); $term_ids=array(); $decoded_terms=json_decode((string)($source['destination_term_ids']??''),true); if(is_array($decoded_terms)) $term_ids=array_values(array_unique(array_filter(array_map('absint',$decoded_terms)))); if(empty($term_ids)&&!empty($source['destination_term_id']))$term_ids=array((int)$source['destination_term_id']);
-        $criteria_service=new ALMA_Affiliate_Source_Import_Criteria_Service(); $criteria=$criteria_service->sanitize($_GET); $criteria['hide_existing']=isset($_GET['hide_existing'])||!isset($_GET['load_preview'])?'1':'0'; $load_preview = isset($_GET['load_preview']) && $_GET['load_preview']==='1';
-        echo '<div class="postbox"><h2 class="hndle"><span>Riepilogo Source</span></h2><div class="inside"><div class="alma-grid-3"><p><strong>Nome Source:</strong> '.esc_html($source['name']).'</p><p><strong>Provider:</strong> '.esc_html(($source['provider_label']?:$source['provider'])).'</p><p><strong>Preset:</strong> '.esc_html($source['provider_preset']?:'—').'</p><p><strong>Stato:</strong> '.(((int)$source['is_active']===1)?'Attivo':'Disattivo').'</p><p><strong>Duplicate policy:</strong> '.esc_html($settings['duplicate_policy']??'skip_existing').'</p><p><strong>AI context on import:</strong> '.(((string)($settings['regenerate_ai_context_on_import']??'1')==='1')?'Sì':'No').'</p></div><p><strong>Tipologie Link assegnate agli import:</strong> '.(!empty($term_ids)?esc_html(implode(', ',$term_ids)):'<span class="alma-badge-warning">Non configurate</span>').'</p></div></div>';
+        $criteria_service=new ALMA_Affiliate_Source_Import_Criteria_Service(); $criteria=$criteria_service->sanitize($_GET); $criteria['hide_existing']=isset($_GET['hide_existing'])||!isset($_GET['load_preview'])?'1':'0'; $criteria['show_existing']=isset($_GET['show_existing'])?'1':'0'; $load_preview = isset($_GET['load_preview']) && $_GET['load_preview']==='1';
+        echo '<div class="postbox"><h2 class="hndle"><span>Riepilogo Source</span></h2><div class="inside"><div class="alma-grid-3"><p><strong>Nome Source:</strong> '.esc_html($source['name']).'</p><p><strong>Provider:</strong> '.esc_html(($source['provider_label']?:$source['provider'])).'</p><p><strong>Preset:</strong> '.esc_html($source['provider_preset']?:'—').'</p><p><strong>Stato:</strong> '.(((int)$source['is_active']===1)?'Attivo':'Disattivo').'</p><p><strong>Duplicate policy:</strong> '.esc_html($settings['duplicate_policy']??'skip_existing').'</p><p><strong>AI context on import:</strong> '.(((string)($settings['regenerate_ai_context_on_import']??'1')==='1')?'Sì':'No').'</p></div><p><strong>Tipologie Link assegnate agli import:</strong> ';
+        if(!empty($term_ids)){
+            foreach($term_ids as $tid){
+                $term = get_term((int)$tid,'link_type');
+                $label = ($term && !is_wp_error($term)) ? $term->name : ('Tipologia non trovata #'.(int)$tid);
+                echo '<span class="alma-badge">'.esc_html($label).'</span> ';
+            }
+        } else {
+            echo '<span class="alma-badge-warning">Non configurate</span> <span class="description">I Link saranno creati senza Tipologia Link.</span>';
+        }
+        echo '</p></div></div>';
         echo '<form method="get" class="postbox"><h2 class="hndle"><span>Ricerca</span></h2><div class="inside alma-import-grid"><input type="hidden" name="post_type" value="affiliate_link"/><input type="hidden" name="page" value="alma-affiliate-sources"/><input type="hidden" name="alma_view" value="import_contents"/><input type="hidden" name="source_id" value="'.(int)$source_id.'"/><input type="hidden" name="load_preview" value="1"/>';
         echo '<p><label>Modalità ricerca<br/><select name="import_search_model" id="import_search_model"><option value="freetext_search"'.selected($criteria['import_search_model'],'freetext_search',false).'>freetext_search</option><option value="products_search"'.selected($criteria['import_search_model'],'products_search',false).'>products_search</option></select></label></p>';
         echo '<p><label>Keyword / città / termine ricerca<br/><input type="text" name="import_search_term" value="'.esc_attr($criteria['import_search_term']).'" placeholder="es. Milano, Lecce, wine tour, Colosseo"/></label></p>';
@@ -134,22 +144,28 @@ class ALMA_Affiliate_Source_Manager {
         echo '<p><label>Quantità nuovi item desiderati<br/><input type="number" name="import_limit" min="1" max="100" value="'.(int)$criteria['import_limit'].'"/></label></p>';
         echo '<p><label><input type="checkbox" name="hide_existing" value="1" '.checked($criteria['hide_existing'],'1',false).'/> Solo nuovi da API</label></p>';
         echo '<details class="alma-advanced-filters"><summary>Filtri avanzati Viator</summary><div class="alma-grid-3"><p><label>Rating minimo <input type="number" step="0.1" min="0" max="5" name="import_rating_from" value="'.esc_attr((string)$criteria['import_rating_from']).'"/></label></p><p><label>Rating massimo <input type="number" step="0.1" min="0" max="5" name="import_rating_to" value="'.esc_attr((string)$criteria['import_rating_to']).'"/></label></p><p><label>Tag Viator IDs <input type="text" name="import_tag_ids" value="'.esc_attr($criteria['import_tag_ids']).'"/></label></p></div></details>';
-        echo '<p><button class="button button-primary">Carica anteprima</button></p></div></form>';
+        echo '<p><button class="button button-primary">Carica anteprima</button> <label style="margin-left:12px;"><input type="checkbox" name="show_existing" value="1" '.checked($criteria['show_existing'],'1',false).'/> Mostra anche già importati</label></p></div></form>';
         if($load_preview){
             $criteria_token = sanitize_key($_GET['criteria_token'] ?? '');
             if($criteria_token===''){
                 $criteria_token = $this->make_criteria_token($source_id);
-                set_transient($this->criteria_transient_key(get_current_user_id(),$source_id,$criteria_token), array('criteria'=>$criteria,'source_id'=>$source_id,'user_id'=>get_current_user_id(),'created_at'=>time()), 15*MINUTE_IN_SECONDS);
+                set_transient($this->criteria_transient_key(get_current_user_id(),$source_id,$criteria_token), array('criteria'=>$criteria,'source_id'=>$source_id,'user_id'=>get_current_user_id(),'created_at'=>time(),'loaded_starts'=>array((int)$criteria['import_start'])), 15*MINUTE_IN_SECONDS);
+            } else {
+                $stored=get_transient($this->criteria_transient_key(get_current_user_id(),$source_id,$criteria_token));
+                if(is_array($stored) && !empty($stored['criteria'])){ $criteria=array_merge($stored['criteria'],$criteria); }
             }
             $preview_service=new ALMA_Affiliate_Source_Import_Preview_Service(); $items=$preview_service->get_preview_items($source,$criteria); if(is_wp_error($items)){ echo '<div class="notice notice-error"><p>'.esc_html($items->get_error_message()).'</p></div></div>'; return; }
             $dup=sanitize_key($settings['duplicate_policy']??'skip_existing'); $dedupe_map=$preview_service->build_dedupe_map($source,$items,$dup); $new=array(); $existing=array(); foreach((array)$items as $it){$eid=(string)($it['productCode']??''); if($eid==='' )continue; if(!empty($dedupe_map[$eid]['post_id'])) $existing[]=$it; else $new[]=$it;}
-            $visible = $criteria['hide_existing']==='1' ? $new : $items;
+            $visible = ($criteria['hide_existing']==='1' && $criteria['show_existing']!=='1') ? $new : $items;
             echo '<div class="postbox"><h2 class="hndle"><span>Criteri applicati</span></h2><div class="inside"><p>Modello: '.esc_html($criteria['import_search_model']).' · Keyword: '.esc_html($criteria['import_search_term']).' · Destination: '.esc_html($criteria['import_destination_id']).' · Quantità: '.(int)$criteria['import_limit'].' · Mostra solo nuovi: '.($criteria['hide_existing']==='1'?'Sì':'No').'</p></div></div>';
-            echo '<div class="postbox"><h2 class="hndle"><span>Risultati anteprima</span></h2><div class="inside"><p>Recuperati API: '.count((array)$items).' · Nuovi mostrati: '.count($visible).' · Già importati nascosti: '.count($existing).'</p>';
+            $next_start=(int)$criteria['import_start']+max(1,min(50,(int)$criteria['import_limit']));
+            $load_more_url=add_query_arg(array_merge($_GET,array('criteria_token'=>$criteria_token,'load_preview'=>'1','import_start'=>$next_start)),admin_url('edit.php'));
+            echo '<div class="postbox"><h2 class="hndle"><span>Risultati anteprima</span></h2><div class="inside"><p>Recuperati API: '.count((array)$items).' · Nuovi mostrati: '.count($visible).' · Già importati nascosti: '.count($existing).' · Start corrente: '.(int)$criteria['import_start'].' · Prossimo start: '.$next_start.'</p><p><button type="button" class="button alma-load-more-results" data-href="'.esc_url($load_more_url).'">Carica altri risultati</button></p>';
             echo '<form method="post">'; wp_nonce_field('alma_import_selected','alma_import_selected_nonce'); echo '<input type="hidden" name="action_type" value="import_selected_items"/><input type="hidden" name="source_id" value="'.(int)$source_id.'"/><input type="hidden" name="criteria_token" value="'.esc_attr($criteria_token).'"/><input type="hidden" name="import_search_model" value="'.esc_attr($criteria['import_search_model']).'"/><input type="hidden" name="import_search_term" value="'.esc_attr($criteria['import_search_term']).'"/><input type="hidden" name="import_destination_id" value="'.esc_attr($criteria['import_destination_id']).'"/><input type="hidden" name="import_limit" value="'.(int)$criteria['import_limit'].'"/><input type="hidden" name="import_start" value="'.(int)$criteria['import_start'].'"/><input type="hidden" name="next_start" value="'.(int)$criteria['next_start'].'"/><input type="hidden" name="show_existing" value="'.esc_attr($criteria['show_existing']).'"/><input type="hidden" name="auto_fill_new_items" value="'.esc_attr($criteria['auto_fill_new_items']).'"/>';
             echo '<p><button type="button" class="button alma-select-all">Seleziona tutti</button> <button type="button" class="button alma-deselect-all">Deseleziona tutti</button> <span class="alma-selected-counter">0 selezionati</span></p><table class="widefat striped alma-import-preview"><thead><tr><th></th><th>Titolo</th><th>External ID</th><th>Azione</th></tr></thead><tbody>';
             foreach((array)$visible as $it){$eid=(string)($it['productCode']??''); if($eid==='')continue; $exists=!empty($dedupe_map[$eid]['post_id']); echo '<tr><td><input class="alma-select-item" type="checkbox" name="selected_external_ids[]" value="'.esc_attr($eid).'" '.checked(!$exists,true,false).'></td><td>'.esc_html($it['title']??$it['name']??'—').'</td><td>'.esc_html($eid).'</td><td>'.($exists?'salta':'crea').'</td></tr>';}
-            echo '</tbody></table><p><button class="button button-primary" '.(empty($term_ids)?'disabled':'').'>Importa selezionati</button></p></form></div></div>';
+            if(empty($term_ids)){ echo '<p class="description">I Link saranno creati senza Tipologia Link.</p>'; }
+            echo '</tbody></table><p><button class="button button-primary">Importa selezionati</button></p></form></div></div>';
         }
         echo '</div>';
     }

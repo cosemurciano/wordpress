@@ -34,7 +34,7 @@ jQuery(function($){
     e.preventDefault();
     var $btn=$(this), $row=$btn.closest('td, .alma-test-connection-wrap'), $res=$row.find('.alma-inline-result').first();
     $res.removeClass('ok err').text('Test in corso...');
-    $.post(ajaxurl,{action:'alma_test_source_connection', nonce:(window.almaSources&&almaSources.testNonce)||'', source_id:$btn.data('source-id')})
+    $.post(ajaxurl,{action:'alma_test_source_connection', nonce:(window.almaSourcePresets&&almaSourcePresets.nonce)||(window.almaSources&&almaSources.testNonce)||'', source_id:$btn.data('source-id')})
       .done(function(r){ $res.addClass(r&&r.success?'ok':'err').text((r&&r.data&&r.data.message)||'Risposta non valida'); })
       .fail(function(){ $res.addClass('err').text('Errore di rete'); });
   });
@@ -48,6 +48,12 @@ jQuery(function($){
   $(document).on('change','input[name="show_existing"]',function(){ $('.alma-row-existing').toggle($(this).is(':checked')); });
   $(document).on('change','input[name="auto_fill_new_items"]',function(){ $('.alma-auto-fill-note').toggle($(this).is(':checked')); });
   $(document).on('click','.alma-toggle-advanced-filters',function(e){ e.preventDefault(); $('.alma-advanced-filters').toggleClass('is-open'); });
+
+  $(document).on('click','.alma-load-more-results',function(e){
+    e.preventDefault();
+    var $btn=$(this), url=$btn.data('href');
+    if(url){ window.location.href=url; }
+  });
 
   renderProviderFields();
   toggleSearchHints();
