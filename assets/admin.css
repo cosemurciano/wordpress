@@ -626,3 +626,11 @@ button:disabled {
 .alma-required-field {
     border-color: #d63638;
 }
+
+/* AI Content Agent admin scoped refresh */
+.alma-ai-agent-admin .alma-agent-hero{background:#fff;border:1px solid #dcdcde;padding:16px;margin:12px 0;border-radius:6px}
+.alma-ai-agent-admin .alma-agent-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;margin:14px 0}
+.alma-ai-agent-admin .alma-agent-card{background:#fff;border:1px solid #dcdcde;padding:12px;border-radius:6px}
+.alma-ai-agent-admin .alma-badge{display:inline-block;padding:2px 8px;border-radius:999px;background:#f0f0f1}
+.alma-ai-agent-admin .alma-badge.is-success{background:#d1e7dd}
+.alma-ai-agent-admin .alma-badge.is-warning,.alma-ai-agent-admin .alma-badge.is-pending{background:#fff3cd}

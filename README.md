@@ -277,3 +277,7 @@ Workflow base completo: genera idee → genera brief → genera bozza → apri i
 - Meta AI e SEO interni ALMA salvati sul post draft; warning QA salvati in meta.
 - Fix pre-Step4 inclusi: log errori save idee e overview robusta con tabelle mancanti.
 - OpenAI-only: nessun Claude, nessun provider router.
+
+## AI Content Agent UI Refresh
+- Nuova UI admin AI Content Agent con Dashboard come tab iniziale e nuova navigazione workflow: Dashboard, Idee contenuto, Documenti TXT, Fonti online AI, Reindicizza, Stato/log.
+- Migliorata leggibilità con cards, badge stato, empty state e CTA rapide verso i passaggi principali.
