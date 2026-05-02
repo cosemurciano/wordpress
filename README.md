@@ -238,3 +238,11 @@ Questa versione introduce il Data Layer locale dell'AI Content Agent (Knowledge 
 - Generazione idee e brief su azione esplicita admin.
 - Nessuna creazione bozze, pubblicazione o scheduler.
 - OpenAI-only, nessun Claude/provider router.
+
+
+## Step 3.5 – Istruzioni AI
+- Rimossa la vecchia area legacy "PROMPT PER AI DEVELOPER".
+- Nuova tab AI Content Agent: "Istruzioni AI" per regia editoriale (tono, SEO, affiliate, anti-duplicazione, disclosure).
+- Profili istruzioni salvati su tabella dedicata, con profilo default e attivazione/disattivazione.
+- Planner e Brief usano il profilo attivo e salvano riferimento/snapshot compatto.
+- Nessuna bozza WordPress, nessuna pubblicazione e nessuno scheduler aggiunto in questo step.

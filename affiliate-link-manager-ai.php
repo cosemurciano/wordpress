@@ -3,7 +3,7 @@
  * Plugin Name: Affiliate Link Manager AI
  * Plugin URI: https://your-website.com
  * Description: Gestisce link affiliati con intelligenza artificiale per ottimizzazione e tracking automatico.
- * Version: 2.17.0
+ * Version: 2.18.0
  * Author: Cosè Murciano
  * License: GPL v2 or later
  * Text Domain: affiliate-link-manager-ai
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Definisci costanti del plugin
-define('ALMA_VERSION', '2.17.0');
+define('ALMA_VERSION', '2.18.0');
 define('ALMA_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('ALMA_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('ALMA_PLUGIN_FILE', __FILE__);
@@ -39,6 +39,7 @@ require_once ALMA_PLUGIN_DIR . 'includes/class-ai-content-agent-media-selector.p
 require_once ALMA_PLUGIN_DIR . 'includes/class-ai-content-agent-opportunity-scorer.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-ai-content-agent-planner.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-ai-content-agent-brief-builder.php';
+require_once ALMA_PLUGIN_DIR . 'includes/class-ai-content-agent-instructions-manager.php';
 
 require_once ALMA_PLUGIN_DIR . 'includes/class-affiliate-source-provider-interface.php';
 require_once ALMA_PLUGIN_DIR . 'includes/providers/class-affiliate-source-provider-manual.php';
@@ -1292,7 +1293,6 @@ class AffiliateManagerAI {
             'alma-bot-affiliate-settings',
             'affiliate-chat-ai',
             'alma-affiliate-sources',
-            'alma-prompt-ai-settings',
             'alma-ai-content-agent',
             'affiliate-link-manager-settings',
             'alma-css-editor',
@@ -1329,9 +1329,6 @@ class AffiliateManagerAI {
                             break;
                         case 'alma-affiliate-sources':
                             $item[0] = __('Affiliate Sources', 'affiliate-link-manager-ai');
-                            break;
-                        case 'alma-prompt-ai-settings':
-                            $item[0] = __('Prompt AI', 'affiliate-link-manager-ai');
                             break;
                         case 'affiliate-link-manager-settings':
                             $item[0] = __('Impostazioni', 'affiliate-link-manager-ai');
@@ -3637,9 +3634,5 @@ class AffiliateManagerAI {
 
 // Inizializza il plugin
 new AffiliateManagerAI();
-if (is_admin()) {
-    require_once ALMA_PLUGIN_DIR . 'includes/class-prompt-ai-admin.php';
-    new ALMA_Prompt_AI_Admin();
-}
 
 ?>
