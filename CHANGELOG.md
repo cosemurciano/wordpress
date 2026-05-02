@@ -1,3 +1,10 @@
+
+## 2.19.0
+- Step 4 MVP: Draft Builder end-to-end (idea→brief→draft WordPress) con sola bozza e apertura editor.
+- Nuova validazione QA locale per bozza, disclosure affiliate obbligatoria, validazione shortcode affiliate e featured image candidate.
+- Tab Bozze operativa e azione "Genera bozza" nella tab Idee (con prevenzione duplicati).
+- Fix review: logging fallimenti save_ideas come unsuccessful; overview evita COUNT su tabelle mancanti.
+- Architettura confermata OpenAI-only (nessun Claude/router/provider esterni).
 ## 2.18.1
 - Step 3.5.1 Admin Regression Fix: ripristinate tab operative Step 1/2 (Overview, Documenti, Fonti, Knowledge Base, Media Library, Reindicizzazione, Stato/Log).
 - Ripristinate action admin Step 2 (reindex_knowledge, reindex_media, index_document, save_note, save_source) con nonce/capability/sanitizzazione e notice post-action.

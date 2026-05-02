@@ -256,3 +256,16 @@ Questa versione introduce il Data Layer locale dell'AI Content Agent (Knowledge 
 - Profili istruzioni salvati su tabella dedicata, con profilo default e attivazione/disattivazione.
 - Planner e Brief usano il profilo attivo e salvano riferimento/snapshot compatto.
 - Nessuna bozza WordPress, nessuna pubblicazione e nessuno scheduler aggiunto in questo step.
+
+
+## Step 4 — Draft Builder MVP (v2.19.0)
+Workflow base completo: genera idee → genera brief → genera bozza → apri in editor WordPress.
+
+- Generazione bozza disponibile solo via click admin esplicito "Genera bozza" (nessuna chiamata OpenAI al page load).
+- Output AI JSON strutturato validato con fallback extract_first_json().
+- Salvataggio esclusivo in `post_status=draft` (mai pubblicazione/scheduler/cron).
+- Link affiliati in contenuto solo via shortcode `[affiliate_link id="ID" text="anchor"]` con validazione ID candidato.
+- Featured image solo da attachment ID candidato e valido in Media Library (nessuna modifica Media Library).
+- Meta AI e SEO interni ALMA salvati sul post draft; warning QA salvati in meta.
+- Fix pre-Step4 inclusi: log errori save idee e overview robusta con tabelle mancanti.
+- OpenAI-only: nessun Claude, nessun provider router.
