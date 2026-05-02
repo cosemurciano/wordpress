@@ -15,7 +15,39 @@ class ALMA_AI_Content_Agent_Store {
         ALMA_AI_Content_Agent_Instructions_Manager::ensure_default_profile();
     }
     public static function allowed_idea_statuses(){ return array('new','reviewed','approved','rejected','brief_ready','archived'); }
-    public static function save_ideas($ideas,$model,$diag=array()){ global $wpdb; $saved=0; foreach((array)$ideas as $idea){ $score=ALMA_AI_Content_Agent_Opportunity_Scorer::score(array('primary_keyword'=>$idea['primary_keyword']??'','secondary_keywords'=>$idea['secondary_keywords']??array(),'affiliate_candidates'=>$idea['affiliate_candidates']??array(),'image_candidates'=>$idea['image_candidates']??array(),'knowledge_count'=>$diag['knowledge_items']??0)); $wpdb->insert(self::table('content_ideas'), array('proposed_title'=>sanitize_text_field($idea['title']??''),'suggested_slug'=>sanitize_title($idea['suggested_slug']??($idea['title']??'')),'destination'=>sanitize_text_field($idea['destination']??''),'travel_theme'=>sanitize_text_field($idea['theme']??''),'primary_keyword'=>sanitize_text_field($idea['primary_keyword']??''),'secondary_keywords'=>wp_json_encode((array)($idea['secondary_keywords']??array())),'seo_intent'=>sanitize_text_field($idea['seo_intent']??''),'rationale'=>sanitize_textarea_field($idea['rationale']??''),'seo_score'=>$score['seo_score'],'monetization_score'=>$score['monetization_score'],'media_score'=>$score['media_score'],'knowledge_score'=>$score['knowledge_score'],'duplication_risk'=>$score['duplication_risk'],'priority_score'=>$score['priority_score'],'status'=>'new','affiliate_candidates'=>wp_json_encode((array)($idea['affiliate_candidates']??array())),'image_candidates'=>wp_json_encode((array)($idea['image_candidates']??array())),'knowledge_suggestions'=>wp_json_encode((array)($idea['knowledge_suggestions']??array())),'warnings'=>wp_json_encode((array)($idea['warnings']??array())),'instruction_profile_id'=>isset($diag['instruction_profile_id'])?absint($diag['instruction_profile_id']):null,'instruction_snapshot_hash'=>sanitize_text_field($diag['instruction_snapshot_hash']??''),'instruction_snapshot'=>sanitize_textarea_field($diag['instruction_snapshot']??''),'ai_model'=>sanitize_text_field($model),'created_at'=>current_time('mysql'),'updated_at'=>current_time('mysql'))); $saved++; } return $saved; }
+
+    public static function required_tables() {
+        return array(
+            ALMA_AI_Usage_Logger::table_name(),
+            self::table('knowledge_items'),
+            self::table('content_chunks'),
+            self::table('media_index'),
+            self::table('sources'),
+            self::table('jobs'),
+            self::table('content_ideas'),
+            self::table('editorial_briefs'),
+            self::table('instruction_profiles'),
+        );
+    }
+
+    public static function missing_tables() {
+        global $wpdb;
+        $missing = array();
+        foreach (self::required_tables() as $table_name) {
+            $exists = $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $table_name));
+            if ($exists !== $table_name) { $missing[] = $table_name; }
+        }
+        return $missing;
+    }
+    public static function save_ideas($ideas,$model,$diag=array()){
+        global $wpdb; $saved=0; $errors=array();
+        foreach((array)$ideas as $idea){
+            $score=ALMA_AI_Content_Agent_Opportunity_Scorer::score(array('primary_keyword'=>$idea['primary_keyword']??'','secondary_keywords'=>$idea['secondary_keywords']??array(),'affiliate_candidates'=>$idea['affiliate_candidates']??array(),'image_candidates'=>$idea['image_candidates']??array(),'knowledge_count'=>$diag['knowledge_items']??0));
+            $ok=$wpdb->insert(self::table('content_ideas'), array('proposed_title'=>sanitize_text_field($idea['title']??''),'suggested_slug'=>sanitize_title($idea['suggested_slug']??($idea['title']??'')),'destination'=>sanitize_text_field($idea['destination']??''),'travel_theme'=>sanitize_text_field($idea['theme']??''),'primary_keyword'=>sanitize_text_field($idea['primary_keyword']??''),'secondary_keywords'=>wp_json_encode((array)($idea['secondary_keywords']??array())),'seo_intent'=>sanitize_text_field($idea['seo_intent']??''),'rationale'=>sanitize_textarea_field($idea['rationale']??''),'seo_score'=>$score['seo_score'],'monetization_score'=>$score['monetization_score'],'media_score'=>$score['media_score'],'knowledge_score'=>$score['knowledge_score'],'duplication_risk'=>$score['duplication_risk'],'priority_score'=>$score['priority_score'],'status'=>'new','affiliate_candidates'=>wp_json_encode((array)($idea['affiliate_candidates']??array())),'image_candidates'=>wp_json_encode((array)($idea['image_candidates']??array())),'knowledge_suggestions'=>wp_json_encode((array)($idea['knowledge_suggestions']??array())),'warnings'=>wp_json_encode((array)($idea['warnings']??array())),'instruction_profile_id'=>isset($diag['instruction_profile_id'])?absint($diag['instruction_profile_id']):null,'instruction_snapshot_hash'=>sanitize_text_field($diag['instruction_snapshot_hash']??''),'instruction_snapshot'=>sanitize_textarea_field($diag['instruction_snapshot']??''),'ai_model'=>sanitize_text_field($model),'created_at'=>current_time('mysql'),'updated_at'=>current_time('mysql')));
+            if($ok){ $saved++; } else { $errors[] = sanitize_text_field($wpdb->last_error ?: 'insert_failed'); }
+        }
+        return array('saved'=>$saved,'errors'=>$errors);
+    }
     public static function get_ideas($status=''){ global $wpdb; $t=self::table('content_ideas'); if($status!=='' && in_array($status,self::allowed_idea_statuses(),true)){ return $wpdb->get_results($wpdb->prepare("SELECT * FROM $t WHERE status=%s ORDER BY id DESC",$status),ARRAY_A);} return $wpdb->get_results("SELECT * FROM $t ORDER BY id DESC LIMIT 100",ARRAY_A); }
     public static function get_idea($id){ global $wpdb; return $wpdb->get_row($wpdb->prepare("SELECT * FROM ".self::table('content_ideas')." WHERE id=%d",absint($id)),ARRAY_A); }
     public static function update_idea_status($id,$status){ if(!in_array($status,self::allowed_idea_statuses(),true)){ return false;} global $wpdb; return (bool)$wpdb->update(self::table('content_ideas'),array('status'=>$status,'updated_at'=>current_time('mysql')),array('id'=>absint($id))); }
