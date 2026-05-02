@@ -19,6 +19,10 @@ class ALMA_AI_Content_Agent_Text_Utils {
         return '';
     }
 
+    public static function extract_first_json($text) {
+        return ALMA_AI_Utils::extract_first_json((string) $text);
+    }
+
     public static function extract_keywords($text, $limit = 15) {
         $stop = array('the','and','for','with','this','that','from','your','you','sono','come','della','delle','degli','dallo','alla','alle','per','con','nel','nella','dove','quando','sulla','sulle','una','uno','gli','dei','del','che','non','tra');
         $text = mb_strtolower(self::normalize_text($text));

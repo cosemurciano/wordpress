@@ -13,8 +13,10 @@ class ALMA_AI_Content_Agent_Planner {
         $parsed = json_decode($res['response'], true);
         if (!is_array($parsed)) { $parsed = json_decode(ALMA_AI_Content_Agent_Text_Utils::extract_first_json($res['response']), true); }
         if (!is_array($parsed) || empty($parsed['ideas']) || !is_array($parsed['ideas'])) { return array('success'=>false,'error'=>'JSON idee non valido'); }
-        $saved = ALMA_AI_Content_Agent_Store::save_ideas($parsed['ideas'], $res['model'], $ctx['diagnostics']);
+        $save_result = ALMA_AI_Content_Agent_Store::save_ideas($parsed['ideas'], $res['model'], $ctx['diagnostics']);
+        $saved = (int)($save_result['saved'] ?? 0);
         ALMA_AI_Usage_Logger::log(array('task'=>'content_idea_generation','success'=>true,'model'=>$res['model'],'response_time'=>$res['response_time'] ?? null,'input_tokens'=>$res['usage']['input_tokens'] ?? null,'output_tokens'=>$res['usage']['output_tokens'] ?? null,'estimated_cost'=>$res['usage']['total_tokens'] ?? null));
-        return array('success'=>true,'saved'=>$saved,'diagnostics'=>$ctx['diagnostics']);
+        if ($saved < 1) { return array('success'=>false,'error'=>'Nessuna idea salvata (verificare database).','saved'=>0,'diagnostics'=>$ctx['diagnostics'],'db_errors'=>$save_result['errors'] ?? array()); }
+        return array('success'=>true,'saved'=>$saved,'diagnostics'=>$ctx['diagnostics'],'warnings'=>$save_result['errors'] ?? array());
     }
 }
