@@ -21,6 +21,9 @@ class ALMA_AI_Content_Agent_Admin {
         } elseif ($do === 'generate_brief') {
             $result = ALMA_AI_Content_Agent_Brief_Builder::generate_for_idea(absint($_POST['idea_id'] ?? 0));
             $result['message'] = empty($result['success']) ? ($result['error'] ?? 'Errore generazione brief.') : 'Brief generato.';
+        } elseif ($do === 'generate_draft') {
+            $result = ALMA_AI_Content_Agent_Draft_Builder::generate_for_idea(absint($_POST['idea_id'] ?? 0));
+            $result['message'] = empty($result['success']) ? ($result['error'] ?? 'Errore generazione bozza.') : 'Bozza generata.';
         } elseif ($do === 'save_instruction_profile') {
             $id = absint($_POST['profile_id'] ?? 0);
             $new_id = ALMA_AI_Content_Agent_Instructions_Manager::save_profile($_POST, $id);
@@ -78,17 +81,17 @@ class ALMA_AI_Content_Agent_Admin {
         elseif ($tab === 'reindex') { self::render_reindex_tab(); }
         elseif ($tab === 'log') { self::render_log_tab(); }
         elseif ($tab === 'idee') { self::render_ideas_tab(); }
-        else { echo '<p>Tab futura: non operativa in questo step.</p>'; }
+        elseif ($tab === 'bozze') { self::render_drafts_tab(); } else { echo '<p>Tab futura: non operativa in questo step.</p>'; }
         echo '</div>';
     }
 
     private static function render_overview_tab() { global $wpdb;
         $missing = ALMA_AI_Content_Agent_Store::missing_tables();
         echo '<h2>Overview</h2><ul>';
-        echo '<li>Knowledge items: '.(int)$wpdb->get_var("SELECT COUNT(*) FROM ".ALMA_AI_Content_Agent_Store::table('knowledge_items')).'</li>';
-        echo '<li>Chunks: '.(int)$wpdb->get_var("SELECT COUNT(*) FROM ".ALMA_AI_Content_Agent_Store::table('content_chunks')).'</li>';
-        echo '<li>Fonti: '.(int)$wpdb->get_var("SELECT COUNT(*) FROM ".ALMA_AI_Content_Agent_Store::table('sources')).'</li>';
-        echo '<li>Immagini indicizzate: '.(int)$wpdb->get_var("SELECT COUNT(*) FROM ".ALMA_AI_Content_Agent_Store::table('media_index')).'</li>';
+        echo empty($missing) || !in_array(ALMA_AI_Content_Agent_Store::table('knowledge_items'), $missing, true) ? '<li>Knowledge items: '.(int)$wpdb->get_var("SELECT COUNT(*) FROM ".ALMA_AI_Content_Agent_Store::table('knowledge_items')).'</li>' : '<li>Knowledge items: n/d (tabella mancante)</li>';
+        echo empty($missing) || !in_array(ALMA_AI_Content_Agent_Store::table('content_chunks'), $missing, true) ? '<li>Chunks: '.(int)$wpdb->get_var("SELECT COUNT(*) FROM ".ALMA_AI_Content_Agent_Store::table('content_chunks')).'</li>' : '<li>Chunks: n/d (tabella mancante)</li>';
+        echo empty($missing) || !in_array(ALMA_AI_Content_Agent_Store::table('sources'), $missing, true) ? '<li>Fonti: '.(int)$wpdb->get_var("SELECT COUNT(*) FROM ".ALMA_AI_Content_Agent_Store::table('sources')).'</li>' : '<li>Fonti: n/d (tabella mancante)</li>';
+        echo empty($missing) || !in_array(ALMA_AI_Content_Agent_Store::table('media_index'), $missing, true) ? '<li>Immagini indicizzate: '.(int)$wpdb->get_var("SELECT COUNT(*) FROM ".ALMA_AI_Content_Agent_Store::table('media_index')).'</li>' : '<li>Immagini indicizzate: n/d (tabella mancante)</li>';
         echo '<li>OpenAI: '.(empty(get_option('alma_openai_api_key',''))?'Non configurato':'Configurato').'</li>';
         echo '<li>Tabelle mancanti: '.(empty($missing)?'Nessuna':esc_html(implode(', ', $missing))).'</li></ul>';
     }
@@ -120,7 +123,7 @@ class ALMA_AI_Content_Agent_Admin {
     private static function render_ideas_tab() { $status = sanitize_key($_GET['idea_status'] ?? ''); echo '<h2>Genera idee</h2>'; self::action_form('generate_ideas','Genera idee','<input type="number" min="1" max="10" name="max_ideas" value="3"/> <input name="theme" placeholder="Tema"> <input name="destination" placeholder="Destinazione"><br><textarea name="temporary_instructions" class="large-text" rows="2" placeholder="Istruzioni aggiuntive per questa generazione (opzionale)"></textarea>');
         echo '<form method="get"><input type="hidden" name="post_type" value="affiliate_link"><input type="hidden" name="page" value="alma-ai-content-agent"><input type="hidden" name="tab" value="idee"><select name="idea_status"><option value="">Tutti gli stati</option>'; foreach(ALMA_AI_Content_Agent_Store::allowed_idea_statuses() as $st){ echo '<option '.selected($status,$st,false).' value="'.esc_attr($st).'">'.esc_html($st).'</option>'; } echo '</select> <button class="button">Filtra</button></form>';
         $ideas = ALMA_AI_Content_Agent_Store::get_ideas($status); echo '<table class="widefat striped"><thead><tr><th>ID</th><th>Titolo</th><th>Motivazione</th><th>Stato</th><th>SEO</th><th>Priority</th><th>Affiliati</th><th>Immagini</th><th>Model</th><th>Profile</th><th>Snapshot</th><th>Warning</th><th>Azioni</th></tr></thead><tbody>';
-        foreach($ideas as $i){ $warnings=implode(', ',(array)json_decode((string)($i['warnings']??'[]'),true)); echo '<tr><td>'.(int)$i['id'].'</td><td>'.esc_html($i['proposed_title']).'</td><td>'.esc_html($i['rationale']).'</td><td>'.esc_html($i['status']).'</td><td>'.esc_html($i['seo_score']).'</td><td>'.esc_html($i['priority_score']).'</td><td>'.count((array)json_decode((string)$i['affiliate_candidates'],true)).'</td><td>'.count((array)json_decode((string)$i['image_candidates'],true)).'</td><td>'.esc_html($i['ai_model']).'</td><td>'.(int)$i['instruction_profile_id'].'</td><td>'.esc_html(substr((string)$i['instruction_snapshot_hash'],0,12)).'</td><td>'.esc_html($warnings).'</td><td>'.self::inline_status_form((int)$i['id'],'approved','Approva').' '.self::inline_status_form((int)$i['id'],'rejected','Scarta').' '.self::inline_status_form((int)$i['id'],'archived','Archivia').' '.self::inline_brief_form((int)$i['id']).'</td></tr>';
+        foreach($ideas as $i){ $warnings=implode(', ',(array)json_decode((string)($i['warnings']??'[]'),true)); echo '<tr><td>'.(int)$i['id'].'</td><td>'.esc_html($i['proposed_title']).'</td><td>'.esc_html($i['rationale']).'</td><td>'.esc_html($i['status']).'</td><td>'.esc_html($i['seo_score']).'</td><td>'.esc_html($i['priority_score']).'</td><td>'.count((array)json_decode((string)$i['affiliate_candidates'],true)).'</td><td>'.count((array)json_decode((string)$i['image_candidates'],true)).'</td><td>'.esc_html($i['ai_model']).'</td><td>'.(int)$i['instruction_profile_id'].'</td><td>'.esc_html(substr((string)$i['instruction_snapshot_hash'],0,12)).'</td><td>'.esc_html($warnings).'</td><td>'.self::inline_status_form((int)$i['id'],'approved','Approva').' '.self::inline_status_form((int)$i['id'],'rejected','Scarta').' '.self::inline_status_form((int)$i['id'],'archived','Archivia').' '.self::inline_brief_form((int)$i['id']).' '.self::inline_draft_form((int)$i['id'], (string)$i['status']).'</td></tr';
             $brief=ALMA_AI_Content_Agent_Store::get_brief_by_idea((int)$i['id']); if($brief){ echo '<tr><td colspan="13"><details><summary>Brief esistente per idea #'.(int)$i['id'].'</summary><pre style="white-space:pre-wrap;">'.esc_html(wp_json_encode($brief, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE)).'</pre></details></td></tr>'; }
         }
         echo '</tbody></table>';
