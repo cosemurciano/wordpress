@@ -14,15 +14,23 @@ class ALMA_AI_Content_Agent_Draft_Quality_Checker {
             $warnings[] = 'Disclosure affiliati aggiunta automaticamente dal plugin.';
         }
         $content = preg_replace('#<(script|iframe|embed)[^>]*>.*?</\1>#is', '', $content);
-        $content = preg_replace('/https?:\/\/[^\s"\']+/i', '', $content);
+        $content = preg_replace_callback('/https?:\/\/[^\s<>"\']+/i', function($m) use (&$warnings){
+            $url = esc_url_raw($m[0]);
+            if (strpos($url, home_url()) === 0) { return $m[0]; }
+            $warnings[] = 'URL grezzo rimosso per sicurezza QA.';
+            return '';
+        }, $content);
         $used = array();
-        if (preg_match_all('/\[affiliate_link\s+[^"]*id=["\']?(\d+)["\']?[^\]]*\]/', $content, $m)) {
-            foreach ((array)$m[1] as $id) {
-                $id = absint($id);
-                if ($id > 0 && in_array($id, $candidate_affiliate_ids, true) && get_post_type($id) === 'affiliate_link') { $used[] = $id; }
-                else { $warnings[] = 'Shortcode affiliato non valido rimosso (ID '.$id.').'; $content = preg_replace('/\[affiliate_link[^\]]*id=["\']?'.$id.'["\']?[^\]]*\]/', '', $content); }
-            }
-        }
+        $content = preg_replace_callback('/\[affiliate_link\b([^\]]*)\]/i', function($matches) use (&$used, &$warnings, $candidate_affiliate_ids){
+            $attrs = shortcode_parse_atts(trim((string)$matches[1]));
+            $raw_id = $attrs['id'] ?? '';
+            $id = is_numeric($raw_id) ? absint($raw_id) : 0;
+            if (!$id) { $warnings[] = 'Shortcode affiliato rimosso: ID mancante o non numerico.'; return ''; }
+            $post = get_post($id);
+            if (!$post || $post->post_type !== 'affiliate_link' || !in_array($id, $candidate_affiliate_ids, true) || !in_array($post->post_status, array('publish','private','draft','pending'), true)) { $warnings[] = 'Shortcode affiliato non valido rimosso (ID '.$id.').'; return ''; }
+            $used[] = $id;
+            return $matches[0];
+        }, $content);
         $featured = absint($payload['featured_image_id'] ?? 0);
         if ($featured && (!in_array($featured, $candidate_image_ids, true) || get_post_type($featured) !== 'attachment')) { $warnings[]='Featured image non valida rimossa.'; $featured=0; }
         $inline = array_values(array_filter(array_map('absint', (array)($payload['inline_image_ids'] ?? array()))));
