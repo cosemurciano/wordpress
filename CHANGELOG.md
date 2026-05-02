@@ -1,3 +1,9 @@
+## 2.18.0
+- Step 3.5 AI Content Agent: rimossa area legacy "PROMPT PER AI DEVELOPER" e relativi asset/menu.
+- Aggiunta tab "Istruzioni AI" con profili editoriali e profilo default.
+- Planner/Brief integrano profilo istruzioni attivo con snapshot/hash (senza log prompt completi).
+- OpenAI-only confermato; nessuna creazione bozze/pubblicazioni/scheduler in questo step.
+
 
 ## 2.17.0
 - AI Content Agent Step 3: Editorial Planner and Briefs (OpenAI-only).
