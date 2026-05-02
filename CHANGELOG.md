@@ -209,6 +209,12 @@
 - Pagina Campi importabili migliorata: campi rilevati + catalogo campi documentati Viator, mapping suggeriti e note compliance.
 - Note compliance: `productUrl` va conservato invariato; recensioni e `viatorUniqueContent` solo diagnostici; booking/checkout/pagamenti non inclusi.
 
+
+## 2.16.1
+- Hotfix compatibilità `dbDelta()`: rimosso `IF NOT EXISTS` da tutte le query `CREATE TABLE` usate nelle routine schema AI e analytics.
+- Aggiornate routine activation/update per rieseguire creazione/migrazione schema AI in modo non distruttivo.
+- Aggiunta diagnostica tabelle AI mancanti nel pannello AI Content Agent (tab Overview/Stato-Log).
+
 ## 2.16.0
 - AI Content Agent Step 2 Data Layer: storage custom per knowledge/chunks/media/fonti/jobs, indicizzazione batch locale, document manager su Media Library nativa, source manager, knowledge/media tabs operative.
 - Nessuna generazione contenuti, nessuna bozza, nessuno scheduler, nessun provider router/Claude.

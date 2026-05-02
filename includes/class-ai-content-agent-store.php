@@ -99,4 +99,28 @@ class ALMA_AI_Content_Agent_Store {
             KEY started_at (started_at)
         ) $charset;");
     }
+
+
+    public static function required_tables() {
+        return array(
+            'usage' => self::table('usage'),
+            'knowledge_items' => self::table('knowledge_items'),
+            'content_chunks' => self::table('content_chunks'),
+            'media_index' => self::table('media_index'),
+            'sources' => self::table('sources'),
+            'jobs' => self::table('jobs'),
+        );
+    }
+
+    public static function missing_tables() {
+        global $wpdb;
+        $missing = array();
+        foreach (self::required_tables() as $key => $table) {
+            if ($wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $table)) !== $table) {
+                $missing[] = $key;
+            }
+        }
+        return $missing;
+    }
+
 }
