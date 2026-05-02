@@ -220,3 +220,10 @@ Miglioramenti principali:
 - Configurazione API in Impostazioni con test connessione manuale.
 - Logging token/costi/tempi su storage dedicato.
 - AI Content Agent: pannello admin preparatorio (senza generazione automatica contenuti in questo step).
+
+### AI Content Agent Step 2 (Data Layer)
+Questa versione introduce il Data Layer locale dell'AI Content Agent (Knowledge Base, Documenti, Fonti, Media Library Intelligence) con storage custom e indicizzazione batch manuale.
+- Media Library WordPress resta la sorgente unica per immagini/documenti attachment.
+- Nessuna generazione contenuti, nessuna creazione bozze, nessuno scheduler/cron nuovo, nessuna trend analysis automatica.
+- OpenAI resta configurato solo in Impostazioni e non viene chiamato automaticamente durante l'indicizzazione.
+- Nessun supporto Claude e nessun AI Provider Router.

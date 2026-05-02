@@ -208,3 +208,7 @@
 - Discovery campi Viator con supporto `products_search` e `freetext_search`, cache temporanea e nessun salvataggio raw della risposta.
 - Pagina Campi importabili migliorata: campi rilevati + catalogo campi documentati Viator, mapping suggeriti e note compliance.
 - Note compliance: `productUrl` va conservato invariato; recensioni e `viatorUniqueContent` solo diagnostici; booking/checkout/pagamenti non inclusi.
+
+## 2.16.0
+- AI Content Agent Step 2 Data Layer: storage custom per knowledge/chunks/media/fonti/jobs, indicizzazione batch locale, document manager su Media Library nativa, source manager, knowledge/media tabs operative.
+- Nessuna generazione contenuti, nessuna bozza, nessuno scheduler, nessun provider router/Claude.
