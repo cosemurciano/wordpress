@@ -6,6 +6,11 @@ jQuery(function($){
     $('.alma-search-term-wrap').toggle(m === 'freetext_search');
     $('.alma-destination-wrap').toggle(m !== 'freetext_search');
   }
+  function syncResultFilters(){
+    var hideExisting = $('input[name="hide_existing"]').is(':checked');
+    var showExisting = $('input[name="show_existing"]').is(':checked');
+    $('.alma-row-existing').toggle(!hideExisting || showExisting);
+  }
   function renderProviderFields(){
     var existingSettings = parseJson('#alma-existing-settings');
     var existingCredFlags = parseJson('#alma-existing-credentials-flags');
@@ -44,8 +49,7 @@ jQuery(function($){
   $(document).on('change','.alma-select-item',updateSelected);
   $(document).on('change','#import_search_model',toggleSearchHints);
   $(document).on('change','input[name="import_availability_range"]',function(){ $('.alma-date-custom-wrap').toggle($(this).val()==='custom'); });
-  $(document).on('change','input[name="hide_existing"]',function(){ $('.alma-show-existing-wrap').toggle($(this).is(':checked')); });
-  $(document).on('change','input[name="show_existing"]',function(){ $('.alma-row-existing').toggle($(this).is(':checked')); });
+  $(document).on('change','input[name="hide_existing"], input[name="show_existing"]',syncResultFilters);
   $(document).on('change','input[name="auto_fill_new_items"]',function(){ $('.alma-auto-fill-note').toggle($(this).is(':checked')); });
   $(document).on('click','.alma-toggle-advanced-filters',function(e){ e.preventDefault(); $('.alma-advanced-filters').toggleClass('is-open'); });
 
@@ -58,4 +62,5 @@ jQuery(function($){
   renderProviderFields();
   toggleSearchHints();
   updateSelected();
+  syncResultFilters();
 });

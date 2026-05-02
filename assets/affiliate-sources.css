@@ -11,3 +11,12 @@
 .alma-inline-result.ok{color:#0a5c2f}.alma-inline-result.err{color:#842029}
 
 .alma-badge{display:inline-block;padding:2px 8px;border-radius:10px;background:#eef3ff;margin-right:4px}.alma-import-page .alma-badge-warning{background:#fff8e5;padding:2px 8px;border-radius:10px}.alma-load-more-results{margin:8px 0}
+
+.alma-import-filters{margin:14px 0 4px;padding:12px;border:1px solid #dcdcde;border-radius:8px;background:#f6f7f7}
+.alma-import-filters h3{margin:0 0 10px;font-size:14px}
+.alma-import-filters p{margin:0 0 8px}
+.alma-import-filters p:last-child{margin-bottom:0}
+.alma-import-filters label{display:flex;align-items:center;gap:8px}
+.alma-import-preview th:nth-child(3),.alma-import-preview td:nth-child(3){width:170px}
+.alma-affiliate-link{display:inline-block;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom}
+.alma-affiliate-link-empty{color:#646970}
