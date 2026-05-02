@@ -1,3 +1,8 @@
+## 2.14.3
+- Pagina **Importa contenuti**: aggiunta sezione **Filtri risultati** con checkbox `Solo nuovi nel plugin`, `Mostra anche già importati` e `Riempi automaticamente preview con nuovi item`.
+- Nella tabella anteprima aggiunta colonna **Link affiliato** (usa `productUrl` originale): link `Apri` in nuova tab con `rel="noopener noreferrer"`, tooltip URL completo e fallback `N/D` se assente.
+- Aggiornati JS/CSS per mantenere i filtri tra preview/paginazione e migliorare layout/allineamento in stile admin WordPress.
+
 ## 2.14.2
 - Completamento UX Importa contenuti: supporto start incrementale Viator, filtro Solo nuovi da API, toggle mostra già importati, criteria token transient e miglioramenti preview/import selezionati.
 - Correzioni su import_include_automatic_translations default=1 e limite richiesta Viator a max 50 risultati per chiamata.
