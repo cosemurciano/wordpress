@@ -3565,6 +3565,7 @@ class AffiliateManagerAI {
         ALMA_AI_Usage_Logger::create_table();
         ALMA_Affiliate_Source_Manager::create_tables();
         $this->create_default_categories();
+        update_option('alma_db_schema_version', '3');
         update_option('alma_plugin_version', ALMA_VERSION);
         flush_rewrite_rules();
     }
@@ -3578,9 +3579,11 @@ class AffiliateManagerAI {
     public function maybe_run_update_tasks() {
         $installed_version = get_option('alma_plugin_version', '0.0.0');
         if (version_compare($installed_version, ALMA_VERSION, '<')) {
+            ALMA_AI_Content_Agent_Store::install();
             $this->create_analytics_table();
-        ALMA_AI_Usage_Logger::create_table();
+            ALMA_AI_Usage_Logger::create_table();
             ALMA_Affiliate_Source_Manager::create_tables();
+            update_option('alma_db_schema_version', '3');
             update_option('alma_plugin_version', ALMA_VERSION);
         }
     }
@@ -3591,7 +3594,7 @@ class AffiliateManagerAI {
         $table_name = $wpdb->prefix . 'alma_analytics';
         $charset_collate = $wpdb->get_charset_collate();
         
-        $sql = "CREATE TABLE IF NOT EXISTS $table_name (
+        $sql = "CREATE TABLE $table_name (
             id mediumint(9) NOT NULL AUTO_INCREMENT,
             link_id mediumint(9) NOT NULL,
             click_time datetime DEFAULT CURRENT_TIMESTAMP NOT NULL,

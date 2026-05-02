@@ -227,3 +227,9 @@ Questa versione introduce il Data Layer locale dell'AI Content Agent (Knowledge 
 - Nessuna generazione contenuti, nessuna creazione bozze, nessuno scheduler/cron nuovo, nessuna trend analysis automatica.
 - OpenAI resta configurato solo in Impostazioni e non viene chiamato automaticamente durante l'indicizzazione.
 - Nessun supporto Claude e nessun AI Provider Router.
+
+
+### AI Content Agent Step 2.1 (dbDelta schema compatibility hotfix)
+- Corrette tutte le query `CREATE TABLE` passate a `dbDelta()` rimuovendo `IF NOT EXISTS` per compatibilità con parser schema WordPress.
+- Aggiunti controlli diagnostici tabelle AI mancanti nella sezione Stato/Log del pannello AI Content Agent.
+- Aggiornato il flusso di update plugin per rieseguire in sicurezza le routine schema AI senza operazioni distruttive.
