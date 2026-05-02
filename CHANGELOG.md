@@ -252,3 +252,11 @@
 ## 2.16.0
 - AI Content Agent Step 2 Data Layer: storage custom per knowledge/chunks/media/fonti/jobs, indicizzazione batch locale, document manager su Media Library nativa, source manager, knowledge/media tabs operative.
 - Nessuna generazione contenuti, nessuna bozza, nessuno scheduler, nessun provider router/Claude.
+
+## 2026-05-02 - PR 1 — AI Content Agent UI Refresh & Workflow Navigation
+- Refresh UI AI Content Agent.
+- Nuova struttura tab con Dashboard iniziale.
+- Dashboard operativa con metriche e quick actions.
+- Rinomina tab: Documenti TXT, Fonti online AI, Reindicizza.
+- Rimozione dalla UI del salvataggio note manuali.
+- Preparazione workflow per futura creazione bozza articolo (UI placeholder).
