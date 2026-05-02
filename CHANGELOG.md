@@ -1,3 +1,9 @@
+## 2.15.0
+- OpenAI-only core: rimosse chiamate operative Claude/Anthropic, introdotto servizio unico OpenAI Responses API via `wp_remote_post`.
+- Nuove impostazioni OpenAI in pagina Impostazioni con test connessione dedicato, stato configurazione, model selector (gpt-5.4-mini default).
+- Aggiunto logging utilizzo AI su tabella dedicata `*_alma_ai_usage`.
+- Aggiunto shell admin `AI Content Agent` con tab preparatorie non operative.
+
 ## 2.14.3
 - Pagina **Importa contenuti**: aggiunta sezione **Filtri risultati** con checkbox `Solo nuovi nel plugin`, `Mostra anche già importati` e `Riempi automaticamente preview con nuovi item`.
 - Nella tabella anteprima aggiunta colonna **Link affiliato** (usa `productUrl` originale): link `Apri` in nuova tab con `rel="noopener noreferrer"`, tooltip URL completo e fallback `N/D` se assente.

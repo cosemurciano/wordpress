@@ -415,7 +415,7 @@ class ALMA_Bot_Affiliate {
             "Non generare o menzionare link esterni o non presenti nella lista. Rispondi in formato JSON: [{\\\"title\\\":\\\"Titolo\\\",\\\"url\\\":\\\"https://esempio.com\\\"}]\n" .
             "Link disponibili:\n{$list_text}\nContenuto:\n" . wp_strip_all_tags($content);
 
-        $result = ALMA_AI_Utils::call_claude_api($prompt);
+        $result = ALMA_AI_Utils::call_openai_api($prompt);
         if (!$result['success']) {
             return array();
         }

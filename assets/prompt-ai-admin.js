@@ -46,7 +46,7 @@ jQuery(document).ready(function($){
         });
     });
 
-    $('#alma-test-claude').on('click', function(e){
+    $('#alma-test-openai').on('click', function(e){
         e.preventDefault();
         var data = {
             action: 'alma_test_prompt',
@@ -54,12 +54,12 @@ jQuery(document).ready(function($){
             message: $('#alma-test-message').val(),
             context: $('#alma-test-context').val()
         };
-        $('#alma-test-claude').prop('disabled', true);
-        $('#alma-claude-response').text('...');
+        $('#alma-test-openai').prop('disabled', true);
+        $('#alma-openai-response').text('...');
         $('#alma-final-prompt').text('');
         $.post(alma_prompt_ai.ajax_url, data, function(resp){
             if(resp.success){
-                $('#alma-claude-response').text(resp.data.response);
+                $('#alma-openai-response').text(resp.data.response);
                 $('#alma-final-prompt').text(resp.data.prompt);
                 var links = resp.data.links || {};
                 var container = $('#alma-affiliate-links');
@@ -87,10 +87,10 @@ jQuery(document).ready(function($){
             } else {
                 alert(resp.data);
             }
-            $('#alma-test-claude').prop('disabled', false);
+            $('#alma-test-openai').prop('disabled', false);
         }).fail(function(){
             alert('Errore test');
-            $('#alma-test-claude').prop('disabled', false);
+            $('#alma-test-openai').prop('disabled', false);
         });
     });
 });
