@@ -7,7 +7,7 @@ if (!defined('ABSPATH')) {
 require_once ALMA_PLUGIN_DIR . 'includes/class-ai-utils.php';
 
 /**
- * Gestione impostazioni prompt AI per Claude
+ * Gestione impostazioni prompt AI per OpenAI
  */
 class ALMA_Prompt_AI_Admin {
     const OPTION_NAME = 'alma_prompt_ai_settings';
@@ -239,11 +239,11 @@ class ALMA_Prompt_AI_Admin {
                     </select>
                     <p class="description"><?php esc_html_e('Scegli il contesto da utilizzare nel test.', 'affiliate-link-manager-ai'); ?></p>
                 </div>
-                <p><button class="button" id="alma-test-claude"><?php esc_html_e('Testa comportamento AI', 'affiliate-link-manager-ai'); ?></button></p>
+                <p><button class="button" id="alma-test-openai"><?php esc_html_e('Testa comportamento AI', 'affiliate-link-manager-ai'); ?></button></p>
             </form>
             <div id="alma-test-result" style="display:none;">
-                <h3><?php esc_html_e('Risposta Claude', 'affiliate-link-manager-ai'); ?></h3>
-                <div id="alma-claude-response"></div>
+                <h3><?php esc_html_e('Risposta OpenAI', 'affiliate-link-manager-ai'); ?></h3>
+                <div id="alma-openai-response"></div>
                 <div id="alma-affiliate-links"></div>
                 <details>
                     <summary><?php esc_html_e('Prompt Finale', 'affiliate-link-manager-ai'); ?></summary>
@@ -320,7 +320,7 @@ class ALMA_Prompt_AI_Admin {
         $context = isset($_POST['context']) ? sanitize_text_field(wp_unslash($_POST['context'])) : 'general';
 
         $prompts  = self::build_prompt($message, $context);
-        $response = ALMA_AI_Utils::call_claude_api($prompts['user'], $prompts['system']);
+        $response = ALMA_AI_Utils::call_openai_api($prompts['user'], $prompts['system']);
 
         if (empty($response['success'])) {
             wp_send_json_error($response['error'] ?? __('Errore AI', 'affiliate-link-manager-ai'));
@@ -460,16 +460,16 @@ class ALMA_Prompt_AI_Admin {
         $message .= "\nRispondi esclusivamente con un oggetto JSON con i campi \"summary\" e \"results\". \"summary\" deve contenere una breve frase in italiano che spiega perché hai scelto i link. \"results\" è un array con massimo {$max_results} oggetti{\"id\":ID,\"description\":\"testo\",\"score\":COERENZA} dove COERENZA è 0-100. Rispondi esclusivamente con JSON valido, senza testo aggiuntivo.\n";
 
         $prompts  = self::build_prompt($message, 'search');
-        $response = ALMA_AI_Utils::call_claude_api($prompts['user'], $prompts['system']);
+        $response = ALMA_AI_Utils::call_openai_api($prompts['user'], $prompts['system']);
 
         if (empty($response['success'])) {
-            return new \WP_Error('claude_error', $response['error'] ?? __('Errore AI', 'affiliate-link-manager-ai'));
+            return new \WP_Error('openai_error', $response['error'] ?? __('Errore AI', 'affiliate-link-manager-ai'));
         }
 
         $clean = ALMA_AI_Utils::extract_first_json($response['response']);
         $items = json_decode($clean, true);
         if (!is_array($items) || !isset($items['results']) || !is_array($items['results'])) {
-            return new \WP_Error('claude_parse_error', __('Risposta non valida da Claude', 'affiliate-link-manager-ai'));
+            return new \WP_Error('openai_parse_error', __('Risposta non valida da OpenAI', 'affiliate-link-manager-ai'));
         }
 
         $summary = sanitize_text_field($items['summary']);

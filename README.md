@@ -26,7 +26,7 @@
 
 # Affiliate Link Manager AI
 
-Versione 2.12.1
+Versione 2.15.0
 
 
 ## Novità 2.12.1 — Pagina Importa contenuti + fix import
@@ -213,3 +213,10 @@ Miglioramenti principali:
 
 ## Versione 2.13.0
 - Nuova UX Importa contenuti con criteri ricerca runtime (max 100).
+
+
+## OpenAI-only AI Core (2.15.0)
+- Provider AI attivo unico: OpenAI.
+- Configurazione API in Impostazioni con test connessione manuale.
+- Logging token/costi/tempi su storage dedicato.
+- AI Content Agent: pannello admin preparatorio (senza generazione automatica contenuti in questo step).

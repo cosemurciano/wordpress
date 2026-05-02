@@ -3,7 +3,7 @@
  * Plugin Name: Affiliate Link Manager AI
  * Plugin URI: https://your-website.com
  * Description: Gestisce link affiliati con intelligenza artificiale per ottimizzazione e tracking automatico.
- * Version: 2.14.2
+ * Version: 2.15.0
  * Author: Cosè Murciano
  * License: GPL v2 or later
  * Text Domain: affiliate-link-manager-ai
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Definisci costanti del plugin
-define('ALMA_VERSION', '2.14.2');
+define('ALMA_VERSION', '2.15.0');
 define('ALMA_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('ALMA_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('ALMA_PLUGIN_FILE', __FILE__);
@@ -24,6 +24,9 @@ define('ALMA_PLUGIN_FILE', __FILE__);
 require_once ALMA_PLUGIN_DIR . 'includes/class-ai-utils.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-content-analysis-ai.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-dashboard-stats.php';
+require_once ALMA_PLUGIN_DIR . 'includes/class-openai-service.php';
+require_once ALMA_PLUGIN_DIR . 'includes/class-ai-usage-logger.php';
+require_once ALMA_PLUGIN_DIR . 'includes/class-ai-content-agent-admin.php';
 
 require_once ALMA_PLUGIN_DIR . 'includes/class-affiliate-source-provider-interface.php';
 require_once ALMA_PLUGIN_DIR . 'includes/providers/class-affiliate-source-provider-manual.php';
@@ -443,7 +446,7 @@ class AffiliateManagerAI {
             "Non menzionare o generare link esterni alla lista. Se nessun link è adatto, segnala che non sono disponibili suggerimenti. " .
             "Spiega brevemente le tue scelte prima della lista.";
 
-        $result = ALMA_AI_Utils::call_claude_api($user_prompt, $system_prompt, $conversation);
+        $result = ALMA_AI_Utils::call_openai_api($user_prompt, $system_prompt, $conversation);
 
         if (!$result['success']) {
             wp_send_json_error($result['error']);
@@ -492,6 +495,7 @@ class AffiliateManagerAI {
         // Crea la tabella se non esiste
         if ($wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $table_name)) != $table_name) {
             $this->create_analytics_table();
+        ALMA_AI_Usage_Logger::create_table();
         ALMA_Affiliate_Source_Manager::create_tables();
         }
 
@@ -635,7 +639,7 @@ class AffiliateManagerAI {
         // AJAX handlers
         add_action('wp_ajax_alma_get_ai_suggestions', array($this, 'ajax_get_ai_suggestions'));
         add_action('wp_ajax_alma_ai_suggest_text', array($this, 'ajax_ai_suggest_text'));
-        add_action('wp_ajax_alma_test_claude_api', array($this, 'ajax_test_claude_api'));
+        add_action('wp_ajax_alma_test_openai_connection', array($this, 'ajax_test_openai_connection'));
         add_action('wp_ajax_alma_get_performance_predictions', array($this, 'ajax_get_performance_predictions'));
         add_action('wp_ajax_alma_get_link_types', array($this, 'ajax_get_link_types'));
         add_action('wp_ajax_alma_import_affiliate_link', array($this, 'ajax_import_affiliate_link'));
@@ -1213,6 +1217,16 @@ class AffiliateManagerAI {
             array($this, 'render_bot_affiliate_settings_page')
         );
 
+        // AI Content Agent
+        add_submenu_page(
+            'edit.php?post_type=affiliate_link',
+            __('AI Content Agent', 'affiliate-link-manager-ai'),
+            __('AI Content Agent', 'affiliate-link-manager-ai'),
+            'manage_options',
+            'alma-ai-content-agent',
+            array('ALMA_AI_Content_Agent_Admin', 'render_page')
+        );
+
         // Affiliate Chat AI
         add_submenu_page(
             'edit.php?post_type=affiliate_link',
@@ -1267,6 +1281,7 @@ class AffiliateManagerAI {
             'affiliate-chat-ai',
             'alma-affiliate-sources',
             'alma-prompt-ai-settings',
+            'alma-ai-content-agent',
             'affiliate-link-manager-settings',
             'alma-css-editor',
         );
@@ -1419,10 +1434,18 @@ class AffiliateManagerAI {
             $analysis_types = array_map('sanitize_text_field', $_POST['alma_content_analysis_post_types'] ?? array());
             update_option('alma_content_analysis_post_types', $analysis_types);
 
-            // Claude API settings
-            update_option('alma_claude_api_key', sanitize_text_field($_POST['claude_api_key'] ?? ''));
-            update_option('alma_claude_model', sanitize_text_field($_POST['claude_model'] ?? 'claude-3-haiku-20240307'));
-            update_option('alma_claude_temperature', floatval($_POST['claude_temperature'] ?? 0.7));
+            // OpenAI API settings
+            if (!empty($_POST['alma_clear_openai_api_key'])) {
+                delete_option('alma_openai_api_key');
+            } elseif (!empty($_POST['openai_api_key'])) {
+                update_option('alma_openai_api_key', sanitize_text_field($_POST['openai_api_key']));
+            }
+            $selected_model = sanitize_text_field($_POST['openai_model'] ?? 'gpt-5.4-mini');
+            $custom_model = sanitize_text_field($_POST['openai_model_custom'] ?? '');
+            update_option('alma_openai_model', $custom_model !== '' ? $custom_model : $selected_model);
+            update_option('alma_openai_max_output_tokens', absint($_POST['openai_max_output_tokens'] ?? 600));
+            update_option('alma_openai_timeout', absint($_POST['openai_timeout'] ?? 30));
+            update_option('alma_openai_temperature', floatval($_POST['openai_temperature'] ?? 0.7));
             
             echo '<div class="notice notice-success"><p>' . __('Impostazioni salvate!', 'affiliate-link-manager-ai') . '</p></div>';
         }
@@ -1430,9 +1453,9 @@ class AffiliateManagerAI {
         // Recupera impostazioni attuali
         $track_logged_out = get_option('alma_track_logged_out', 'yes');
         $enable_ai = get_option('alma_enable_ai', 'yes');
-        $claude_api_key = get_option('alma_claude_api_key', '');
-        $claude_model = get_option('alma_claude_model', 'claude-3-haiku-20240307');
-        $claude_temperature = get_option('alma_claude_temperature', 0.7);
+        $openai_api_key = get_option('alma_openai_api_key', '');
+        $openai_model = get_option('alma_openai_model', 'gpt-5.4-mini');
+        $openai_temperature = get_option('alma_openai_temperature', 0.7);
         $allowed_post_types = get_option('alma_link_post_types', array('post', 'page'));
 
         ?>
@@ -1449,7 +1472,7 @@ class AffiliateManagerAI {
                     <a href="#general" class="nav-tab nav-tab-active">Generale</a>
                     <a href="#tracking" class="nav-tab">Tracking</a>
                     <a href="#ai" class="nav-tab">AI Settings</a>
-                    <a href="#claude" class="nav-tab">Claude API</a>
+                    <a href="#openai" class="nav-tab">OpenAI API</a>
                     <a href="#content-analysis" class="nav-tab">Content Analysis AI</a>
                     <a href="#editor" class="nav-tab">Editor</a>
                     <a href="#cleanup" class="nav-tab">Pulizia</a>
@@ -1520,68 +1543,57 @@ class AffiliateManagerAI {
                     </table>
                 </div>
                 
-                <!-- Claude API Settings -->
-                <div id="claude" class="alma-settings-section" style="display:none;">
-                    <h2>🧠 Claude API Configuration</h2>
+                <!-- OpenAI API Settings -->
+                <div id="openai" class="alma-settings-section" style="display:none;">
+                    <h2>🧠 OpenAI API Configuration</h2>
                     <table class="form-table">
                         <tr>
                             <th scope="row">
-                                <label for="claude_api_key">API Key</label>
+                                <label for="openai_api_key">API Key</label>
                             </th>
                             <td>
                                 <input type="password" 
-                                       name="claude_api_key" 
-                                       id="claude_api_key" 
-                                       value="<?php echo esc_attr($claude_api_key); ?>" 
+                                       name="openai_api_key" 
+                                       id="openai_api_key" 
+                                       value="" 
                                        class="regular-text" />
                                 <button type="button" class="button alma-toggle-api-key">👁 Mostra</button>
-                                <p class="description">
-                                    Ottieni la tua API key da 
-                                    <a href="https://console.anthropic.com/" target="_blank">Anthropic Console</a>
+                                <label><input type="checkbox" name="alma_clear_openai_api_key" value="1" /> Cancella API key salvata</label><p class="description">Ottieni la tua API key da 
+                                    <a href="https://platform.openai.com/" target="_blank">OpenAI Platform</a>
                                 </p>
                             </td>
                         </tr>
                         <tr>
                             <th scope="row">
-                                <label for="claude_model">Modello</label>
+                                <label for="openai_model">Modello</label>
                             </th>
                             <td>
-                                <select name="claude_model" id="claude_model">
-                                    <option value="claude-3-haiku-20240307" <?php selected($claude_model, 'claude-3-haiku-20240307'); ?>>
-                                        Claude 3 Haiku (Veloce ed economico)
-                                    </option>
-                                    <option value="claude-3-sonnet-20240229" <?php selected($claude_model, 'claude-3-sonnet-20240229'); ?>>
-                                        Claude 3 Sonnet (Bilanciato)
-                                    </option>
-                                    <option value="claude-3-opus-20240229" <?php selected($claude_model, 'claude-3-opus-20240229'); ?>>
-                                        Claude 3 Opus (Più potente)
-                                    </option>
-                                </select>
+                                <select name="openai_model" id="openai_model"><option value="gpt-5.4-mini" <?php selected($openai_model, 'gpt-5.4-mini'); ?>>gpt-5.4-mini (consigliato)</option><option value="gpt-5.4" <?php selected($openai_model, 'gpt-5.4'); ?>>gpt-5.4</option><option value="gpt-5.5" <?php selected($openai_model, 'gpt-5.5'); ?>>gpt-5.5</option></select><p><input type="text" name="openai_model_custom" placeholder="Modello custom (opzionale)" /></p>
                             </td>
                         </tr>
                         <tr>
                             <th scope="row">
-                                <label for="claude_temperature">Temperature</label>
+                                <label for="openai_temperature">Temperature</label>
                             </th>
                             <td>
                                 <input type="number" 
-                                       name="claude_temperature" 
-                                       id="claude_temperature" 
-                                       value="<?php echo esc_attr($claude_temperature); ?>" 
+                                       name="openai_temperature" 
+                                       id="openai_temperature" 
+                                       value="<?php echo esc_attr($openai_temperature); ?>" 
                                        min="0" 
                                        max="1" 
                                        step="0.1" 
                                        style="width:80px;" />
                                 <p class="description">0 = Deterministico, 1 = Creativo (default: 0.7)</p>
                             </td>
-                        </tr>
+                        </tr><tr><th scope="row"><label for="openai_max_output_tokens">Max output tokens</label></th><td><input type="number" name="openai_max_output_tokens" id="openai_max_output_tokens" value="<?php echo esc_attr(get_option('alma_openai_max_output_tokens', 600)); ?>" min="1" /></td></tr><tr><th scope="row"><label for="openai_timeout">Timeout richiesta</label></th><td><input type="number" name="openai_timeout" id="openai_timeout" value="<?php echo esc_attr(get_option('alma_openai_timeout', 30)); ?>" min="5" /></td></tr><tr><th scope="row">Stato configurazione</th><td><?php echo empty($openai_api_key) ? 'Non configurato' : 'Configurato'; ?></td></tr>
                         <tr>
                             <th scope="row">Test Connessione</th>
                             <td>
-                                <button type="button" id="test-claude-connection" class="button">
+                                <button type="button" id="test-openai-connection" class="button">
                                     🧪 Testa Connessione
                                 </button>
-                                <div id="claude-test-result" style="margin-top:10px;"></div>
+                                <div id="openai-test-result" style="margin-top:10px;"></div>
                             </td>
                         </tr>
                     </table>
@@ -1683,23 +1695,23 @@ class AffiliateManagerAI {
 
             // Toggle API key visibility
             $('.alma-toggle-api-key').on('click', function() {
-                var $input = $('#claude_api_key');
+                var $input = $('#openai_api_key');
                 var type = $input.attr('type') === 'password' ? 'text' : 'password';
                 $input.attr('type', type);
                 $(this).text(type === 'password' ? '👁 Mostra' : '🙈 Nascondi');
             });
 
-            // Test Claude API connection
-            $('#test-claude-connection').on('click', function(e) {
+            // Test OpenAI API connection
+            $('#test-openai-connection').on('click', function(e) {
                 e.preventDefault();
-                var $result = $('#claude-test-result');
+                var $result = $('#openai-test-result');
                 $result.html('<span class="spinner is-active" style="float:none; margin-top:0;"></span> Test in corso...');
 
                 $.ajax({
                     url: ajaxurl,
                     method: 'POST',
                     data: {
-                        action: 'alma_test_claude_api',
+                        action: 'alma_test_openai_connection',
                         nonce: '<?php echo wp_create_nonce("alma_admin_nonce"); ?>'
                     },
                     success: function(response) {
@@ -2814,10 +2826,10 @@ class AffiliateManagerAI {
         }
         $prompt .= "\nRestituisci un array JSON con massimo 10 oggetti {\"id\": ID, \"score\": COERENZA}, dove COERENZA è un numero da 0 a 100 che indica quanto il link è coerente con l'articolo. Rispondi esclusivamente con JSON valido, senza testo aggiuntivo.\n";
 
-        $response = ALMA_AI_Utils::call_claude_api($prompt, 'Rispondi esclusivamente con JSON valido, senza testo aggiuntivo');
+        $response = ALMA_AI_Utils::call_openai_api($prompt, 'Rispondi esclusivamente con JSON valido, senza testo aggiuntivo');
         if (empty($response['success'])) {
-            $msg = $response['error'] ?? __('Impossibile generare suggerimenti con Claude.', 'affiliate-link-manager-ai');
-            error_log('Claude API error: ' . $msg);
+            $msg = $response['error'] ?? __('Impossibile generare suggerimenti con OpenAI.', 'affiliate-link-manager-ai');
+            error_log('OpenAI API error: ' . $msg);
             wp_send_json_error($msg);
         }
 
@@ -2872,13 +2884,13 @@ class AffiliateManagerAI {
 
         $link_id = intval($_POST['link_id']);
 
-        // Genera suggerimenti AI basati su Claude
+        // Genera suggerimenti AI basati su OpenAI
         $suggestions = $this->generate_ai_suggestions($link_id);
 
         if (is_wp_error($suggestions) || empty($suggestions)) {
             $msg = is_wp_error($suggestions)
                 ? $suggestions->get_error_message()
-                : __('Impossibile generare suggerimenti con Claude.', 'affiliate-link-manager-ai');
+                : __('Impossibile generare suggerimenti con OpenAI.', 'affiliate-link-manager-ai');
             wp_send_json_error($msg);
         }
 
@@ -2919,7 +2931,7 @@ class AffiliateManagerAI {
         if (is_wp_error($title_suggestions) || is_wp_error($content_suggestions) ||
             (empty($title_suggestions) && empty($content_suggestions))) {
             $error = is_wp_error($title_suggestions) ? $title_suggestions : $content_suggestions;
-            $msg   = $error ? $error->get_error_message() : __('Impossibile generare suggerimenti con Claude.', 'affiliate-link-manager-ai');
+            $msg   = $error ? $error->get_error_message() : __('Impossibile generare suggerimenti con OpenAI.', 'affiliate-link-manager-ai');
             wp_send_json_error($msg);
         }
 
@@ -2929,26 +2941,29 @@ class AffiliateManagerAI {
         ));
     }
     
-    public function ajax_test_claude_api() {
+    public function ajax_test_openai_connection() {
         if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'alma_admin_nonce')) {
             wp_send_json_error('Invalid nonce');
             return;
         }
         
-        $api_key = get_option('alma_claude_api_key');
+        $api_key = get_option('alma_openai_api_key');
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(__('Permessi insufficienti', 'affiliate-link-manager-ai'));
+            return;
+        }
+
         if (empty($api_key)) {
-            wp_send_json_error('API Key non configurata');
+            wp_send_json_error('OpenAI API key non configurata');
             return;
         }
         
-        // Test semplice con Claude
-        $response = ALMA_AI_Utils::call_claude_api('Rispondi solo con: "Connessione OK"');
+        // Test semplice con OpenAI
+        $response = ALMA_AI_Utils::call_openai_api('Rispondi solo con: "Connessione OK"');
         
         if ($response['success']) {
-            wp_send_json_success(array(
-                'model' => $response['model'],
-                'response_time' => $response['response_time']
-            ));
+            update_option('alma_openai_last_test', array('date' => current_time('mysql'),'status' => 'ok','model' => $response['model']));
+            wp_send_json_success(array('esito'=>'ok','model' => $response['model'],'response_time' => $response['response_time'],'usage' => $response['usage'] ?? null));
         } else {
             wp_send_json_error($response['error']);
         }
@@ -3223,16 +3238,16 @@ class AffiliateManagerAI {
         }
         $prompt .= "\nRestituisci un array JSON con massimo 500 oggetti {\"id\": ID, \"score\": PERTINENZA}, dove PERTINENZA è un numero da 0 a 100 che indica quanto il link è coerente con il titolo. Ordina dal più pertinente al meno pertinente. Rispondi esclusivamente con JSON valido, senza testo aggiuntivo.";
 
-        $response = ALMA_AI_Utils::call_claude_api($prompt, 'Rispondi esclusivamente con JSON valido, senza testo aggiuntivo');
+        $response = ALMA_AI_Utils::call_openai_api($prompt, 'Rispondi esclusivamente con JSON valido, senza testo aggiuntivo');
         if (empty($response['success'])) {
-            return new \WP_Error('claude_error', $response['error'] ?? __('Errore nella richiesta AI', 'affiliate-link-manager-ai'));
+            return new \WP_Error('openai_error', $response['error'] ?? __('Errore nella richiesta AI', 'affiliate-link-manager-ai'));
         }
 
         $clean = ALMA_AI_Utils::extract_first_json($response['response']);
         $items = json_decode($clean, true);
         if (!is_array($items)) {
             error_log('JSON decode failed: ' . json_last_error_msg() . ' | Raw: ' . $response['response']);
-            return new \WP_Error('claude_parse_error', __('Risposta non valida dall\'AI', 'affiliate-link-manager-ai'));
+            return new \WP_Error('openai_parse_error', __('Risposta non valida dall\'AI', 'affiliate-link-manager-ai'));
         }
 
         usort($items, function ($a, $b) {
@@ -3289,10 +3304,10 @@ class AffiliateManagerAI {
             wp_strip_all_tags($post->post_content)
         );
 
-        $response = ALMA_AI_Utils::call_claude_api($prompt, 'Rispondi esclusivamente con JSON valido, senza testo aggiuntivo');
+        $response = ALMA_AI_Utils::call_openai_api($prompt, 'Rispondi esclusivamente con JSON valido, senza testo aggiuntivo');
 
         if (empty($response['success'])) {
-            return new \WP_Error('claude_error', $response['error'] ?? __('Errore sconosciuto', 'affiliate-link-manager-ai'));
+            return new \WP_Error('openai_error', $response['error'] ?? __('Errore sconosciuto', 'affiliate-link-manager-ai'));
         }
 
         $clean   = ALMA_AI_Utils::extract_first_json($response['response']);
@@ -3300,7 +3315,7 @@ class AffiliateManagerAI {
 
         if (!is_array($decoded)) {
             error_log('JSON decode failed: ' . json_last_error_msg() . ' | Raw: ' . $response['response']);
-            return new \WP_Error('claude_parse_error', __('Risposta non valida da Claude', 'affiliate-link-manager-ai'));
+            return new \WP_Error('openai_parse_error', __('Risposta non valida da OpenAI', 'affiliate-link-manager-ai'));
         }
 
         $suggestions = array();
@@ -3315,7 +3330,7 @@ class AffiliateManagerAI {
         }
 
         if (empty($suggestions)) {
-            return new \WP_Error('empty_suggestions', __('Risposta non valida da Claude', 'affiliate-link-manager-ai'));
+            return new \WP_Error('empty_suggestions', __('Risposta non valida da OpenAI', 'affiliate-link-manager-ai'));
         }
 
         return $suggestions;
@@ -3332,10 +3347,10 @@ class AffiliateManagerAI {
             $content_part
         );
 
-        $response = ALMA_AI_Utils::call_claude_api($prompt, 'Rispondi esclusivamente con JSON valido, senza testo aggiuntivo');
+        $response = ALMA_AI_Utils::call_openai_api($prompt, 'Rispondi esclusivamente con JSON valido, senza testo aggiuntivo');
 
         if (empty($response['success'])) {
-            return new \WP_Error('claude_error', $response['error'] ?? __('Errore sconosciuto', 'affiliate-link-manager-ai'));
+            return new \WP_Error('openai_error', $response['error'] ?? __('Errore sconosciuto', 'affiliate-link-manager-ai'));
         }
 
         $clean   = ALMA_AI_Utils::extract_first_json($response['response']);
@@ -3343,7 +3358,7 @@ class AffiliateManagerAI {
 
         if (!is_array($decoded)) {
             error_log('JSON decode failed: ' . json_last_error_msg() . ' | Raw: ' . $response['response']);
-            return new \WP_Error('claude_parse_error', __('Risposta non valida da Claude', 'affiliate-link-manager-ai'));
+            return new \WP_Error('openai_parse_error', __('Risposta non valida da OpenAI', 'affiliate-link-manager-ai'));
         }
 
         $suggestions = array();
@@ -3356,7 +3371,7 @@ class AffiliateManagerAI {
         }
 
         if (empty($suggestions)) {
-            return new \WP_Error('empty_suggestions', __('Risposta non valida da Claude', 'affiliate-link-manager-ai'));
+            return new \WP_Error('empty_suggestions', __('Risposta non valida da OpenAI', 'affiliate-link-manager-ai'));
         }
 
         return $suggestions;
@@ -3370,10 +3385,10 @@ class AffiliateManagerAI {
             $title
         );
 
-        $response = ALMA_AI_Utils::call_claude_api($prompt, 'Rispondi esclusivamente con JSON valido, senza testo aggiuntivo');
+        $response = ALMA_AI_Utils::call_openai_api($prompt, 'Rispondi esclusivamente con JSON valido, senza testo aggiuntivo');
 
         if (empty($response['success'])) {
-            return new \WP_Error('claude_error', $response['error'] ?? __('Errore sconosciuto', 'affiliate-link-manager-ai'));
+            return new \WP_Error('openai_error', $response['error'] ?? __('Errore sconosciuto', 'affiliate-link-manager-ai'));
         }
 
         $clean   = ALMA_AI_Utils::extract_first_json($response['response']);
@@ -3381,7 +3396,7 @@ class AffiliateManagerAI {
 
         if (!is_array($decoded)) {
             error_log('JSON decode failed: ' . json_last_error_msg() . ' | Raw: ' . $response['response']);
-            return new \WP_Error('claude_parse_error', __('Risposta non valida da Claude', 'affiliate-link-manager-ai'));
+            return new \WP_Error('openai_parse_error', __('Risposta non valida da OpenAI', 'affiliate-link-manager-ai'));
         }
 
         $suggestions = array();
@@ -3396,7 +3411,7 @@ class AffiliateManagerAI {
         }
 
         if (empty($suggestions)) {
-            return new \WP_Error('empty_suggestions', __('Risposta non valida da Claude', 'affiliate-link-manager-ai'));
+            return new \WP_Error('empty_suggestions', __('Risposta non valida da OpenAI', 'affiliate-link-manager-ai'));
         }
 
         return $suggestions;
@@ -3540,6 +3555,7 @@ class AffiliateManagerAI {
      */
     public function activate() {
         $this->create_analytics_table();
+        ALMA_AI_Usage_Logger::create_table();
         ALMA_Affiliate_Source_Manager::create_tables();
         $this->create_default_categories();
         update_option('alma_plugin_version', ALMA_VERSION);
@@ -3556,6 +3572,7 @@ class AffiliateManagerAI {
         $installed_version = get_option('alma_plugin_version', '0.0.0');
         if (version_compare($installed_version, ALMA_VERSION, '<')) {
             $this->create_analytics_table();
+        ALMA_AI_Usage_Logger::create_table();
             ALMA_Affiliate_Source_Manager::create_tables();
             update_option('alma_plugin_version', ALMA_VERSION);
         }
