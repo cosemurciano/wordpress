@@ -3,7 +3,7 @@
  * Plugin Name: Affiliate Link Manager AI
  * Plugin URI: https://your-website.com
  * Description: Gestisce link affiliati con intelligenza artificiale per ottimizzazione e tracking automatico.
- * Version: 2.16.0
+ * Version: 2.17.0
  * Author: Cosè Murciano
  * License: GPL v2 or later
  * Text Domain: affiliate-link-manager-ai
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Definisci costanti del plugin
-define('ALMA_VERSION', '2.16.0');
+define('ALMA_VERSION', '2.17.0');
 define('ALMA_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('ALMA_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('ALMA_PLUGIN_FILE', __FILE__);
@@ -33,6 +33,12 @@ require_once ALMA_PLUGIN_DIR . 'includes/class-ai-content-agent-knowledge-indexe
 require_once ALMA_PLUGIN_DIR . 'includes/class-ai-content-agent-media-indexer.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-ai-content-agent-source-manager.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-ai-content-agent-document-manager.php';
+require_once ALMA_PLUGIN_DIR . 'includes/class-ai-content-agent-context-builder.php';
+require_once ALMA_PLUGIN_DIR . 'includes/class-ai-content-agent-affiliate-selector.php';
+require_once ALMA_PLUGIN_DIR . 'includes/class-ai-content-agent-media-selector.php';
+require_once ALMA_PLUGIN_DIR . 'includes/class-ai-content-agent-opportunity-scorer.php';
+require_once ALMA_PLUGIN_DIR . 'includes/class-ai-content-agent-planner.php';
+require_once ALMA_PLUGIN_DIR . 'includes/class-ai-content-agent-brief-builder.php';
 
 require_once ALMA_PLUGIN_DIR . 'includes/class-affiliate-source-provider-interface.php';
 require_once ALMA_PLUGIN_DIR . 'includes/providers/class-affiliate-source-provider-manual.php';

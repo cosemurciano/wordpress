@@ -1,3 +1,6 @@
+
+## 2.17.0
+- AI Content Agent Step 3: Editorial Planner and Briefs (OpenAI-only).
 ## 2.15.0
 - OpenAI-only core: rimosse chiamate operative Claude/Anthropic, introdotto servizio unico OpenAI Responses API via `wp_remote_post`.
 - Nuove impostazioni OpenAI in pagina Impostazioni con test connessione dedicato, stato configurazione, model selector (gpt-5.4-mini default).

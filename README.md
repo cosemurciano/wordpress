@@ -233,3 +233,8 @@ Questa versione introduce il Data Layer locale dell'AI Content Agent (Knowledge 
 - Corrette tutte le query `CREATE TABLE` passate a `dbDelta()` rimuovendo `IF NOT EXISTS` per compatibilità con parser schema WordPress.
 - Aggiunti controlli diagnostici tabelle AI mancanti nella sezione Stato/Log del pannello AI Content Agent.
 - Aggiornato il flusso di update plugin per rieseguire in sicurezza le routine schema AI senza operazioni distruttive.
+
+### Step 3: Editorial Planner and Briefs
+- Generazione idee e brief su azione esplicita admin.
+- Nessuna creazione bozze, pubblicazione o scheduler.
+- OpenAI-only, nessun Claude/provider router.

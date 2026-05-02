@@ -5,122 +5,22 @@ class ALMA_AI_Content_Agent_Store {
     public static function table($name) { global $wpdb; return $wpdb->prefix . 'alma_ai_' . $name; }
 
     public static function install() {
-        global $wpdb;
-        require_once ABSPATH . 'wp-admin/includes/upgrade.php';
-        $charset = $wpdb->get_charset_collate();
-        dbDelta("CREATE TABLE " . self::table('knowledge_items') . " (
-            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-            source_type VARCHAR(40) NOT NULL,
-            source_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
-            title TEXT NOT NULL,
-            normalized_excerpt LONGTEXT NULL,
-            content_hash CHAR(64) NOT NULL,
-            language_code VARCHAR(10) NOT NULL DEFAULT '',
-            keywords TEXT NULL,
-            destination VARCHAR(120) NOT NULL DEFAULT '',
-            travel_theme VARCHAR(120) NOT NULL DEFAULT '',
-            usage_mode VARCHAR(40) NOT NULL DEFAULT 'knowledge',
-            status VARCHAR(30) NOT NULL DEFAULT 'active',
-            indexed_at DATETIME NULL,
-            updated_at DATETIME NULL,
-            PRIMARY KEY (id),
-            KEY source (source_type, source_id),
-            KEY usage_mode (usage_mode),
-            KEY status (status),
-            KEY indexed_at (indexed_at)
-        ) $charset;");
-        dbDelta("CREATE TABLE " . self::table('content_chunks') . " (
-            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-            knowledge_item_id BIGINT UNSIGNED NOT NULL,
-            chunk_index INT UNSIGNED NOT NULL,
-            normalized_text LONGTEXT NOT NULL,
-            content_hash CHAR(64) NOT NULL,
-            keywords TEXT NULL,
-            est_length INT UNSIGNED NOT NULL DEFAULT 0,
-            PRIMARY KEY (id),
-            KEY item_chunk (knowledge_item_id, chunk_index),
-            KEY content_hash (content_hash)
-        ) $charset;");
-        dbDelta("CREATE TABLE " . self::table('media_index') . " (
-            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-            attachment_id BIGINT UNSIGNED NOT NULL,
-            filename VARCHAR(255) NOT NULL,
-            title TEXT NULL,
-            alt_text TEXT NULL,
-            caption TEXT NULL,
-            description LONGTEXT NULL,
-            mime_type VARCHAR(120) NOT NULL,
-            width INT UNSIGNED NOT NULL DEFAULT 0,
-            height INT UNSIGNED NOT NULL DEFAULT 0,
-            upload_date DATETIME NULL,
-            parent_post_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
-            keywords TEXT NULL,
-            destinations TEXT NULL,
-            manual_notes TEXT NULL,
-            quality_score DECIMAL(5,2) NULL,
-            indexed_at DATETIME NULL,
-            PRIMARY KEY (id),
-            UNIQUE KEY attachment_id (attachment_id),
-            KEY mime_type (mime_type),
-            KEY parent_post_id (parent_post_id)
-        ) $charset;");
-        dbDelta("CREATE TABLE " . self::table('sources') . " (
-            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-            name VARCHAR(190) NOT NULL,
-            source_type VARCHAR(40) NOT NULL,
-            source_url TEXT NOT NULL,
-            language_code VARCHAR(10) NOT NULL DEFAULT '',
-            market VARCHAR(60) NOT NULL DEFAULT '',
-            usage_mode VARCHAR(40) NOT NULL DEFAULT 'knowledge',
-            is_active TINYINT(1) NOT NULL DEFAULT 1,
-            notes TEXT NULL,
-            last_test_at DATETIME NULL,
-            last_error TEXT NULL,
-            created_at DATETIME NULL,
-            updated_at DATETIME NULL,
-            PRIMARY KEY (id),
-            KEY source_type (source_type),
-            KEY is_active (is_active)
-        ) $charset;");
-        dbDelta("CREATE TABLE " . self::table('jobs') . " (
-            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-            job_type VARCHAR(40) NOT NULL,
-            status VARCHAR(20) NOT NULL DEFAULT 'pending',
-            total_items INT UNSIGNED NOT NULL DEFAULT 0,
-            processed_items INT UNSIGNED NOT NULL DEFAULT 0,
-            errors_count INT UNSIGNED NOT NULL DEFAULT 0,
-            last_error TEXT NULL,
-            started_at DATETIME NULL,
-            finished_at DATETIME NULL,
-            updated_at DATETIME NULL,
-            PRIMARY KEY (id),
-            KEY job_type (job_type),
-            KEY status (status),
-            KEY started_at (started_at)
-        ) $charset;");
+        global $wpdb; require_once ABSPATH . 'wp-admin/includes/upgrade.php'; $charset = $wpdb->get_charset_collate();
+        dbDelta("CREATE TABLE " . self::table('knowledge_items') . " (id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,source_type VARCHAR(40) NOT NULL,source_id BIGINT UNSIGNED NOT NULL DEFAULT 0,title TEXT NOT NULL,normalized_excerpt LONGTEXT NULL,content_hash CHAR(64) NOT NULL,language_code VARCHAR(10) NOT NULL DEFAULT '',keywords TEXT NULL,destination VARCHAR(120) NOT NULL DEFAULT '',travel_theme VARCHAR(120) NOT NULL DEFAULT '',usage_mode VARCHAR(40) NOT NULL DEFAULT 'knowledge',status VARCHAR(30) NOT NULL DEFAULT 'active',indexed_at DATETIME NULL,updated_at DATETIME NULL,PRIMARY KEY (id),KEY source (source_type, source_id),KEY usage_mode (usage_mode),KEY status (status),KEY indexed_at (indexed_at)) $charset;");
+        dbDelta("CREATE TABLE " . self::table('content_chunks') . " (id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,knowledge_item_id BIGINT UNSIGNED NOT NULL,chunk_index INT UNSIGNED NOT NULL,normalized_text LONGTEXT NOT NULL,content_hash CHAR(64) NOT NULL,keywords TEXT NULL,est_length INT UNSIGNED NOT NULL DEFAULT 0,PRIMARY KEY (id),KEY item_chunk (knowledge_item_id, chunk_index),KEY content_hash (content_hash)) $charset;");
+        dbDelta("CREATE TABLE " . self::table('media_index') . " (id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,attachment_id BIGINT UNSIGNED NOT NULL,filename VARCHAR(255) NOT NULL,title TEXT NULL,alt_text TEXT NULL,caption TEXT NULL,description LONGTEXT NULL,mime_type VARCHAR(120) NOT NULL,width INT UNSIGNED NOT NULL DEFAULT 0,height INT UNSIGNED NOT NULL DEFAULT 0,upload_date DATETIME NULL,parent_post_id BIGINT UNSIGNED NOT NULL DEFAULT 0,keywords TEXT NULL,destinations TEXT NULL,manual_notes TEXT NULL,quality_score DECIMAL(5,2) NULL,indexed_at DATETIME NULL,PRIMARY KEY (id),UNIQUE KEY attachment_id (attachment_id),KEY mime_type (mime_type),KEY parent_post_id (parent_post_id)) $charset;");
+        dbDelta("CREATE TABLE " . self::table('sources') . " (id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,name VARCHAR(190) NOT NULL,source_type VARCHAR(40) NOT NULL,source_url TEXT NOT NULL,language_code VARCHAR(10) NOT NULL DEFAULT '',market VARCHAR(60) NOT NULL DEFAULT '',usage_mode VARCHAR(40) NOT NULL DEFAULT 'knowledge',is_active TINYINT(1) NOT NULL DEFAULT 1,notes TEXT NULL,last_test_at DATETIME NULL,last_error TEXT NULL,created_at DATETIME NULL,updated_at DATETIME NULL,PRIMARY KEY (id),KEY source_type (source_type),KEY is_active (is_active)) $charset;");
+        dbDelta("CREATE TABLE " . self::table('content_ideas') . " (id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,proposed_title TEXT NOT NULL,suggested_slug VARCHAR(200) NOT NULL DEFAULT '',destination VARCHAR(120) NOT NULL DEFAULT '',travel_theme VARCHAR(120) NOT NULL DEFAULT '',primary_keyword VARCHAR(190) NOT NULL DEFAULT '',secondary_keywords LONGTEXT NULL,seo_intent VARCHAR(120) NOT NULL DEFAULT '',rationale TEXT NULL,seo_score DECIMAL(5,2) NULL,monetization_score DECIMAL(5,2) NULL,media_score DECIMAL(5,2) NULL,knowledge_score DECIMAL(5,2) NULL,duplication_risk DECIMAL(5,2) NULL,priority_score DECIMAL(5,2) NULL,status VARCHAR(30) NOT NULL DEFAULT 'new',affiliate_candidates LONGTEXT NULL,image_candidates LONGTEXT NULL,knowledge_suggestions LONGTEXT NULL,warnings LONGTEXT NULL,ai_model VARCHAR(100) NOT NULL DEFAULT '',ai_estimated_cost DECIMAL(12,6) NULL,created_at DATETIME NULL,updated_at DATETIME NULL,PRIMARY KEY (id),KEY status (status),KEY priority_score (priority_score)) $charset;");
+        dbDelta("CREATE TABLE " . self::table('editorial_briefs') . " (id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,idea_id BIGINT UNSIGNED NOT NULL,article_goal TEXT NULL,target_audience TEXT NULL,search_intent VARCHAR(120) NOT NULL DEFAULT '',outline LONGTEXT NULL,suggested_knowledge_sources LONGTEXT NULL,candidate_affiliate_links LONGTEXT NULL,candidate_images LONGTEXT NULL,seo_notes LONGTEXT NULL,commercial_notes LONGTEXT NULL,anti_duplication_notes LONGTEXT NULL,warnings LONGTEXT NULL,ai_model VARCHAR(100) NOT NULL DEFAULT '',ai_estimated_cost DECIMAL(12,6) NULL,created_at DATETIME NULL,updated_at DATETIME NULL,PRIMARY KEY (id),KEY idea_id (idea_id)) $charset;");
+        dbDelta("CREATE TABLE " . self::table('jobs') . " (id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,job_type VARCHAR(40) NOT NULL,status VARCHAR(20) NOT NULL DEFAULT 'pending',total_items INT UNSIGNED NOT NULL DEFAULT 0,processed_items INT UNSIGNED NOT NULL DEFAULT 0,errors_count INT UNSIGNED NOT NULL DEFAULT 0,last_error TEXT NULL,started_at DATETIME NULL,finished_at DATETIME NULL,updated_at DATETIME NULL,PRIMARY KEY (id),KEY job_type (job_type),KEY status (status),KEY started_at (started_at)) $charset;");
     }
-
-
-    public static function required_tables() {
-        return array(
-            'usage' => self::table('usage'),
-            'knowledge_items' => self::table('knowledge_items'),
-            'content_chunks' => self::table('content_chunks'),
-            'media_index' => self::table('media_index'),
-            'sources' => self::table('sources'),
-            'jobs' => self::table('jobs'),
-        );
-    }
-
-    public static function missing_tables() {
-        global $wpdb;
-        $missing = array();
-        foreach (self::required_tables() as $key => $table) {
-            if ($wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $table)) !== $table) {
-                $missing[] = $key;
-            }
-        }
-        return $missing;
-    }
-
+    public static function required_tables(){ return array('usage'=>self::table('usage'),'knowledge_items'=>self::table('knowledge_items'),'content_chunks'=>self::table('content_chunks'),'media_index'=>self::table('media_index'),'sources'=>self::table('sources'),'jobs'=>self::table('jobs'),'content_ideas'=>self::table('content_ideas'),'editorial_briefs'=>self::table('editorial_briefs')); }
+    public static function missing_tables(){ global $wpdb; $m=array(); foreach(self::required_tables() as $k=>$t){ if($wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s',$t))!==$t){$m[]=$k;}} return $m; }
+    public static function allowed_idea_statuses(){ return array('new','reviewed','approved','rejected','brief_ready','archived'); }
+    public static function save_ideas($ideas,$model,$diag=array()){ global $wpdb; $saved=0; foreach((array)$ideas as $idea){ $score=ALMA_AI_Content_Agent_Opportunity_Scorer::score(array('primary_keyword'=>$idea['primary_keyword']??'','secondary_keywords'=>$idea['secondary_keywords']??array(),'affiliate_candidates'=>$idea['affiliate_candidates']??array(),'image_candidates'=>$idea['image_candidates']??array(),'knowledge_count'=>$diag['knowledge_items']??0)); $wpdb->insert(self::table('content_ideas'), array('proposed_title'=>sanitize_text_field($idea['title']??''),'suggested_slug'=>sanitize_title($idea['suggested_slug']??($idea['title']??'')),'destination'=>sanitize_text_field($idea['destination']??''),'travel_theme'=>sanitize_text_field($idea['theme']??''),'primary_keyword'=>sanitize_text_field($idea['primary_keyword']??''),'secondary_keywords'=>wp_json_encode((array)($idea['secondary_keywords']??array())),'seo_intent'=>sanitize_text_field($idea['seo_intent']??''),'rationale'=>sanitize_textarea_field($idea['rationale']??''),'seo_score'=>$score['seo_score'],'monetization_score'=>$score['monetization_score'],'media_score'=>$score['media_score'],'knowledge_score'=>$score['knowledge_score'],'duplication_risk'=>$score['duplication_risk'],'priority_score'=>$score['priority_score'],'status'=>'new','affiliate_candidates'=>wp_json_encode((array)($idea['affiliate_candidates']??array())),'image_candidates'=>wp_json_encode((array)($idea['image_candidates']??array())),'knowledge_suggestions'=>wp_json_encode((array)($idea['knowledge_suggestions']??array())),'warnings'=>wp_json_encode((array)($idea['warnings']??array())),'ai_model'=>sanitize_text_field($model),'created_at'=>current_time('mysql'),'updated_at'=>current_time('mysql'))); $saved++; } return $saved; }
+    public static function get_ideas($status=''){ global $wpdb; $t=self::table('content_ideas'); if($status!=='' && in_array($status,self::allowed_idea_statuses(),true)){ return $wpdb->get_results($wpdb->prepare("SELECT * FROM $t WHERE status=%s ORDER BY id DESC",$status),ARRAY_A);} return $wpdb->get_results("SELECT * FROM $t ORDER BY id DESC LIMIT 100",ARRAY_A); }
+    public static function get_idea($id){ global $wpdb; return $wpdb->get_row($wpdb->prepare("SELECT * FROM ".self::table('content_ideas')." WHERE id=%d",absint($id)),ARRAY_A); }
+    public static function update_idea_status($id,$status){ if(!in_array($status,self::allowed_idea_statuses(),true)){ return false;} global $wpdb; return (bool)$wpdb->update(self::table('content_ideas'),array('status'=>$status,'updated_at'=>current_time('mysql')),array('id'=>absint($id))); }
+    public static function save_brief($idea_id,$brief,$model){ global $wpdb; $data=array('idea_id'=>absint($idea_id),'article_goal'=>sanitize_textarea_field($brief['article_goal']??''),'target_audience'=>sanitize_textarea_field($brief['target_audience']??''),'search_intent'=>sanitize_text_field($brief['search_intent']??''),'outline'=>wp_json_encode((array)($brief['outline']??array())),'suggested_knowledge_sources'=>wp_json_encode((array)($brief['knowledge_sources']??array())),'candidate_affiliate_links'=>wp_json_encode((array)($brief['affiliate_links']??array())),'candidate_images'=>wp_json_encode((array)($brief['images']??array())),'seo_notes'=>sanitize_textarea_field($brief['seo_notes']??''),'commercial_notes'=>sanitize_textarea_field($brief['commercial_notes']??''),'anti_duplication_notes'=>sanitize_textarea_field($brief['anti_duplication_notes']??''),'warnings'=>wp_json_encode((array)($brief['warnings']??array())),'ai_model'=>sanitize_text_field($model),'updated_at'=>current_time('mysql')); $existing=$wpdb->get_var($wpdb->prepare("SELECT id FROM ".self::table('editorial_briefs')." WHERE idea_id=%d",absint($idea_id))); if($existing){ $wpdb->update(self::table('editorial_briefs'),$data,array('idea_id'=>absint($idea_id))); } else { $data['created_at']=current_time('mysql'); $wpdb->insert(self::table('editorial_briefs'),$data);} }
+    public static function get_brief_by_idea($idea_id){ global $wpdb; return $wpdb->get_row($wpdb->prepare("SELECT * FROM ".self::table('editorial_briefs')." WHERE idea_id=%d",absint($idea_id)),ARRAY_A); }
 }
