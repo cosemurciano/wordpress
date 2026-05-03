@@ -20,7 +20,7 @@ class ALMA_AI_Content_Agent_Selection_Session {
     public static function clear() { delete_transient(self::key()); }
 
     private static function empty_session() {
-        return array('status'=>'empty','last_query'=>array(),'query_history'=>array(),'results'=>array(),'counts'=>array(),'updated_at'=>'','instruction_profile_id'=>0);
+        return array('status'=>'empty','last_query'=>array(),'query_history'=>array(),'results'=>array(),'counts'=>array(),'updated_at'=>'','instruction_profile_id'=>0,'instruction_profile_name'=>'','instruction_snapshot_hash'=>'');
     }
 
     public static function add_search_results($payload, $search_results) {
@@ -50,6 +50,8 @@ class ALMA_AI_Content_Agent_Selection_Session {
         $session['status'] = empty($session['results']) ? 'empty' : 'active';
         $session['updated_at'] = current_time('mysql');
         $session['instruction_profile_id'] = absint($payload['instruction_profile_id'] ?? 0);
+        $session['instruction_profile_name'] = sanitize_text_field($payload['instruction_profile_name'] ?? '');
+        $session['instruction_snapshot_hash'] = sanitize_text_field($payload['instruction_snapshot_hash'] ?? '');
         $session['counts'] = self::count_summary($session['results']);
         set_transient(self::key(), $session, self::TTL);
         return array('found'=>$found,'added'=>$added,'duplicates'=>$duplicates,'total'=>count($session['results']));
@@ -80,13 +82,15 @@ class ALMA_AI_Content_Agent_Selection_Session {
         $source_id = absint($row['source_id'] ?? 0);
         $wp_id = absint($row['wp_id'] ?? 0);
         $result_id = sanitize_text_field($row['result_id'] ?? '');
-        $result_key = sanitize_key($group) . ':' . ($source_id ?: ($wp_id ?: $result_id));
+        $knowledge_item_id = absint($row['knowledge_item_id'] ?? 0);
+        $result_key = sanitize_key($group) . ':' . ($knowledge_item_id ?: ($source_id ?: ($wp_id ?: $result_id)));
         if (empty($result_key)) { $result_key = sanitize_key($group) . ':' . substr(md5(wp_json_encode($row)), 0, 12); }
         return array(
             'result_key' => $result_key,
             'source_group' => sanitize_key($group),
             'source_type' => sanitize_text_field($row['source_type'] ?? $group),
             'source_id' => $source_id,
+            'knowledge_item_id' => $knowledge_item_id,
             'wp_id' => $wp_id,
             'title' => sanitize_text_field($row['title'] ?? ''),
             'excerpt' => sanitize_text_field($row['excerpt'] ?? ''),
@@ -124,6 +128,6 @@ class ALMA_AI_Content_Agent_Selection_Session {
     public static function build_context_package() {
         $s = self::get_session();
         $selected = array_values(array_filter($s['results'], function($r){ return !empty($r['selected']); }));
-        return array('last_query'=>$s['last_query'],'query_history'=>$s['query_history'],'selected_results'=>$selected,'counts'=>$s['counts'],'updated_at'=>$s['updated_at'],'instruction_profile_id'=>$s['instruction_profile_id']);
+        return array('last_query'=>$s['last_query'],'query_history'=>$s['query_history'],'selected_results'=>$selected,'counts'=>$s['counts'],'updated_at'=>$s['updated_at'],'instruction_profile_id'=>$s['instruction_profile_id'],'instruction_profile_name'=>sanitize_text_field($s['instruction_profile_name'] ?? ''),'instruction_snapshot_hash'=>sanitize_text_field($s['instruction_snapshot_hash'] ?? ''));
     }
 }

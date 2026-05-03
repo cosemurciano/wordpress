@@ -6,6 +6,23 @@ class ALMA_AI_Content_Agent_Draft_Builder {
         ALMA_AI_Usage_Logger::log(array('task'=>'content_draft_generation','success'=>false,'error'=>sanitize_text_field($message),'model'=>sanitize_text_field($model),'reference_id'=>sanitize_text_field($reference_id)));
         return array_merge(array('success'=>false,'error'=>sanitize_text_field($message),'warnings'=>array()), $extra);
     }
+
+    private static function resolve_document_knowledge_item_id($row) {
+        $kid = absint($row['knowledge_item_id'] ?? 0);
+        if ($kid > 0) { return $kid; }
+        $rkey = sanitize_text_field($row['result_key'] ?? '');
+        if (preg_match('/(?:^|:)(\d+)$/', $rkey, $m)) { return absint($m[1]); }
+        return 0;
+    }
+    private static function fetch_document_chunks($knowledge_item_id, $limit = 3) {
+        global $wpdb;
+        $table = ALMA_AI_Content_Agent_Store::table('content_chunks');
+        $limit = max(1, absint($limit));
+        $col = $wpdb->get_var($wpdb->prepare("SHOW COLUMNS FROM $table LIKE %s", 'normalized_text'));
+        if (!$col) { return array(); }
+        return (array)$wpdb->get_col($wpdb->prepare("SELECT normalized_text FROM $table WHERE knowledge_item_id=%d ORDER BY id ASC LIMIT %d", absint($knowledge_item_id), $limit));
+    }
+
     public static function generate_for_idea($idea_id) {
         $idea_id = absint($idea_id); $idea = ALMA_AI_Content_Agent_Store::get_idea($idea_id);
         if (!$idea) return self::fail('Idea non trovata.', '', 'idea:'.$idea_id);
@@ -54,11 +71,19 @@ class ALMA_AI_Content_Agent_Draft_Builder {
             } elseif ($group === 'affiliate_link') {
                 $p = get_post($sid);
                 if (!$p || $p->post_type !== 'affiliate_link') { $warnings[] = 'Affiliate link non disponibile: #'.$sid; continue; }
-                $ctx['affiliate_links'][] = array('id'=>$p->ID,'title'=>sanitize_text_field($p->post_title),'description'=>sanitize_text_field($p->post_excerpt),'affiliate_url'=>esc_url_raw((string)get_post_meta($p->ID,'affiliate_url',true)),'shortcode'=>'[affiliate_link id="'.$p->ID.'"]','ai_context'=>sanitize_textarea_field((string)get_post_meta($p->ID,'affiliate_ai_context',true)));
+                $source_id = absint(get_post_meta($p->ID, '_alma_source_id', true));
+                $source = $source_id > 0 ? $wpdb->get_row($wpdb->prepare("SELECT id,name,provider,settings FROM {$wpdb->prefix}alma_affiliate_sources WHERE id=%d", $source_id), ARRAY_A) : array();
+                $source_settings = is_array($source) ? json_decode((string)($source['settings'] ?? '{}'), true) : array();
+                $source_prompt = sanitize_textarea_field((string)($source_settings['ai_source_instructions'] ?? ''));
+                if ($source_id > 0 && $source_prompt === '') { $warnings[] = 'Comportamento AI source non trovato per affiliate link #'.$p->ID; }
+                $ctx['affiliate_links'][] = array('id'=>$p->ID,'title'=>sanitize_text_field($p->post_title),'description'=>sanitize_text_field($p->post_excerpt),'affiliate_url'=>esc_url_raw((string)get_post_meta($p->ID,'_affiliate_url',true)),'shortcode'=>'[affiliate_link id="'.$p->ID.'"]','ai_context'=>sanitize_textarea_field((string)get_post_meta($p->ID,'_alma_ai_context',true)),'source_id'=>$source_id,'source_name'=>sanitize_text_field($source['name'] ?? ''),'provider'=>sanitize_key($source['provider'] ?? ''),'source_ai_behavior_prompt'=>$source_prompt,'usage_rules'=>'Usa solo shortcode autorizzato; non inventare link affiliati.');
             } elseif ($group === 'document_txt') {
-                $item = $wpdb->get_row($wpdb->prepare("SELECT id,title,status FROM ".ALMA_AI_Content_Agent_Store::table('knowledge_items')." WHERE id=%d AND source_type='document_txt'", $sid), ARRAY_A);
-                if (!$item || ($item['status'] ?? '') !== 'active') { $warnings[] = 'Documento TXT non disponibile: #'.$sid; continue; }
-                $chunks = $wpdb->get_col($wpdb->prepare("SELECT content FROM ".ALMA_AI_Content_Agent_Store::table('content_chunks')." WHERE knowledge_item_id=%d ORDER BY id ASC LIMIT 3", $sid));
+                $kid = self::resolve_document_knowledge_item_id($row);
+                if ($kid <= 0) { $warnings[] = 'Documento TXT senza knowledge item id stabile.'; continue; }
+                $item = $wpdb->get_row($wpdb->prepare("SELECT id,title,status FROM ".ALMA_AI_Content_Agent_Store::table('knowledge_items')." WHERE id=%d AND source_type='document_txt'", $kid), ARRAY_A);
+                if (!$item || ($item['status'] ?? '') !== 'active') { $warnings[] = 'Documento TXT non disponibile: #'.$kid; continue; }
+                $chunks = self::fetch_document_chunks($kid, 3);
+                if (empty($chunks)) { $warnings[] = 'Documento TXT senza chunk validi: #'.$kid; }
                 $ctx['documents'][] = array('id'=>(int)$item['id'],'title'=>sanitize_text_field($item['title']),'status'=>sanitize_text_field($item['status']),'chunks'=>array_map(function($c){ return mb_substr(wp_strip_all_tags((string)$c),0,500); }, (array)$chunks));
             } elseif ($group === 'source_online') {
                 $src = $wpdb->get_row($wpdb->prepare("SELECT id,name,source_url,source_type,is_active FROM ".ALMA_AI_Content_Agent_Store::table('sources')." WHERE id=%d", $sid), ARRAY_A);
@@ -73,8 +98,9 @@ class ALMA_AI_Content_Agent_Draft_Builder {
         if (empty($ctx['posts']) && empty($ctx['pages']) && empty($ctx['documents']) && empty($ctx['affiliate_links']) && empty($ctx['sources_online']) && empty($ctx['media'])) {
             return self::fail('Nessuna fonte valida disponibile nella sessione selezionata.');
         }
-        $profile = ALMA_AI_Content_Agent_Instructions_Manager::get_active_profile();
-        $payload = array('task'=>'creazione bozza articolo','rules'=>array('output_json'=>true,'title_required'=>true,'content_required'=>true,'slug_optional'=>true,'no_raw_affiliate_urls'=>true),'instruction_profile'=>$profile,'selection_context'=>$ctx);
+        $profile_id = absint($session['instruction_profile_id'] ?? 0);
+        $profile = $profile_id ? ALMA_AI_Content_Agent_Instructions_Manager::get_profile($profile_id) : ALMA_AI_Content_Agent_Instructions_Manager::get_active_profile();
+        $payload = array('task'=>'create_article_draft_from_selection','rules'=>array('output_json'=>true,'title_required'=>true,'content_required'=>true,'slug_optional'=>true,'no_raw_affiliate_urls'=>true),'instruction_profile'=>$profile,'selection_context'=>$ctx);
         $prompt = 'Genera solo JSON con chiavi: title,content,slug,warnings. Usa solo shortcode affiliati autorizzati.';
         $res = ALMA_OpenAI_Service::request(array('system_prompt'=>'Sei un content editor WordPress. Output solo JSON valido.', 'user_prompt'=>$prompt.' CONTEXT: '.wp_json_encode($payload), 'json_output'=>true, 'max_output_tokens'=>1800));
         if (empty($res['success'])) { return self::fail($res['error'] ?? 'Risposta OpenAI fallita.', $res['model'] ?? '', 'session:user:'.$user_id); }
@@ -92,10 +118,13 @@ class ALMA_AI_Content_Agent_Draft_Builder {
         update_post_meta($post_id, '_alma_ai_agent_model', sanitize_text_field($res['model'] ?? ''));
         update_post_meta($post_id, '_alma_ai_agent_selected_post_ids', wp_json_encode(wp_list_pluck($ctx['posts'], 'id')));
         update_post_meta($post_id, '_alma_ai_agent_selected_affiliate_link_ids', wp_json_encode(wp_list_pluck($ctx['affiliate_links'], 'id')));
+        update_post_meta($post_id, '_alma_ai_agent_selected_affiliate_source_ids', wp_json_encode(array_values(array_unique(array_filter(array_map('absint', wp_list_pluck($ctx['affiliate_links'], 'source_id')))))));
         update_post_meta($post_id, '_alma_ai_agent_selected_document_txt_ids', wp_json_encode(wp_list_pluck($ctx['documents'], 'id')));
         update_post_meta($post_id, '_alma_ai_agent_selected_source_online_ids', wp_json_encode(wp_list_pluck($ctx['sources_online'], 'id')));
         update_post_meta($post_id, '_alma_ai_agent_selected_media_ids', wp_json_encode(wp_list_pluck($ctx['media'], 'attachment_id')));
         update_post_meta($post_id, '_alma_ai_agent_instruction_profile_id', absint($session['instruction_profile_id'] ?? ($profile['id'] ?? 0)));
+        update_post_meta($post_id, '_alma_ai_agent_instruction_profile_name', sanitize_text_field($profile['profile_name'] ?? ($session['instruction_profile_name'] ?? '')));
+        update_post_meta($post_id, '_alma_ai_agent_instruction_snapshot_hash', sanitize_text_field($session['instruction_snapshot_hash'] ?? ALMA_AI_Content_Agent_Instructions_Manager::snapshot_hash(wp_json_encode($profile))));
         update_post_meta($post_id, '_alma_ai_agent_qa_warnings', wp_json_encode(array_values(array_unique(array_merge($warnings, (array)$clean['warnings'], (array)($parsed['warnings'] ?? array()))))));
         update_post_meta($post_id, '_alma_ai_generated_at', current_time('mysql'));
         ALMA_AI_Usage_Logger::log(array('task'=>self::TASK_SELECTION,'success'=>true,'model'=>$res['model'] ?? '','response_time'=>$res['response_time'] ?? null,'input_tokens'=>$res['usage']['input_tokens'] ?? null,'output_tokens'=>$res['usage']['output_tokens'] ?? null,'reference_id'=>'post:'.$post_id));
