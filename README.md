@@ -281,3 +281,8 @@ Workflow base completo: genera idee → genera brief → genera bozza → apri i
 ## AI Content Agent UI Refresh
 - Nuova UI admin AI Content Agent con Dashboard come tab iniziale e nuova navigazione workflow: Dashboard, Idee contenuto, Documenti TXT, Fonti online AI, Reindicizza, Stato/log.
 - Migliorata leggibilità con cards, badge stato, empty state e CTA rapide verso i passaggi principali.
+
+## PR 2 — AI Content Agent TXT Documents & Online AI Sources
+- Documenti TXT: upload operativo solo `.txt`, salvataggio nel Knowledge Base e chunking/indexing locale.
+- Fonti online AI: CRUD operativo con URL validation, tecnologia da lista consentita e stato active/inactive.
+- Questa PR non introduce crawling/scraping né nuove chiamate AI/OpenAI.

@@ -31,6 +31,7 @@ require_once ALMA_PLUGIN_DIR . 'includes/class-ai-content-agent-store.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-ai-content-agent-text-utils.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-ai-content-agent-knowledge-indexer.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-ai-content-agent-media-indexer.php';
+require_once ALMA_PLUGIN_DIR . 'includes/class-ai-content-agent-source-tech-registry.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-ai-content-agent-source-manager.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-ai-content-agent-document-manager.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-ai-content-agent-context-builder.php';

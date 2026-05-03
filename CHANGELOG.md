@@ -260,3 +260,9 @@
 - Rinomina tab: Documenti TXT, Fonti online AI, Reindicizza.
 - Rimozione dalla UI del salvataggio note manuali.
 - Preparazione workflow per futura creazione bozza articolo (UI placeholder).
+
+## PR 2 — AI Content Agent TXT Documents & Online AI Sources
+- Upload TXT operativo (solo `.txt`) e indicizzazione in Knowledge Base con chunk.
+- Gestione stato documenti TXT (active/inactive) ed eliminazione dal Knowledge Base.
+- CRUD Fonti online AI con tecnologie supportate e validazioni sicurezza.
+- Nessuna nuova logica AI, nessun crawler/scraping.
