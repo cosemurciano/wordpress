@@ -1,4 +1,10 @@
 
+## 2.20.0
+- PR 3 — AI Content Agent Knowledge Base Search Engine: motore ricerca interno Knowledge Base.
+- Ricerca ibrida WordPress + tabelle custom (knowledge_items/content_chunks) + Documenti TXT + Fonti online AI + Media Index.
+- Risultati raggruppati per Tipo Fonte con max 10 per gruppo, checkbox e limite massimo 3 Post selezionabili.
+- Nessuna nuova chiamata OpenAI; nessuna creazione bozza articolo; nessuno scheduler.
+
 ## 2.19.1
 - Step 4.1 Draft Workflow Stabilization: fix fatal tab Bozze con `render_drafts_tab()` e rendering workflow base + elenco bozze agente.
 - Fix tab Idee: helper `inline_draft_form()` implementato, prevenzione duplicati e link alla bozza esistente.
