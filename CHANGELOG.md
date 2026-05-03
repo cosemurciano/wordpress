@@ -1,4 +1,13 @@
 
+## 2.21.1
+
+- PR 4.1 — AI Content Agent Knowledge Search Review Fixes.
+- Fix Media Search: ordinamento su `indexed_at` (tabella `media_index`).
+- Fix deduplica Documenti TXT con `source_id=0` (chiave distinta per knowledge item).
+- Hardening Media Search: fallback a array vuoto se query non iterabile/errore.
+- Nessuna nuova chiamata OpenAI, nessuna creazione bozza articolo.
+- Nessuna modifica scheduler, nessun crawling/scraping.
+
 ## 2.21.0
 
 - PR 4 — AI Content Agent Cumulative Selection Session.

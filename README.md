@@ -1,11 +1,9 @@
 
-## 2.21.0
+## 2.21.1
 
-- PR 4 — AI Content Agent Cumulative Selection Session.
-- Sessione cumulativa di selezione con Aggiungi nuova ricerca, deduplicazione, Salva selezione, Svuota sessione e riepilogo sessione.
-- Limite massimo 3 Post validato lato UI e server-side.
-- Preparazione context package interno per PR future.
-- Nessuna chiamata OpenAI, nessuna creazione bozza articolo, nessuna programmazione.
+- Nota manutenzione PR 4.1: stabilizzata la ricerca Media nel Knowledge Base (ordinamento su `indexed_at`).
+- Corretta la deduplica dei Documenti TXT per evitare collisioni quando `source_id=0`.
+- Nessuna nuova funzionalità AI e nessuna modifica alla creazione bozze articolo.
 
 ## 2.20.0
 - PR 3 — AI Content Agent Knowledge Base Search Engine: motore ricerca interno Knowledge Base.
