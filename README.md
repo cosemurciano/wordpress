@@ -1,5 +1,5 @@
 
-## 2.22.0
+## 2.22.1
 
 - PR 5 — Crea bozza articolo da Selection Session con uso esclusivo delle fonti selezionate.
 - Output OpenAI richiesto in JSON validato (`title`, `content`, `slug`) e creazione articolo WordPress in stato bozza.
