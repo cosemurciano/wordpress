@@ -2,6 +2,7 @@
 if (!defined('ABSPATH')) { exit; }
 class ALMA_AI_Content_Agent_Admin {
     const NOTICE_TRANSIENT_KEY = 'alma_ai_agent_admin_notice_';
+    const RESULT_TRANSIENT_KEY = 'alma_ai_agent_admin_result_';
 
     public static function init() { add_action('admin_post_alma_ai_agent_action', array(__CLASS__, 'handle_action')); }
 
@@ -51,6 +52,17 @@ class ALMA_AI_Content_Agent_Admin {
         } elseif ($do === 'clear_selection_session') {
             ALMA_AI_Content_Agent_Selection_Session::clear();
             $result = array('success' => true, 'message' => 'Sessione contenuto svuotata.');
+        } elseif ($do === 'create_draft_from_selection') {
+            $summary = ALMA_AI_Content_Agent_Selection_Session::summary();
+            if (($summary['status'] ?? 'empty') === 'empty') { $result = array('success'=>false,'message'=>'Nessuna sessione contenuto attiva.'); }
+            elseif ((int)($summary['selected_total'] ?? 0) < 1) { $result = array('success'=>false,'message'=>'Seleziona almeno una fonte prima di creare la bozza.'); }
+            elseif ((int)($summary['selected_post'] ?? 0) > ALMA_AI_Content_Agent_Selection_Session::MAX_SELECTED_POSTS) { $result = array('success'=>false,'message'=>'Puoi selezionare massimo 3 Post.'); }
+            elseif (empty(get_option('alma_openai_api_key', ''))) { $result = array('success'=>false,'message'=>'OpenAI non è configurata.'); }
+            else {
+                $result = ALMA_AI_Content_Agent_Draft_Builder::generate_from_selection_session(get_current_user_id());
+                $result['message'] = empty($result['success']) ? ($result['error'] ?? 'Errore creazione bozza da sessione.') : 'Bozza articolo creata.';
+                set_transient(self::RESULT_TRANSIENT_KEY . get_current_user_id(), $result, 120);
+            }
         } elseif ($do === 'upload_txt_document') {
             $result = ALMA_AI_Content_Agent_Document_Manager::handle_upload(sanitize_text_field($_POST['document_name'] ?? ''), $_FILES['document_file'] ?? array());
         } elseif ($do === 'rename_txt_document') {
@@ -89,6 +101,16 @@ class ALMA_AI_Content_Agent_Admin {
         $n = get_transient(self::NOTICE_TRANSIENT_KEY . get_current_user_id()); if (!$n) { return; }
         delete_transient(self::NOTICE_TRANSIENT_KEY . get_current_user_id());
         echo '<div class="notice notice-' . esc_attr($n['type']) . ' is-dismissible"><p>' . esc_html($n['message']) . '</p></div>';
+        $r = get_transient(self::RESULT_TRANSIENT_KEY . get_current_user_id());
+        if (!empty($r) && !empty($r['success'])) {
+            delete_transient(self::RESULT_TRANSIENT_KEY . get_current_user_id());
+            echo '<div class="notice notice-success"><p><strong>Bozza articolo creata</strong>: '.esc_html($r['title'] ?? '').' (Bozza) ';
+            if (!empty($r['edit_url'])) { echo '<a class="button button-small" href="'.esc_url($r['edit_url']).'">Modifica articolo</a> '; }
+            if (!empty($r['preview_url'])) { echo '<a class="button button-small" href="'.esc_url($r['preview_url']).'" target="_blank" rel="noopener">Anteprima articolo</a>'; }
+            echo '</p>';
+            if (!empty($r['warnings'])) { echo '<p><strong>Warning QA:</strong> '.esc_html(implode(' | ', array_map('sanitize_text_field', (array)$r['warnings']))).'</p>'; }
+            echo '<p>Puoi conservare la sessione per creare una nuova bozza o svuotarla manualmente.</p></div>';
+        }
     }
 
     public static function render_page() {
@@ -149,7 +171,7 @@ class ALMA_AI_Content_Agent_Admin {
         echo '<p><label><input type="checkbox" name="activate_profile" value="1"> Attiva questo profilo dopo il salvataggio</label></p><p><button class="button button-primary">Salva profilo</button></p></form>';
     }
 
-    private static function render_ideas_tab() { $status = sanitize_key($_GET['idea_status'] ?? ''); echo '<h2>Idee contenuto</h2>'; self::action_form('generate_ideas','Genera idee','<input type="number" min="1" max="10" name="max_ideas" value="1"/> <input name="theme" placeholder="Tema"> <input name="destination" placeholder="Destinazione"><br><textarea name="temporary_instructions" class="large-text" rows="2" placeholder="Istruzioni per questa generazione"></textarea><p><select><option>Profilo Istruzioni AI</option></select> <button type="submit" class="button button-secondary" name="do" value="search_knowledge_base">Cerca nel Knowledge Base</button> <button type="submit" class="button" name="do" value="add_new_search">Aggiungi nuova ricerca</button> <button type="button" class="button" disabled>Crea bozza articolo</button> <button type="button" class="button" disabled>Programma creazione bozza articolo</button> <em>La selezione dei risultati sarà collegata alla generazione nelle prossime fasi del workflow.</em></p>');
+    private static function render_ideas_tab() { $status = sanitize_key($_GET['idea_status'] ?? ''); echo '<h2>Idee contenuto</h2>'; self::action_form('generate_ideas','Genera idee','<input type="number" min="1" max="10" name="max_ideas" value="1"/> <input name="theme" placeholder="Tema"> <input name="destination" placeholder="Destinazione"><br><textarea name="temporary_instructions" class="large-text" rows="2" placeholder="Istruzioni per questa generazione"></textarea><p><select><option>Profilo Istruzioni AI</option></select> <button type="submit" class="button button-secondary" name="do" value="search_knowledge_base">Cerca nel Knowledge Base</button> <button type="submit" class="button" name="do" value="add_new_search">Aggiungi nuova ricerca</button> <button type="button" class="button" disabled>Programma creazione bozza articolo</button> <em>Programma creazione bozza articolo: Disponibile nella prossima fase.</em></p>');
         echo '<form method="get"><input type="hidden" name="post_type" value="affiliate_link"><input type="hidden" name="page" value="alma-ai-content-agent"><input type="hidden" name="tab" value="idee"><select name="idea_status"><option value="">Tutti gli stati</option>'; foreach(ALMA_AI_Content_Agent_Store::allowed_idea_statuses() as $st){ echo '<option '.selected($status,$st,false).' value="'.esc_attr($st).'">'.esc_html($st).'</option>'; } echo '</select> <button class="button">Filtra</button></form>';
         $ideas = ALMA_AI_Content_Agent_Store::get_ideas($status); echo '<table class="widefat striped"><thead><tr><th>ID</th><th>Titolo</th><th>Motivazione</th><th>Stato</th><th>SEO</th><th>Priority</th><th>Affiliati</th><th>Immagini</th><th>Model</th><th>Profile</th><th>Snapshot</th><th>Warning</th><th>Azioni</th></tr></thead><tbody>';
         foreach($ideas as $i){ $warnings=implode(', ',(array)json_decode((string)($i['warnings']??'[]'),true)); echo '<tr><td>'.(int)$i['id'].'</td><td>'.esc_html($i['proposed_title']).'</td><td>'.esc_html($i['rationale']).'</td><td>'.esc_html($i['status']).'</td><td>'.esc_html($i['seo_score']).'</td><td>'.esc_html($i['priority_score']).'</td><td>'.count((array)json_decode((string)$i['affiliate_candidates'],true)).'</td><td>'.count((array)json_decode((string)$i['image_candidates'],true)).'</td><td>'.esc_html($i['ai_model']).'</td><td>'.(int)$i['instruction_profile_id'].'</td><td>'.esc_html(substr((string)$i['instruction_snapshot_hash'],0,12)).'</td><td>'.esc_html($warnings).'</td><td>'.self::inline_status_form((int)$i['id'],'approved','Approva').' '.self::inline_status_form((int)$i['id'],'rejected','Scarta').' '.self::inline_status_form((int)$i['id'],'archived','Archivia').' '.self::inline_brief_form((int)$i['id']).' '.self::inline_draft_form((int)$i['id'], (string)$i['status']).'</td></tr>';
@@ -180,6 +202,8 @@ class ALMA_AI_Content_Agent_Admin {
             echo '</tbody></table>';
         }
         echo '<p><button type="submit" class="button button-primary">Salva selezione</button></p></form>';
+        echo '<form method="post" action="'.esc_url(admin_url('admin-post.php')).'">'; wp_nonce_field('alma_ai_agent_action');
+        echo '<input type="hidden" name="action" value="alma_ai_agent_action"><input type="hidden" name="do" value="create_draft_from_selection"><p><button type="submit" class="button button-primary">Crea bozza articolo</button></p></form>';
 
         echo "<form method='post' action='".esc_url(admin_url('admin-post.php'))."' onsubmit=\"return confirm('Svuotare la sessione corrente?');\">"; wp_nonce_field('alma_ai_agent_action');
         echo "<input type='hidden' name='action' value='alma_ai_agent_action'><input type='hidden' name='do' value='clear_selection_session'><p><button class='button'>Svuota sessione</button></p></form>";

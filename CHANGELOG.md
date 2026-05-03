@@ -1,3 +1,14 @@
+## 2.22.0 — PR 5 — AI Content Agent Draft Creation from Selection Session
+- Pulsante **Crea bozza articolo** operativo nella tab Idee contenuto.
+- Generazione bozza da Selection Session con uso dei soli risultati selezionati.
+- Content Budget applicato con limite massimo 3 Post e contesto compatto strutturato.
+- Payload AI strutturato e richiesta output JSON (`title`, `content`, `slug`) con validazione robusta.
+- Creazione post WordPress in stato `draft` con permalink/preview generati da WordPress.
+- Salvataggio meta provenance AI, warning QA locali e logging AI usage.
+- Nessuna pubblicazione automatica, nessuna programmazione/scheduler.
+- Nessun crawling/scraping e nessuna web search.
+
+
 
 ## 2.21.1
 

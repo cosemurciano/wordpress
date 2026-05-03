@@ -1,5 +1,10 @@
 
-## 2.21.1
+## 2.22.0
+
+- PR 5 — Crea bozza articolo da Selection Session con uso esclusivo delle fonti selezionate.
+- Output OpenAI richiesto in JSON validato (`title`, `content`, `slug`) e creazione articolo WordPress in stato bozza.
+- Permalink/anteprima generati da WordPress, QA locale applicata, meta provenance salvati.
+- Nessuna pubblicazione automatica, nessuna programmazione scheduler in questa PR.
 
 - Nota manutenzione PR 4.1: stabilizzata la ricerca Media nel Knowledge Base (ordinamento su `indexed_at`).
 - Corretta la deduplica dei Documenti TXT per evitare collisioni quando `source_id=0`.
