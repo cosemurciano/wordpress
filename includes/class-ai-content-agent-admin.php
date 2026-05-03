@@ -43,7 +43,7 @@ class ALMA_AI_Content_Agent_Admin {
         } elseif ($do === 'search_knowledge_base' || $do === 'add_new_search') {
             $profile_id = absint($_POST['instruction_profile_id'] ?? 0);
             $profile = $profile_id ? ALMA_AI_Content_Agent_Instructions_Manager::get_profile($profile_id) : array();
-            $payload = array('max_ideas'=>absint($_POST['max_ideas'] ?? 1),'theme'=>sanitize_text_field($_POST['theme'] ?? ''),'destination'=>sanitize_text_field($_POST['destination'] ?? ''),'temporary_instructions'=>sanitize_textarea_field($_POST['temporary_instructions'] ?? ''),'instruction_profile_id'=>$profile_id,'instruction_profile_name'=>sanitize_text_field($profile['profile_name'] ?? ''),'instruction_snapshot_hash'=>sanitize_text_field($profile ? ALMA_AI_Content_Agent_Instructions_Manager::snapshot_hash(wp_json_encode($profile)) : ''));
+            $payload = array('max_ideas'=>absint($_POST['max_ideas'] ?? 1),'content_search_query'=>sanitize_text_field($_POST['content_search_query'] ?? ($_POST['search_terms'] ?? '')),'search_terms'=>sanitize_text_field($_POST['search_terms'] ?? ($_POST['content_search_query'] ?? '')),'theme'=>sanitize_text_field($_POST['theme'] ?? ''),'destination'=>sanitize_text_field($_POST['destination'] ?? ''),'temporary_instructions'=>sanitize_textarea_field($_POST['temporary_instructions'] ?? ''),'instruction_profile_id'=>$profile_id,'instruction_profile_name'=>sanitize_text_field($profile['profile_name'] ?? ''),'instruction_snapshot_hash'=>sanitize_text_field($profile ? ALMA_AI_Content_Agent_Instructions_Manager::snapshot_hash(wp_json_encode($profile)) : ''));
             $search = ALMA_AI_Content_Agent_Knowledge_Search::search($payload);
             $stats = ALMA_AI_Content_Agent_Selection_Session::add_search_results($payload, $search);
             $result = array('success' => true, 'message' => sprintf('Ricerca completata. Trovati: %d, aggiunti: %d, duplicati ignorati: %d.', (int)$stats['found'], (int)$stats['added'], (int)$stats['duplicates']));
@@ -188,55 +188,44 @@ class ALMA_AI_Content_Agent_Admin {
         echo '<p><label><input type="checkbox" name="activate_profile" value="1"> Attiva questo profilo dopo il salvataggio</label></p><p><button class="button button-primary">Salva profilo</button></p></form>';
     }
 
-    private static function render_ideas_tab() { $status = sanitize_key($_GET['idea_status'] ?? ''); echo '<h2>Idee contenuto</h2>'; $profiles = ALMA_AI_Content_Agent_Instructions_Manager::get_profiles(100,0);
+    private static function render_ideas_tab() {
+        echo '<h2>Idee contenuto</h2>';
+        $profiles = ALMA_AI_Content_Agent_Instructions_Manager::get_profiles(100,0);
         $active = ALMA_AI_Content_Agent_Instructions_Manager::get_active_profile();
         $profile_options = '<option value="0">Seleziona Profilo Istruzioni AI</option>';
         foreach($profiles as $pp){ if((int)($pp['is_active']??0)!==1){ continue; } $profile_options .= '<option value="'.(int)$pp['id'].'" '.selected((int)($active['id']??0),(int)$pp['id'],false).'>'.esc_html($pp['profile_name']).'</option>'; }
-        self::action_form('search_knowledge_base','Cerca contenuti per la bozza','<input name="theme" placeholder="Tema / argomento"> <input name="destination" placeholder="Destinazione"> <input name="search_terms" placeholder="Termini di ricerca"><br><textarea name="temporary_instructions" class="large-text" rows="2" placeholder="Istruzioni temporanee per questa bozza"></textarea><p><label><strong>Profilo Istruzioni AI</strong> <select name="instruction_profile_id">'.$profile_options.'</select></label> <a class="button" href="'.esc_url(admin_url('edit.php?post_type=affiliate_link&page=alma-ai-content-agent&tab=istruzioni-ai')).'">Gestisci Profili Istruzioni AI</a> <button type="submit" class="button button-secondary" name="do" value="search_knowledge_base">Cerca contenuti</button> <button type="submit" class="button" name="do" value="add_new_search">Aggiungi nuova ricerca</button></p>');
-        echo '<form method="get"><input type="hidden" name="post_type" value="affiliate_link"><input type="hidden" name="page" value="alma-ai-content-agent"><input type="hidden" name="tab" value="idee"><select name="idea_status"><option value="">Tutti gli stati</option>'; foreach(ALMA_AI_Content_Agent_Store::allowed_idea_statuses() as $st){ echo '<option '.selected($status,$st,false).' value="'.esc_attr($st).'">'.esc_html($st).'</option>'; } echo '</select> <button class="button">Filtra</button></form>';
-        $ideas = ALMA_AI_Content_Agent_Store::get_ideas($status); echo '<table class="widefat striped"><thead><tr><th>ID</th><th>Titolo</th><th>Motivazione</th><th>Stato</th><th>SEO</th><th>Priority</th><th>Affiliati</th><th>Immagini</th><th>Model</th><th>Profile</th><th>Snapshot</th><th>Warning</th><th>Azioni</th></tr></thead><tbody>';
-        foreach($ideas as $i){ $warnings=implode(', ',(array)json_decode((string)($i['warnings']??'[]'),true)); echo '<tr><td>'.(int)$i['id'].'</td><td>'.esc_html($i['proposed_title']).'</td><td>'.esc_html($i['rationale']).'</td><td>'.esc_html($i['status']).'</td><td>'.esc_html($i['seo_score']).'</td><td>'.esc_html($i['priority_score']).'</td><td>'.count((array)json_decode((string)$i['affiliate_candidates'],true)).'</td><td>'.count((array)json_decode((string)$i['image_candidates'],true)).'</td><td>'.esc_html($i['ai_model']).'</td><td>'.(int)$i['instruction_profile_id'].'</td><td>'.esc_html(substr((string)$i['instruction_snapshot_hash'],0,12)).'</td><td>'.esc_html($warnings).'</td><td>'.self::inline_status_form((int)$i['id'],'approved','Approva').' '.self::inline_status_form((int)$i['id'],'rejected','Scarta').' '.self::inline_status_form((int)$i['id'],'archived','Archivia').' '.self::inline_brief_form((int)$i['id']).' '.self::inline_draft_form((int)$i['id'], (string)$i['status']).'</td></tr>';
-            $brief=ALMA_AI_Content_Agent_Store::get_brief_by_idea((int)$i['id']); if($brief){ echo '<tr><td colspan="13"><details><summary>Brief esistente per idea #'.(int)$i['id'].'</summary><pre style="white-space:pre-wrap;">'.esc_html(wp_json_encode($brief, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE)).'</pre></details></td></tr>'; }
-        }
-        echo '</tbody></table>';
+        self::action_form('search_knowledge_base','Cerca contenuti','<p><label><strong>Cerca contenuti per la bozza</strong><br><input class="large-text" name="content_search_query" placeholder="Es. tour Lecce barocco, itinerario Salento, museo ebraico, spiagge Otranto..."></label></p><p><label><strong>Profilo Istruzioni AI</strong> <select name="instruction_profile_id">'.$profile_options.'</select></label> <a class="button" href="'.esc_url(admin_url('edit.php?post_type=affiliate_link&page=alma-ai-content-agent&tab=istruzioni-ai')).'">Gestisci Profili Istruzioni AI</a></p><p><textarea name="temporary_instructions" class="large-text" rows="2" placeholder="Istruzioni temporanee per questa bozza"></textarea></p><p><button type="submit" class="button button-secondary" name="do" value="search_knowledge_base">Cerca contenuti</button> <button type="submit" class="button" name="do" value="add_new_search">Aggiungi nuova ricerca</button></p>');
 
         $summary = ALMA_AI_Content_Agent_Selection_Session::summary();
-        $groups = ALMA_AI_Content_Agent_Selection_Session::grouped_results();
-        $labels = array('post'=>'Post','page'=>'Pagine','affiliate_link'=>'Affiliate Links','document_txt'=>'Documenti TXT','source_online'=>'Fonti online AI','media'=>'Media','other'=>'Altro');
-        echo '<div class="alma-agent-card"><h3>Sessione contenuto</h3>';
-        echo '<p>Puoi effettuare più ricerche: i nuovi risultati verranno aggiunti a questa sessione. Le selezioni saranno usate nella prossima fase per creare la bozza articolo. Puoi selezionare massimo 3 Post.</p>';
-        if (($summary['status'] ?? 'empty') === 'empty') { echo '<p><em>Sessione vuota.</em></p>'; }
-        echo '<ul><li>Stato sessione: <strong>'.esc_html($summary['status'] ?? 'empty').'</strong></li><li>Numero ricerche: '.(int)($summary['search_count'] ?? 0).'</li><li>Ultimo aggiornamento: '.esc_html($summary['updated_at'] ?? '-').'</li><li>Risultati totali: '.(int)($summary['total_results'] ?? 0).'</li><li>Risultati selezionati: '.(int)($summary['selected_total'] ?? 0).'</li><li>Post selezionati: <strong id="alma-post-counter">'.(int)($summary['selected_post'] ?? 0).'/3</strong></li><li>Documenti TXT selezionati: '.(int)($summary['selected_document_txt'] ?? 0).'</li><li>Fonti online AI selezionate: '.(int)($summary['selected_source_online'] ?? 0).'</li><li>Affiliate Links selezionati: '.(int)($summary['selected_affiliate_link'] ?? 0).'</li><li>Media selezionati: '.(int)($summary['selected_media'] ?? 0).'</li><li>Pagine selezionate: '.(int)($summary['selected_page'] ?? 0).'</li></ul></div>';
+        $results_groups = ALMA_AI_Content_Agent_Selection_Session::grouped_results(false);
+        $selected_groups = ALMA_AI_Content_Agent_Selection_Session::grouped_results(true);
+        $labels = array('affiliate_link'=>'Link Affiliati','post'=>'Post','document_txt'=>'File TXT','source_online'=>'Fonti online','page'=>'Pagine','media'=>'Media');
+        $limits = array('affiliate_link'=>ALMA_AI_Content_Agent_Selection_Session::MAX_SELECTED_AFFILIATE_LINKS,'post'=>ALMA_AI_Content_Agent_Selection_Session::MAX_SELECTED_POSTS,'document_txt'=>ALMA_AI_Content_Agent_Selection_Session::MAX_SELECTED_DOCUMENT_TXT,'source_online'=>ALMA_AI_Content_Agent_Selection_Session::MAX_SELECTED_SOURCE_ONLINE,'page'=>ALMA_AI_Content_Agent_Selection_Session::MAX_SELECTED_PAGES,'media'=>ALMA_AI_Content_Agent_Selection_Session::MAX_SELECTED_MEDIA);
 
-        echo '<form method="post" action="'.esc_url(admin_url('admin-post.php')).'">'; wp_nonce_field('alma_ai_agent_action');
+        echo '<h3>Risultati ricerca</h3><form method="post" action="'.esc_url(admin_url('admin-post.php')).'">'; wp_nonce_field('alma_ai_agent_action');
         echo '<input type="hidden" name="action" value="alma_ai_agent_action"><input type="hidden" name="do" value="save_selection">';
-        foreach ($labels as $groupKey => $groupLabel) {
-            $rows = (array)($groups[$groupKey] ?? array());
-            if (empty($rows)) { continue; }
-            $sel=0; foreach($rows as $r){ if(!empty($r['selected'])){$sel++;}}
-            echo '<h4>' . esc_html($groupLabel) . ' (' . count($rows) . ') - selezionati '.$sel.'</h4><table class="widefat striped"><tbody>';
-            foreach ($rows as $r) {
-                $isPost = $groupKey === 'post';
-                $checked = !empty($r['selected']) ? 'checked' : '';
-                echo '<tr><td style="width:40px;"><input name="selected_result_keys[]" class="alma-kb-check ' . ($isPost ? 'alma-kb-post-check' : '') . '" type="checkbox" value="' . esc_attr($r['result_key']) . '" ' . $checked . '></td><td><strong>' . esc_html($r['title']) . '</strong><br><small>' . esc_html($r['excerpt']) . '</small><br><span class="alma-badge is-pending">Score ' . (int)$r['score'] . '</span> <small>' . esc_html($r['reason']) . '</small>' . (!empty($r['admin_url']) ? ' <a href="'.esc_url($r['admin_url']).'" target="_blank" rel="noopener">Apri</a>' : '') . '</td></tr>';
-            }
-            echo '</tbody></table>';
-        }
+        foreach ($labels as $groupKey => $groupLabel) { $rows = (array)($results_groups[$groupKey] ?? array()); if (empty($rows)) { continue; } $sel=0; foreach($rows as $r){ if(!empty($r['selected'])){$sel++;}}
+            echo '<h4>' . esc_html($groupLabel) . ' (' . count($rows) . ') — max selezionabili '.(int)$limits[$groupKey].' — selezionati '.$sel.'</h4><table class="widefat striped"><tbody>';
+            foreach ($rows as $r) { $checked = !empty($r['selected']) ? 'checked' : '';
+                echo '<tr><td style="width:40px;"><input name="selected_result_keys[]" type="checkbox" value="' . esc_attr($r['result_key']) . '" ' . $checked . '></td><td><strong>' . esc_html($r['title']) . '</strong><br><small>' . esc_html($r['excerpt']) . '</small><br><span class="alma-badge is-pending">Score ' . (int)$r['score'] . '</span> <small>' . esc_html($r['reason']) . '</small>' . (!empty($r['admin_url']) ? ' <a href="'.esc_url($r['admin_url']).'" target="_blank" rel="noopener">Apri</a>' : '') . '</td></tr>'; }
+            echo '</tbody></table>'; }
         echo '<p><button type="submit" class="button button-primary">Salva selezione</button></p></form>';
+
+        echo '<h3>Sessione contenuto</h3><p>Elementi selezionati persistenti usati per JSON payload e Crea Bozza.</p>';
+        if ((int)($summary['selected_total'] ?? 0) < 1) { echo '<p><em>Nessun elemento selezionato.</em></p>'; }
+        foreach ($labels as $groupKey => $groupLabel) { $rows = (array)($selected_groups[$groupKey] ?? array()); if (empty($rows)) { continue; }
+            echo '<h4>'.esc_html($groupLabel).' ('.count($rows).')</h4><ul>';
+            foreach($rows as $r){ echo '<li><strong>'.esc_html($r['title']).'</strong> — score '.(int)$r['score'].' — '.esc_html($r['reason']).'</li>'; }
+            echo '</ul>'; }
+
         echo '<form method="post" action="'.esc_url(admin_url('admin-post.php')).'">'; wp_nonce_field('alma_ai_agent_action');
         echo '<input type="hidden" name="action" value="alma_ai_agent_action"><input type="hidden" name="do" value="download_ai_payload_json"><p><button type="submit" class="button">Scarica JSON payload AI</button></p></form>';
         echo '<form method="post" action="'.esc_url(admin_url('admin-post.php')).'">'; wp_nonce_field('alma_ai_agent_action');
         echo '<input type="hidden" name="action" value="alma_ai_agent_action"><input type="hidden" name="do" value="create_draft_from_selection"><p><button type="submit" class="button button-primary">Crea Bozza con OpenAI</button></p></form>';
-
-        echo "<form method='post' action='".esc_url(admin_url('admin-post.php'))."' onsubmit=\"return confirm('Svuotare la sessione corrente?');\">"; wp_nonce_field('alma_ai_agent_action');
-        echo "<input type='hidden' name='action' value='alma_ai_agent_action'><input type='hidden' name='do' value='clear_selection_session'><p><button class='button'>Svuota sessione</button></p></form>";
-        echo "<script>(function(){var checks=document.querySelectorAll('.alma-kb-post-check');var c=document.getElementById('alma-post-counter');function u(){var n=0;checks.forEach(function(x){if(x.checked){n++;}});if(c){c.textContent=n+'/3';}checks.forEach(function(x){if(!x.checked){x.disabled=n>=3;}else{x.disabled=false;}});}checks.forEach(function(x){x.addEventListener('change',function(e){var n=[].filter.call(checks,function(i){return i.checked;}).length;if(n>3){e.target.checked=false;alert('Puoi selezionare massimo 3 Post.');}u();});});u();})();</script>";
-
-
     }
 
     private static function inline_status_form($idea_id,$status,$label){ return '<form style="display:inline-block" method="post" action="'.esc_url(admin_url('admin-post.php')).'">'.wp_nonce_field('alma_ai_agent_action','_wpnonce',true,false).'<input type="hidden" name="action" value="alma_ai_agent_action"><input type="hidden" name="do" value="set_idea_status"><input type="hidden" name="idea_id" value="'.(int)$idea_id.'"><input type="hidden" name="status" value="'.esc_attr($status).'"><button class="button button-small">'.esc_html($label).'</button></form>'; }
-    private static function inline_brief_form($idea_id){ return '<form style="display:inline-block" method="post" action="'.esc_url(admin_url('admin-post.php')).'">'.wp_nonce_field('alma_ai_agent_action','_wpnonce',true,false).'<input type="hidden" name="action" value="alma_ai_agent_action"><input type="hidden" name="do" value="generate_brief"><input type="hidden" name="idea_id" value="'.(int)$idea_id.'"><button class="button button-small button-primary">Genera brief</button></form>'; }
+    private static function inline_brief_form($idea_id){ return '<form style="display:inline-block" method="post" action="'.esc_url(admin_url('admin-post.php')).'">'.wp_nonce_field('alma_ai_agent_action','_wpnonce',true,false).'<input type="hidden" name="action" value="alma_ai_agent_action"><input type="hidden" name="do" value="generate_brief"><input type="hidden" name="idea_id" value="'.(int)$idea_id.'"><button class="button button-small button-primary">Brief legacy</button></form>'; }
     private static function inline_draft_form($idea_id, $idea_status){
         $idea_id = absint($idea_id); $idea_status = sanitize_key($idea_status);
         if (in_array($idea_status, array('rejected', 'archived'), true)) { return ''; }

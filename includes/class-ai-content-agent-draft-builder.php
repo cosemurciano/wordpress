@@ -38,7 +38,7 @@ class ALMA_AI_Content_Agent_Draft_Builder {
     private static function build_payload_from_selection_session($user_id = 0) {
         $user_id = absint($user_id ?: get_current_user_id());
         $session = ALMA_AI_Content_Agent_Selection_Session::build_context_package();
-        return array('task'=>'create_article_draft_from_selected_sources','site_context'=>array('site_name'=>get_bloginfo('name'),'language'=>get_bloginfo('language'),'generated_at'=>current_time('mysql')),'user_inputs'=>array('theme'=>sanitize_text_field($session['last_query']['theme'] ?? ''),'destination'=>sanitize_text_field($session['last_query']['destination'] ?? ''),'search_terms'=>sanitize_text_field($session['last_query']['search_terms'] ?? '')),'temporary_instructions'=>sanitize_textarea_field($session['last_query']['temporary_instructions'] ?? ''),'instruction_profile'=>$session['instruction_profile_name'] ?? '','selection_context'=>$session['selected_results'] ?? array(),'output_contract'=>array('title','slug','excerpt','content','seo_title','seo_description','affiliate_shortcodes_used','media_used','warnings'));
+        return array('task'=>'create_article_draft_from_selected_sources','site_context'=>array('site_name'=>get_bloginfo('name'),'language'=>get_bloginfo('language'),'generated_at'=>current_time('mysql')),'user_inputs'=>array('content_search_query'=>sanitize_text_field($session['last_query']['content_search_query'] ?? ($session['last_query']['search_terms'] ?? '')),'theme'=>sanitize_text_field($session['last_query']['theme'] ?? ''),'destination'=>sanitize_text_field($session['last_query']['destination'] ?? ''),'temporary_instructions'=>sanitize_textarea_field($session['last_query']['temporary_instructions'] ?? '')),'instruction_profile'=>$session['instruction_profile_name'] ?? '','temporary_instructions'=>sanitize_textarea_field($session['last_query']['temporary_instructions'] ?? ''),'rules'=>array('output_json'=>true,'title_required'=>true,'content_required'=>true,'slug_optional'=>true,'no_raw_affiliate_urls'=>true),'selection_context'=>array(),'affiliate_links'=>array(),'posts'=>array(),'documents'=>array(),'sources_online'=>array(),'pages'=>array(),'media'=>array(),'affiliate_rules'=>array(),'seo_rules'=>array(),'media_rules'=>array(),'output_contract'=>array('title','slug','excerpt','content','seo_title','seo_description','affiliate_shortcodes_used','media_used','warnings'),'warnings'=>array());
     }
 
     public static function download_payload_json_from_selection_session($user_id = 0) {
@@ -113,7 +113,7 @@ class ALMA_AI_Content_Agent_Draft_Builder {
                 if (!$item || ($item['status'] ?? '') !== 'active') { $warnings[] = 'Documento TXT non disponibile: #'.$kid; continue; }
                 $chunks = self::fetch_document_chunks($kid, 3);
                 if (empty($chunks)) { $warnings[] = 'Documento TXT senza chunk validi: #'.$kid; }
-                $ctx['documents'][] = array('id'=>(int)$item['id'],'title'=>sanitize_text_field($item['title']),'status'=>sanitize_text_field($item['status']),'chunks'=>array_map(function($c){ return mb_substr(wp_strip_all_tags((string)$c),0,500); }, (array)$chunks));
+                $ctx['documents'][] = array('id'=>(int)$item['id'],'title'=>sanitize_text_field($item['title']),'status'=>sanitize_text_field($item['status']),'normalized_text'=>implode("\n", array_map(function($c){ return mb_substr(wp_strip_all_tags((string)$c),0,500); }, (array)$chunks)));
             } elseif ($group === 'source_online') {
                 $src = $wpdb->get_row($wpdb->prepare("SELECT id,name,source_url,source_type,is_active FROM ".ALMA_AI_Content_Agent_Store::table('sources')." WHERE id=%d", $sid), ARRAY_A);
                 if (!$src || (int)$src['is_active'] !== 1) { $warnings[] = 'Fonte online non disponibile: #'.$sid; continue; }
@@ -132,7 +132,12 @@ class ALMA_AI_Content_Agent_Draft_Builder {
         $payload = self::build_payload_from_selection_session($user_id);
         $payload['instruction_profile'] = $profile;
         $payload['selection_context'] = $ctx;
-        $payload['rules'] = array('output_json'=>true,'title_required'=>true,'content_required'=>true,'slug_optional'=>true,'no_raw_affiliate_urls'=>true);
+        $payload['affiliate_links'] = $ctx['affiliate_links'];
+        $payload['posts'] = $ctx['posts'];
+        $payload['documents'] = $ctx['documents'];
+        $payload['sources_online'] = $ctx['sources_online'];
+        $payload['pages'] = $ctx['pages'];
+        $payload['media'] = $ctx['media'];
         $prompt = 'Genera solo JSON con chiavi: title,content,slug,warnings. Usa solo shortcode affiliati autorizzati.';
         $res = ALMA_OpenAI_Service::request(array('system_prompt'=>'Sei un content editor WordPress. Output solo JSON valido.', 'user_prompt'=>$prompt.' CONTEXT: '.wp_json_encode($payload), 'json_output'=>true, 'max_output_tokens'=>1800));
         if (empty($res['success'])) { return self::fail($res['error'] ?? 'Risposta OpenAI fallita.', $res['model'] ?? '', 'session:user:'.$user_id); }

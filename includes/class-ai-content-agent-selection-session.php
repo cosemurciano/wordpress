@@ -3,11 +3,11 @@ if (!defined('ABSPATH')) { exit; }
 
 class ALMA_AI_Content_Agent_Selection_Session {
     const MAX_SELECTED_POSTS = 3;
-    const MAX_SELECTED_PAGES = 3;
-    const MAX_SELECTED_AFFILIATE_LINKS = 6;
+    const MAX_SELECTED_PAGES = 2;
+    const MAX_SELECTED_AFFILIATE_LINKS = 20;
     const MAX_SELECTED_DOCUMENT_TXT = 5;
     const MAX_SELECTED_SOURCE_ONLINE = 5;
-    const MAX_SELECTED_MEDIA = 6;
+    const MAX_SELECTED_MEDIA = 5;
     const TTL = DAY_IN_SECONDS;
     const MAX_RESULTS = 250;
 
@@ -39,13 +39,15 @@ class ALMA_AI_Content_Agent_Selection_Session {
                 $k = $normalized['result_key'];
                 if (isset($session['results'][$k])) {
                     $duplicates++;
-                    if ((int)($normalized['score'] ?? 0) > (int)($session['results'][$k]['score'] ?? 0)) {
-                        $session['results'][$k] = $normalized;
-                    } elseif (!empty($normalized['reason'])) {
-                        $old_reason = (string)($session['results'][$k]['reason'] ?? '');
-                        if ($old_reason === '') { $session['results'][$k]['reason'] = $normalized['reason']; }
-                        elseif (strpos($old_reason, $normalized['reason']) === false) { $session['results'][$k]['reason'] = $old_reason . ' | ' . $normalized['reason']; }
-                    }
+                    $existing = $session['results'][$k];
+                    $merged = ((int)($normalized['score'] ?? 0) > (int)($existing['score'] ?? 0)) ? $normalized : $existing;
+                    $merged['selected'] = !empty($existing['selected']) || !empty($normalized['selected']);
+                    $merged['origin_key'] = sanitize_text_field($merged['origin_key'] ?? ($existing['origin_key'] ?? ($normalized['origin_key'] ?? '')));
+                    $merged['raw_key'] = sanitize_text_field($existing['raw_key'] ?? ($normalized['raw_key'] ?? ''));
+                    $old_reason = array_filter(array_map('trim', explode('|', (string)($existing['reason'] ?? ''))));
+                    $new_reason = array_filter(array_map('trim', explode('|', (string)($normalized['reason'] ?? ''))));
+                    $merged['reason'] = implode(' | ', array_values(array_unique(array_merge($old_reason, $new_reason))));
+                    $session['results'][$k] = $merged;
                     continue;
                 }
                 $session['results'][$k] = $normalized;
@@ -55,9 +57,9 @@ class ALMA_AI_Content_Agent_Selection_Session {
         if (count($session['results']) > self::MAX_RESULTS) {
             $session['results'] = array_slice($session['results'], -self::MAX_RESULTS, null, true);
         }
-        $query = array('theme'=>sanitize_text_field($payload['theme'] ?? ''),'destination'=>sanitize_text_field($payload['destination'] ?? ''),'search_terms'=>sanitize_text_field($payload['search_terms'] ?? ''),'temporary_instructions'=>sanitize_textarea_field($payload['temporary_instructions'] ?? ''));
+        $query = array('content_search_query'=>sanitize_text_field($payload['content_search_query'] ?? ($payload['search_terms'] ?? '')),'theme'=>sanitize_text_field($payload['theme'] ?? ''),'destination'=>sanitize_text_field($payload['destination'] ?? ''),'search_terms'=>sanitize_text_field($payload['search_terms'] ?? ''),'temporary_instructions'=>sanitize_textarea_field($payload['temporary_instructions'] ?? ''));
         $session['last_query'] = $query;
-        $session['query_history'][] = array('at'=>current_time('mysql'),'theme'=>$query['theme'],'destination'=>$query['destination']);
+        $session['query_history'][] = array('at'=>current_time('mysql'),'content_search_query'=>$query['content_search_query']);
         if (count($session['query_history']) > 20) { $session['query_history'] = array_slice($session['query_history'], -20); }
         $session['status'] = empty($session['results']) ? 'empty' : 'active';
         $session['updated_at'] = current_time('mysql');
@@ -83,7 +85,8 @@ class ALMA_AI_Content_Agent_Selection_Session {
         $warnings = array();
         foreach ($limits as $g => $max) {
             if (($counts[$g] ?? 0) <= $max) { continue; }
-            $warnings[] = sprintf('%s: massimo %d elementi, ridotti automaticamente.', $g, $max);
+            $labels = array('affiliate_link'=>'Link Affiliati','post'=>'Post','document_txt'=>'File TXT','source_online'=>'Fonti online','page'=>'Pagine','media'=>'Media');
+            $warnings[] = sprintf('Hai selezionato %d %s: ne sono stati mantenuti %d.', (int)($counts[$g] ?? 0), $labels[$g] ?? $g, $max);
             $kept = 0;
             foreach ($next as $k => $row) {
                 if (($row['source_group'] ?? '') !== $g || empty($next[$k]['selected'])) { continue; }
@@ -145,6 +148,7 @@ class ALMA_AI_Content_Agent_Selection_Session {
         return array(
             'result_key' => sanitize_text_field($result_key),
             'origin_key' => $origin_key,
+            'raw_key' => sanitize_text_field($row['result_key'] ?? ''),
             'source_group' => $source_group,
             'source_type' => $source_type,
             'source_id' => $source_id,
@@ -160,9 +164,23 @@ class ALMA_AI_Content_Agent_Selection_Session {
         );
     }
 
-    public static function grouped_results() {
-        $session = self::get_session(); $groups = array();
-        foreach ($session['results'] as $row) { $groups[$row['source_group']][] = $row; }
+    public static function grouped_results($selected_only = false) {
+        $session = self::get_session();
+        $order = array('affiliate_link','post','document_txt','source_online','page','media','other');
+        $groups = array_fill_keys($order, array());
+        foreach ($session['results'] as $row) {
+            if ($selected_only && empty($row['selected'])) { continue; }
+            $k = isset($groups[$row['source_group']]) ? $row['source_group'] : 'other';
+            $groups[$k][] = $row;
+        }
+        foreach ($groups as $k => $rows) {
+            usort($rows, function($a, $b){
+                $score = ((int)($b['score'] ?? 0)) <=> ((int)($a['score'] ?? 0));
+                if ($score !== 0) { return $score; }
+                return strcasecmp((string)($a['title'] ?? ''), (string)($b['title'] ?? ''));
+            });
+            $groups[$k] = $rows;
+        }
         return $groups;
     }
 
