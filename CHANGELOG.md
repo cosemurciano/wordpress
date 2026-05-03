@@ -1,3 +1,9 @@
+## 2.22.2 — PR 5.1.1 — AI Content Agent Review Fixes
+- Fix P1 Documenti TXT: gestione `knowledge_item_id` stabile dalla ricerca alla Selection Session e resolver difensivo nel Draft Builder per key normalizzate (`document_txt:kb_document_txt_123`, `kb:document_txt:123`, `kb_document_txt_123`).
+- Fix P2 tab/CTA Istruzioni AI: rimosso remap verso Idee, tab dedicata visibile e routing diretto a `render_instructions_tab()`.
+- Migliorata notice risultato creazione bozza da Selection Session con dettagli completi (stato draft, link azione, profilo, modello, conteggi fonti, warning QA).
+- Confermato: nessuno scheduler, nessuna pubblicazione automatica, nessun crawling/scraping/web search.
+
 ## 2.22.1 — PR 5.1 — AI Content Agent Draft Creation from Selection Session
 - Pulsante **Crea bozza articolo** operativo nella tab Idee contenuto.
 - Generazione bozza da Selection Session con uso dei soli risultati selezionati.

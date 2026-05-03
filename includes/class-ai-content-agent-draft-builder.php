@@ -8,10 +8,23 @@ class ALMA_AI_Content_Agent_Draft_Builder {
     }
 
     private static function resolve_document_knowledge_item_id($row) {
-        $kid = absint($row['knowledge_item_id'] ?? 0);
-        if ($kid > 0) { return $kid; }
-        $rkey = sanitize_text_field($row['result_key'] ?? '');
-        if (preg_match('/(?:^|:)(\d+)$/', $rkey, $m)) { return absint($m[1]); }
+        $candidates = array(
+            $row['knowledge_item_id'] ?? '',
+            $row['result_key'] ?? '',
+            $row['result_id'] ?? '',
+            $row['key'] ?? '',
+        );
+        foreach ($candidates as $candidate) {
+            if (is_numeric($candidate)) {
+                $kid = absint($candidate);
+                if ($kid > 0) { return $kid; }
+            }
+            $value = sanitize_text_field((string)$candidate);
+            if ($value === '') { continue; }
+            if (preg_match('/^(?:kb:)?document_txt:(\d+)$/', $value, $m)) { return absint($m[1]); }
+            if (preg_match('/^(?:document_txt:)?kb_document_txt_(\d+)$/', $value, $m)) { return absint($m[1]); }
+            if (preg_match('/^kb:document_txt:kb_document_txt_(\d+)$/', $value, $m)) { return absint($m[1]); }
+        }
         return 0;
     }
     private static function fetch_document_chunks($knowledge_item_id, $limit = 3) {
@@ -128,6 +141,6 @@ class ALMA_AI_Content_Agent_Draft_Builder {
         update_post_meta($post_id, '_alma_ai_agent_qa_warnings', wp_json_encode(array_values(array_unique(array_merge($warnings, (array)$clean['warnings'], (array)($parsed['warnings'] ?? array()))))));
         update_post_meta($post_id, '_alma_ai_generated_at', current_time('mysql'));
         ALMA_AI_Usage_Logger::log(array('task'=>self::TASK_SELECTION,'success'=>true,'model'=>$res['model'] ?? '','response_time'=>$res['response_time'] ?? null,'input_tokens'=>$res['usage']['input_tokens'] ?? null,'output_tokens'=>$res['usage']['output_tokens'] ?? null,'reference_id'=>'post:'.$post_id));
-        return array('success'=>true,'post_id'=>$post_id,'title'=>$clean['title'],'edit_url'=>get_edit_post_link($post_id, 'raw'),'preview_url'=>get_preview_post_link($post_id),'warnings'=>array_values(array_unique(array_merge($warnings, (array)$clean['warnings'], (array)($parsed['warnings'] ?? array())))),'model'=>$res['model'] ?? '','usage'=>$res['usage'] ?? array());
+        return array('success'=>true,'post_id'=>$post_id,'title'=>$clean['title'],'edit_url'=>get_edit_post_link($post_id, 'raw'),'preview_url'=>get_preview_post_link($post_id),'warnings'=>array_values(array_unique(array_merge($warnings, (array)$clean['warnings'], (array)($parsed['warnings'] ?? array())))),'model'=>$res['model'] ?? '','usage'=>$res['usage'] ?? array(),'summary'=>array('status'=>'draft','instruction_profile_name'=>sanitize_text_field($profile['profile_name'] ?? ($session['instruction_profile_name'] ?? '')),'source_counts'=>array('post'=>count((array)$ctx['posts']),'page'=>count((array)$ctx['pages']),'affiliate_link'=>count((array)$ctx['affiliate_links']),'document_txt'=>count((array)$ctx['documents']),'source_online'=>count((array)$ctx['sources_online']),'media'=>count((array)$ctx['media']))));
     }
 }
