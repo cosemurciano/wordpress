@@ -1,3 +1,11 @@
+
+## 2.23.0 — PR 6 — AI Content Agent Single OpenAI Draft Workflow
+- Workflow idee contenuto semplificato: ricerca locale, selezione manuale, profilo istruzioni AI e creazione bozza.
+- Unica chiamata OpenAI al click su Crea Bozza; nessuna chiamata AI in ricerca/selezione/download JSON payload AI.
+- Aggiunto download “Scarica JSON payload AI” dalla sessione contenuto.
+- Deduplicazione con canonical session keys (post/page/affiliate_link/document_txt/source_online/media).
+- Disattivato step operativo brief AI separato e rimossi riferimenti operativi a Claude/Anthropic nella UI.
+- Confermato post_status=draft e nessuna pubblicazione automatica.
 ## 2.22.2 — PR 5.1.1 — AI Content Agent Review Fixes
 - Fix P1 Documenti TXT: gestione `knowledge_item_id` stabile dalla ricerca alla Selection Session e resolver difensivo nel Draft Builder per key normalizzate (`document_txt:kb_document_txt_123`, `kb:document_txt:123`, `kb_document_txt_123`).
 - Fix P2 tab/CTA Istruzioni AI: rimosso remap verso Idee, tab dedicata visibile e routing diretto a `render_instructions_tab()`.

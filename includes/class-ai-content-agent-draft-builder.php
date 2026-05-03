@@ -35,6 +35,22 @@ class ALMA_AI_Content_Agent_Draft_Builder {
         if (!$col) { return array(); }
         return (array)$wpdb->get_col($wpdb->prepare("SELECT normalized_text FROM $table WHERE knowledge_item_id=%d ORDER BY id ASC LIMIT %d", absint($knowledge_item_id), $limit));
     }
+    private static function build_payload_from_selection_session($user_id = 0) {
+        $user_id = absint($user_id ?: get_current_user_id());
+        $session = ALMA_AI_Content_Agent_Selection_Session::build_context_package();
+        return array('task'=>'create_article_draft_from_selected_sources','site_context'=>array('site_name'=>get_bloginfo('name'),'language'=>get_bloginfo('language'),'generated_at'=>current_time('mysql')),'user_inputs'=>array('theme'=>sanitize_text_field($session['last_query']['theme'] ?? ''),'destination'=>sanitize_text_field($session['last_query']['destination'] ?? ''),'search_terms'=>sanitize_text_field($session['last_query']['search_terms'] ?? '')),'temporary_instructions'=>sanitize_textarea_field($session['last_query']['temporary_instructions'] ?? ''),'instruction_profile'=>$session['instruction_profile_name'] ?? '','selection_context'=>$session['selected_results'] ?? array(),'output_contract'=>array('title','slug','excerpt','content','seo_title','seo_description','affiliate_shortcodes_used','media_used','warnings'));
+    }
+
+    public static function download_payload_json_from_selection_session($user_id = 0) {
+        if (!current_user_can('manage_options')) { wp_die('forbidden'); }
+        $payload = self::build_payload_from_selection_session($user_id);
+        $filename = 'alma-ai-payload-' . gmdate('Y-m-d-Hi') . '.json';
+        nocache_headers();
+        header('Content-Type: application/json; charset=utf-8');
+        header('Content-Disposition: attachment; filename=' . $filename);
+        echo wp_json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+        exit;
+    }
 
     public static function generate_for_idea($idea_id) {
         $idea_id = absint($idea_id); $idea = ALMA_AI_Content_Agent_Store::get_idea($idea_id);
@@ -113,7 +129,10 @@ class ALMA_AI_Content_Agent_Draft_Builder {
         }
         $profile_id = absint($session['instruction_profile_id'] ?? 0);
         $profile = $profile_id ? ALMA_AI_Content_Agent_Instructions_Manager::get_profile($profile_id) : ALMA_AI_Content_Agent_Instructions_Manager::get_active_profile();
-        $payload = array('task'=>'create_article_draft_from_selection','rules'=>array('output_json'=>true,'title_required'=>true,'content_required'=>true,'slug_optional'=>true,'no_raw_affiliate_urls'=>true),'instruction_profile'=>$profile,'selection_context'=>$ctx);
+        $payload = self::build_payload_from_selection_session($user_id);
+        $payload['instruction_profile'] = $profile;
+        $payload['selection_context'] = $ctx;
+        $payload['rules'] = array('output_json'=>true,'title_required'=>true,'content_required'=>true,'slug_optional'=>true,'no_raw_affiliate_urls'=>true);
         $prompt = 'Genera solo JSON con chiavi: title,content,slug,warnings. Usa solo shortcode affiliati autorizzati.';
         $res = ALMA_OpenAI_Service::request(array('system_prompt'=>'Sei un content editor WordPress. Output solo JSON valido.', 'user_prompt'=>$prompt.' CONTEXT: '.wp_json_encode($payload), 'json_output'=>true, 'max_output_tokens'=>1800));
         if (empty($res['success'])) { return self::fail($res['error'] ?? 'Risposta OpenAI fallita.', $res['model'] ?? '', 'session:user:'.$user_id); }
