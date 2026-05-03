@@ -1,4 +1,4 @@
-## Versione 2.23.0
+## Versione 2.23.1
 - Nuovo workflow AI Content Agent: ricerca locale contenuti, selezione manuale, profilo Istruzioni AI, download JSON payload AI e creazione bozza WordPress in stato draft.
 - Unica chiamata OpenAI: solo su click esplicito “Crea Bozza con OpenAI”.
 - Nessuna chiamata AI durante ricerca contenuti, selezione risultati, salvataggio sessione o download JSON payload AI.

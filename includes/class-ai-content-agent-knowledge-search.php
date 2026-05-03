@@ -20,11 +20,12 @@ class ALMA_AI_Content_Agent_Knowledge_Search {
     }
 
     private static function normalize_input($input) {
+        $content_search_query = sanitize_text_field($input['content_search_query'] ?? ($input['search_terms'] ?? ''));
         $theme = sanitize_text_field($input['theme'] ?? '');
         $destination = sanitize_text_field($input['destination'] ?? '');
         $instructions = sanitize_textarea_field($input['temporary_instructions'] ?? '');
-        $text = trim($theme . ' ' . $destination . ' ' . $instructions);
-        return array('theme'=>$theme,'destination'=>$destination,'temporary_instructions'=>$instructions,'text'=>$text,'terms'=>self::extract_terms($text));
+        $text = trim($content_search_query !== '' ? $content_search_query : trim($theme . ' ' . $destination . ' ' . $instructions));
+        return array('content_search_query'=>$content_search_query,'theme'=>$theme,'destination'=>$destination,'temporary_instructions'=>$instructions,'text'=>$text,'terms'=>self::extract_terms($text));
     }
 
     private static function extract_terms($text) {
@@ -122,8 +123,9 @@ class ALMA_AI_Content_Agent_Knowledge_Search {
 
     private static function score_text($query, $text) {
         $text = strtolower((string)$text); $score = 0;
-        if (!empty($query['destination']) && strpos($text, strtolower($query['destination'])) !== false) { $score += 30; }
-        if (!empty($query['theme']) && strpos($text, strtolower($query['theme'])) !== false) { $score += 25; }
+        if (!empty($query['content_search_query']) && strpos($text, strtolower($query['content_search_query'])) !== false) { $score += 35; }
+        if (!empty($query['destination']) && strpos($text, strtolower($query['destination'])) !== false) { $score += 15; }
+        if (!empty($query['theme']) && strpos($text, strtolower($query['theme'])) !== false) { $score += 10; }
         foreach ($query['terms'] as $t) { if (strpos($text, $t) !== false) { $score += 6; } }
         return min(100, $score);
     }

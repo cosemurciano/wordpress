@@ -1,5 +1,14 @@
+## 2.23.1 — PR 6.1 — Search Session UX & Payload Refinement
+- fix selezione persa in dedupe preservando selected=true.
+- fix collegamento reale query di ricerca locale (campo unico).
+- ordinamento gruppi risultati: Link Affiliati, Post, File TXT, Fonti online, Pagine, Media.
+- nuovi limiti selezionabili: 20/3/5/5/2/5 con warning admin per gruppo.
+- Sessione contenuto persistente separata da Risultati ricerca.
+- rimossa dalla UI principale la tabella legacy idee/brief.
+- payload JSON basato sulla Sessione contenuto reale (single-call OpenAI solo su Crea Bozza).
 
-## 2.23.0 — PR 6 — AI Content Agent Single OpenAI Draft Workflow
+
+## 2.23.1 — PR 6 — AI Content Agent Single OpenAI Draft Workflow
 - Workflow idee contenuto semplificato: ricerca locale, selezione manuale, profilo istruzioni AI e creazione bozza.
 - Unica chiamata OpenAI al click su Crea Bozza; nessuna chiamata AI in ricerca/selezione/download JSON payload AI.
 - Aggiunto download “Scarica JSON payload AI” dalla sessione contenuto.
