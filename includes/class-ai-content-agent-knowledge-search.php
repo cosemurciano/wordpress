@@ -87,6 +87,7 @@ class ALMA_AI_Content_Agent_Knowledge_Search {
                 'key' => 'kb:' . $stype . ':' . (int)$r['id'],
                 'source_type' => $group,
                 'source_id' => (int)$r['source_id'],
+                'knowledge_item_id' => (int)$r['id'],
                 'title' => sanitize_text_field($r['title']),
                 'excerpt' => wp_trim_words(wp_strip_all_tags((string)$r['normalized_excerpt']), 20),
                 'score' => $score,
@@ -153,6 +154,6 @@ class ALMA_AI_Content_Agent_Knowledge_Search {
     private static function result($data) {
         $labels = array('post'=>'Post','page'=>'Pagine','affiliate_link'=>'Affiliate Links','document_txt'=>'Documenti TXT','source_online'=>'Fonti online AI','media'=>'Media','other'=>'Altro');
         $safe_key = sanitize_key(str_replace(':','_', (string)$data['key']));
-        return array('result_id'=>$safe_key,'key'=>$data['key'],'source_type'=>$data['source_type'],'source_label'=>$labels[$data['source_type']] ?? 'Altro','source_id'=>(int)($data['source_id'] ?? 0),'title'=>sanitize_text_field($data['title'] ?? ''),'excerpt'=>sanitize_textarea_field($data['excerpt'] ?? ''),'score'=>(int)($data['score'] ?? 0),'reason'=>sanitize_text_field($data['reason'] ?? ''),'edit_url'=>esc_url_raw($data['edit_url'] ?? ''),'selectable'=>true,'preselected'=>false,'dedupe_ref'=>sanitize_text_field($data['dedupe_ref'] ?? ''));
+        return array('result_id'=>$safe_key,'key'=>$data['key'],'source_type'=>$data['source_type'],'source_label'=>$labels[$data['source_type']] ?? 'Altro','source_id'=>(int)($data['source_id'] ?? 0),'knowledge_item_id'=>(int)($data['knowledge_item_id'] ?? 0),'title'=>sanitize_text_field($data['title'] ?? ''),'excerpt'=>sanitize_textarea_field($data['excerpt'] ?? ''),'score'=>(int)($data['score'] ?? 0),'reason'=>sanitize_text_field($data['reason'] ?? ''),'edit_url'=>esc_url_raw($data['edit_url'] ?? ''),'selectable'=>true,'preselected'=>false,'dedupe_ref'=>sanitize_text_field($data['dedupe_ref'] ?? ''));
     }
 }

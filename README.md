@@ -1,4 +1,12 @@
 
+## 2.22.2
+
+- PR 5.1.1 — patch di stabilizzazione post-review workflow AI Content Agent → Selection Session → Draft Builder.
+- Fix Documenti TXT con `result_key` normalizzati (es. `document_txt:kb_document_txt_123`) con propagazione/risoluzione stabile `knowledge_item_id`.
+- Tab admin **Istruzioni AI** resa raggiungibile dalla navigazione e CTA “Gestisci Profili Istruzioni AI” corretta.
+- Migliorata la card risultato bozza con stato, CTA Modifica/Anteprima, profilo istruzioni, modello AI, conteggi fonti e warning QA.
+- Nessuno scheduler nuovo, nessuna pubblicazione automatica, nessun crawling/scraping/web search.
+
 ## 2.22.1
 
 - PR 5 — Crea bozza articolo da Selection Session con uso esclusivo delle fonti selezionate.

@@ -106,25 +106,38 @@ class ALMA_AI_Content_Agent_Admin {
         $r = get_transient(self::RESULT_TRANSIENT_KEY . get_current_user_id());
         if (!empty($r) && !empty($r['success'])) {
             delete_transient(self::RESULT_TRANSIENT_KEY . get_current_user_id());
-            echo '<div class="notice notice-success"><p><strong>Bozza articolo creata</strong>: '.esc_html($r['title'] ?? '').' (Bozza) ';
-            if (!empty($r['edit_url'])) { echo '<a class="button button-small" href="'.esc_url($r['edit_url']).'">Modifica articolo</a> '; }
-            if (!empty($r['preview_url'])) { echo '<a class="button button-small" href="'.esc_url($r['preview_url']).'" target="_blank" rel="noopener">Anteprima articolo</a>'; }
-            echo '</p>';
+            $summary = (array)($r['summary'] ?? array());
+            $counts = (array)($summary['source_counts'] ?? array());
+            echo '<div class="notice notice-success"><h3 style="margin-top:0;">Bozza articolo creata</h3>';
+            echo '<p><strong>Titolo:</strong> '.esc_html($r['title'] ?? '').'<br><strong>Stato:</strong> Bozza</p><p>';
+            if (!empty($r['edit_url'])) { echo '<a class="button button-primary" href="'.esc_url($r['edit_url']).'">Modifica articolo</a> '; }
+            if (!empty($r['preview_url'])) { echo '<a class="button" href="'.esc_url($r['preview_url']).'" target="_blank" rel="noopener">Anteprima articolo</a>'; }
+            echo '</p><ul>';
+            if (!empty($summary['instruction_profile_name'])) { echo '<li><strong>Profilo istruzioni:</strong> '.esc_html($summary['instruction_profile_name']).'</li>'; }
+            if (!empty($r['model'])) { echo '<li><strong>Modello AI:</strong> '.esc_html($r['model']).'</li>'; }
+            echo '<li><strong>Post:</strong> '.(int)($counts['post'] ?? 0).'</li>';
+            echo '<li><strong>Pagine:</strong> '.(int)($counts['page'] ?? 0).'</li>';
+            echo '<li><strong>Affiliate Links:</strong> '.(int)($counts['affiliate_link'] ?? 0).'</li>';
+            echo '<li><strong>Documenti TXT:</strong> '.(int)($counts['document_txt'] ?? 0).'</li>';
+            echo '<li><strong>Fonti online AI:</strong> '.(int)($counts['source_online'] ?? 0).'</li>';
+            echo '<li><strong>Media:</strong> '.(int)($counts['media'] ?? 0).'</li>';
+            echo '</ul>';
             if (!empty($r['warnings'])) { echo '<p><strong>Warning QA:</strong> '.esc_html(implode(' | ', array_map('sanitize_text_field', (array)$r['warnings']))).'</p>'; }
-            echo '<p>Puoi conservare la sessione per creare una nuova bozza o svuotarla manualmente.</p></div>';
+            echo '<p>Puoi revisionare l’articolo in WordPress prima della pubblicazione.</p></div>';
         }
     }
 
     public static function render_page() {
         if (!current_user_can('manage_options')) { return; }
-        $tabs = array('dashboard'=>'Dashboard','idee'=>'Idee contenuto','documenti'=>'Documenti TXT','fonti'=>'Fonti online AI','reindex'=>'Reindicizza','log'=>'Stato/log');
-        $legacy_map = array('overview'=>'dashboard','reindirizza'=>'reindex','knowledge'=>'dashboard','media'=>'dashboard','bozze'=>'log','programmazione'=>'log','istruzioni-ai'=>'idee');
+        $tabs = array('dashboard'=>'Dashboard','idee'=>'Idee contenuto','istruzioni-ai'=>'Istruzioni AI','documenti'=>'Documenti TXT','fonti'=>'Fonti online AI','reindex'=>'Reindicizza','log'=>'Stato/log');
+        $legacy_map = array('overview'=>'dashboard','reindirizza'=>'reindex','knowledge'=>'dashboard','media'=>'dashboard','bozze'=>'log','programmazione'=>'log',);
         $tab = sanitize_key($_GET['tab'] ?? 'dashboard');
         if (isset($legacy_map[$tab])) { $tab = $legacy_map[$tab]; }
         if (!isset($tabs[$tab])) { $tab = 'dashboard'; }
         echo '<div class="wrap alma-ai-agent-admin"><h1>AI Content Agent</h1>'; self::render_notice();
         echo '<h2 class="nav-tab-wrapper">'; foreach ($tabs as $tk=>$tl) { echo '<a class="nav-tab '.($tk===$tab?'nav-tab-active':'').'" href="'.esc_url(admin_url('edit.php?post_type=affiliate_link&page=alma-ai-content-agent&tab='.$tk)).'">'.esc_html($tl).'</a>'; } echo '</h2>';
         if ($tab === 'dashboard') { self::render_overview_tab(); }
+        elseif ($tab === 'istruzioni-ai') { self::render_instructions_tab(); }
         elseif ($tab === 'documenti') { self::render_documents_tab(); }
         elseif ($tab === 'fonti') { self::render_sources_tab(); }
         elseif ($tab === 'reindex') { self::render_reindex_tab(); }

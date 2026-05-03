@@ -78,12 +78,38 @@ class ALMA_AI_Content_Agent_Selection_Session {
         return array('success'=>true,'message'=>'Selezione salvata.');
     }
 
+
+    private static function infer_knowledge_item_id($group, $row, $fallback_result_id = '') {
+        $group = sanitize_key((string)$group);
+        $candidates = array(
+            $row['knowledge_item_id'] ?? '',
+            $row['result_key'] ?? '',
+            $row['key'] ?? '',
+            $row['result_id'] ?? $fallback_result_id,
+        );
+        foreach ($candidates as $candidate) {
+            if (is_numeric($candidate)) {
+                $id = absint($candidate);
+                if ($id > 0) { return $id; }
+            }
+            $value = sanitize_text_field((string)$candidate);
+            if ($value === '') { continue; }
+            if ($group === 'document_txt') {
+                if (preg_match('/(?:^|:)(?:kb_document_txt_)(\d+)$/', $value, $m)) { return absint($m[1]); }
+                if (preg_match('/^(?:kb:)?document_txt:(\d+)$/', $value, $m)) { return absint($m[1]); }
+            }
+            if (preg_match('/(?:^|:)kb:[a-z_]+:(\d+)$/', $value, $m)) { return absint($m[1]); }
+        }
+        return 0;
+    }
+
     private static function normalize_result($group, $row) {
         $source_id = absint($row['source_id'] ?? 0);
         $wp_id = absint($row['wp_id'] ?? 0);
         $result_id = sanitize_text_field($row['result_id'] ?? '');
-        $knowledge_item_id = absint($row['knowledge_item_id'] ?? 0);
-        $result_key = sanitize_key($group) . ':' . ($knowledge_item_id ?: ($source_id ?: ($wp_id ?: $result_id)));
+        $knowledge_item_id = self::infer_knowledge_item_id($group, $row, $result_id);
+        $incoming_key = sanitize_text_field($row['key'] ?? ($row['result_key'] ?? ''));
+        $result_key = $incoming_key !== '' ? $incoming_key : (sanitize_key($group) . ':' . ($knowledge_item_id ?: ($source_id ?: ($wp_id ?: $result_id))));
         if (empty($result_key)) { $result_key = sanitize_key($group) . ':' . substr(md5(wp_json_encode($row)), 0, 12); }
         return array(
             'result_key' => $result_key,
