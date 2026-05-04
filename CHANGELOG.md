@@ -1,4 +1,4 @@
-## 2.24.0
+## 2.24.1
 - Introduzione entità persistente Idee contenuto come CPT interno (`alma_content_idea`).
 - Nuova UI a 3 colonne (Idee salvate, Cerca/Risultati, Sessione contenuto).
 - Prompt editoriale per OpenAI salvato per singola idea.

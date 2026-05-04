@@ -43,14 +43,34 @@ class ALMA_AI_Content_Agent_Admin {
         } elseif ($do === 'search_knowledge_base' || $do === 'add_new_search') {
             $profile_id = absint($_POST['instruction_profile_id'] ?? 0);
             $profile = $profile_id ? ALMA_AI_Content_Agent_Instructions_Manager::get_profile($profile_id) : array();
-            $payload = array('max_ideas'=>absint($_POST['max_ideas'] ?? 1),'content_search_query'=>sanitize_text_field($_POST['content_search_query'] ?? ($_POST['search_terms'] ?? '')),'search_terms'=>sanitize_text_field($_POST['search_terms'] ?? ($_POST['content_search_query'] ?? '')),'theme'=>sanitize_text_field($_POST['theme'] ?? ''),'destination'=>sanitize_text_field($_POST['destination'] ?? ''),'temporary_instructions'=>sanitize_textarea_field($_POST['temporary_instructions'] ?? ''),'instruction_profile_id'=>$profile_id,'instruction_profile_name'=>sanitize_text_field($profile['profile_name'] ?? ''),'instruction_snapshot_hash'=>sanitize_text_field($profile ? ALMA_AI_Content_Agent_Instructions_Manager::snapshot_hash(wp_json_encode($profile)) : ''));
+            $payload = array('max_ideas'=>absint($_POST['max_ideas'] ?? 1),'content_search_query'=>sanitize_text_field($_POST['content_search_query'] ?? ($_POST['search_terms'] ?? '')),'search_terms'=>sanitize_text_field($_POST['search_terms'] ?? ($_POST['content_search_query'] ?? '')),'theme'=>sanitize_text_field($_POST['theme'] ?? ''),'destination'=>sanitize_text_field($_POST['destination'] ?? ''),'temporary_instructions'=>sanitize_textarea_field($_POST['temporary_instructions'] ?? ''),'openai_prompt'=>sanitize_textarea_field($_POST['openai_prompt'] ?? $_POST['temporary_instructions'] ?? ''),'instruction_profile_id'=>$profile_id,'instruction_profile_name'=>sanitize_text_field($profile['profile_name'] ?? ''),'instruction_snapshot_hash'=>sanitize_text_field($profile ? ALMA_AI_Content_Agent_Instructions_Manager::snapshot_hash(wp_json_encode($profile)) : ''));
             $search = ALMA_AI_Content_Agent_Knowledge_Search::search($payload);
             $stats = ALMA_AI_Content_Agent_Selection_Session::add_search_results($payload, $search);
-            $active_idea_id = absint(get_user_meta(get_current_user_id(), '_alma_active_idea_id', true)); if ($active_idea_id > 0) { ALMA_AI_Content_Agent_Selection_Session::persist_to_idea($active_idea_id); }
-            $result = array('success' => true, 'message' => sprintf('Ricerca completata. Trovati: %d, aggiunti: %d, duplicati ignorati: %d.', (int)$stats['found'], (int)$stats['added'], (int)$stats['duplicates']));
-        } elseif ($do === 'save_selection') {
-            $result = ALMA_AI_Content_Agent_Selection_Session::save_selection($_POST['selected_result_keys'] ?? array());
-            $active_idea_id = absint(get_user_meta(get_current_user_id(), '_alma_active_idea_id', true)); if ($active_idea_id > 0) { ALMA_AI_Content_Agent_Selection_Session::persist_to_idea($active_idea_id); }
+            $active_idea_id = absint(get_user_meta(get_current_user_id(), '_alma_active_idea_id', true));
+            if ($active_idea_id < 1) {
+                $idea_title = sanitize_text_field($payload['content_search_query'] ?: 'Nuova idea');
+                $active_idea_id = ALMA_AI_Content_Agent_Ideas::create($idea_title);
+                if ($active_idea_id > 0) { update_user_meta(get_current_user_id(), '_alma_active_idea_id', $active_idea_id); }
+            }
+            if ($active_idea_id > 0) {
+                ALMA_AI_Content_Agent_Ideas::save_from_request($active_idea_id, array('idea_title'=>sanitize_text_field($payload['content_search_query'] ?: 'Nuova idea'),'idea_status'=>'bozza','instruction_profile_id'=>$profile_id,'openai_prompt'=>$payload['openai_prompt']));
+                update_post_meta($active_idea_id, ALMA_AI_Content_Agent_Ideas::META_LAST_QUERY, array('content_search_query'=>$payload['content_search_query']));
+                ALMA_AI_Content_Agent_Selection_Session::persist_to_idea($active_idea_id);
+            }
+            $result = array('success' => true, 'message' => sprintf('Ricerca completata. Trovati %d risultati.', (int)$stats['found'], (int)$stats['added'], (int)$stats['duplicates']));
+        } elseif ($do === 'add_selected_to_idea') {
+            $result = ALMA_AI_Content_Agent_Selection_Session::add_selected_results($_POST['selected_result_keys'] ?? array());
+            $active_idea_id = absint(get_user_meta(get_current_user_id(), '_alma_active_idea_id', true));
+            if ($active_idea_id < 1) {
+                $idea_title = sanitize_text_field($payload['content_search_query'] ?: 'Nuova idea');
+                $active_idea_id = ALMA_AI_Content_Agent_Ideas::create($idea_title);
+                if ($active_idea_id > 0) { update_user_meta(get_current_user_id(), '_alma_active_idea_id', $active_idea_id); }
+            }
+            if ($active_idea_id > 0) {
+                ALMA_AI_Content_Agent_Ideas::save_from_request($active_idea_id, array('idea_title'=>sanitize_text_field($payload['content_search_query'] ?: 'Nuova idea'),'idea_status'=>'bozza','instruction_profile_id'=>$profile_id,'openai_prompt'=>$payload['openai_prompt']));
+                update_post_meta($active_idea_id, ALMA_AI_Content_Agent_Ideas::META_LAST_QUERY, array('content_search_query'=>$payload['content_search_query']));
+                ALMA_AI_Content_Agent_Selection_Session::persist_to_idea($active_idea_id);
+            }
         } elseif ($do === 'clear_selection_session') {
             ALMA_AI_Content_Agent_Selection_Session::clear();
             $result = array('success' => true, 'message' => 'Sessione contenuto svuotata.');
@@ -88,10 +108,35 @@ class ALMA_AI_Content_Agent_Admin {
             $idea_id = absint($_POST['idea_id'] ?? 0); $ok = $idea_id > 0 ? (bool)wp_delete_post($idea_id, true) : false;
             if ($ok) { delete_user_meta(get_current_user_id(), '_alma_active_idea_id'); ALMA_AI_Content_Agent_Selection_Session::clear(); }
             $result = array('success' => $ok, 'message' => $ok ? 'Idea eliminata.' : 'Impossibile eliminare idea.');
+        } elseif ($do === 'add_result_to_idea') {
+            $k = sanitize_text_field($_POST['result_key'] ?? '');
+            $result = ALMA_AI_Content_Agent_Selection_Session::add_single_result($k);
+            $active_idea_id = absint(get_user_meta(get_current_user_id(), '_alma_active_idea_id', true));
+            if ($active_idea_id < 1) {
+                $idea_title = sanitize_text_field($payload['content_search_query'] ?: 'Nuova idea');
+                $active_idea_id = ALMA_AI_Content_Agent_Ideas::create($idea_title);
+                if ($active_idea_id > 0) { update_user_meta(get_current_user_id(), '_alma_active_idea_id', $active_idea_id); }
+            }
+            if ($active_idea_id > 0) {
+                ALMA_AI_Content_Agent_Ideas::save_from_request($active_idea_id, array('idea_title'=>sanitize_text_field($payload['content_search_query'] ?: 'Nuova idea'),'idea_status'=>'bozza','instruction_profile_id'=>$profile_id,'openai_prompt'=>$payload['openai_prompt']));
+                update_post_meta($active_idea_id, ALMA_AI_Content_Agent_Ideas::META_LAST_QUERY, array('content_search_query'=>$payload['content_search_query']));
+                ALMA_AI_Content_Agent_Selection_Session::persist_to_idea($active_idea_id);
+            }
+
         } elseif ($do === 'remove_selected_item') {
             $k = sanitize_text_field($_POST['result_key'] ?? '');
             $result = ALMA_AI_Content_Agent_Selection_Session::remove_selected_item($k);
-            $active_idea_id = absint(get_user_meta(get_current_user_id(), '_alma_active_idea_id', true)); if ($active_idea_id > 0) { ALMA_AI_Content_Agent_Selection_Session::persist_to_idea($active_idea_id); }
+            $active_idea_id = absint(get_user_meta(get_current_user_id(), '_alma_active_idea_id', true));
+            if ($active_idea_id < 1) {
+                $idea_title = sanitize_text_field($payload['content_search_query'] ?: 'Nuova idea');
+                $active_idea_id = ALMA_AI_Content_Agent_Ideas::create($idea_title);
+                if ($active_idea_id > 0) { update_user_meta(get_current_user_id(), '_alma_active_idea_id', $active_idea_id); }
+            }
+            if ($active_idea_id > 0) {
+                ALMA_AI_Content_Agent_Ideas::save_from_request($active_idea_id, array('idea_title'=>sanitize_text_field($payload['content_search_query'] ?: 'Nuova idea'),'idea_status'=>'bozza','instruction_profile_id'=>$profile_id,'openai_prompt'=>$payload['openai_prompt']));
+                update_post_meta($active_idea_id, ALMA_AI_Content_Agent_Ideas::META_LAST_QUERY, array('content_search_query'=>$payload['content_search_query']));
+                ALMA_AI_Content_Agent_Selection_Session::persist_to_idea($active_idea_id);
+            }
 
         } elseif ($do === 'upload_txt_document') {
             $result = ALMA_AI_Content_Agent_Document_Manager::handle_upload(sanitize_text_field($_POST['document_name'] ?? ''), $_FILES['document_file'] ?? array());
@@ -225,18 +270,18 @@ class ALMA_AI_Content_Agent_Admin {
         $summary = ALMA_AI_Content_Agent_Selection_Session::summary();
         $results_groups = ALMA_AI_Content_Agent_Selection_Session::grouped_results(false);
         $selected_groups = ALMA_AI_Content_Agent_Selection_Session::grouped_results(true);
-        $labels = array('affiliate_link'=>'Link Affiliati','post'=>'Post','document_txt'=>'File TXT / Documenti TXT','source_online'=>'Fonti online','page'=>'Pagine','media'=>'Media');
+        $labels = array('affiliate_link'=>'Link Affiliati','post'=>'Post','document_txt'=>'File TXT','source_online'=>'Fonti online','page'=>'Pagine','media'=>'Media');
         echo '<div class="alma-ideas-layout" style="display:grid;grid-template-columns:22% 50% 28%;gap:16px;">';
         echo '<div><h3>Idee salvate</h3>'; self::action_form('new_content_idea','+ Nuova idea'); foreach($ideas as $i){ $st=get_post_meta($i->ID, ALMA_AI_Content_Agent_Ideas::META_STATUS,true) ?: 'bozza'; echo '<div style="padding:8px;border:1px solid #ddd;margin-bottom:8px;'.($active_idea_id===$i->ID?'background:#eef6ff;':'').'">'; echo '<strong>'.esc_html($i->post_title).'</strong><br><small>'.esc_html($st).' · '.esc_html($i->post_modified).'</small>'; echo '<form method="post" action="'.esc_url(admin_url('admin-post.php')).'">'.wp_nonce_field('alma_ai_agent_action','_wpnonce',true,false).'<input type="hidden" name="action" value="alma_ai_agent_action"><input type="hidden" name="do" value="load_content_idea"><input type="hidden" name="idea_id" value="'.(int)$i->ID.'"><p><button class="button button-small">Apri</button></p></form></div>'; } echo '</div>';
 
-        echo '<div><h3>2. Cerca contenuti</h3><form method="post" action="'.esc_url(admin_url('admin-post.php')).'">'; wp_nonce_field('alma_ai_agent_action');
+        echo '<div><h3>1. Cerca contenuti</h3><form method="post" action="'.esc_url(admin_url('admin-post.php')).'">'; wp_nonce_field('alma_ai_agent_action');
         echo '<input type="hidden" name="action" value="alma_ai_agent_action"><input type="hidden" name="do" value="search_knowledge_base"><p><input class="large-text" name="content_search_query" value="'.esc_attr($active_idea['last_query']['content_search_query'] ?? '').'" placeholder="Cerca contenuti"></p><p><select name="instruction_profile_id">';
         foreach($profiles as $pp){ echo '<option value="'.(int)$pp['id'].'" '.selected((int)($active_idea['profile_id']??0),(int)$pp['id'],false).'>'.esc_html($pp['profile_name']).'</option>'; }
-        echo '</select></p><p><label><strong>Prompt per OpenAI</strong></label><textarea class="large-text" rows="3" name="temporary_instructions">'.esc_textarea($active_idea['prompt'] ?? '').'</textarea></p><p><button class="button button-secondary">Cerca contenuti</button></p></form>';
+        echo '</select></p><p><label><strong>Prompt per OpenAI</strong></label><textarea class="large-text" rows="3" name="openai_prompt">'.esc_textarea($active_idea['prompt'] ?? '').'</textarea></p><p><button class="button button-secondary">Cerca contenuti</button></p></form>';
         echo '<h3>Risultati ricerca</h3><form method="post" action="'.esc_url(admin_url('admin-post.php')).'">'; wp_nonce_field('alma_ai_agent_action');
-        echo '<input type="hidden" name="action" value="alma_ai_agent_action"><input type="hidden" name="do" value="save_selection">';
-        foreach($labels as $k=>$label){ $rows=(array)($results_groups[$k]??array()); if(!$rows)continue; echo '<h4>'.esc_html($label).' ('.count($rows).')</h4>'; foreach($rows as $r){ echo '<div style="border:1px solid #ddd;padding:8px;margin:6px 0;"><input type="checkbox" name="selected_result_keys[]" value="'.esc_attr($r['result_key']).'" '.(!empty($r['selected'])?'checked':'').'> <strong>'.esc_html($r['title']).'</strong> <span>score '.(int)$r['score'].'</span><br><small>'.esc_html($r['excerpt']).'</small><br><em>'.esc_html($r['reason']).'</em></div>'; }}
-        echo '<p><button class="button button-primary">Aggiungi selezionati</button></p></form></div>';
+        echo '<input type="hidden" name="action" value="alma_ai_agent_action"><input type="hidden" name="do" value="add_selected_to_idea">';
+        foreach($labels as $k=>$label){ $rows=(array)($results_groups[$k]??array()); if(!$rows)continue; echo '<h4>'.esc_html($label).' ('.count($rows).')</h4>'; foreach($rows as $r){ echo '<div style="border:1px solid #ddd;padding:8px;margin:6px 0;"><input type="checkbox" name="selected_result_keys[]" value="'.esc_attr($r['result_key']).'" '.(!empty($r['selected'])?'checked':'').'> <strong>'.esc_html($r['title']).'</strong> <span>score '.(int)$r['score'].'</span><br><small>'.esc_html($r['excerpt']).'</small><br><em>'.esc_html($r['reason']).'</em><form method="post" action="'.esc_url(admin_url('admin-post.php')).'">'.wp_nonce_field('alma_ai_agent_action','_wpnonce',true,false).'<input type="hidden" name="action" value="alma_ai_agent_action"><input type="hidden" name="do" value="add_result_to_idea"><input type="hidden" name="result_key" value="'.esc_attr($r['result_key']).'"><button class="button button-small">Aggiungi all’idea</button></form></div>'; }}
+        echo '<p><button class="button button-primary">Aggiungi selezionati all’idea</button></p></form></div>';
 
         echo '<div><h3>3. Sessione contenuto</h3><p>Totale: '.(int)($summary['selected_total']??0).'</p>';
         foreach($labels as $k=>$label){ $rows=(array)($selected_groups[$k]??array()); if(!$rows)continue; echo '<h4>'.esc_html($label).' ('.count($rows).')</h4>'; foreach($rows as $r){ echo '<div style="border:1px solid #ddd;padding:6px;margin:4px 0;"><strong>'.esc_html($r['title']).'</strong><br><small>Score '.(int)$r['score'].' - '.esc_html($r['reason']).'</small><form method="post" action="'.esc_url(admin_url('admin-post.php')).'">'.wp_nonce_field('alma_ai_agent_action','_wpnonce',true,false).'<input type="hidden" name="action" value="alma_ai_agent_action"><input type="hidden" name="do" value="remove_selected_item"><input type="hidden" name="result_key" value="'.esc_attr($r['result_key']).'"><button class="button button-small">Rimuovi</button></form></div>'; }}

@@ -318,5 +318,5 @@ Workflow base completo: genera idee → genera brief → genera bozza → apri i
 - Questa PR non introduce crawling/scraping né nuove chiamate AI/OpenAI.
 
 
-## AI Content Agent 2.24.0
+## AI Content Agent 2.24.1
 La tab Idee contenuto ora usa idee persistenti (CPT), layout operativo in 3 colonne, prompt OpenAI per idea, sessione contenuto associata all'idea e creazione bozza con una sola chiamata OpenAI.

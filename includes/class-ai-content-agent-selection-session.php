@@ -17,7 +17,8 @@ class ALMA_AI_Content_Agent_Selection_Session {
         $s = get_transient(self::key());
         if (!is_array($s)) { return self::empty_session(); }
         $s = wp_parse_args($s, self::empty_session());
-        if (!is_array($s['results'])) { $s['results'] = array(); }
+        if (!is_array($s['search_results'])) { $s['search_results'] = is_array($s['results'] ?? null) ? $s['results'] : array(); }
+        if (!is_array($s['selected_results'])) { $s['selected_results'] = array(); }
         if (!is_array($s['query_history'])) { $s['query_history'] = array(); }
         return $s;
     }
@@ -25,7 +26,7 @@ class ALMA_AI_Content_Agent_Selection_Session {
     public static function clear() { delete_transient(self::key()); }
 
     private static function empty_session() {
-        return array('status'=>'empty','last_query'=>array(),'query_history'=>array(),'results'=>array(),'counts'=>array(),'updated_at'=>'','instruction_profile_id'=>0,'instruction_profile_name'=>'','instruction_snapshot_hash'=>'');
+        return array('status'=>'empty','last_query'=>array(),'query_history'=>array(),'search_results'=>array(),'selected_results'=>array(),'counts'=>array(),'updated_at'=>'','instruction_profile_id'=>0,'instruction_profile_name'=>'','instruction_snapshot_hash'=>'','openai_prompt'=>'');
     }
 
     public static function add_search_results($payload, $search_results) {
@@ -37,9 +38,9 @@ class ALMA_AI_Content_Agent_Selection_Session {
                 $normalized = self::normalize_result($group, $row);
                 if (empty($normalized['result_key'])) { continue; }
                 $k = $normalized['result_key'];
-                if (isset($session['results'][$k])) {
+                if (isset($session['search_results'][$k])) {
                     $duplicates++;
-                    $existing = $session['results'][$k];
+                    $existing = $session['search_results'][$k];
                     $merged = ((int)($normalized['score'] ?? 0) > (int)($existing['score'] ?? 0)) ? $normalized : $existing;
                     $merged['selected'] = !empty($existing['selected']) || !empty($normalized['selected']);
                     $merged['origin_key'] = sanitize_text_field($merged['origin_key'] ?? ($existing['origin_key'] ?? ($normalized['origin_key'] ?? '')));
@@ -47,40 +48,36 @@ class ALMA_AI_Content_Agent_Selection_Session {
                     $old_reason = array_filter(array_map('trim', explode('|', (string)($existing['reason'] ?? ''))));
                     $new_reason = array_filter(array_map('trim', explode('|', (string)($normalized['reason'] ?? ''))));
                     $merged['reason'] = implode(' | ', array_values(array_unique(array_merge($old_reason, $new_reason))));
-                    $session['results'][$k] = $merged;
+                    $session['search_results'][$k] = $merged;
                     continue;
                 }
-                $session['results'][$k] = $normalized;
+                $session['search_results'][$k] = $normalized;
                 $added++;
             }
         }
-        if (count($session['results']) > self::MAX_RESULTS) {
-            $session['results'] = array_slice($session['results'], -self::MAX_RESULTS, null, true);
+        if (count($session['search_results']) > self::MAX_RESULTS) {
+            $session['search_results'] = array_slice($session['search_results'], -self::MAX_RESULTS, null, true);
         }
         $query = array('content_search_query'=>sanitize_text_field($payload['content_search_query'] ?? ($payload['search_terms'] ?? '')),'theme'=>sanitize_text_field($payload['theme'] ?? ''),'destination'=>sanitize_text_field($payload['destination'] ?? ''),'search_terms'=>sanitize_text_field($payload['search_terms'] ?? ''),'temporary_instructions'=>sanitize_textarea_field($payload['temporary_instructions'] ?? ''));
         $session['last_query'] = $query;
         $session['query_history'][] = array('at'=>current_time('mysql'),'content_search_query'=>$query['content_search_query']);
         if (count($session['query_history']) > 20) { $session['query_history'] = array_slice($session['query_history'], -20); }
-        $session['status'] = empty($session['results']) ? 'empty' : 'active';
+        $session['status'] = empty($session['search_results']) ? 'empty' : 'active';
         $session['updated_at'] = current_time('mysql');
         $session['instruction_profile_id'] = absint($payload['instruction_profile_id'] ?? 0);
         $session['instruction_profile_name'] = sanitize_text_field($payload['instruction_profile_name'] ?? '');
         $session['instruction_snapshot_hash'] = sanitize_text_field($payload['instruction_snapshot_hash'] ?? '');
-        $session['counts'] = self::count_summary($session['results']);
+        $session['counts'] = self::count_summary($session['search_results'], $session['selected_results']);
         set_transient(self::key(), $session, self::TTL);
-        return array('found'=>$found,'added'=>$added,'duplicates'=>$duplicates,'total'=>count($session['results']));
+        return array('found'=>$found,'added'=>$added,'duplicates'=>$duplicates,'total'=>count($session['search_results']));
     }
 
-    public static function save_selection($selected_keys) {
+    public static function add_selected_results($selected_keys) {
         $session = self::get_session();
         $selected = array_fill_keys(array_map('sanitize_text_field', (array)$selected_keys), true);
-        $next = $session['results'];
+        $next = $session['selected_results'];
         $counts = array('post'=>0,'page'=>0,'affiliate_link'=>0,'document_txt'=>0,'source_online'=>0,'media'=>0);
-        foreach ($next as $k => $row) {
-            $is_selected = isset($selected[$k]);
-            if ($is_selected) { $g = sanitize_key($row['source_group'] ?? ''); if (isset($counts[$g])) { $counts[$g]++; } }
-            $next[$k]['selected'] = $is_selected;
-        }
+        foreach ($selected as $k => $truev) { if (!isset($session['search_results'][$k])) { continue; } $row=$session['search_results'][$k]; $g=sanitize_key($row['source_group']??''); if(isset($counts[$g])){$counts[$g]++;} $next[$k]=$row; $next[$k]['selected']=true; }
         $limits = array('post'=>self::MAX_SELECTED_POSTS,'page'=>self::MAX_SELECTED_PAGES,'affiliate_link'=>self::MAX_SELECTED_AFFILIATE_LINKS,'document_txt'=>self::MAX_SELECTED_DOCUMENT_TXT,'source_online'=>self::MAX_SELECTED_SOURCE_ONLINE,'media'=>self::MAX_SELECTED_MEDIA);
         $warnings = array();
         foreach ($limits as $g => $max) {
@@ -94,12 +91,16 @@ class ALMA_AI_Content_Agent_Selection_Session {
                 if ($kept > $max) { $next[$k]['selected'] = false; }
             }
         }
-        $session['results'] = $next;
+        $session['selected_results'] = $next;
         $session['updated_at'] = current_time('mysql');
-        $session['counts'] = self::count_summary($session['results']);
-        $session['status'] = empty($session['results']) ? 'empty' : 'active';
+        $session['counts'] = self::count_summary($session['search_results'], $session['selected_results']);
+        $session['status'] = empty($session['search_results']) ? 'empty' : 'active';
         set_transient(self::key(), $session, self::TTL);
         return array('success'=>true,'message'=>empty($warnings)?'Selezione salvata.':'Selezione salvata con limiti applicati: '.implode(' ', $warnings));
+    }
+
+    public static function add_single_result($result_key) {
+        return self::add_selected_results(array($result_key));
     }
 
 
@@ -168,8 +169,8 @@ class ALMA_AI_Content_Agent_Selection_Session {
         $session = self::get_session();
         $order = array('affiliate_link','post','document_txt','source_online','page','media','other');
         $groups = array_fill_keys($order, array());
-        foreach ($session['results'] as $row) {
-            if ($selected_only && empty($row['selected'])) { continue; }
+        $rows_source = $selected_only ? (array)$session['selected_results'] : (array)$session['search_results'];
+        foreach ($rows_source as $row) {
             $k = isset($groups[$row['source_group']]) ? $row['source_group'] : 'other';
             $groups[$k][] = $row;
         }
@@ -189,11 +190,10 @@ class ALMA_AI_Content_Agent_Selection_Session {
         return array_merge(array('status'=>$session['status'],'search_count'=>count($session['query_history']),'updated_at'=>$session['updated_at']), $session['counts']);
     }
 
-    private static function count_summary($rows) {
+    private static function count_summary($search_rows, $selected_rows = array()) {
         $c = array('total_results'=>0,'selected_total'=>0,'selected_post'=>0,'selected_page'=>0,'selected_affiliate_link'=>0,'selected_document_txt'=>0,'selected_source_online'=>0,'selected_media'=>0);
-        foreach ($rows as $r) {
-            $c['total_results']++;
-            if (empty($r['selected'])) { continue; }
+        foreach ((array)$search_rows as $r) { $c['total_results']++; }
+        foreach ((array)$selected_rows as $r) {
             $c['selected_total']++;
             $key = 'selected_' . sanitize_key($r['source_group']);
             if (isset($c[$key])) { $c[$key]++; }
@@ -206,34 +206,38 @@ class ALMA_AI_Content_Agent_Selection_Session {
         $idea_id = absint($idea_id); if ($idea_id < 1) { return; }
         $session = self::get_session();
         update_post_meta($idea_id, ALMA_AI_Content_Agent_Ideas::META_LAST_QUERY, (array)$session['last_query']);
-        update_post_meta($idea_id, ALMA_AI_Content_Agent_Ideas::META_RESULTS, (array)$session['results']);
-        update_post_meta($idea_id, ALMA_AI_Content_Agent_Ideas::META_SELECTION, array_values(array_filter((array)$session['results'], function($r){ return !empty($r['selected']); })));
+        update_post_meta($idea_id, ALMA_AI_Content_Agent_Ideas::META_RESULTS, (array)$session['search_results']);
+        update_post_meta($idea_id, ALMA_AI_Content_Agent_Ideas::META_SELECTION, (array)$session['selected_results']);
     }
 
     public static function load_from_idea($idea) {
         if (empty($idea['ID'])) { self::clear(); return; }
         $results = (array)($idea['results'] ?? array());
+        $selected = (array)($idea['selection'] ?? array());
         $session = self::empty_session();
         $session['status'] = empty($results) ? 'empty' : 'active';
         $session['last_query'] = (array)($idea['last_query'] ?? array());
-        $session['results'] = $results;
+        $session['search_results'] = $results;
+        $session['selected_results'] = array();
+        foreach($selected as $row){ if(empty($row['result_key'])) continue; $row['selected']=true; $session['selected_results'][$row['result_key']]=$row; }
         $session['instruction_profile_id'] = absint($idea['profile_id'] ?? 0);
         $session['updated_at'] = current_time('mysql');
-        $session['counts'] = self::count_summary($results);
+        $session['openai_prompt'] = sanitize_textarea_field($idea['prompt'] ?? '');
+        $session['counts'] = self::count_summary($results, $session['selected_results']);
         set_transient(self::key(), $session, self::TTL);
     }
 
     public static function remove_selected_item($result_key) {
         $session = self::get_session();
         $result_key = sanitize_text_field($result_key);
-        if (isset($session['results'][$result_key])) { $session['results'][$result_key]['selected'] = false; }
-        $session['counts'] = self::count_summary($session['results']);
+        if (isset($session['selected_results'][$result_key])) { unset($session['selected_results'][$result_key]); }
+        $session['counts'] = self::count_summary($session['search_results'], $session['selected_results']);
         set_transient(self::key(), $session, self::TTL);
         return array('success'=>true,'message'=>'Elemento rimosso dalla sessione contenuto.');
     }
     public static function build_context_package() {
         $s = self::get_session();
-        $selected = array_values(array_filter($s['results'], function($r){ return !empty($r['selected']); }));
-        return array('last_query'=>$s['last_query'],'query_history'=>$s['query_history'],'selected_results'=>$selected,'counts'=>$s['counts'],'updated_at'=>$s['updated_at'],'instruction_profile_id'=>$s['instruction_profile_id'],'instruction_profile_name'=>sanitize_text_field($s['instruction_profile_name'] ?? ''),'instruction_snapshot_hash'=>sanitize_text_field($s['instruction_snapshot_hash'] ?? ''));
+        $selected = array_values((array)$s['selected_results']);
+        return array('last_query'=>$s['last_query'],'query_history'=>$s['query_history'],'selected_results'=>$selected,'counts'=>$s['counts'],'updated_at'=>$s['updated_at'],'instruction_profile_id'=>$s['instruction_profile_id'],'instruction_profile_name'=>sanitize_text_field($s['instruction_profile_name'] ?? ''),'instruction_snapshot_hash'=>sanitize_text_field($s['instruction_snapshot_hash'] ?? ''),'openai_prompt'=>sanitize_textarea_field($s['openai_prompt'] ?? ''));
     }
 }
