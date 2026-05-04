@@ -1,3 +1,10 @@
+## 2.24.4 — PR 7.4 — Results Pagination & Usage Indicators
+- paginazione per tipologia (10)
+- evidenziazione risultati già aggiunti
+- conteggio utilizzi in bozze
+- azioni finali in riga superiore
+- nessuna nuova chiamata AI
+
 ## 2.24.3 — PR 7.3 — Three Column UI Restoration
 - Ripristino layout UI a 3 colonne nella tab Idee contenuto.
 - Colonna destra dedicata a Sessione contenuto + Azioni finali.

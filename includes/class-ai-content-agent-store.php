@@ -12,6 +12,7 @@ class ALMA_AI_Content_Agent_Store {
         dbDelta("CREATE TABLE ".self::table('media_index')." (id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,attachment_id BIGINT UNSIGNED NOT NULL,filename VARCHAR(255) NOT NULL,title TEXT NULL,alt_text TEXT NULL,caption TEXT NULL,description LONGTEXT NULL,mime_type VARCHAR(120) NOT NULL,width INT UNSIGNED NOT NULL DEFAULT 0,height INT UNSIGNED NOT NULL DEFAULT 0,upload_date DATETIME NULL,parent_post_id BIGINT UNSIGNED NOT NULL DEFAULT 0,keywords TEXT NULL,destinations TEXT NULL,manual_notes TEXT NULL,quality_score DECIMAL(5,2) NULL,indexed_at DATETIME NULL,PRIMARY KEY (id),UNIQUE KEY attachment_id (attachment_id),KEY mime_type (mime_type),KEY parent_post_id (parent_post_id)) $c;");
         dbDelta("CREATE TABLE ".self::table('sources')." (id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,name VARCHAR(190) NOT NULL,source_type VARCHAR(40) NOT NULL,source_url TEXT NOT NULL,language_code VARCHAR(10) NOT NULL DEFAULT '',market VARCHAR(60) NOT NULL DEFAULT '',usage_mode VARCHAR(40) NOT NULL DEFAULT 'knowledge',is_active TINYINT(1) NOT NULL DEFAULT 1,notes TEXT NULL,last_test_at DATETIME NULL,last_error TEXT NULL,created_at DATETIME NULL,updated_at DATETIME NULL,PRIMARY KEY (id),KEY source_type (source_type),KEY is_active (is_active)) $c;");
         dbDelta("CREATE TABLE ".self::table('jobs')." (id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,job_type VARCHAR(40) NOT NULL,status VARCHAR(20) NOT NULL DEFAULT 'pending',total_items INT UNSIGNED NOT NULL DEFAULT 0,processed_items INT UNSIGNED NOT NULL DEFAULT 0,errors_count INT UNSIGNED NOT NULL DEFAULT 0,last_error TEXT NULL,started_at DATETIME NULL,finished_at DATETIME NULL,updated_at DATETIME NULL,PRIMARY KEY (id),KEY job_type (job_type),KEY status (status),KEY started_at (started_at)) $c;");
+        ALMA_AI_Content_Agent_Result_Usage::install_table();
         ALMA_AI_Content_Agent_Instructions_Manager::ensure_default_profile();
     }
     public static function allowed_idea_statuses(){ return array('new','reviewed','approved','rejected','brief_ready','archived'); }
@@ -27,6 +28,7 @@ class ALMA_AI_Content_Agent_Store {
             self::table('content_ideas'),
             self::table('editorial_briefs'),
             self::table('instruction_profiles'),
+            ALMA_AI_Content_Agent_Result_Usage::table_name(),
         );
     }
 
