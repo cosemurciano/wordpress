@@ -233,10 +233,19 @@ class ALMA_AI_Content_Agent_Admin {
     private static function render_ideas_tab() {
         $active_idea_id = absint(get_user_meta(get_current_user_id(), '_alma_active_idea_id', true));
         $ideas = get_posts(array('post_type'=>ALMA_AI_Content_Agent_Ideas::CPT,'post_status'=>'publish','numberposts'=>50,'orderby'=>'modified','order'=>'DESC','author'=>get_current_user_id()));
+        if ($active_idea_id > 0) {
+            $active_post = get_post($active_idea_id);
+            if (!$active_post || $active_post->post_type !== ALMA_AI_Content_Agent_Ideas::CPT) {
+                delete_user_meta(get_current_user_id(), '_alma_active_idea_id');
+                $active_idea_id = 0;
+            }
+        }
         if ($active_idea_id < 1 && !empty($ideas)) { $active_idea_id = (int)$ideas[0]->ID; update_user_meta(get_current_user_id(), '_alma_active_idea_id', $active_idea_id); }
         $active_idea = $active_idea_id ? ALMA_AI_Content_Agent_Ideas::get($active_idea_id) : array();
-        ALMA_AI_Content_Agent_Selection_Session::load_from_idea($active_idea);
+        if (!empty($active_idea['ID'])) { ALMA_AI_Content_Agent_Selection_Session::load_from_idea($active_idea); }
+        else { ALMA_AI_Content_Agent_Selection_Session::clear(); }
         $profiles = ALMA_AI_Content_Agent_Instructions_Manager::get_profiles(100,0);
+        if (!is_array($profiles)) { $profiles = array(); }
         $session = ALMA_AI_Content_Agent_Selection_Session::get_session();
         $summary = ALMA_AI_Content_Agent_Selection_Session::summary();
         $results_groups = ALMA_AI_Content_Agent_Selection_Session::grouped_results(false);
@@ -249,8 +258,10 @@ class ALMA_AI_Content_Agent_Admin {
             }
         }
         $labels = array('affiliate_link'=>'Link Affiliati','post'=>'Post','document_txt'=>'File TXT','source_online'=>'Fonti online','page'=>'Pagine','media'=>'Media');
-        $usage_keys = array_unique(array_merge(array_keys((array)$session['search_results']), array_keys((array)$session['selected_results'])));
-        $usage_counts = ALMA_AI_Content_Agent_Result_Usage::get_counts($usage_keys);
+        $usage_keys = array();
+        foreach ((array)$session['search_results'] as $row) { if (!is_array($row)) { continue; } $rk = sanitize_text_field($row['result_key'] ?? ''); if ($rk !== '') { $usage_keys[] = $rk; } }
+        foreach ((array)$session['selected_results'] as $row) { if (!is_array($row)) { continue; } $rk = sanitize_text_field($row['result_key'] ?? ''); if ($rk !== '') { $usage_keys[] = $rk; } }
+        $usage_counts = ALMA_AI_Content_Agent_Result_Usage::get_counts(array_values(array_unique($usage_keys)));
 
         echo '<div class="alma-ideas-toolbar alma-ideas-card">';
         echo '<div><label for="alma-idea-title"><strong>Titolo idea</strong></label><input id="alma-idea-title" class="regular-text alma-idea-title-input" form="alma-save-idea-form" type="text" name="idea_title" value="'.esc_attr($active_idea['title'] ?? 'Nuova idea').'">';
@@ -276,8 +287,10 @@ class ALMA_AI_Content_Agent_Admin {
         echo '</select></p><p><label>Prompt per OpenAI</label><textarea class="widefat" rows="4" name="openai_prompt">'.esc_textarea($active_idea['prompt'] ?? ($session['openai_prompt'] ?? '')).'</textarea><span class="description">Questo prompt verrà inviato a OpenAI insieme ai contenuti raccolti e guiderà cosa scrivere nella bozza.</span></p><p><button class="button button-primary">Cerca contenuti</button></p></form></div>';
 
         echo '<div class="alma-ideas-card"><h3>2. Risultati ricerca</h3><form method="post" action="'.esc_url(admin_url('admin-post.php')).'">'.wp_nonce_field('alma_ai_agent_action','_wpnonce',true,false).'<input type="hidden" name="action" value="alma_ai_agent_action"><input type="hidden" name="do" value="add_selected_to_idea">';
-        foreach($labels as $k=>$label){ $rows=(array)($results_groups[$k]??array()); echo '<section class="alma-results-group"><h4>'.esc_html($label).' <span class="alma-count-badge">'.count($rows).'</span></h4>'; foreach($rows as $r){ $rk=sanitize_text_field($r['result_key'] ?? ''); $in=!empty($selected_map[$rk]); $usage=(int)($usage_counts[$rk] ?? 0); echo '<div class="alma-result-item'.($in?' is-already-added':'').'"><label><input type="checkbox" name="selected_result_keys[]" value="'.esc_attr($rk).'" '.disabled($in,true,false).'> <strong>'.esc_html($r['title']).'</strong></label>'; if($in){echo ' <span class="alma-added-badge">Già nell’idea</span>';} echo ' <span class="alma-usage-badge">Utilizzato in bozze: '.$usage.'</span><p class="alma-excerpt">'.esc_html(wp_trim_words((string)($r['excerpt'] ?? ''),20,'…')).'</p><p class="description">Score: '.(int)($r['score'] ?? 0).' · '.esc_html($r['reason'] ?? '').'</p>'; if($in){ echo '<button class="button button-small" type="button" disabled>Già aggiunto</button>'; } else { echo '<button class="button button-small" type="submit" name="do" value="add_result_to_idea" formaction="'.esc_url(admin_url('admin-post.php')).'" formmethod="post">Aggiungi all’idea</button><input type="hidden" name="result_key" value="'.esc_attr($rk).'">'; } echo '</div>'; }
+        $has_results = false;
+        foreach($labels as $k=>$label){ $rows=(array)($results_groups[$k]??array()); if (!empty($rows)) { $has_results = true; } echo '<section class="alma-results-group"><h4>'.esc_html($label).' <span class="alma-count-badge">'.count($rows).'</span></h4>'; foreach($rows as $r){ $rk=sanitize_text_field($r['result_key'] ?? ''); $in=!empty($selected_map[$rk]); $usage=(int)($usage_counts[$rk] ?? 0); echo '<div class="alma-result-item'.($in?' is-already-added':'').'"><label><input type="checkbox" name="selected_result_keys[]" value="'.esc_attr($rk).'" '.disabled($in,true,false).'> <strong>'.esc_html($r['title']).'</strong></label>'; if($in){echo ' <span class="alma-added-badge">Già nell’idea</span>';} echo ' <span class="alma-usage-badge">Utilizzato in bozze: '.$usage.'</span><p class="alma-excerpt">'.esc_html(wp_trim_words((string)($r['excerpt'] ?? ''),20,'…')).'</p><p class="description">Score: '.(int)($r['score'] ?? 0).' · '.esc_html($r['reason'] ?? '').'</p>'; if($in){ echo '<button class="button button-small" type="button" disabled>Già aggiunto</button>'; } else { echo '<button class="button button-small" type="submit" name="do" value="add_result_to_idea" formaction="'.esc_url(admin_url('admin-post.php')).'" formmethod="post">Aggiungi all’idea</button><input type="hidden" name="result_key" value="'.esc_attr($rk).'">'; } echo '</div>'; }
         echo '</section>'; }
+        if (!$has_results) { echo '<p class="description">Nessun risultato disponibile. Esegui una ricerca per popolare questa sezione.</p>'; }
         echo '<p><button class="button button-primary">Aggiungi selezionati all’idea</button></p></form></div></main>';
 
         echo '<aside class="alma-ideas-col alma-ideas-col-right"><div class="alma-ideas-card"><h3>3. Sessione contenuto</h3><p><strong>Totale elementi aggiunti:</strong> '.(int)($summary['selected_total'] ?? 0).'</p>';

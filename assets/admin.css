@@ -635,45 +635,21 @@ button:disabled {
 .alma-ai-agent-admin .alma-badge.is-success{background:#d1e7dd}
 .alma-ai-agent-admin .alma-badge.is-warning,.alma-ai-agent-admin .alma-badge.is-pending{background:#fff3cd}
 
-/* AI Content Agent - Idee contenuto 3 column restoration */
-.alma-ai-agent-admin .alma-ideas-layout{display:grid;grid-template-columns:minmax(220px,22%) minmax(560px,56%) minmax(260px,22%);gap:16px;align-items:start}
-.alma-ai-agent-admin .alma-ideas-card{background:#fff;border:1px solid #dcdcde;border-radius:8px;padding:14px;margin-bottom:14px}
-.alma-ai-agent-admin .alma-ideas-card-header{display:flex;justify-content:space-between;align-items:center;gap:10px}
-.alma-ai-agent-admin .alma-idea-card{border:1px solid #dcdcde;border-radius:6px;padding:10px;margin-bottom:10px;background:#fff}
-.alma-ai-agent-admin .alma-idea-card.is-active{border-color:#2271b1;box-shadow:inset 0 0 0 1px #2271b1}
-.alma-ai-agent-admin .alma-results-group{border:1px solid #e2e4e7;border-radius:6px;padding:10px;margin-bottom:10px;background:#fff}
-.alma-ai-agent-admin .alma-result-item{border-top:1px solid #f0f0f1;padding-top:8px;margin-top:8px}
-.alma-ai-agent-admin .alma-score-badge,.alma-ai-agent-admin .alma-count-badge{display:inline-block;background:#f6f7f7;border-radius:999px;padding:2px 8px;font-size:12px}
-.alma-ai-agent-admin .alma-excerpt{margin:6px 0;color:#50575e}
-.alma-ai-agent-admin .alma-session-sticky{position:sticky;top:46px;max-height:calc(100vh - 64px);overflow:auto}
-@media (max-width:1200px){.alma-ai-agent-admin .alma-ideas-layout{grid-template-columns:1fr}.alma-ai-agent-admin .alma-session-sticky{position:static;max-height:none}}
-.alma-ideas-actions-row{margin:12px 0;padding:12px;background:#fff;border:1px solid #dcdcde}
-.alma-actions-inline{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-.alma-result-item.is-already-added{background:#eef8f0;border-left:4px solid #46b450}
-.alma-added-badge,.alma-usage-badge{display:inline-block;padding:2px 8px;border-radius:10px;background:#f0f6fc;font-size:12px}
-.alma-added-badge{background:#e7f5ea;color:#1e7e34}
-.alma-pagination{margin-top:8px;font-size:12px;color:#50575e}
-
-/* Ideas UI 2.24.5 */
-.alma-ideas-toolbar{display:flex;justify-content:space-between;gap:12px;align-items:flex-end;flex-wrap:wrap}
-.alma-idea-title-input{font-size:20px;font-weight:700;min-width:340px}
-.alma-ideas-layout{display:flex;gap:16px;align-items:flex-start}
-.alma-ideas-col-left{width:20%}.alma-ideas-col-main{width:56%}.alma-ideas-col-right{width:24%}
-.alma-ideas-card{background:#fff;border:1px solid #dcdcde;padding:14px;border-radius:6px;margin-bottom:12px}
-.alma-idea-title-lg{font-size:24px;font-weight:700;margin:8px 0}
-.alma-result-item{border:1px solid #e2e4e7;padding:10px;border-radius:6px;margin:8px 0}
-.alma-result-item.is-already-added{background:#f0f7ff;border-color:#72aee6}
-.alma-added-badge,.alma-usage-badge,.alma-count-badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;margin-left:6px}
-.alma-added-badge{background:#dceffd;color:#135e96}.alma-usage-badge{background:#f0f0f1;color:#1d2327}.alma-count-badge{background:#eef2f7;color:#3c434a}
-@media (max-width: 1100px){.alma-ideas-layout{flex-direction:column}.alma-ideas-col-left,.alma-ideas-col-main,.alma-ideas-col-right{width:100%}}
-
 /* AI Content Agent Ideas layout */
-.alma-ai-agent-admin .alma-ideas-layout{display:grid;grid-template-columns:minmax(240px,1fr) minmax(520px,2.2fr) minmax(360px,1.4fr);gap:16px;align-items:start}
+.alma-ai-agent-admin .alma-ideas-toolbar{display:flex;justify-content:space-between;gap:12px;align-items:flex-end;flex-wrap:wrap}
+.alma-ai-agent-admin .alma-idea-title-input{font-size:20px;font-weight:700;min-width:320px}
+.alma-ai-agent-admin .alma-ideas-layout{display:grid;grid-template-columns:minmax(240px,320px) minmax(540px,1.9fr) minmax(320px,1.2fr);gap:16px;align-items:start;max-width:1600px}
 .alma-ai-agent-admin .alma-ideas-col{min-width:0}
-.alma-ai-agent-admin .alma-ideas-card{background:#fff;border:1px solid #dcdcde;border-radius:6px;padding:14px}
-.alma-ai-agent-admin .alma-idea-title-lg{font-size:18px;font-weight:600;margin:0 0 8px}
-.alma-ai-agent-admin .alma-results-scroll{max-height:70vh;overflow:auto;padding-right:4px}
+.alma-ai-agent-admin .alma-ideas-card{background:#fff;border:1px solid #dcdcde;border-radius:6px;padding:14px;margin-bottom:12px}
+.alma-ai-agent-admin .alma-idea-title-lg{font-size:22px;font-weight:700;margin:8px 0}
 .alma-ai-agent-admin .alma-results-group{margin:0 0 12px}
 .alma-ai-agent-admin .alma-result-item{padding:10px;border:1px solid #e2e4e7;border-radius:4px;margin:0 0 8px}
-@media (max-width: 1600px){.alma-ai-agent-admin .alma-ideas-layout{grid-template-columns:minmax(220px,1fr) minmax(460px,1.8fr) minmax(320px,1.3fr)}}
-@media (max-width: 1320px){.alma-ai-agent-admin .alma-ideas-layout{grid-template-columns:1fr;}.alma-ai-agent-admin .alma-results-scroll{max-height:none}}
+.alma-ai-agent-admin .alma-result-item.is-already-added{background:#eef8f0;border-color:#46b450}
+.alma-ai-agent-admin .alma-added-badge,.alma-ai-agent-admin .alma-usage-badge,.alma-ai-agent-admin .alma-count-badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;margin-left:6px}
+.alma-ai-agent-admin .alma-added-badge{background:#e7f5ea;color:#1e7e34}
+.alma-ai-agent-admin .alma-usage-badge{background:#f0f0f1;color:#1d2327}
+.alma-ai-agent-admin .alma-count-badge{background:#eef2f7;color:#3c434a}
+.alma-ai-agent-admin .alma-excerpt{margin:6px 0;color:#50575e}
+.alma-ai-agent-admin .alma-actions-inline{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+@media (max-width: 1450px){.alma-ai-agent-admin .alma-ideas-layout{grid-template-columns:1fr}}
+@media (max-width: 782px){.alma-ai-agent-admin .alma-idea-title-input{min-width:100%}}
