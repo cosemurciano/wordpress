@@ -1,3 +1,13 @@
+## 2.24.2 — PR 7.2 — Idea Selection Fixes & Executed State
+- Fix overwrite dati idea nelle azioni non-search (add/remove non sovrascrivono titolo/profilo/prompt).
+- Persistenza openai_prompt in Selection Session e fallback in last_query.
+- Limiti selezione incrementale calcolati su intera sessione con deduplica e messaggi chiari.
+- Fix pulsante bulk Aggiungi selezionati all’idea e struttura form risultati.
+- Ricerca locale filtrata per pertinenza e sola inclusione con match testuale reale.
+- Rimossi stati editoriali UI; introdotti Non eseguita / Eseguita il ...
+- Stato Eseguita impostato solo dopo creazione bozza OpenAI riuscita (draft_post_id + executed_at).
+- Nessuna nuova chiamata AI: OpenAI solo su Crea Bozza con OpenAI.
+
 ## 2.24.1
 - Introduzione entità persistente Idee contenuto come CPT interno (`alma_content_idea`).
 - Nuova UI a 3 colonne (Idee salvate, Cerca/Risultati, Sessione contenuto).
