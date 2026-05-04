@@ -3,6 +3,7 @@ if (!defined('ABSPATH')) { exit; }
 
 class ALMA_AI_Content_Agent_Knowledge_Search {
     const MAX_PER_GROUP = 10;
+    const MIN_RELEVANCE_SCORE = 8;
 
     public static function search($input = array()) {
         $query = self::normalize_input($input);
@@ -137,7 +138,7 @@ class ALMA_AI_Content_Agent_Knowledge_Search {
 
     private static function group_and_rank($results) {
         $groups = array('post'=>array(),'page'=>array(),'affiliate_link'=>array(),'document_txt'=>array(),'source_online'=>array(),'media'=>array(),'other'=>array());
-        foreach ($results as $r) { $k = isset($groups[$r['source_type']]) ? $r['source_type'] : 'other'; $groups[$k][] = $r; }
+        foreach ($results as $r) { if ((int)($r['score'] ?? 0) < self::MIN_RELEVANCE_SCORE || empty($r['textual_matches'])) { continue; } $k = isset($groups[$r['source_type']]) ? $r['source_type'] : 'other'; $groups[$k][] = $r; }
         foreach ($groups as $k => $rows) {
             usort($rows, function($a,$b){ return $b['score'] <=> $a['score']; });
             $rows = array_slice($rows, 0, self::MAX_PER_GROUP);
@@ -156,6 +157,9 @@ class ALMA_AI_Content_Agent_Knowledge_Search {
     private static function result($data) {
         $labels = array('post'=>'Post','page'=>'Pagine','affiliate_link'=>'Affiliate Links','document_txt'=>'Documenti TXT','source_online'=>'Fonti online AI','media'=>'Media','other'=>'Altro');
         $safe_key = sanitize_key(str_replace(':','_', (string)$data['key']));
-        return array('result_id'=>$safe_key,'key'=>$data['key'],'source_type'=>$data['source_type'],'source_label'=>$labels[$data['source_type']] ?? 'Altro','source_id'=>(int)($data['source_id'] ?? 0),'knowledge_item_id'=>(int)($data['knowledge_item_id'] ?? 0),'title'=>sanitize_text_field($data['title'] ?? ''),'excerpt'=>sanitize_textarea_field($data['excerpt'] ?? ''),'score'=>(int)($data['score'] ?? 0),'reason'=>sanitize_text_field($data['reason'] ?? ''),'edit_url'=>esc_url_raw($data['edit_url'] ?? ''),'selectable'=>true,'preselected'=>false,'dedupe_ref'=>sanitize_text_field($data['dedupe_ref'] ?? ''));
+        $matches = 0;
+        $text = strtolower((string)(($data['title'] ?? '').' '.($data['excerpt'] ?? '').' '.($data['reason'] ?? '')));
+        foreach (self::extract_terms($text) as $t) { if (strpos($text, $t) !== false) { $matches++; } }
+        return array('textual_matches'=>$matches,'result_id'=>$safe_key,'key'=>$data['key'],'source_type'=>$data['source_type'],'source_label'=>$labels[$data['source_type']] ?? 'Altro','source_id'=>(int)($data['source_id'] ?? 0),'knowledge_item_id'=>(int)($data['knowledge_item_id'] ?? 0),'title'=>sanitize_text_field($data['title'] ?? ''),'excerpt'=>sanitize_textarea_field($data['excerpt'] ?? ''),'score'=>(int)($data['score'] ?? 0),'reason'=>sanitize_text_field($data['reason'] ?? ''),'edit_url'=>esc_url_raw($data['edit_url'] ?? ''),'selectable'=>true,'preselected'=>false,'dedupe_ref'=>sanitize_text_field($data['dedupe_ref'] ?? ''));
     }
 }

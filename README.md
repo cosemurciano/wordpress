@@ -1,3 +1,13 @@
+## 2.24.2 — PR 7.2 — Idea Selection Fixes & Executed State
+- Fix overwrite dati idea nelle azioni non-search (add/remove non sovrascrivono titolo/profilo/prompt).
+- Persistenza openai_prompt in Selection Session e fallback in last_query.
+- Limiti selezione incrementale calcolati su intera sessione con deduplica e messaggi chiari.
+- Fix pulsante bulk Aggiungi selezionati all’idea e struttura form risultati.
+- Ricerca locale filtrata per pertinenza e sola inclusione con match testuale reale.
+- Rimossi stati editoriali UI; introdotti Non eseguita / Eseguita il ...
+- Stato Eseguita impostato solo dopo creazione bozza OpenAI riuscita (draft_post_id + executed_at).
+- Nessuna nuova chiamata AI: OpenAI solo su Crea Bozza con OpenAI.
+
 ## Versione 2.23.1
 - Nuovo workflow AI Content Agent: ricerca locale contenuti, selezione manuale, profilo Istruzioni AI, download JSON payload AI e creazione bozza WordPress in stato draft.
 - Unica chiamata OpenAI: solo su click esplicito “Crea Bozza con OpenAI”.
