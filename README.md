@@ -1,3 +1,9 @@
+## 2.24.3 — PR 7.3 — AI Content Agent Three Column UI Restoration
+- Ripristinato layout 3 colonne in Idee contenuto.
+- Colonna centrale dedicata a Cerca contenuti + Risultati ricerca.
+- Colonna destra dedicata a 3. Sessione contenuto e Azioni finali.
+- UI riallineata al mockup senza modifiche alla logica single-call OpenAI.
+
 ## 2.24.2 — PR 7.2 — Idea Selection Fixes & Executed State
 - Fix overwrite dati idea nelle azioni non-search (add/remove non sovrascrivono titolo/profilo/prompt).
 - Persistenza openai_prompt in Selection Session e fallback in last_query.
@@ -328,5 +334,5 @@ Workflow base completo: genera idee → genera brief → genera bozza → apri i
 - Questa PR non introduce crawling/scraping né nuove chiamate AI/OpenAI.
 
 
-## AI Content Agent 2.24.1
+## AI Content Agent 2.24.3
 La tab Idee contenuto ora usa idee persistenti (CPT), layout operativo in 3 colonne, prompt OpenAI per idea, sessione contenuto associata all'idea e creazione bozza con una sola chiamata OpenAI.
