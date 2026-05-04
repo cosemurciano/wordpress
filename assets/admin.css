@@ -666,3 +666,14 @@ button:disabled {
 .alma-added-badge,.alma-usage-badge,.alma-count-badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;margin-left:6px}
 .alma-added-badge{background:#dceffd;color:#135e96}.alma-usage-badge{background:#f0f0f1;color:#1d2327}.alma-count-badge{background:#eef2f7;color:#3c434a}
 @media (max-width: 1100px){.alma-ideas-layout{flex-direction:column}.alma-ideas-col-left,.alma-ideas-col-main,.alma-ideas-col-right{width:100%}}
+
+/* AI Content Agent Ideas layout */
+.alma-ai-agent-admin .alma-ideas-layout{display:grid;grid-template-columns:minmax(240px,1fr) minmax(520px,2.2fr) minmax(360px,1.4fr);gap:16px;align-items:start}
+.alma-ai-agent-admin .alma-ideas-col{min-width:0}
+.alma-ai-agent-admin .alma-ideas-card{background:#fff;border:1px solid #dcdcde;border-radius:6px;padding:14px}
+.alma-ai-agent-admin .alma-idea-title-lg{font-size:18px;font-weight:600;margin:0 0 8px}
+.alma-ai-agent-admin .alma-results-scroll{max-height:70vh;overflow:auto;padding-right:4px}
+.alma-ai-agent-admin .alma-results-group{margin:0 0 12px}
+.alma-ai-agent-admin .alma-result-item{padding:10px;border:1px solid #e2e4e7;border-radius:4px;margin:0 0 8px}
+@media (max-width: 1600px){.alma-ai-agent-admin .alma-ideas-layout{grid-template-columns:minmax(220px,1fr) minmax(460px,1.8fr) minmax(320px,1.3fr)}}
+@media (max-width: 1320px){.alma-ai-agent-admin .alma-ideas-layout{grid-template-columns:1fr;}.alma-ai-agent-admin .alma-results-scroll{max-height:none}}

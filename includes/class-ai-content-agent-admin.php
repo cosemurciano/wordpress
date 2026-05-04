@@ -249,7 +249,8 @@ class ALMA_AI_Content_Agent_Admin {
             }
         }
         $labels = array('affiliate_link'=>'Link Affiliati','post'=>'Post','document_txt'=>'File TXT','source_online'=>'Fonti online','page'=>'Pagine','media'=>'Media');
-        $usage_counts = ALMA_AI_Content_Agent_Result_Usage::get_counts(array_keys((array)$session['search_results']));
+        $usage_keys = array_unique(array_merge(array_keys((array)$session['search_results']), array_keys((array)$session['selected_results'])));
+        $usage_counts = ALMA_AI_Content_Agent_Result_Usage::get_counts($usage_keys);
 
         echo '<div class="alma-ideas-toolbar alma-ideas-card">';
         echo '<div><label for="alma-idea-title"><strong>Titolo idea</strong></label><input id="alma-idea-title" class="regular-text alma-idea-title-input" form="alma-save-idea-form" type="text" name="idea_title" value="'.esc_attr($active_idea['title'] ?? 'Nuova idea').'">';
@@ -264,9 +265,10 @@ class ALMA_AI_Content_Agent_Admin {
         echo '</div></div>';
 
         echo '<div class="alma-ideas-layout">';
-        echo '<aside class="alma-ideas-col alma-ideas-col-left"><div class="alma-ideas-card"><h3>Idea attiva</h3><p class="alma-idea-title-lg">'.esc_html($active_idea['title'] ?? 'Nuova idea').'</p><p>'.esc_html(!empty($active_idea['executed_at']) ? ('Eseguita il '.$active_idea['executed_at']) : 'Non eseguita').'</p>';
+        echo '<aside class="alma-ideas-col alma-ideas-col-left"><div class="alma-ideas-card"><h3>Idea attiva</h3><p class="alma-idea-title-lg">'.esc_html($active_idea['title'] ?? 'Nessuna idea attiva').'</p><p>'.esc_html(!empty($active_idea['executed_at']) ? ('Eseguita il '.$active_idea['executed_at']) : 'Non eseguita').'</p>';
+        if ($active_idea_id < 1) { echo '<p class="description">Nessuna idea attiva. Usa il pulsante Crea nuova idea per iniziare.</p>'; }
         if (!empty($active_idea['draft_post_id']) && get_post((int)$active_idea['draft_post_id'])) { echo '<p><a href="'.esc_url(get_edit_post_link((int)$active_idea['draft_post_id'],'raw')).'">Apri bozza</a></p>'; }
-        if (!empty($active_idea['modified_at'])) { echo '<p class="description">Ultima modifica: '.esc_html($active_idea['modified_at']).'</p>'; }
+        if (!empty($active_idea['modified'])) { echo '<p class="description">Ultima modifica: '.esc_html($active_idea['modified']).'</p>'; }
         echo '<ul><li>Contenuti aggiunti: '.(int)($summary['selected_total'] ?? 0).'</li><li>Profilo istruzioni AI: '.(int)($active_idea['profile_id'] ?? 0).'</li><li>Prompt OpenAI: '.(!empty($active_idea['prompt']) ? 'Presente' : 'Assente').'</li></ul></div></aside>';
 
         echo '<main class="alma-ideas-col alma-ideas-col-main"><div class="alma-ideas-card"><h3>1. Cerca contenuti</h3><form method="post" action="'.esc_url(admin_url('admin-post.php')).'">'.wp_nonce_field('alma_ai_agent_action','_wpnonce',true,false).'<input type="hidden" name="action" value="alma_ai_agent_action"><input type="hidden" name="do" value="search_knowledge_base"><input type="hidden" name="idea_id" value="'.(int)$active_idea_id.'"><p><input class="widefat" type="text" name="content_search_query" placeholder="Cerca contenuti" value="'.esc_attr($session['last_query']['content_search_query'] ?? '').'" required></p><p><label>Profilo Istruzioni AI</label><select class="widefat" name="instruction_profile_id"><option value="0">Nessun profilo</option>';
@@ -280,7 +282,7 @@ class ALMA_AI_Content_Agent_Admin {
 
         echo '<aside class="alma-ideas-col alma-ideas-col-right"><div class="alma-ideas-card"><h3>3. Sessione contenuto</h3><p><strong>Totale elementi aggiunti:</strong> '.(int)($summary['selected_total'] ?? 0).'</p>';
         if ((int)($summary['selected_total'] ?? 0) < 1) { echo '<p>Nessun contenuto aggiunto all’idea.</p>'; }
-        foreach($labels as $k=>$label){ $rows=(array)($selected_groups[$k]??array()); echo '<section class="alma-results-group"><h4>'.esc_html($label).' <span class="alma-count-badge">'.count($rows).'</span></h4>'; foreach($rows as $r){ $rk=sanitize_text_field($r['result_key'] ?? ''); $usage=(int)($usage_counts[$rk] ?? 0); echo '<div class="alma-result-item"><strong>'.esc_html($r['title'] ?? '').'</strong><p class="description">Score: '.(int)($r['score'] ?? 0).' · '.esc_html($r['reason'] ?? '').'</p><span class="alma-usage-badge">Utilizzato in bozze: '.$usage.'</span><form method="post" action="'.esc_url(admin_url('admin-post.php')).'">'.wp_nonce_field('alma_ai_agent_action','_wpnonce',true,false).'<input type="hidden" name="action" value="alma_ai_agent_action"><input type="hidden" name="do" value="remove_selected_item"><input type="hidden" name="result_key" value="'.esc_attr($rk).'"><button class="button button-small">Rimuovi</button></form></div>'; }
+        foreach($labels as $k=>$label){ $rows=(array)($selected_groups[$k]??array()); if (empty($rows)) { continue; } echo '<section class="alma-results-group"><h4>'.esc_html($label).' <span class="alma-count-badge">'.count($rows).'</span></h4>'; foreach($rows as $r){ $rk=sanitize_text_field($r['result_key'] ?? ''); $usage=(int)($usage_counts[$rk] ?? 0); echo '<div class="alma-result-item"><strong>'.esc_html($r['title'] ?? '').'</strong><p class="description">Score: '.(int)($r['score'] ?? 0).' · '.esc_html($r['reason'] ?? '').'</p><span class="alma-usage-badge">Utilizzato in bozze: '.$usage.'</span><form method="post" action="'.esc_url(admin_url('admin-post.php')).'">'.wp_nonce_field('alma_ai_agent_action','_wpnonce',true,false).'<input type="hidden" name="action" value="alma_ai_agent_action"><input type="hidden" name="do" value="remove_selected_item"><input type="hidden" name="result_key" value="'.esc_attr($rk).'"><button class="button button-small">Rimuovi</button></form></div>'; }
         echo '</section>'; }
         echo '</div></aside></div>';
     }
