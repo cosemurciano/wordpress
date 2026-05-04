@@ -647,3 +647,9 @@ button:disabled {
 .alma-ai-agent-admin .alma-excerpt{margin:6px 0;color:#50575e}
 .alma-ai-agent-admin .alma-session-sticky{position:sticky;top:46px;max-height:calc(100vh - 64px);overflow:auto}
 @media (max-width:1200px){.alma-ai-agent-admin .alma-ideas-layout{grid-template-columns:1fr}.alma-ai-agent-admin .alma-session-sticky{position:static;max-height:none}}
+.alma-ideas-actions-row{margin:12px 0;padding:12px;background:#fff;border:1px solid #dcdcde}
+.alma-actions-inline{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.alma-result-item.is-already-added{background:#eef8f0;border-left:4px solid #46b450}
+.alma-added-badge,.alma-usage-badge{display:inline-block;padding:2px 8px;border-radius:10px;background:#f0f6fc;font-size:12px}
+.alma-added-badge{background:#e7f5ea;color:#1e7e34}
+.alma-pagination{margin-top:8px;font-size:12px;color:#50575e}
