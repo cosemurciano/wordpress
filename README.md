@@ -1,3 +1,10 @@
+## 2.24.6 — PR 7.6 AI Content Agent Critical Error Hotfix and Ideas UI Optimization
+- Fix critical error in Selection Session: rimosse variabili non definite e normalizzazione difensiva della struttura sessione.
+- Stabilizzata persistenza `openai_prompt`, `status`, `counts` e `updated_at` anche con sessioni vuote/corrotte.
+- Corretto invio `result_key` per azione singola Aggiungi all’idea senza interferire con selezione multipla.
+- `selected_map` e usage counts ottimizzati su chiavi reali e unione risultati/sessione con fallback sicuro se tabella usage assente.
+- Layout Idee contenuto ottimizzato con grid scoped, larghezze colonne più leggibili e stati vuoti chiari.
+
 ## 2.24.3 — PR 7.3 — AI Content Agent Three Column UI Restoration
 - Ripristinato layout 3 colonne in Idee contenuto.
 - Colonna centrale dedicata a Cerca contenuti + Risultati ricerca.

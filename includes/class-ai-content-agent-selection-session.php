@@ -20,6 +20,12 @@ class ALMA_AI_Content_Agent_Selection_Session {
         if (!is_array($s['search_results'])) { $s['search_results'] = is_array($s['results'] ?? null) ? $s['results'] : array(); }
         if (!is_array($s['selected_results'])) { $s['selected_results'] = array(); }
         if (!is_array($s['query_history'])) { $s['query_history'] = array(); }
+        $s['last_query'] = is_array($s['last_query']) ? $s['last_query'] : array();
+        $s['counts'] = is_array($s['counts']) ? $s['counts'] : array();
+        $s['openai_prompt'] = sanitize_textarea_field($s['openai_prompt'] ?? ($s['last_query']['openai_prompt'] ?? ''));
+        $s['updated_at'] = sanitize_text_field($s['updated_at'] ?? '');
+        $s['status'] = in_array(($s['status'] ?? ''), array('empty','active'), true) ? $s['status'] : (empty($s['search_results']) ? 'empty' : 'active');
+        $s['counts'] = wp_parse_args($s['counts'], self::count_summary($s['search_results'], $s['selected_results']));
         return $s;
     }
 
@@ -79,13 +85,20 @@ class ALMA_AI_Content_Agent_Selection_Session {
         $selected = array_fill_keys(array_map('sanitize_text_field', (array)$selected_keys), true);
         $next = (array)$session['selected_results'];
         $counts = array('post'=>0,'page'=>0,'affiliate_link'=>0,'document_txt'=>0,'source_online'=>0,'media'=>0);
+        $limits = array('post'=>self::MAX_SELECTED_POSTS,'page'=>self::MAX_SELECTED_PAGES,'affiliate_link'=>self::MAX_SELECTED_AFFILIATE_LINKS,'document_txt'=>self::MAX_SELECTED_DOCUMENT_TXT,'source_online'=>self::MAX_SELECTED_SOURCE_ONLINE,'media'=>self::MAX_SELECTED_MEDIA);
         foreach ($next as $row) { $g = sanitize_key($row['source_group'] ?? ''); if (isset($counts[$g])) { $counts[$g]++; } }
         $added = 0; $duplicates = 0;
-        foreach ($selected as $k => $truev) { if (!isset($session['search_results'][$k])) { continue; } if (isset($next[$k])) { $duplicates++; continue; } $row=$session['search_results'][$k]; $g=sanitize_key($row['source_group']??'');
-        $limits = array('post'=>self::MAX_SELECTED_POSTS,'page'=>self::MAX_SELECTED_PAGES,'affiliate_link'=>self::MAX_SELECTED_AFFILIATE_LINKS,'document_txt'=>self::MAX_SELECTED_DOCUMENT_TXT,'source_online'=>self::MAX_SELECTED_SOURCE_ONLINE,'media'=>self::MAX_SELECTED_MEDIA);
-            $limit = array('post'=>self::MAX_SELECTED_POSTS,'page'=>self::MAX_SELECTED_PAGES,'affiliate_link'=>self::MAX_SELECTED_AFFILIATE_LINKS,'document_txt'=>self::MAX_SELECTED_DOCUMENT_TXT,'source_online'=>self::MAX_SELECTED_SOURCE_ONLINE,'media'=>self::MAX_SELECTED_MEDIA);
-            if (!isset($counts[$g]) || $counts[$g] >= $limit[$g]) { continue; }
-            $counts[$g]++; $next[$k]=$row; $next[$k]['selected']=true; $added++; }
+        foreach ($selected as $k => $truev) {
+            if (!isset($session['search_results'][$k])) { continue; }
+            if (isset($next[$k])) { $duplicates++; continue; }
+            $row = (array)$session['search_results'][$k];
+            $g = sanitize_key($row['source_group'] ?? '');
+            if (!isset($counts[$g], $limits[$g]) || $counts[$g] >= $limits[$g]) { continue; }
+            $counts[$g]++;
+            $next[$k] = $row;
+            $next[$k]['selected'] = true;
+            $added++;
+        }
         $warnings = array();
         foreach ($limits as $g => $max) {
             if (($counts[$g] ?? 0) <= $max) { continue; }
@@ -100,7 +113,7 @@ class ALMA_AI_Content_Agent_Selection_Session {
         }
         $session['selected_results'] = $next;
         $session['updated_at'] = current_time('mysql');
-        $session['openai_prompt'] = $openai_prompt;
+        $session['openai_prompt'] = sanitize_textarea_field($session['openai_prompt'] ?? ($session['last_query']['openai_prompt'] ?? ''));
         $session['counts'] = self::count_summary($session['search_results'], $session['selected_results']);
         $session['status'] = empty($session['search_results']) ? 'empty' : 'active';
         set_transient(self::key(), $session, self::TTL);
@@ -233,7 +246,7 @@ class ALMA_AI_Content_Agent_Selection_Session {
         foreach($selected as $row){ if(empty($row['result_key'])) continue; $row['selected']=true; $session['selected_results'][$row['result_key']]=$row; }
         $session['instruction_profile_id'] = absint($idea['profile_id'] ?? 0);
         $session['updated_at'] = current_time('mysql');
-        $session['openai_prompt'] = sanitize_textarea_field($idea['prompt'] ?? '');
+        $session['openai_prompt'] = sanitize_textarea_field($idea['prompt'] ?? ($session['last_query']['openai_prompt'] ?? ''));
         $session['counts'] = self::count_summary($results, $session['selected_results']);
         set_transient(self::key(), $session, self::TTL);
     }
@@ -242,7 +255,9 @@ class ALMA_AI_Content_Agent_Selection_Session {
         $session = self::get_session();
         $result_key = sanitize_text_field($result_key);
         if (isset($session['selected_results'][$result_key])) { unset($session['selected_results'][$result_key]); }
-        $session['openai_prompt'] = $openai_prompt;
+        $session['openai_prompt'] = sanitize_textarea_field($session['openai_prompt'] ?? ($session['last_query']['openai_prompt'] ?? ''));
+        $session['updated_at'] = current_time('mysql');
+        $session['status'] = empty($session['search_results']) ? 'empty' : 'active';
         $session['counts'] = self::count_summary($session['search_results'], $session['selected_results']);
         set_transient(self::key(), $session, self::TTL);
         return array('success'=>true,'message'=>'Elemento rimosso dalla sessione contenuto.');
