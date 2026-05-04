@@ -40,9 +40,26 @@ class ALMA_AI_Content_Agent_Ideas {
         return (int)$id;
     }
 
+    private static function normalize_meta_rows($value) {
+        if (!is_array($value)) { return array(); }
+        $normalized = array();
+        foreach ($value as $row) {
+            if (!is_array($row)) { continue; }
+            $normalized[] = $row;
+        }
+        return $normalized;
+    }
+
+    private static function normalize_meta_query($value) {
+        return is_array($value) ? $value : array();
+    }
+
     public static function get($id) {
         $p = get_post(absint($id)); if (!$p || $p->post_type !== self::CPT) { return array(); }
-        return array('ID'=>$p->ID,'title'=>$p->post_title,'profile_id'=>absint(get_post_meta($p->ID,self::META_PROFILE_ID,true)),'prompt'=>get_post_meta($p->ID,self::META_PROMPT,true),'last_query'=>get_post_meta($p->ID,self::META_LAST_QUERY,true),'results'=>(array)get_post_meta($p->ID,self::META_RESULTS,true),'selection'=>(array)get_post_meta($p->ID,self::META_SELECTION,true),'executed_at'=>sanitize_text_field((string)get_post_meta($p->ID,self::META_EXECUTED_AT,true)),'draft_post_id'=>absint(get_post_meta($p->ID,self::META_DRAFT_POST_ID,true)),'modified'=>$p->post_modified);
+        $last_query = self::normalize_meta_query(get_post_meta($p->ID, self::META_LAST_QUERY, true));
+        $results = self::normalize_meta_rows(get_post_meta($p->ID, self::META_RESULTS, true));
+        $selection = self::normalize_meta_rows(get_post_meta($p->ID, self::META_SELECTION, true));
+        return array('ID'=>$p->ID,'title'=>$p->post_title,'profile_id'=>absint(get_post_meta($p->ID,self::META_PROFILE_ID,true)),'prompt'=>get_post_meta($p->ID,self::META_PROMPT,true),'last_query'=>$last_query,'results'=>$results,'selection'=>$selection,'executed_at'=>sanitize_text_field((string)get_post_meta($p->ID,self::META_EXECUTED_AT,true)),'draft_post_id'=>absint(get_post_meta($p->ID,self::META_DRAFT_POST_ID,true)),'modified'=>$p->post_modified);
     }
 
     public static function save_from_request($idea_id, $data) {
