@@ -201,6 +201,36 @@ class ALMA_AI_Content_Agent_Selection_Session {
         return $c;
     }
 
+
+    public static function persist_to_idea($idea_id) {
+        $idea_id = absint($idea_id); if ($idea_id < 1) { return; }
+        $session = self::get_session();
+        update_post_meta($idea_id, ALMA_AI_Content_Agent_Ideas::META_LAST_QUERY, (array)$session['last_query']);
+        update_post_meta($idea_id, ALMA_AI_Content_Agent_Ideas::META_RESULTS, (array)$session['results']);
+        update_post_meta($idea_id, ALMA_AI_Content_Agent_Ideas::META_SELECTION, array_values(array_filter((array)$session['results'], function($r){ return !empty($r['selected']); })));
+    }
+
+    public static function load_from_idea($idea) {
+        if (empty($idea['ID'])) { self::clear(); return; }
+        $results = (array)($idea['results'] ?? array());
+        $session = self::empty_session();
+        $session['status'] = empty($results) ? 'empty' : 'active';
+        $session['last_query'] = (array)($idea['last_query'] ?? array());
+        $session['results'] = $results;
+        $session['instruction_profile_id'] = absint($idea['profile_id'] ?? 0);
+        $session['updated_at'] = current_time('mysql');
+        $session['counts'] = self::count_summary($results);
+        set_transient(self::key(), $session, self::TTL);
+    }
+
+    public static function remove_selected_item($result_key) {
+        $session = self::get_session();
+        $result_key = sanitize_text_field($result_key);
+        if (isset($session['results'][$result_key])) { $session['results'][$result_key]['selected'] = false; }
+        $session['counts'] = self::count_summary($session['results']);
+        set_transient(self::key(), $session, self::TTL);
+        return array('success'=>true,'message'=>'Elemento rimosso dalla sessione contenuto.');
+    }
     public static function build_context_package() {
         $s = self::get_session();
         $selected = array_values(array_filter($s['results'], function($r){ return !empty($r['selected']); }));

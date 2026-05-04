@@ -1,3 +1,10 @@
+## 2.24.0
+- Introduzione entità persistente Idee contenuto come CPT interno (`alma_content_idea`).
+- Nuova UI a 3 colonne (Idee salvate, Cerca/Risultati, Sessione contenuto).
+- Prompt editoriale per OpenAI salvato per singola idea.
+- Azioni Aggiungi selezionati e gestione contenuti associati per idea.
+- Rimozione flusso Duplica/Proposta di sviluppo e mantenimento single-call OpenAI in creazione bozza.
+
 ## 2.23.1 — PR 6.1 — Search Session UX & Payload Refinement
 - fix selezione persa in dedupe preservando selected=true.
 - fix collegamento reale query di ricerca locale (campo unico).
