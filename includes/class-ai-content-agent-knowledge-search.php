@@ -2,7 +2,7 @@
 if (!defined('ABSPATH')) { exit; }
 
 class ALMA_AI_Content_Agent_Knowledge_Search {
-    const MAX_PER_GROUP = 10;
+    const MAX_PER_GROUP = 30;
     const MIN_RELEVANCE_SCORE = 8;
 
     public static function search($input = array()) {

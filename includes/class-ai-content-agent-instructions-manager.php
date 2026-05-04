@@ -17,10 +17,10 @@ class ALMA_AI_Content_Agent_Instructions_Manager {
     public static function get_profiles($limit = 50, $offset = 0) {
         global $wpdb;
         $t = ALMA_AI_Content_Agent_Store::table('instruction_profiles');
-        return $wpdb->get_results($wpdb->prepare("SELECT * FROM $t ORDER BY is_default DESC, is_active DESC, id DESC LIMIT %d OFFSET %d", max(1, absint($limit)), max(0, absint($offset))), ARRAY_A);
+        $exists=$wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s',$t)); if($exists!==$t){return array();} $rows=$wpdb->get_results($wpdb->prepare("SELECT * FROM $t ORDER BY is_default DESC, is_active DESC, id DESC LIMIT %d OFFSET %d", max(1, absint($limit)), max(0, absint($offset))), ARRAY_A); return is_array($rows)?$rows:array();
     }
-    public static function get_profile($id){ global $wpdb; $t=ALMA_AI_Content_Agent_Store::table('instruction_profiles'); return $wpdb->get_row($wpdb->prepare("SELECT * FROM $t WHERE id=%d",absint($id)),ARRAY_A); }
-    public static function get_active_profile(){ global $wpdb; $t=ALMA_AI_Content_Agent_Store::table('instruction_profiles'); $r=$wpdb->get_row("SELECT * FROM $t WHERE is_active=1 ORDER BY is_default DESC,id DESC LIMIT 1",ARRAY_A); if(!$r){ $r=$wpdb->get_row("SELECT * FROM $t ORDER BY is_default DESC,id ASC LIMIT 1",ARRAY_A);} return $r; }
+    public static function get_profile($id){ global $wpdb; $t=ALMA_AI_Content_Agent_Store::table('instruction_profiles'); $exists=$wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s',$t)); if($exists!==$t){return array();} $r=$wpdb->get_row($wpdb->prepare("SELECT * FROM $t WHERE id=%d",absint($id)),ARRAY_A); return is_array($r)?$r:array(); }
+    public static function get_active_profile(){ global $wpdb; $t=ALMA_AI_Content_Agent_Store::table('instruction_profiles'); $exists=$wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s',$t)); if($exists!==$t){return array();} $r=$wpdb->get_row("SELECT * FROM $t WHERE is_active=1 ORDER BY is_default DESC,id DESC LIMIT 1",ARRAY_A); if(!is_array($r)||!$r){ $r=$wpdb->get_row("SELECT * FROM $t ORDER BY is_default DESC,id ASC LIMIT 1",ARRAY_A);} return is_array($r)?$r:array(); }
 
     public static function save_profile($data, $id = 0) {
         global $wpdb; $t = ALMA_AI_Content_Agent_Store::table('instruction_profiles');
