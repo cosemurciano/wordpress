@@ -316,3 +316,7 @@ Workflow base completo: genera idee → genera brief → genera bozza → apri i
 - Documenti TXT: upload operativo solo `.txt`, salvataggio nel Knowledge Base e chunking/indexing locale.
 - Fonti online AI: CRUD operativo con URL validation, tecnologia da lista consentita e stato active/inactive.
 - Questa PR non introduce crawling/scraping né nuove chiamate AI/OpenAI.
+
+
+## AI Content Agent 2.24.0
+La tab Idee contenuto ora usa idee persistenti (CPT), layout operativo in 3 colonne, prompt OpenAI per idea, sessione contenuto associata all'idea e creazione bozza con una sola chiamata OpenAI.
