@@ -1,4 +1,11 @@
-## 2.24.8 — PR 7.7 AI Content Agent Data Normalization Fatal Fix and Ideas Layout Hardening
+## 2.24.9 — PR 7.9 AI Content Agent Search Results Clear Action and Content Type Filter
+- Aggiunta action admin `clear_content_idea_search` con nonce/capability check, svuotamento dei soli risultati ricerca e redirect pulito alla tab Idee.
+- Nuovo metodo dedicato in Selection Session per svuotare `search_results` preservando `selected_results`, stato sessione e persistenza transient.
+- Toolbar nella card “2. Risultati ricerca” con pulsante **Svuota ricerca** e filtro GET **Tipologia contenuto** (`alma_result_type`) con opzioni dinamiche.
+- Filtro applicato prima della paginazione e paginazione aggiornata per preservare `alma_result_type` nei link Prev/Next.
+- Compatibilità mantenuta con form bulk/single separati (nessun annidamento form).
+
+## 2.24.8 — PR 7.8 AI Content Agent Data Normalization Fatal Fix and Ideas Layout Hardening
 - Hardening runtime su meta/transient legacy o corrotti: normalizzazione difensiva di risultati/sessione e guard su rendering gruppi/conteggi.
 - Fix definitivo fatal PHP 8 su accessi offset stringa in Selection Session (`grouped_results`, `count_summary`, load/persist/build context).
 - Hardening tab Idee contenuto: validazione idea attiva, fallback profili/usage sicuri, stati vuoti espliciti e nessun fatal con tabelle usage mancanti.

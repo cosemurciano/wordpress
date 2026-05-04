@@ -63,6 +63,16 @@ class ALMA_AI_Content_Agent_Admin {
         } elseif ($do === 'clear_selection_session') {
             ALMA_AI_Content_Agent_Selection_Session::clear();
             $result = array('success' => true, 'message' => 'Sessione contenuto svuotata.');
+        } elseif ($do === 'clear_content_idea_search') {
+            $session = ALMA_AI_Content_Agent_Selection_Session::clear_search_results();
+            $active_idea_id = absint(get_user_meta(get_current_user_id(), '_alma_active_idea_id', true));
+            if ($active_idea_id > 0) {
+                update_post_meta($active_idea_id, ALMA_AI_Content_Agent_Ideas::META_LAST_QUERY, array());
+                update_post_meta($active_idea_id, ALMA_AI_Content_Agent_Ideas::META_RESULTS, array());
+                update_post_meta($active_idea_id, ALMA_AI_Content_Agent_Ideas::META_SELECTION, array_values((array)($session['selected_results'] ?? array())));
+                ALMA_AI_Content_Agent_Selection_Session::persist_to_idea($active_idea_id);
+            }
+            $result = array('success' => true, 'message' => 'Risultati ricerca svuotati.');
         } elseif ($do === 'download_ai_payload_json') {
             $summary = ALMA_AI_Content_Agent_Selection_Session::summary();
             if ((int)($summary['selected_total'] ?? 0) < 1) { $result = array('success'=>false,'message'=>'Seleziona almeno una fonte prima di scaricare il JSON payload AI.'); }
@@ -137,7 +147,12 @@ class ALMA_AI_Content_Agent_Admin {
         }
 
         self::set_notice($result);
-        wp_safe_redirect(wp_get_referer()); exit;
+        $redirect_url = wp_get_referer();
+        if ($do === 'clear_content_idea_search') {
+            $redirect_url = admin_url('edit.php?post_type=affiliate_link&page=alma-ai-content-agent&tab=idee');
+            $redirect_url = remove_query_arg(array('alma_results_page', 'alma_result_type'), $redirect_url);
+        }
+        wp_safe_redirect($redirect_url); exit;
     }
 
     private static function set_notice($result) {
@@ -289,18 +304,46 @@ class ALMA_AI_Content_Agent_Admin {
         foreach($profiles as $p){ $sel=selected((int)($active_idea['profile_id'] ?? 0),(int)$p['id'],false); echo '<option value="'.(int)$p['id'].'" '.$sel.'>'.esc_html($p['profile_name']).'</option>'; }
         echo '</select></p><p><label>Prompt per OpenAI</label><textarea class="widefat" rows="4" name="openai_prompt">'.esc_textarea($active_idea['prompt'] ?? ($session['openai_prompt'] ?? '')).'</textarea><span class="description">Questo prompt verrà inviato a OpenAI insieme ai contenuti raccolti e guiderà cosa scrivere nella bozza.</span></p><p><button class="button button-primary">Cerca contenuti</button></p></form></div>';
 
-        echo '<div class="alma-ideas-card"><h3>2. Risultati ricerca</h3>';
         $all_rows = array();
         foreach($labels as $k=>$label){ foreach((array)($results_groups[$k]??array()) as $r){ $all_rows[] = array('group'=>$k,'label'=>$label,'row'=>$r); } }
-        $per_page = 10; $total_results = count($all_rows); $total_pages = max(1, (int)ceil($total_results / $per_page));
-        $current_page = max(1, absint($_GET['alma_results_page'] ?? 1)); if ($current_page > $total_pages) { $current_page = $total_pages; }
-        $paged_rows = array_slice($all_rows, ($current_page-1)*$per_page, $per_page);
+        $available_groups = array();
+        foreach ($all_rows as $item) { $available_groups[$item['group']] = true; }
+        $active_result_type = sanitize_key($_GET['alma_result_type'] ?? '');
+        if ($active_result_type === '' || !isset($available_groups[$active_result_type])) { $active_result_type = 'all'; }
+        $filtered_rows = $all_rows;
+        if ($active_result_type !== 'all') {
+            $filtered_rows = array_values(array_filter($all_rows, function($item) use ($active_result_type){ return ($item['group'] ?? '') === $active_result_type; }));
+        }
+        $per_page = 10;
+        $total_results = count($filtered_rows);
+        $total_pages = max(1, (int)ceil($total_results / $per_page));
+        $requested_page = absint($_GET['alma_results_page'] ?? 1);
+        $filter_in_request = array_key_exists('alma_result_type', $_GET);
+        $current_page = $filter_in_request ? 1 : max(1, $requested_page);
+        if ($current_page > $total_pages) { $current_page = $total_pages; }
+        $paged_rows = array_slice($filtered_rows, ($current_page-1)*$per_page, $per_page);
+
+        echo '<div class="alma-ideas-card"><div class="alma-results-header"><h3>2. Risultati ricerca</h3>';
+        if (!empty($all_rows)) {
+            echo '<div class="alma-results-actions">';
+            echo '<form method="post" action="'.esc_url(admin_url('admin-post.php')).'">'.wp_nonce_field('alma_ai_agent_action','_wpnonce',true,false).'<input type="hidden" name="action" value="alma_ai_agent_action"><input type="hidden" name="do" value="clear_content_idea_search"><button class="button" type="submit">Svuota ricerca</button></form>';
+            echo '<form method="get" action="'.esc_url(admin_url('edit.php')).'"><input type="hidden" name="post_type" value="affiliate_link"><input type="hidden" name="page" value="alma-ai-content-agent"><input type="hidden" name="tab" value="idee"><label for="alma_result_type" class="screen-reader-text">Tipologia contenuto</label><select id="alma_result_type" name="alma_result_type" onchange="this.form.submit()"><option value="all">Tutte le tipologie</option>';
+            foreach(array_keys($available_groups) as $group_key){ echo '<option value="'.esc_attr($group_key).'" '.selected($active_result_type,$group_key,false).'>'.esc_html($labels[$group_key] ?? ucfirst($group_key)).'</option>'; }
+            echo '</select></form></div>';
+        }
+        echo '</div>';
+
         echo '<p class="description">Totale risultati: '.(int)$total_results.' · Pagina '.(int)$current_page.' di '.(int)$total_pages.'</p>';
         echo '<form id="alma-bulk-add-form" method="post" action="'.esc_url(admin_url('admin-post.php')).'">'.wp_nonce_field('alma_ai_agent_action','_wpnonce',true,false).'<input type="hidden" name="action" value="alma_ai_agent_action"><input type="hidden" name="do" value="add_selected_to_idea"></form>';
-        if (empty($paged_rows)) { echo '<p class="description">Nessun risultato disponibile. Esegui una ricerca per popolare questa sezione.</p>'; }
+        if (empty($paged_rows)) {
+            if ($active_result_type !== 'all' && !empty($all_rows)) { echo '<p class="description">Nessun risultato per questa tipologia. Cambia filtro o svuota la ricerca.</p>'; }
+            else { echo '<p class="description">Nessun risultato disponibile. Esegui una ricerca per popolare questa sezione.</p>'; }
+        }
         foreach($paged_rows as $item){ $r=(array)$item['row']; $rk=sanitize_text_field($r['result_key'] ?? ''); if($rk===''){continue;} $in=!empty($selected_map[$rk]); $usage=(int)($usage_counts[$rk] ?? 0); echo '<div class="alma-result-item'.($in?' is-already-added':'').'"><p><strong>'.esc_html($r['title']).'</strong> <span class="alma-count-badge">'.esc_html($item['label']).'</span>'; if($in){echo ' <span class="alma-added-badge">Già nell’idea</span>';} echo ' <span class="alma-usage-badge">Utilizzato in bozze: '.$usage.'</span></p><label><input type="checkbox" name="selected_result_keys[]" value="'.esc_attr($rk).'" form="alma-bulk-add-form" '.disabled($in,true,false).'> Seleziona</label><p class="alma-excerpt">'.esc_html(wp_trim_words((string)($r['excerpt'] ?? ''),20,'…')).'</p><p class="description">Score: '.(int)($r['score'] ?? 0).' · '.esc_html($r['reason'] ?? '').'</p>'; if($in){ echo '<button class="button button-small" type="button" disabled>Già aggiunto</button>'; } else { echo '<form method="post" action="'.esc_url(admin_url('admin-post.php')).'">'.wp_nonce_field('alma_ai_agent_action','_wpnonce',true,false).'<input type="hidden" name="action" value="alma_ai_agent_action"><input type="hidden" name="do" value="add_result_to_idea"><input type="hidden" name="result_key" value="'.esc_attr($rk).'"><button class="button button-small">Aggiungi all’idea</button></form>'; } echo '</div>'; }
         $base = admin_url('edit.php?post_type=affiliate_link&page=alma-ai-content-agent&tab=idee');
-        echo '<p>'; if ($current_page>1){ echo '<a class="button" href="'.esc_url(add_query_arg('alma_results_page',$current_page-1,$base)).'">← Precedente</a> '; } if ($current_page<$total_pages){ echo '<a class="button" href="'.esc_url(add_query_arg('alma_results_page',$current_page+1,$base)).'">Successiva →</a>'; } echo '</p><p><button class="button button-primary" type="submit" form="alma-bulk-add-form">Aggiungi selezionati all’idea</button></p></div></main>';
+        $nav_args = array();
+        if ($active_result_type !== 'all') { $nav_args['alma_result_type'] = $active_result_type; }
+        echo '<p>'; if ($current_page>1){ echo '<a class="button" href="'.esc_url(add_query_arg(array_merge($nav_args, array('alma_results_page'=>$current_page-1)),$base)).'">← Precedente</a> '; } if ($current_page<$total_pages){ echo '<a class="button" href="'.esc_url(add_query_arg(array_merge($nav_args, array('alma_results_page'=>$current_page+1)),$base)).'">Successiva →</a>'; } echo '</p><p><button class="button button-primary" type="submit" form="alma-bulk-add-form">Aggiungi selezionati all’idea</button></p></div></main>';
 
 echo '<aside class="alma-ideas-col alma-ideas-col-right"><div class="alma-ideas-card"><h3>3. Sessione contenuto</h3><p><strong>Totale elementi aggiunti:</strong> '.(int)($summary['selected_total'] ?? 0).'</p>';
         if ((int)($summary['selected_total'] ?? 0) < 1) { echo '<p>Nessun contenuto aggiunto all’idea.</p>'; }

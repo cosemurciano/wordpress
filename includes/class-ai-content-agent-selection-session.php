@@ -171,6 +171,21 @@ class ALMA_AI_Content_Agent_Selection_Session {
     }
 
 
+    public static function clear_search_results() {
+        $session = self::get_session();
+        $session = self::normalize_session_payload($session);
+        $session['search_results'] = array();
+        $session['last_query'] = array();
+        $session['counts'] = self::count_summary($session['search_results'], $session['selected_results']);
+        $session['status'] = empty($session['search_results']) ? 'empty' : 'active';
+        $session['updated_at'] = current_time('mysql');
+        $session['openai_prompt'] = sanitize_textarea_field($session['openai_prompt'] ?? '');
+        $session = self::normalize_session_payload($session);
+        set_transient(self::key(), $session, self::TTL);
+        return $session;
+    }
+
+
     private static function infer_knowledge_item_id($group, $row, $fallback_result_id = '') {
         $group = sanitize_key((string)$group);
         $candidates = array(
