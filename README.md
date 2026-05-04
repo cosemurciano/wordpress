@@ -1,4 +1,4 @@
-## 2.24.7 — PR 7.7 AI Content Agent Data Normalization Fatal Fix and Ideas Layout Hardening
+## 2.24.8 — PR 7.7 AI Content Agent Data Normalization Fatal Fix and Ideas Layout Hardening
 - Hardening runtime su meta/transient legacy o corrotti: normalizzazione difensiva di risultati/sessione e guard su rendering gruppi/conteggi.
 - Fix definitivo fatal PHP 8 su accessi offset stringa in Selection Session (`grouped_results`, `count_summary`, load/persist/build context).
 - Hardening tab Idee contenuto: validazione idea attiva, fallback profili/usage sicuri, stati vuoti espliciti e nessun fatal con tabelle usage mancanti.

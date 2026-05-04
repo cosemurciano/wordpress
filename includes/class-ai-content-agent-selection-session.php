@@ -289,7 +289,7 @@ class ALMA_AI_Content_Agent_Selection_Session {
         $session['instruction_profile_id'] = absint($idea['profile_id'] ?? 0);
         $session['updated_at'] = current_time('mysql');
         $session['openai_prompt'] = sanitize_textarea_field($idea['prompt'] ?? ($session['last_query']['openai_prompt'] ?? ''));
-        $session['counts'] = self::count_summary($results, $session['selected_results']);
+        $session['counts'] = self::count_summary($session['search_results'], $session['selected_results']);
         $session = self::normalize_session_payload($session);
         set_transient(self::key(), $session, self::TTL);
     }
