@@ -9,6 +9,7 @@ class ALMA_AI_Content_Agent_Knowledge_Search {
         $query = self::normalize_input($input);
         $results = array();
 
+        $results = array_merge($results, self::search_affiliate_index($query));
         $results = array_merge($results, self::search_wordpress($query));
         $results = array_merge($results, self::search_knowledge_items($query));
         $results = array_merge($results, self::search_sources($query));
@@ -43,7 +44,7 @@ class ALMA_AI_Content_Agent_Knowledge_Search {
 
     private static function search_wordpress($query) {
         $items = array();
-        $posts = get_posts(array('post_type'=>array('post','page','affiliate_link'),'post_status'=>'publish','s'=>$query['text'],'numberposts'=>20,'orderby'=>'date','order'=>'DESC','suppress_filters'=>false));
+        $posts = get_posts(array('post_type'=>array('post','page'),'post_status'=>'publish','s'=>$query['text'],'numberposts'=>20,'orderby'=>'date','order'=>'DESC','suppress_filters'=>false));
         foreach ($posts as $p) {
             $source_type = $p->post_type === 'page' ? 'page' : ($p->post_type === 'affiliate_link' ? 'affiliate_link' : 'post');
             $score = self::score_text($query, $p->post_title . ' ' . wp_strip_all_tags((string)$p->post_excerpt));
@@ -56,6 +57,32 @@ class ALMA_AI_Content_Agent_Knowledge_Search {
                 'score' => $score + 10,
                 'reason' => 'Match ricerca WordPress',
                 'edit_url' => get_edit_post_link((int)$p->ID, 'raw'),
+            ));
+        }
+        return $items;
+    }
+
+    private static function search_affiliate_index($query) {
+        if (!class_exists('ALMA_AI_Content_Agent_Affiliate_Index')) { return array(); }
+        $rows = ALMA_AI_Content_Agent_Affiliate_Index::search($query, 250);
+        if (empty($rows)) { return array(); }
+        $items = array();
+        foreach ($rows as $r) {
+            $text = implode(' ', array($r['title'] ?? '', $r['normalized_text'] ?? '', $r['keywords'] ?? '', $r['link_types'] ?? '', $r['provenance'] ?? ''));
+            $score = self::score_text($query, $text);
+            if (!empty($query['content_search_query']) && stripos((string)($r['title'] ?? ''), (string)$query['content_search_query']) !== false) { $score += 25; }
+            if (!empty($query['content_search_query']) && stripos((string)($r['normalized_text'] ?? ''), (string)$query['content_search_query']) !== false) { $score += 15; }
+            if (!empty($r['featured_image_id'])) { $score += 2; }
+            $items[] = self::result(array(
+                'key' => 'affiliate_index:' . (int)$r['affiliate_link_id'],
+                'source_type' => 'affiliate_link',
+                'source_id' => (int)$r['affiliate_link_id'],
+                'title' => sanitize_text_field($r['title'] ?? ''),
+                'excerpt' => wp_trim_words(wp_strip_all_tags((string)($r['normalized_text'] ?? '')), 20),
+                'score' => min(100, $score + 10),
+                'reason' => 'Match indice dedicato Link affiliati',
+                'edit_url' => get_edit_post_link((int)$r['affiliate_link_id'], 'raw'),
+                'dedupe_ref' => 'affiliate_link:' . (int)$r['affiliate_link_id'],
             ));
         }
         return $items;

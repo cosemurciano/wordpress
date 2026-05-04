@@ -1,3 +1,10 @@
+## 2.25.0 — PR 8.0 Affiliate Link Dedicated Index and Improved Ideas Search
+- Nuovo indice tecnico dedicato ai soli `affiliate_link` (`{$wpdb->prefix}alma_ai_affiliate_index`) creato via Store/dbDelta.
+- Nuova classe `ALMA_AI_Content_Agent_Affiliate_Index` con batch indexing, sync incrementale e ricerca indicizzata per la tab Idee contenuto.
+- Ricerca idee: i risultati `affiliate_link` arrivano prioritariamente dall’indice dedicato con fallback implicito all’esistente se indice assente/vuoto.
+- Nuovo riquadro Dashboard per stato indice link affiliati (conteggi, ultimo batch, azioni indicizzazione/sync).
+- Fonte di verità invariata: CPT `affiliate_link`; nessuna estensione a Post/Pagine/TXT/Fonti online/Media in questa fase.
+
 ## 2.24.9 — PR 7.9 AI Content Agent Search Results Clear Action and Content Type Filter
 - Aggiunta action admin `clear_content_idea_search` con nonce/capability check, svuotamento dei soli risultati ricerca e redirect pulito alla tab Idee.
 - Nuovo metodo dedicato in Selection Session per svuotare `search_results` preservando `selected_results`, stato sessione e persistenza transient.
