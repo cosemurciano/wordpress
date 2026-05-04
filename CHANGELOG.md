@@ -1,3 +1,10 @@
+## 2.24.7 — PR 7.7 AI Content Agent Data Normalization Fatal Fix and Ideas Layout Hardening
+- Hardening runtime su meta/transient legacy o corrotti: normalizzazione difensiva di risultati/sessione e guard su rendering gruppi/conteggi.
+- Fix definitivo fatal PHP 8 su accessi offset stringa in Selection Session (`grouped_results`, `count_summary`, load/persist/build context).
+- Hardening tab Idee contenuto: validazione idea attiva, fallback profili/usage sicuri, stati vuoti espliciti e nessun fatal con tabelle usage mancanti.
+- Consolidato layout CSS Idee contenuto in una sola sezione scoped `.alma-ai-agent-admin` con 3 colonne leggibili e fallback responsive.
+- Verificato enqueue di `assets/admin.css` anche su `affiliate_link_page_alma-ai-content-agent`.
+
 ## 2.24.6 — PR 7.6 AI Content Agent Critical Error Hotfix and Ideas UI Optimization
 - Fix critical error in Selection Session: rimosse variabili non definite e normalizzazione difensiva della struttura sessione.
 - Stabilizzata persistenza `openai_prompt`, `status`, `counts` e `updated_at` anche con sessioni vuote/corrotte.
