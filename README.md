@@ -338,6 +338,15 @@ Workflow base completo: genera idee → genera brief → genera bozza → apri i
 La tab Idee contenuto ora usa idee persistenti (CPT), layout operativo in 3 colonne, prompt OpenAI per idea, sessione contenuto associata all'idea e creazione bozza con una sola chiamata OpenAI.
 
 
+## AI Content Agent 2.24.5
+
+- Fix regressione UI/funzionale tab Idee contenuto.
+- Ripristinato pulsante **Crea nuova idea** e form **1. Cerca contenuti**.
+- Colonna sinistra convertita in **Idea attiva** (rimossa lista idee salvate).
+- Ripristinata **3. Sessione contenuto** con rimozione elementi.
+- Rimossa limitazione incompleta a 10 risultati e paginazione placeholder.
+- Corretto badge **Già nell'idea** tramite `result_key`.
+
 ## AI Content Agent 2.24.4
 - Paginazione risultati (10 per pagina) per tipologia con paginazione indipendente per gruppo.
 - Evidenza risultati già aggiunti all'idea con badge "Già nell'idea".

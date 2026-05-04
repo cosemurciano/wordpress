@@ -1,3 +1,14 @@
+## 2.24.5 — PR 7.5 — Ideas UI Regression Fixes
+- Ripristinato il blocco **1. Cerca contenuti** nella colonna centrale.
+- Ripristinata **3. Sessione contenuto** con rendering reale elementi selezionati e pulsanti Rimuovi.
+- Ripristinato il pulsante **Crea nuova idea** nella toolbar superiore.
+- Rimossa la lista **Idee salvate** dalla colonna sinistra, sostituita con card **Idea attiva**.
+- Titolo idea reso più grande e prioritario.
+- Rimosso il testo **4. Azioni finali**.
+- Rimossa limitazione visuale a 10 risultati e slicing/paginazione incompleta.
+- Corretto `selected_map` basato su `result_key` per badge **Già nell’idea**.
+- Nessuna nuova chiamata AI introdotta.
+
 ## 2.24.4 — PR 7.4 — Results Pagination & Usage Indicators
 - paginazione per tipologia (10)
 - evidenziazione risultati già aggiunti
