@@ -1,3 +1,11 @@
+## 2.24.3 — PR 7.3 — Three Column UI Restoration
+- Ripristino layout UI a 3 colonne nella tab Idee contenuto.
+- Colonna destra dedicata a Sessione contenuto + Azioni finali.
+- Risultati ricerca mantenuti nella colonna centrale.
+- Miglioramento grafico card, badge, spaziature e leggibilità liste.
+- Mantenute funzioni Aggiungi all’idea e Aggiungi selezionati all’idea.
+- Nessuna nuova chiamata AI (single-call OpenAI invariata su Crea Bozza).
+
 ## 2.24.2 — PR 7.2 — Idea Selection Fixes & Executed State
 - Fix overwrite dati idea nelle azioni non-search (add/remove non sovrascrivono titolo/profilo/prompt).
 - Persistenza openai_prompt in Selection Session e fallback in last_query.
