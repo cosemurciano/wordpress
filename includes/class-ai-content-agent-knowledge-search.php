@@ -9,7 +9,8 @@ class ALMA_AI_Content_Agent_Knowledge_Search {
         $query = self::normalize_input($input);
         $results = array();
 
-        $results = array_merge($results, self::search_affiliate_index($query));
+        $affiliate_results = self::search_affiliate_links($query);
+        $results = array_merge($results, $affiliate_results);
         $results = array_merge($results, self::search_wordpress($query));
         $results = array_merge($results, self::search_knowledge_items($query));
         $results = array_merge($results, self::search_sources($query));
@@ -82,7 +83,44 @@ class ALMA_AI_Content_Agent_Knowledge_Search {
                 'score' => min(100, $score + 10),
                 'reason' => 'Match indice dedicato Link affiliati',
                 'edit_url' => get_edit_post_link((int)$r['affiliate_link_id'], 'raw'),
+                'affiliate_url' => esc_url_raw($r['affiliate_url'] ?? ''),
+                'featured_image_id' => (int)($r['featured_image_id'] ?? 0),
                 'dedupe_ref' => 'affiliate_link:' . (int)$r['affiliate_link_id'],
+            ));
+        }
+        return $items;
+    }
+
+    private static function search_affiliate_links($query) {
+        $indexed = self::search_affiliate_index($query);
+        if (!empty($indexed)) { return $indexed; }
+        return self::search_affiliate_wordpress_fallback($query);
+    }
+
+    private static function search_affiliate_wordpress_fallback($query) {
+        $items = array();
+        $posts = get_posts(array('post_type'=>'affiliate_link','post_status'=>'publish','s'=>$query['text'],'numberposts'=>30,'orderby'=>'date','order'=>'DESC','suppress_filters'=>false));
+        foreach ((array)$posts as $p) {
+            $post_id = (int)$p->ID;
+            $affiliate_url = (string)get_post_meta($post_id, '_affiliate_url', true);
+            if ($affiliate_url === '') { $affiliate_url = (string)get_post_meta($post_id, '_alma_affiliate_url', true); }
+            $affiliate_url = esc_url_raw($affiliate_url);
+            if ($affiliate_url === '') { continue; }
+            $ctx = (string)get_post_meta($post_id, '_alma_ai_context', true);
+            $link_types = wp_get_object_terms($post_id, 'link_type', array('fields'=>'names'));
+            $text = implode(' ', array($p->post_title, wp_strip_all_tags((string)$p->post_excerpt), $ctx, implode(', ', is_wp_error($link_types) ? array() : (array)$link_types)));
+            $items[] = self::result(array(
+                'key' => 'affiliate_wp:' . $post_id,
+                'source_type' => 'affiliate_link',
+                'source_id' => $post_id,
+                'title' => get_the_title($p),
+                'excerpt' => wp_trim_words(wp_strip_all_tags((string)($p->post_excerpt ?: $p->post_content)), 18),
+                'score' => min(100, self::score_text($query, $text) + 9),
+                'reason' => 'Fallback WordPress Link affiliati',
+                'edit_url' => get_edit_post_link($post_id, 'raw'),
+                'affiliate_url' => $affiliate_url,
+                'featured_image_id' => (int)get_post_thumbnail_id($post_id),
+                'dedupe_ref' => 'affiliate_link:' . $post_id,
             ));
         }
         return $items;
@@ -187,6 +225,6 @@ class ALMA_AI_Content_Agent_Knowledge_Search {
         $matches = 0;
         $text = strtolower((string)(($data['title'] ?? '').' '.($data['excerpt'] ?? '').' '.($data['reason'] ?? '')));
         foreach (self::extract_terms($text) as $t) { if (strpos($text, $t) !== false) { $matches++; } }
-        return array('textual_matches'=>$matches,'result_id'=>$safe_key,'key'=>$data['key'],'source_type'=>$data['source_type'],'source_label'=>$labels[$data['source_type']] ?? 'Altro','source_id'=>(int)($data['source_id'] ?? 0),'knowledge_item_id'=>(int)($data['knowledge_item_id'] ?? 0),'title'=>sanitize_text_field($data['title'] ?? ''),'excerpt'=>sanitize_textarea_field($data['excerpt'] ?? ''),'score'=>(int)($data['score'] ?? 0),'reason'=>sanitize_text_field($data['reason'] ?? ''),'edit_url'=>esc_url_raw($data['edit_url'] ?? ''),'selectable'=>true,'preselected'=>false,'dedupe_ref'=>sanitize_text_field($data['dedupe_ref'] ?? ''));
+        return array('textual_matches'=>$matches,'result_id'=>$safe_key,'result_key'=>$safe_key,'key'=>$data['key'],'source_group'=>$data['source_type'],'source_type'=>$data['source_type'],'source_label'=>$labels[$data['source_type']] ?? 'Altro','source_id'=>(int)($data['source_id'] ?? 0),'knowledge_item_id'=>(int)($data['knowledge_item_id'] ?? 0),'title'=>sanitize_text_field($data['title'] ?? ''),'excerpt'=>sanitize_textarea_field($data['excerpt'] ?? ''),'score'=>(int)($data['score'] ?? 0),'reason'=>sanitize_text_field($data['reason'] ?? ''),'edit_url'=>esc_url_raw($data['edit_url'] ?? ''),'affiliate_url'=>esc_url_raw($data['affiliate_url'] ?? ''),'featured_image_id'=>(int)($data['featured_image_id'] ?? 0),'selected'=>false,'selectable'=>true,'preselected'=>false,'dedupe_ref'=>sanitize_text_field($data['dedupe_ref'] ?? ''));
     }
 }

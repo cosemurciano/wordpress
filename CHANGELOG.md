@@ -1,7 +1,7 @@
-## 2.25.0 — PR 8.0 Affiliate Link Dedicated Index and Improved Ideas Search
+## 2.25.1 — PR 8.1 Affiliate Index Batch Progression, Search Fallback and Admin Status UI
 - Nuovo indice tecnico dedicato ai soli `affiliate_link` (`{$wpdb->prefix}alma_ai_affiliate_index`) creato via Store/dbDelta.
-- Nuova classe `ALMA_AI_Content_Agent_Affiliate_Index` con batch indexing, sync incrementale e ricerca indicizzata per la tab Idee contenuto.
-- Ricerca idee: i risultati `affiliate_link` arrivano prioritariamente dall’indice dedicato con fallback implicito all’esistente se indice assente/vuoto.
+- Batch indice affiliate con cursore ID stabile, stato robusto e statistiche leggere per dashboard/admin.
+- Ricerca idee: i risultati `affiliate_link` arrivano prioritariamente dall’indice dedicato con fallback WordPress dedicato per i soli affiliate_link quando tabella indice assente, vuota o senza risultati.
 - Nuovo riquadro Dashboard per stato indice link affiliati (conteggi, ultimo batch, azioni indicizzazione/sync).
 - Fonte di verità invariata: CPT `affiliate_link`; nessuna estensione a Post/Pagine/TXT/Fonti online/Media in questa fase.
 
