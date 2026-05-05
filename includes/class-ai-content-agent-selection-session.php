@@ -290,9 +290,27 @@ class ALMA_AI_Content_Agent_Selection_Session {
         $idea_id = absint($idea_id); if ($idea_id < 1) { return; }
         $session = self::get_session();
         $session = self::normalize_session_payload($session);
+        $idea = ALMA_AI_Content_Agent_Ideas::get($idea_id);
         update_post_meta($idea_id, ALMA_AI_Content_Agent_Ideas::META_LAST_QUERY, (array)$session['last_query']);
         update_post_meta($idea_id, ALMA_AI_Content_Agent_Ideas::META_RESULTS, array_values($session['search_results']));
         update_post_meta($idea_id, ALMA_AI_Content_Agent_Ideas::META_SELECTION, array_values($session['selected_results']));
+        $session_profile_id = absint($session['instruction_profile_id'] ?? 0);
+        if ($session_profile_id > 0) {
+            update_post_meta($idea_id, ALMA_AI_Content_Agent_Ideas::META_PROFILE_ID, $session_profile_id);
+        } elseif (!empty($idea['instruction_profile_id'])) {
+            update_post_meta($idea_id, ALMA_AI_Content_Agent_Ideas::META_PROFILE_ID, absint($idea['instruction_profile_id']));
+        }
+        $snapshot_hash = sanitize_text_field($session['instruction_snapshot_hash'] ?? '');
+        if ($snapshot_hash === '') {
+            $snapshot_hash = sanitize_text_field($idea['instruction_snapshot_hash'] ?? '');
+        }
+        if ($snapshot_hash !== '') {
+            update_post_meta($idea_id, ALMA_AI_Content_Agent_Ideas::META_INSTRUCTION_SNAPSHOT_HASH, $snapshot_hash);
+        }
+        $snapshot = sanitize_textarea_field($idea['instruction_snapshot'] ?? '');
+        if ($snapshot !== '') {
+            update_post_meta($idea_id, ALMA_AI_Content_Agent_Ideas::META_INSTRUCTION_SNAPSHOT, $snapshot);
+        }
     }
 
     public static function load_from_idea($idea) {
@@ -302,6 +320,9 @@ class ALMA_AI_Content_Agent_Selection_Session {
         $session['search_results'] = self::normalize_session_rows($idea['results'] ?? array(), false);
         $session['selected_results'] = self::normalize_session_rows($idea['selection'] ?? array(), true);
         $session['instruction_profile_id'] = absint($idea['profile_id'] ?? 0);
+        $profile = $session['instruction_profile_id'] > 0 ? ALMA_AI_Content_Agent_Instructions_Manager::get_profile($session['instruction_profile_id']) : array();
+        $session['instruction_profile_name'] = sanitize_text_field($profile['profile_name'] ?? '');
+        $session['instruction_snapshot_hash'] = sanitize_text_field($idea['instruction_snapshot_hash'] ?? '');
         $session['updated_at'] = current_time('mysql');
         $session['openai_prompt'] = sanitize_textarea_field($idea['prompt'] ?? ($session['last_query']['openai_prompt'] ?? ''));
         $session['counts'] = self::count_summary($session['search_results'], $session['selected_results']);

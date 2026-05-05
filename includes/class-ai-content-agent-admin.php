@@ -71,7 +71,7 @@ class ALMA_AI_Content_Agent_Admin {
             $active_idea_id = absint(get_user_meta(get_current_user_id(), '_alma_active_idea_id', true));
             if ($active_idea_id < 1) {
                 $idea_title = sanitize_text_field($payload['content_search_query'] ?: 'Nuova idea');
-                $active_idea_id = ALMA_AI_Content_Agent_Ideas::create($idea_title);
+                $active_idea_id = ALMA_AI_Content_Agent_Ideas::create($idea_title, $profile_id);
                 if ($active_idea_id > 0) { update_user_meta(get_current_user_id(), '_alma_active_idea_id', $active_idea_id); }
             }
             if ($active_idea_id > 0) {
@@ -364,6 +364,16 @@ class ALMA_AI_Content_Agent_Admin {
         $profiles = ALMA_AI_Content_Agent_Instructions_Manager::get_profiles(100,0);
         if (!is_array($profiles)) { $profiles = array(); }
         $session = ALMA_AI_Content_Agent_Selection_Session::get_session();
+        $active_profile = ALMA_AI_Content_Agent_Instructions_Manager::get_active_profile();
+        $idea_profile_id = absint($active_idea['instruction_profile_id'] ?? ($active_idea['profile_id'] ?? 0));
+        $idea_profile_valid = false;
+        foreach ($profiles as $profile_row) {
+            if ((int)($profile_row['id'] ?? 0) === $idea_profile_id) {
+                $idea_profile_valid = true;
+                break;
+            }
+        }
+        $selected_profile_id = $idea_profile_valid ? $idea_profile_id : absint($active_profile['id'] ?? 0);
         $summary = ALMA_AI_Content_Agent_Selection_Session::summary();
         $results_groups = ALMA_AI_Content_Agent_Selection_Session::grouped_results(false);
         $selected_groups = ALMA_AI_Content_Agent_Selection_Session::grouped_results(true);
@@ -386,7 +396,7 @@ class ALMA_AI_Content_Agent_Admin {
         if (!empty($active_idea['draft_post_id']) && get_post((int)$active_idea['draft_post_id'])) { echo '<a class="button" href="'.esc_url(get_edit_post_link((int)$active_idea['draft_post_id'],'raw')).'">Apri bozza</a>'; }
         echo '<div class="alma-actions-inline">';
         self::action_form('new_content_idea','Crea nuova idea');
-        if($active_idea_id){ echo '<form id="alma-save-idea-form" method="post" action="'.esc_url(admin_url('admin-post.php')).'">'.wp_nonce_field('alma_ai_agent_action','_wpnonce',true,false).'<input type="hidden" name="action" value="alma_ai_agent_action"><input type="hidden" name="do" value="save_content_idea"><input type="hidden" name="idea_id" value="'.(int)$active_idea_id.'"><input type="hidden" name="idea_status" value="bozza"><input type="hidden" name="instruction_profile_id" value="'.(int)($active_idea['profile_id']??0).'"><input type="hidden" name="openai_prompt" value="'.esc_attr($active_idea['prompt']??'').'"><button class="button">Salva idea</button></form>'; }
+        if($active_idea_id){ echo '<form id="alma-save-idea-form" method="post" action="'.esc_url(admin_url('admin-post.php')).'">'.wp_nonce_field('alma_ai_agent_action','_wpnonce',true,false).'<input type="hidden" name="action" value="alma_ai_agent_action"><input type="hidden" name="do" value="save_content_idea"><input type="hidden" name="idea_id" value="'.(int)$active_idea_id.'"><input type="hidden" name="idea_status" value="bozza"><input type="hidden" name="openai_prompt" value="'.esc_attr($active_idea['prompt']??'').'"><p><label for="alma-save-idea-instruction-profile">Profilo Istruzioni AI</label><select id="alma-save-idea-instruction-profile" class="widefat" name="instruction_profile_id"><option value="0">Nessun profilo</option>'; foreach($profiles as $p){ $sel=selected($selected_profile_id,(int)$p['id'],false); echo '<option value="'.(int)$p['id'].'" '.$sel.'>'.esc_html($p['profile_name']).'</option>'; } echo '</select></p><button class="button">Salva idea</button></form>'; }
         if($active_idea_id){ echo '<form method="post" action="'.esc_url(admin_url('admin-post.php')).'">'.wp_nonce_field('alma_ai_agent_action','_wpnonce',true,false).'<input type="hidden" name="action" value="alma_ai_agent_action"><input type="hidden" name="do" value="delete_content_idea"><input type="hidden" name="idea_id" value="'.(int)$active_idea_id.'"><button class="button">Elimina</button></form>'; }
         self::action_form('download_ai_payload_json','Scarica JSON payload AI');
         self::action_form('create_draft_from_selection','Crea Bozza con OpenAI');
@@ -403,7 +413,7 @@ class ALMA_AI_Content_Agent_Admin {
         echo '<ul><li>Contenuti aggiunti: '.(int)($summary['selected_total'] ?? 0).'</li><li>Profilo istruzioni AI: '.(int)($active_idea['profile_id'] ?? 0).'</li><li>Prompt OpenAI: '.(!empty($active_idea['prompt']) ? 'Presente' : 'Assente').'</li></ul></div></aside>';
 
         echo '<main class="alma-ideas-col alma-ideas-col-main"><div class="alma-ideas-card"><h3>1. Cerca contenuti</h3><form method="post" action="'.esc_url(admin_url('admin-post.php')).'">'.wp_nonce_field('alma_ai_agent_action','_wpnonce',true,false).'<input type="hidden" name="action" value="alma_ai_agent_action"><input type="hidden" name="do" value="search_knowledge_base"><input type="hidden" name="idea_id" value="'.(int)$active_idea_id.'"><p><input class="widefat" type="text" name="content_search_query" placeholder="Cerca contenuti" value="'.esc_attr($session['last_query']['content_search_query'] ?? '').'" required></p><p><label>Profilo Istruzioni AI</label><select class="widefat" name="instruction_profile_id"><option value="0">Nessun profilo</option>';
-        foreach($profiles as $p){ $sel=selected((int)($active_idea['profile_id'] ?? 0),(int)$p['id'],false); echo '<option value="'.(int)$p['id'].'" '.$sel.'>'.esc_html($p['profile_name']).'</option>'; }
+        foreach($profiles as $p){ $sel=selected($selected_profile_id,(int)$p['id'],false); echo '<option value="'.(int)$p['id'].'" '.$sel.'>'.esc_html($p['profile_name']).'</option>'; }
         echo '</select></p><p><label>Prompt per OpenAI</label><textarea class="widefat" rows="4" name="openai_prompt">'.esc_textarea($active_idea['prompt'] ?? ($session['openai_prompt'] ?? '')).'</textarea><span class="description">Questo prompt verrà inviato a OpenAI insieme ai contenuti raccolti e guiderà cosa scrivere nella bozza.</span></p><p><button class="button button-primary">Cerca contenuti</button></p></form></div>';
 
         $all_rows = array();
