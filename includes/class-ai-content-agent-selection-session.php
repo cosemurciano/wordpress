@@ -294,10 +294,9 @@ class ALMA_AI_Content_Agent_Selection_Session {
         update_post_meta($idea_id, ALMA_AI_Content_Agent_Ideas::META_LAST_QUERY, (array)$session['last_query']);
         update_post_meta($idea_id, ALMA_AI_Content_Agent_Ideas::META_RESULTS, array_values($session['search_results']));
         update_post_meta($idea_id, ALMA_AI_Content_Agent_Ideas::META_SELECTION, array_values($session['selected_results']));
-        $session_profile_id = absint($session['instruction_profile_id'] ?? 0);
-        if ($session_profile_id > 0) {
-            update_post_meta($idea_id, ALMA_AI_Content_Agent_Ideas::META_PROFILE_ID, $session_profile_id);
-        } elseif (!empty($idea['instruction_profile_id'])) {
+        if (array_key_exists('instruction_profile_id', (array)$session)) {
+            update_post_meta($idea_id, ALMA_AI_Content_Agent_Ideas::META_PROFILE_ID, absint($session['instruction_profile_id']));
+        } elseif (array_key_exists('instruction_profile_id', (array)$idea)) {
             update_post_meta($idea_id, ALMA_AI_Content_Agent_Ideas::META_PROFILE_ID, absint($idea['instruction_profile_id']));
         }
         $snapshot_hash = sanitize_text_field($session['instruction_snapshot_hash'] ?? '');
