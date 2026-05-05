@@ -141,11 +141,21 @@
 
 # Affiliate Link Manager AI
 
-Versione 2.25.21
+Versione 2.25.22
 
 
 
 
+
+## Novità 2.25.22 — PR 8.22 Refine AI Draft Payload Affiliate URL Policy and Source Instructions
+
+- Rifinita la policy payload AI per i link affiliati: shortcode WordPress preferiti per box/link, con `affiliate_url` ammesso quando serve un link testuale diretto.
+- La sezione `rules` richiede esplicitamente: `prefer_affiliate_shortcodes`, `allow_affiliate_urls_for_text_links`, `do_not_invent_affiliate_urls`, `use_only_payload_affiliate_links`.
+- Aggiunta sezione globale `source_agent_prompts` che raggruppa i prompt Source non vuoti, deduplicati e collegati ai relativi `link_ids`.
+- Nei singoli `affiliate_links` restano campi leggeri di riferimento (`source_agent_prompt_key` / disponibilità prompt) per ridurre duplicazione dei prompt lunghi.
+- Gestione non bloccante dei link manuali o legacy senza Source prompt: i link restano selezionabili/usabili se hanno dati principali (`title/content/affiliate_url/shortcode`).
+- Warning payload più precisi su configurazione comportamento agente globale e disponibilità istruzioni Source.
+- Nessuna modifica a OpenAI Service, indice affiliati, ricerca affiliate, batch/sync, provider/importer, shortcode rendering o tracking.
 
 ## Novità 2.25.21 — PR 8.21 Safe AI Payload JSON Builder and Download Hardening
 
