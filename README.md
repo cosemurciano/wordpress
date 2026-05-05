@@ -1,3 +1,8 @@
+## 2.25.3 — PR 8.3 Affiliate Index Autosync Ordering and Native Results Pagination
+- Auto-sync indice affiliate su `save_post_affiliate_link` spostato a priorità alta per garantire esecuzione dopo salvataggio meta/tassonomie del CPT `affiliate_link`, mantenendo guard autosave/revision/post type e filtro `alma_ai_affiliate_index_disable_autosync`.
+- Rimossi dalla card “2. Risultati ricerca” il pulsante **Svuota ricerca** e il filtro **Tipologia contenuto** (`alma_result_type`) con relativa logica/rendering UI.
+- Sostituita la paginazione custom con paginazione in stile admin WordPress (`tablenav`, `tablenav-pages`, `displaying-num`, `pagination-links`) con link prima/precedente/successiva/ultima e normalizzazione pagina corrente.
+
 ## 2.25.2 — PR 8.1 Affiliate Index Batch Progression, Search Fallback and Admin Status UI
 - Nuovo indice tecnico dedicato ai soli `affiliate_link` (`{$wpdb->prefix}alma_ai_affiliate_index`) creato via Store/dbDelta.
 - Batch indice affiliate con cursore ID stabile, stato robusto e statistiche leggere per dashboard/admin.
@@ -118,7 +123,7 @@
 
 # Affiliate Link Manager AI
 
-Versione 2.15.0
+Versione 2.25.3
 
 
 ## Novità 2.12.1 — Pagina Importa contenuti + fix import

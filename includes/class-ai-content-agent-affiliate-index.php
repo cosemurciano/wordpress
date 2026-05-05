@@ -176,7 +176,7 @@ add_action('save_post_affiliate_link', function($post_id, $post, $update){
     if (!($post instanceof WP_Post) || $post->post_type !== 'affiliate_link') { return; }
     if (apply_filters('alma_ai_affiliate_index_disable_autosync', false, $post_id, $post, $update)) { return; }
     ALMA_AI_Content_Agent_Affiliate_Index::index_single($post_id, true);
-}, 10, 3);
+}, 100, 3);
 
 add_action('before_delete_post', function($post_id){
     $post = get_post($post_id);
