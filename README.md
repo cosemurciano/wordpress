@@ -141,7 +141,15 @@
 
 # Affiliate Link Manager AI
 
-Versione 2.25.11
+Versione 2.25.12
+
+
+## Novità 2.25.12 — PR 8.12 Ideas UI Instruction Profile Cleanup and Clear Profile Fix
+
+- Rimossa la duplicazione UI del campo **Profilo Istruzioni AI** nella tab Idee contenuto: ora il select è mostrato una sola volta.
+- Selezionando **Nessun profilo** (`instruction_profile_id=0`) il valore viene salvato esplicitamente sull'idea e mantenuto ai reload/azioni successive.
+- Evitata la riassociazione silenziosa al profilo globale attivo quando un'idea è salvata con nessun profilo.
+- Nessuna modifica a indice Link affiliati, ricerca affiliate, batch/sync affiliate, OpenAI Service, provider/importer, shortcode o tracking.
 
 ## Novità 2.25.11 — PR 8.11 Persist AI Instruction Profile on Content Ideas
 

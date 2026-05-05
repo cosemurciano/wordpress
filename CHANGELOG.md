@@ -1,3 +1,9 @@
+## 2.25.12 — PR 8.12 Ideas UI Instruction Profile Cleanup and Clear Profile Fix
+- Rimossa la duplicazione UI del campo **Profilo Istruzioni AI** nella tab Idee contenuto (resta un solo select visibile).
+- Corretto il salvataggio esplicito di **Nessun profilo**: `instruction_profile_id=0` viene persistito sull'idea senza richiedere `clear_instruction_profile`.
+- Le idee con `instruction_profile_id=0` non vengono più riassociate in modo silenzioso al profilo globale attivo al reload o nelle azioni successive della tab Idee.
+- Nessuna modifica a indice Link affiliati e nessuna modifica a OpenAI Service.
+
 ## 2.25.11 — PR 8.11 Persist AI Instruction Profile on Content Ideas
 - Persistenza del Profilo Istruzioni AI sull'Idea contenuto (`instruction_profile_id`/meta idea) durante creazione e salvataggio idea.
 - Preservazione del profilo istruzioni durante azioni non correlate nella tab Idee contenuto (ricerca, aggiunta/rimozione risultati, persistenza sessione).

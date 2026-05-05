@@ -70,17 +70,19 @@ class ALMA_AI_Content_Agent_Ideas {
         $last_query = self::normalize_meta_query(get_post_meta($p->ID, self::META_LAST_QUERY, true));
         $results = self::normalize_meta_rows(get_post_meta($p->ID, self::META_RESULTS, true));
         $selection = self::normalize_meta_rows(get_post_meta($p->ID, self::META_SELECTION, true));
-        return array('ID'=>$p->ID,'title'=>$p->post_title,'profile_id'=>absint(get_post_meta($p->ID,self::META_PROFILE_ID,true)),'instruction_profile_id'=>absint(get_post_meta($p->ID,self::META_PROFILE_ID,true)),'prompt'=>get_post_meta($p->ID,self::META_PROMPT,true),'last_query'=>$last_query,'results'=>$results,'selection'=>$selection,'instruction_snapshot_hash'=>sanitize_text_field((string)get_post_meta($p->ID,self::META_INSTRUCTION_SNAPSHOT_HASH,true)),'instruction_snapshot'=>sanitize_textarea_field((string)get_post_meta($p->ID,self::META_INSTRUCTION_SNAPSHOT,true)),'executed_at'=>sanitize_text_field((string)get_post_meta($p->ID,self::META_EXECUTED_AT,true)),'draft_post_id'=>absint(get_post_meta($p->ID,self::META_DRAFT_POST_ID,true)),'modified'=>$p->post_modified);
+        $stored_profile_id = absint(get_post_meta($p->ID, self::META_PROFILE_ID, true));
+        return array('ID'=>$p->ID,'title'=>$p->post_title,'profile_id'=>$stored_profile_id,'instruction_profile_id'=>$stored_profile_id,'has_instruction_profile_meta'=>metadata_exists('post', $p->ID, self::META_PROFILE_ID),'prompt'=>get_post_meta($p->ID,self::META_PROMPT,true),'last_query'=>$last_query,'results'=>$results,'selection'=>$selection,'instruction_snapshot_hash'=>sanitize_text_field((string)get_post_meta($p->ID,self::META_INSTRUCTION_SNAPSHOT_HASH,true)),'instruction_snapshot'=>sanitize_textarea_field((string)get_post_meta($p->ID,self::META_INSTRUCTION_SNAPSHOT,true)),'executed_at'=>sanitize_text_field((string)get_post_meta($p->ID,self::META_EXECUTED_AT,true)),'draft_post_id'=>absint(get_post_meta($p->ID,self::META_DRAFT_POST_ID,true)),'modified'=>$p->post_modified);
     }
 
     public static function save_from_request($idea_id, $data) {
         $idea_id = absint($idea_id); if ($idea_id < 1) { return false; }
         if (isset($data['idea_title'])) { wp_update_post(array('ID'=>$idea_id,'post_title'=>sanitize_text_field($data['idea_title']))); }
         if (array_key_exists('instruction_profile_id', (array)$data)) {
-            $next_profile_id = self::sanitize_instruction_profile_id($data['instruction_profile_id']);
+            $raw_profile_id = sanitize_text_field((string)$data['instruction_profile_id']);
+            $next_profile_id = self::sanitize_instruction_profile_id($raw_profile_id);
             if ($next_profile_id > 0) {
                 update_post_meta($idea_id, self::META_PROFILE_ID, $next_profile_id);
-            } elseif (!empty($data['clear_instruction_profile'])) {
+            } elseif ($raw_profile_id === '' || $raw_profile_id === '0' || !empty($data['clear_instruction_profile'])) {
                 update_post_meta($idea_id, self::META_PROFILE_ID, 0);
             }
         }
