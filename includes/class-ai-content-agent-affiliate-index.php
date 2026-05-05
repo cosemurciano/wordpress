@@ -120,7 +120,36 @@ class ALMA_AI_Content_Agent_Affiliate_Index {
         $limit = $limit === null ? self::batch_size() : max(1, min(500, absint($limit)));
         $table = self::table_name();
         if (in_array($table, ALMA_AI_Content_Agent_Store::missing_tables(), true)) { return array('processed'=>0,'indexed'=>0); }
-        $rows = $wpdb->get_results($wpdb->prepare("SELECT p.ID FROM {$wpdb->posts} p LEFT JOIN $table i ON i.affiliate_link_id = p.ID WHERE p.post_type='affiliate_link' AND (i.affiliate_link_id IS NULL OR p.post_modified_gmt > IFNULL(i.indexed_at, '1970-01-01 00:00:00')) ORDER BY p.ID ASC LIMIT %d", $limit), ARRAY_A);
+        $rows = $wpdb->get_results(
+            $wpdb->prepare(
+                "SELECT DISTINCT p.ID
+                 FROM {$wpdb->posts} p
+                 LEFT JOIN $table i ON i.affiliate_link_id = p.ID
+                 WHERE p.post_type = %s
+                   AND p.post_status = 'publish'
+                   AND EXISTS (
+                        SELECT 1
+                        FROM {$wpdb->postmeta} pm
+                        WHERE pm.post_id = p.ID
+                          AND pm.meta_key IN (%s, %s)
+                          AND TRIM(pm.meta_value) <> ''
+                   )
+                   AND (
+                        i.affiliate_link_id IS NULL
+                        OR i.post_modified_gmt IS NULL
+                        OR p.post_modified_gmt > i.post_modified_gmt
+                        OR i.status <> %s
+                   )
+                 ORDER BY p.ID ASC
+                 LIMIT %d",
+                'affiliate_link',
+                '_affiliate_url',
+                '_alma_affiliate_url',
+                self::STATUS_ACTIVE,
+                $limit
+            ),
+            ARRAY_A
+        );
         $processed = 0; $indexed = 0;
         foreach ((array)$rows as $r) { $id = absint($r['ID'] ?? 0); if ($id < 1) { continue; } $processed++; if (self::index_single($id, true)) { $indexed++; } }
         return array('processed'=>$processed,'indexed'=>$indexed);
