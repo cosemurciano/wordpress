@@ -1,10 +1,9 @@
-## 2.25.8 — PR 8.8 Affiliate Index Pending Semantics for Non-Active Records
-- Aggiunto `non_active_candidate_records` per contare i Link affiliati candidabili (publish + URL valido) con record indice presente ma non `active`.
-- Semantica pending aggiornata: `needs_update` ora include `missing_index + stale_index_records + non_active_candidate_records` senza sovrapposizioni.
-- La Dashboard ora include i candidabili non attivi in “Da lavorare totale”, con clamp ai candidabili e progresso sempre 0..100.
-- Evitato il falso stato “Indice aggiornato” quando restano candidabili non attivi; stato operativo e CTA guidano verso sync incrementale/verifica indice.
-- Nessuna modifica a ricerca/scoring, batch cursor-based, OpenAI, Draft Builder, provider/importer, shortcode o tracking.
-
+## 2.25.9 — PR 8.9 Affiliate Incremental Sync Covers Non-Active Candidates
+- Allineata `sync_incremental()` alla semantica pending della Dashboard: ora include record mancanti, record obsoleti e candidabili non attivi.
+- La query incrementale seleziona solo candidabili (`affiliate_link` pubblicati con URL affiliato valorizzato) con `DISTINCT`, `EXISTS`, `LIMIT` e condizione `i.status <> active`.
+- La CTA/notice di **Sync incrementale** chiarisce che l’azione recupera mancanti, aggiorna obsoleti e riattiva candidabili non attivi.
+- Coerenza garantita con `get_index_stats()` sulle categorie `missing_index`, `stale_index_records`, `non_active_candidate_records`.
+- Nessuna modifica a batch cursor-based completo, ricerca/scoring, OpenAI, Draft Builder, provider/importer, shortcode o tracking.
 ## 2.25.6 — PR 8.6 Affiliate Index Guided Batch Sync UX and Progress Feedback
 - Card “Indice Link affiliati” aggiornata con barra di progresso in stile admin (percentuale, candidabili, elementi da lavorare) calcolata da `get_index_stats()` evitando query pesanti aggiuntive.
 - Nuovo stato operativo guidato e sezione “Prossima azione consigliata” con CTA primaria dinamica (primo batch/continua batch/sync incrementale/indice aggiornato).
@@ -142,7 +141,14 @@
 
 # Affiliate Link Manager AI
 
-Versione 2.25.8
+Versione 2.25.9
+
+## Novità 2.25.9 — Sync incrementale allineata ai candidabili non attivi
+
+- `sync_incremental()` ora processa anche i Link affiliati candidabili (post `publish` con URL affiliato valido) presenti nell’indice con stato non `active`.
+- La CTA **Sync incrementale** risolve in modo diretto anche `non_active_candidate_records`, oltre a record mancanti e obsoleti.
+- Guida operativa: usa **Sync incrementale** quando non ci sono mancanti (`missing_index = 0`) ma restano record obsoleti (`stale_index_records > 0`) o candidabili non attivi (`non_active_candidate_records > 0`).
+- Nessuna modifica a ricerca/scoring e nessuna modifica al batch completo cursor-based.
 
 
 ## Novità 2.12.1 — Pagina Importa contenuti + fix import

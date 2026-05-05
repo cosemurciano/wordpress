@@ -42,7 +42,7 @@ class ALMA_AI_Content_Agent_Admin {
             $result = array('success' => true, 'message' => sprintf('Batch indicizzazione eseguito: processati %d, indicizzati %d. %s', (int)$batch['processed'], (int)$batch['indexed'], !empty($batch['done']) ? 'Indicizzazione completata.' : 'Continua con il prossimo batch per completare l’indice.'));
         } elseif ($do === 'sync_affiliate_links_incremental') {
             $sync = ALMA_AI_Content_Agent_Affiliate_Index::sync_incremental();
-            $result = array('success' => true, 'message' => sprintf('Sync incrementale completata: processati %d, aggiornati %d. %s', (int)$sync['processed'], (int)$sync['indexed'], (int)$sync['processed'] > 0 ? 'Indice tecnico aggiornato sui record rilevati.' : 'Nessun record da aggiornare in questo batch.'));
+            $result = array('success' => true, 'message' => sprintf('Sync incrementale completata: processati %d, aggiornati %d. %s', (int)$sync['processed'], (int)$sync['indexed'], (int)$sync['processed'] > 0 ? 'Indice tecnico aggiornato su record mancanti, obsoleti e candidabili non attivi rilevati.' : 'Nessun record candidabile da aggiornare in questo batch.'));
         } elseif ($do === 'reset_affiliate_index_state') {
             ALMA_AI_Content_Agent_Affiliate_Index::reset_batch_state();
             $result = array('success' => true, 'message' => 'Stato batch resettato: nessun Link affiliato è stato eliminato e l’indice tecnico resta disponibile.');
@@ -297,8 +297,8 @@ class ALMA_AI_Content_Agent_Admin {
             $primary_label = !empty($batch['updated_at']) && empty($batch['done']) ? 'Continua indicizzazione' : 'Avvia primo batch';
         } elseif ($stale_index_records > 0 || $non_active_candidate_records > 0) {
             $next_action_text = $stale_index_records > 0
-                ? 'Esegui sync incrementale per aggiornare i record obsoleti.'
-                : 'Esegui sync incrementale o verifica indice per riattivare i candidabili non attivi.';
+                ? 'Esegui sync incrementale per aggiornare record obsoleti, riattivare candidabili non attivi e recuperare eventuali mancanti residui.'
+                : 'Esegui sync incrementale per riattivare candidabili non attivi e recuperare eventuali mancanti residui.';
             $primary_do = 'sync_affiliate_links_incremental';
             $primary_label = 'Esegui sync incrementale';
         } elseif ($active_invalid_records > 0 || $orphan_index_records > 0) {
