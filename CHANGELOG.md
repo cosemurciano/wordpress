@@ -1,3 +1,9 @@
+## 2.25.11 — PR 8.11 Persist AI Instruction Profile on Content Ideas
+- Persistenza del Profilo Istruzioni AI sull'Idea contenuto (`instruction_profile_id`/meta idea) durante creazione e salvataggio idea.
+- Preservazione del profilo istruzioni durante azioni non correlate nella tab Idee contenuto (ricerca, aggiunta/rimozione risultati, persistenza sessione).
+- Fallback sicuro quando il profilo associato non è più valido o non esiste (nessun warning/fatal; fallback controllato in UI).
+- Nessuna modifica all'indice Link affiliati e nessuna modifica a OpenAI Service.
+
 ## 2.25.10 — PR 8.10 Affiliate Index Pending Query Consistency and Pre-Test Hardening
 - Allineata in modo rigoroso la semantica pending tra Dashboard e `sync_incremental()`: i candidabili da lavorare restano `missing_index + stale_index_records + non_active_candidate_records`.
 - Hardening SQL su `non_active_candidate_records`: i record non active includono ora in modo esplicito status diverso da `active`, vuoto (`''`) o `NULL` (inclusi valori anomali/non previsti).

@@ -141,10 +141,14 @@
 
 # Affiliate Link Manager AI
 
-Versione 2.25.10
+Versione 2.25.11
 
-## Novità 2.25.10 — Pending/sync consistency hardening + nota pre-test
+## Novità 2.25.11 — PR 8.11 Persist AI Instruction Profile on Content Ideas
 
+- Profilo Istruzioni AI selezionato ora persistito sull'Idea contenuto e ricaricato in modo coerente dopo salvataggi/reload.
+- Profilo istruzioni preservato durante azioni non correlate (ricerca, aggiunta/rimozione risultati, persistenza sessione).
+- Fallback sicuro se il profilo associato non è più valido (nessun fatal, fallback al profilo attivo solo quando necessario).
+- Nessuna modifica a indice Link affiliati e OpenAI Service.
 - `get_index_stats()` e `sync_incremental()` condividono ora la stessa semantica robusta per i record non active: `status` diverso da `active`, vuoto (`''`) o `NULL`.
 - Categorie pending mutualmente esclusive confermate: `missing_index` (nessun record), `stale_index_records` (record `active` obsoleto), `non_active_candidate_records` (record presente non active).
 - La CTA **Sync incrementale** resta l’azione primaria quando `missing_index = 0` e restano record obsoleti o candidabili non attivi.
@@ -403,7 +407,7 @@ Workflow base completo: genera idee → genera brief → genera bozza → apri i
 
 
 ## AI Content Agent 2.24.3
-La tab Idee contenuto ora usa idee persistenti (CPT), layout operativo in 3 colonne, prompt OpenAI per idea, sessione contenuto associata all'idea e creazione bozza con una sola chiamata OpenAI.
+La tab Idee contenuto ora usa idee persistenti (CPT), layout operativo in 3 colonne, prompt OpenAI per idea, sessione contenuto associata all'idea e creazione bozza con una sola chiamata OpenAI. Il Profilo Istruzioni AI selezionato resta associato all'idea e viene mantenuto anche dopo salvataggi/reload.
 
 
 ## AI Content Agent 2.24.5
