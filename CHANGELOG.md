@@ -1,3 +1,8 @@
+## 2.25.5 — PR 8.5 Affiliate Index Diagnostics Count Accuracy
+- Corretto il conteggio `missing_index` in `ALMA_AI_Content_Agent_Affiliate_Index::get_index_stats()` per contare post unici non indicizzati con URL affiliato valido, evitando sovrastime dovute a righe duplicate in `postmeta`.
+- Eseguito audit dei conteggi diagnostici sensibili ai metadati (`without_affiliate_url`, `needs_update`, `missing_index`, `active_invalid_records`) con query robuste basate su `EXISTS` / `NOT EXISTS` / `COUNT(DISTINCT ...)` per prevenire moltiplicazioni da join.
+- Nessuna modifica funzionale a ricerca, scoring, batch indexing, sync incrementale, auto-sync, OpenAI, Draft Builder, provider/importer.
+
 ## 2.25.4 — PR 8.4 Affiliate Index Safe Maintenance and Pre-Sync Validation
 - Aggiunte azioni operative sicure in Dashboard per `reset_affiliate_index_state` (non distruttiva) e `clear_affiliate_index` (svuota solo indice tecnico).
 - Implementato svuotamento sicuro di `{$wpdb->prefix}alma_ai_affiliate_index` con fallback table-missing senza fatal e reset automatico di `alma_ai_affiliate_index_state`.

@@ -1,9 +1,7 @@
-## 2.25.4 — PR 8.4 Affiliate Index Safe Maintenance and Pre-Sync Validation
-- Aggiunte azioni admin sicure per **Reset stato batch** e **Svuota indice e ricomincia** (solo indice tecnico), con capability `manage_options` e nonce esistenti.
-- Svuotamento sicuro della sola tabella tecnica `{$wpdb->prefix}alma_ai_affiliate_index` senza impatto su CPT, meta, tassonomie, immagini o tracking; reset batch automatico post-operazione.
-- Estese diagnostiche `get_index_stats()` con `missing_index`, `orphan_index_records`, `active_invalid_records`, `needs_update`, `without_affiliate_url`, `inactive_index_records`, `last_indexed_at`, `table_exists`, `batch_state`.
-- Card Dashboard “Indice Link affiliati” estesa con stato operativo leggibile (guida UX) e avviso esplicito che il reset indice non elimina i Link affiliati.
-- Compatibilità fallback ricerca mantenuta: con indice vuoto la ricerca Idee continua via WordPress fallback per i soli `affiliate_link`.
+## 2.25.5 — PR 8.5 Affiliate Index Diagnostics Count Accuracy
+- Corretto `missing_index` in `get_index_stats()` per evitare sovrastime dovute a righe duplicate in `postmeta` e contare correttamente i Link affiliati pubblicati con URL non vuoto e assenti dall’indice.
+- Audit dei conteggi diagnostici della card “Indice Link affiliati” con query robuste (`EXISTS` / `NOT EXISTS` / `COUNT(DISTINCT ...)`) per prevenire moltiplicazioni da meta duplicate.
+- Nessuna modifica funzionale a ricerca, scoring, batch indexing, sync incrementale, auto-sync, OpenAI, Draft Builder o provider/importer.
 
 ## 2.25.3 — PR 8.3 Affiliate Index Autosync Ordering and Native Results Pagination
 - Auto-sync indice affiliate su `save_post_affiliate_link` spostato a priorità alta per garantire esecuzione dopo salvataggio meta/tassonomie del CPT `affiliate_link`, mantenendo guard autosave/revision/post type e filtro `alma_ai_affiliate_index_disable_autosync`.
@@ -130,7 +128,7 @@
 
 # Affiliate Link Manager AI
 
-Versione 2.25.4
+Versione 2.25.5
 
 
 ## Novità 2.12.1 — Pagina Importa contenuti + fix import
