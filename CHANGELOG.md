@@ -1,3 +1,10 @@
+## 2.25.8 — PR 8.8 Affiliate Index Pending Semantics for Non-Active Records
+- Aggiunto `non_active_candidate_records` in `get_index_stats()` per contare i Link affiliati pubblicati e candidabili con record indice presente ma non `active`.
+- Aggiornata la semantica pending: `needs_update` ora include `missing_index + stale_index_records + non_active_candidate_records` evitando doppi conteggi tra categorie mutualmente esclusive.
+- Card Dashboard aggiornata: “Da lavorare totale” include anche i candidabili non attivi, resta clampato ai candidabili e impedisce falsi 100%/falso stato “Indice aggiornato”.
+- Stato operativo/CTA guidati: se restano solo record stale o candidabili non attivi viene proposta sync incrementale/verifica indice.
+- Nessuna modifica a ricerca/scoring, batch cursor-based, OpenAI, Draft Builder, provider/importer, shortcode o tracking.
+
 ## 2.25.7 — PR 8.7 Affiliate Index Progress Count Fix and Pending Work Semantics
 - Fix doppio conteggio pending nella Dashboard: rimosso l'errore semantico `missing_index + needs_update` che duplicava i mancanti.
 - Aggiunto conteggio `stale_index_records` per separare i Link affiliati mancanti dall'indice da quelli da aggiornare dopo modifica.

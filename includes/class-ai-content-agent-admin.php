@@ -255,12 +255,13 @@ class ALMA_AI_Content_Agent_Admin {
         $indexed_active = (int)$stats['indexed_active'];
         $missing_index = (int)$stats['missing_index'];
         $stale_index_records = (int)($stats['stale_index_records'] ?? 0);
+        $non_active_candidate_records = (int)($stats['non_active_candidate_records'] ?? 0);
         $needs_update = max(0, (int)$stats['needs_update']);
         $active_invalid_records = (int)$stats['active_invalid_records'];
         $orphan_index_records = (int)$stats['orphan_index_records'];
 
         $eligible_total = max(0, $total_published - $without_affiliate_url);
-        $pending_total = max(0, $missing_index + $stale_index_records);
+        $pending_total = max(0, $missing_index + $stale_index_records + $non_active_candidate_records);
         if ($needs_update !== $pending_total) { $needs_update = $pending_total; }
         $pending_total = min($eligible_total, $pending_total);
         $progress_percent = 0;
@@ -280,7 +281,7 @@ class ALMA_AI_Content_Agent_Admin {
         elseif ($eligible_total > 0 && $indexed_active < 1 && $missing_index > 0) { $operational_state = 'Pronto per primo batch'; }
         elseif ($active_invalid_records > 0 || $orphan_index_records > 0) { $operational_state = 'Richiede verifica'; }
         elseif ($missing_index > 0) { $operational_state = !empty($batch['updated_at']) && empty($batch['done']) ? 'Indicizzazione in corso' : 'Pronto per primo batch'; }
-        elseif ($stale_index_records > 0) { $operational_state = 'Indice da aggiornare'; }
+        elseif ($stale_index_records > 0 || $non_active_candidate_records > 0) { $operational_state = 'Indice da aggiornare'; }
         elseif ($eligible_total > 0) { $operational_state = 'Indice aggiornato'; }
 
         $next_action_text = 'Verifica i conteggi dell’indice tecnico.';
@@ -294,8 +295,10 @@ class ALMA_AI_Content_Agent_Admin {
             $next_action_text = !empty($batch['updated_at']) && empty($batch['done']) ? 'Continua con il prossimo batch di indicizzazione.' : 'Completa il primo batch di indicizzazione prima della sync incrementale.';
             $primary_do = 'index_affiliate_links';
             $primary_label = !empty($batch['updated_at']) && empty($batch['done']) ? 'Continua indicizzazione' : 'Avvia primo batch';
-        } elseif ($stale_index_records > 0) {
-            $next_action_text = 'Esegui sync incrementale per aggiornare i record obsoleti.';
+        } elseif ($stale_index_records > 0 || $non_active_candidate_records > 0) {
+            $next_action_text = $stale_index_records > 0
+                ? 'Esegui sync incrementale per aggiornare i record obsoleti.'
+                : 'Esegui sync incrementale o verifica indice per riattivare i candidabili non attivi.';
             $primary_do = 'sync_affiliate_links_incremental';
             $primary_label = 'Esegui sync incrementale';
         } elseif ($active_invalid_records > 0 || $orphan_index_records > 0) {
@@ -312,7 +315,7 @@ class ALMA_AI_Content_Agent_Admin {
         echo '<div class="alma-affiliate-operational-state"><strong>Stato operativo:</strong> '.esc_html($operational_state).'</div>';
         echo '<div class="alma-affiliate-progress" role="status" aria-live="polite"><div class="alma-affiliate-progress-head"><strong>Progresso indicizzazione</strong> <span>'.(int)$progress_percent.'%</span></div><div class="alma-affiliate-progress-bar" aria-hidden="true"><span style="width: '.(int)$progress_percent.'%;"></span></div><p class="description">Candidabili: '.(int)$eligible_total.' · Da lavorare totale: '.(int)$pending_total.'</p></div>';
         echo '<div class="alma-affiliate-next-action"><strong>Prossima azione consigliata</strong><p>'.esc_html($next_action_text).'</p></div>';
-        echo '<ul><li>Totale Link affiliati pubblicati: '.$total_published.'</li><li>Indicizzati attivi: '.$indexed_active.'</li><li>Mancanti dall’indice: '.$missing_index.'</li><li>Da aggiornare: '.$stale_index_records.'</li><li>Da lavorare totale: '.$pending_total.'</li><li>Link affiliati senza URL affiliato: '.$without_affiliate_url.'</li><li>Record indice inattivi: '.(int)$stats['inactive_index_records'].'</li><li>Record indice orfani: '.$orphan_index_records.'</li><li>Record attivi non validi: '.$active_invalid_records.'</li><li>Ultimo aggiornamento indice: '.esc_html($stats['last_indexed_at'] ?: 'N/D').'</li><li>Stato batch: '.esc_html($batch_status).'</li><li>Last processed ID: '.(int)($batch['last_processed_id'] ?? 0).'</li>'.(!empty($batch['last_error'])?'<li>Ultimo errore: '.esc_html($batch['last_error']).'</li>':'').'</ul>';
+        echo '<ul><li>Totale Link affiliati pubblicati: '.$total_published.'</li><li>Indicizzati attivi: '.$indexed_active.'</li><li>Mancanti dall’indice: '.$missing_index.'</li><li>Da aggiornare: '.$stale_index_records.'</li><li>Candidabili non attivi: '.$non_active_candidate_records.'</li><li>Da lavorare totale: '.$pending_total.'</li><li>Link affiliati senza URL affiliato: '.$without_affiliate_url.'</li><li>Record indice inattivi: '.(int)$stats['inactive_index_records'].'</li><li>Record indice orfani: '.$orphan_index_records.'</li><li>Record attivi non validi: '.$active_invalid_records.'</li><li>Ultimo aggiornamento indice: '.esc_html($stats['last_indexed_at'] ?: 'N/D').'</li><li>Stato batch: '.esc_html($batch_status).'</li><li>Last processed ID: '.(int)($batch['last_processed_id'] ?? 0).'</li>'.(!empty($batch['last_error'])?'<li>Ultimo errore: '.esc_html($batch['last_error']).'</li>':'').'</ul>';
 
         echo '<div class="alma-actions-inline alma-affiliate-primary-actions">';
         if ($primary_do !== '' && $primary_label !== '') {
