@@ -80,7 +80,7 @@ class ALMA_AI_Content_Agent_Admin {
                 }
             }
             $profile = $profile_id ? ALMA_AI_Content_Agent_Instructions_Manager::get_profile($profile_id) : array();
-            $payload = array('max_ideas'=>absint($_POST['max_ideas'] ?? 1),'content_search_query'=>sanitize_text_field($_POST['content_search_query'] ?? ($_POST['search_terms'] ?? '')),'search_terms'=>sanitize_text_field($_POST['search_terms'] ?? ($_POST['content_search_query'] ?? '')),'theme'=>sanitize_text_field($_POST['theme'] ?? ''),'destination'=>sanitize_text_field($_POST['destination'] ?? ''),'temporary_instructions'=>sanitize_textarea_field($_POST['temporary_instructions'] ?? ''),'openai_prompt'=>sanitize_textarea_field($_POST['openai_prompt'] ?? $_POST['temporary_instructions'] ?? ''),'instruction_profile_id'=>$profile_id,'instruction_profile_name'=>sanitize_text_field($profile['profile_name'] ?? ''),'instruction_snapshot_hash'=>sanitize_text_field($profile ? ALMA_AI_Content_Agent_Instructions_Manager::snapshot_hash(wp_json_encode($profile)) : ''));
+            $payload = array('max_ideas'=>absint($_POST['max_ideas'] ?? 1),'content_search_query'=>sanitize_text_field($_POST['content_search_query'] ?? ($_POST['search_terms'] ?? '')),'search_terms'=>sanitize_text_field($_POST['search_terms'] ?? ($_POST['content_search_query'] ?? '')),'theme'=>sanitize_text_field($_POST['theme'] ?? ''),'destination'=>sanitize_text_field($_POST['destination'] ?? ''),'temporary_instructions'=>sanitize_textarea_field($_POST['temporary_instructions'] ?? ''),'openai_prompt'=>sanitize_textarea_field($_POST['openai_prompt'] ?? $_POST['temporary_instructions'] ?? ''),'instruction_profile_id'=>$profile_id,'instruction_profile_name'=>sanitize_text_field($profile['profile_name'] ?? ''),'instruction_snapshot_hash'=>sanitize_text_field($profile ? ALMA_AI_Content_Agent_Instructions_Manager::snapshot_hash(wp_json_encode($profile)) : ''),'search_scope'=>'affiliate_links_only');
             $search = ALMA_AI_Content_Agent_Knowledge_Search::search($payload);
             $stats = ALMA_AI_Content_Agent_Selection_Session::add_search_results($payload, $search);
             $active_idea_id = absint(get_user_meta(get_current_user_id(), '_alma_active_idea_id', true));
@@ -456,7 +456,7 @@ class ALMA_AI_Content_Agent_Admin {
         $current_page = max(1, min($requested_page, $total_pages));
         $paged_rows = array_slice($all_rows, ($current_page-1)*$per_page, $per_page);
 
-        echo '<div class="alma-ideas-card"><div class="alma-results-header"><h3>2. Risultati ricerca</h3></div>';
+        echo '<div class="alma-ideas-card"><div class="alma-results-header"><h3>2. Risultati ricerca</h3></div><p class="description">In questa fase la ricerca mostra solo Link affiliati indicizzati.</p>'; 
 
         echo '<div class="tablenav top"><div class="tablenav-pages">';
         echo '<span class="displaying-num">'.(int)$total_results.' elementi</span>';
