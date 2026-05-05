@@ -86,7 +86,9 @@ class ALMA_AI_Content_Agent_Ideas {
                 update_post_meta($idea_id, self::META_PROFILE_ID, 0);
             }
         }
-        update_post_meta($idea_id, self::META_PROMPT, sanitize_textarea_field($data['openai_prompt'] ?? ''));
+        if (array_key_exists('openai_prompt', (array)$data)) {
+            update_post_meta($idea_id, self::META_PROMPT, sanitize_textarea_field((string)$data['openai_prompt']));
+        }
         return true;
     }
 }

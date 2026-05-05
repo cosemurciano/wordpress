@@ -1,3 +1,11 @@
+## 2.25.14 — PR 8.14 Ideas Instruction Profile Save Order and Session Persistence Fix
+- Fix definitivo perdita profilo su **Salva idea**: `persist_to_idea()` non sovrascrive più `_alma_idea_profile_id` con `instruction_profile_id` stale proveniente dalla sessione/transient.
+- L'Idea contenuto resta la fonte persistente primaria del profilo istruzioni; la sessione continua a persistere query/risultati/selezione/snapshot hash senza alterare il meta profilo.
+- Hardening `save_from_request()` su update parziali: `openai_prompt` viene salvato solo se il campo è presente nel payload, evitando azzeramenti involontari.
+- Nel ramo `save_content_idea` la sessione viene ricaricata dall'idea aggiornata dopo la persistenza, garantendo coerenza sessione↔idea anche dopo reload/azioni successive.
+- Profilo istruzioni confermato come input per i flussi AI/OpenAI (idea/bozza), non per la ricerca Link affiliati.
+- Nessuna modifica a indice Link affiliati e nessuna modifica a OpenAI Service.
+
 ## 2.25.13 — PR 8.13 Ideas Instruction Profile Single Select Form Submission Fix
 - Corretto il submit del select unico **Profilo Istruzioni AI** nella tab Idee: il form **Cerca contenuti** invia sempre `instruction_profile_id` (incluso `0` per **Nessun profilo**).
 - Il form **Salva idea** mantiene il profilo tramite hidden `instruction_profile_id` sincronizzato con il select visibile (JS vanilla difensivo in `assets/admin.js`).

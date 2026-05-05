@@ -141,8 +141,18 @@
 
 # Affiliate Link Manager AI
 
-Versione 2.25.13
+Versione 2.25.14
 
+
+
+
+## Novità 2.25.14 — PR 8.14 Ideas Instruction Profile Save Order and Session Persistence Fix
+
+- Il **Profilo Istruzioni AI** ora resta persistente sull'Idea contenuto anche dopo **Salva idea**: la persistenza sessione non sovrascrive più il meta idea con valori stale.
+- Hardening su update parziali: `openai_prompt` viene aggiornato solo quando presente nel payload, quindi non viene più azzerato implicitamente.
+- Nel flusso tab Idee la sessione viene riallineata all'idea aggiornata dopo il salvataggio, mantenendo coerenza tra select UI, hidden e metadati persistenti.
+- Il profilo istruzioni resta destinato ai flussi AI/OpenAI (brief/bozza), non alla ricerca dei Link affiliati.
+- Nessuna modifica a indice Link affiliati, batch/sync affiliate o OpenAI Service.
 
 ## Novità 2.25.13 — PR 8.13 Ideas Instruction Profile Single Select Form Submission Fix
 
