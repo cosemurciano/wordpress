@@ -2,7 +2,7 @@
 if (!defined('ABSPATH')) { exit; }
 
 class ALMA_AI_Content_Agent_Knowledge_Search {
-    const MAX_PER_GROUP = 30;
+    const MAX_PER_GROUP = 200;
     const MIN_RELEVANCE_SCORE = 8;
 
     public static function search($input = array()) {
@@ -71,7 +71,7 @@ class ALMA_AI_Content_Agent_Knowledge_Search {
 
     private static function search_affiliate_index($query) {
         if (!class_exists('ALMA_AI_Content_Agent_Affiliate_Index')) { return array(); }
-        $rows = ALMA_AI_Content_Agent_Affiliate_Index::search($query, 250);
+        $rows = ALMA_AI_Content_Agent_Affiliate_Index::search($query, 400);
         if (empty($rows)) { return array(); }
         $items = array();
         foreach ($rows as $r) {
@@ -95,7 +95,7 @@ class ALMA_AI_Content_Agent_Knowledge_Search {
 
     private static function search_affiliate_wordpress_fallback($query) {
         $items = array();
-        $posts = get_posts(array('post_type'=>'affiliate_link','post_status'=>'publish','s'=>$query['text'],'numberposts'=>30,'orderby'=>'date','order'=>'DESC','suppress_filters'=>false));
+        $posts = get_posts(array('post_type'=>'affiliate_link','post_status'=>'publish','s'=>$query['text'],'numberposts'=>220,'orderby'=>'date','order'=>'DESC','suppress_filters'=>false));
         foreach ((array)$posts as $p) {
             $post_id = (int)$p->ID;
             $affiliate = ALMA_AI_Content_Agent_Affiliate_Index::get_affiliate_url_data($post_id);

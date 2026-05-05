@@ -141,15 +141,17 @@
 
 # Affiliate Link Manager AI
 
-Versione 2.25.16
+Versione 2.25.17
 
 
 
 
 
-## Novità 2.25.16 — PR 8.16 Restrict Ideas Search to Affiliate Links
+## Novità 2.25.17 — PR 8.17 Affiliate-Only Result Cleanup, 200 Result Cap and Score Highlight
 
 - La ricerca nella tab **Idee contenuto** (card **2. Risultati ricerca**) usa ora esplicitamente `search_scope=affiliate_links_only` e mostra solo risultati `affiliate_link`.
+- La card risultati propone fino a 200 risultati finali affiliate con paginazione invariata.
+- Il valore numerico dello Score è evidenziato (blu + grassetto) per facilitare la lettura della rilevanza.
 - Esclusi temporaneamente dalla ricerca Idee: Post, Pagine, Documenti TXT, Fonti online AI, Media e risultati editoriali Knowledge Base.
 - Preservato il fallback: se l’indice dedicato non restituisce risultati, la ricerca usa WordPress solo su `post_type=affiliate_link` pubblicati con URL affiliato valido.
 - Il **Profilo Istruzioni AI** resta destinato ai flussi AI/OpenAI e bozza; non modifica la ricerca affiliate-only in questa fase.
