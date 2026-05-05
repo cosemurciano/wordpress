@@ -156,14 +156,27 @@ class ALMA_AI_Content_Agent_Draft_Builder {
         ), $profile_payload, array('instruction_snapshot_hash'=>sanitize_text_field($session['instruction_snapshot_hash'] ?? '')));
     }
 
-    public static function download_payload_json_from_selection_session($user_id = 0) {
-        if (!current_user_can('manage_options')) { wp_die('forbidden'); }
+    public static function download_payload_json_from_selection_session($user_id = 0, $idea_id = 0) {
+        if (!current_user_can('manage_options')) { return new WP_Error('alma_forbidden', 'Operazione non autorizzata.'); }
         $payload = self::build_payload_from_selection_session($user_id);
-        $filename = 'alma-ai-payload-' . gmdate('Y-m-d-Hi') . '.json';
+        if (!is_array($payload) || empty($payload)) {
+            return new WP_Error('alma_payload_unavailable', 'Impossibile costruire il payload JSON diagnostico.');
+        }
+
+        $json = wp_json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+        if (!is_string($json) || $json === '') {
+            return new WP_Error('alma_payload_encoding_failed', 'Impossibile codificare il payload JSON diagnostico.');
+        }
+
+        while (ob_get_level() > 0) { ob_end_clean(); }
         nocache_headers();
+        $safe_idea_id = max(0, absint($idea_id));
+        $filename = 'alma-ai-payload-idea-' . $safe_idea_id . '-' . gmdate('Y-m-d-His') . '.json';
         header('Content-Type: application/json; charset=utf-8');
-        header('Content-Disposition: attachment; filename=' . $filename);
-        echo wp_json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+        header('Content-Disposition: attachment; filename="' . sanitize_file_name($filename) . '"');
+        header('Content-Transfer-Encoding: binary');
+        header('X-Content-Type-Options: nosniff');
+        echo $json;
         exit;
     }
 
