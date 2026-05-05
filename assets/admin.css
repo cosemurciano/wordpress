@@ -699,3 +699,17 @@ button:disabled {
     padding-top: 10px;
     border-top: 1px dashed #c3c4c7;
 }
+
+.alma-ai-agent-admin .alma-active-idea-box .alma-idea-section{padding:10px 0;border-top:1px solid #e2e4e7}
+.alma-ai-agent-admin .alma-active-idea-box .alma-idea-section:first-child{padding-top:0;border-top:0}
+.alma-ai-agent-admin .alma-idea-section-title{margin:0 0 8px;color:#1d2327}
+.alma-ai-agent-admin .alma-idea-meta p{margin:4px 0}
+.alma-ai-agent-admin .alma-idea-record{border:1px solid #dcdcde;background:#f8f9fa;border-radius:6px;padding:10px;margin:0 0 8px}
+.alma-ai-agent-admin .alma-idea-record-title{margin:0 0 4px}
+.alma-ai-agent-admin .alma-idea-record-meta{margin:0 0 8px}
+.alma-ai-agent-admin .alma-idea-details ul{margin:0;padding-left:18px}
+.alma-ai-agent-admin .alma-idea-details li{margin:0 0 6px}
+.alma-ai-agent-admin .alma-affiliate-actions-group{margin-top:10px}
+.alma-ai-agent-admin .alma-affiliate-action-description{max-width:420px;margin:0 0 10px}
+.alma-ai-agent-admin .alma-affiliate-primary-actions form,
+.alma-ai-agent-admin .alma-affiliate-advanced-maintenance .alma-actions-inline form{padding:8px;border:1px solid #e2e4e7;border-radius:6px;background:#fff}

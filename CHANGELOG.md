@@ -1,10 +1,9 @@
-## 2.25.14 — PR 8.14 Ideas Instruction Profile Save Order and Session Persistence Fix
-- Fix definitivo perdita profilo su **Salva idea**: `persist_to_idea()` non sovrascrive più `_alma_idea_profile_id` con `instruction_profile_id` stale proveniente dalla sessione/transient.
-- L'Idea contenuto resta la fonte persistente primaria del profilo istruzioni; la sessione continua a persistere query/risultati/selezione/snapshot hash senza alterare il meta profilo.
-- Hardening `save_from_request()` su update parziali: `openai_prompt` viene salvato solo se il campo è presente nel payload, evitando azzeramenti involontari.
-- Nel ramo `save_content_idea` la sessione viene ricaricata dall'idea aggiornata dopo la persistenza, garantendo coerenza sessione↔idea anche dopo reload/azioni successive.
-- Profilo istruzioni confermato come input per i flussi AI/OpenAI (idea/bozza), non per la ricerca Link affiliati.
-- Nessuna modifica a indice Link affiliati e nessuna modifica a OpenAI Service.
+## 2.25.15 — PR 8.15 Ideas Active Box UI and Affiliate Index Action Descriptions
+- Migliorata la leggibilità del box **Idea attiva** nella tab Idee contenuto con sezioni distinte: riepilogo, lista idee create e dettagli idea.
+- Ogni idea creata viene mostrata come record/card separato con titolo, ultima modifica, badge **Attiva** e pulsante **Carica** invariato lato azioni.
+- Spostati i dettagli tecnici (contenuti aggiunti, profilo istruzioni AI, prompt OpenAI) in una sezione dedicata separata dalla lista idee.
+- Nella card **Indice Link affiliati** aggiunte descrizioni brevi alle azioni operative e separazione visiva tra azioni principali e manutenzione avanzata.
+- Aggiornati solo markup/copy/CSS admin scoped sotto `.alma-ai-agent-admin`; nessuna modifica funzionale a flussi, salvataggi, indice affiliate o OpenAI Service.
 
 ## 2.25.13 — PR 8.13 Ideas Instruction Profile Single Select Form Submission Fix
 - Corretto il submit del select unico **Profilo Istruzioni AI** nella tab Idee: il form **Cerca contenuti** invia sempre `instruction_profile_id` (incluso `0` per **Nessun profilo**).

@@ -345,19 +345,20 @@ class ALMA_AI_Content_Agent_Admin {
         echo '<div class="alma-affiliate-next-action"><strong>Prossima azione consigliata</strong><p>'.esc_html($next_action_text).'</p></div>';
         echo '<ul><li>Totale Link affiliati pubblicati: '.$total_published.'</li><li>Indicizzati attivi: '.$indexed_active.'</li><li>Mancanti dall’indice: '.$missing_index.'</li><li>Da aggiornare: '.$stale_index_records.'</li><li>Candidabili non attivi: '.$non_active_candidate_records.'</li><li>Da lavorare totale: '.$pending_total.'</li><li>Link affiliati senza URL affiliato: '.$without_affiliate_url.'</li><li>Record indice inattivi: '.(int)$stats['inactive_index_records'].'</li><li>Record indice orfani: '.$orphan_index_records.'</li><li>Record attivi non validi: '.$active_invalid_records.'</li><li>Ultimo aggiornamento indice: '.esc_html($stats['last_indexed_at'] ?: 'N/D').'</li><li>Stato batch: '.esc_html($batch_status).'</li><li>Last processed ID: '.(int)($batch['last_processed_id'] ?? 0).'</li>'.(!empty($batch['last_error'])?'<li>Ultimo errore: '.esc_html($batch['last_error']).'</li>':'').'</ul>';
 
-        echo '<div class="alma-actions-inline alma-affiliate-primary-actions">';
+        echo '<div class="alma-affiliate-actions-group"><h4>Azioni principali</h4><div class="alma-actions-inline alma-affiliate-primary-actions">';
         if ($primary_do !== '' && $primary_label !== '') {
             self::action_form($primary_do, $primary_label);
+            echo '<p class="description alma-affiliate-action-description">Azione consigliata in base allo stato attuale dell’indice tecnico.</p>';
         } else {
-            echo '<button class="button" type="button" disabled>Indice aggiornato</button>';
+            echo '<button class="button" type="button" disabled>Indice aggiornato</button><p class="description alma-affiliate-action-description">Nessuna azione operativa necessaria in questo momento.</p>';
         }
-        self::action_form('index_affiliate_links','Indicizza prossimo batch');
-        self::action_form('sync_affiliate_links_incremental','Sync incrementale');
-        echo '</div>';
+        self::action_form('index_affiliate_links','Indicizza prossimo batch','<p class="description alma-affiliate-action-description">Indicizza un blocco di Link affiliati alla volta. Usalo per costruire progressivamente l’indice senza sovraccaricare il sito.</p>');
+        self::action_form('sync_affiliate_links_incremental','Sync incrementale','<p class="description alma-affiliate-action-description">Aggiorna solo i Link affiliati mancanti, modificati, obsoleti o non attivi nell’indice.</p>');
+        echo '</div></div>';
 
         echo '<div class="alma-affiliate-advanced-maintenance"><h4>Manutenzione avanzata</h4><p class="description">Usa queste azioni solo per manutenzione tecnica dell’indice.</p><div class="alma-actions-inline">';
-        self::action_form('reset_affiliate_index_state','Reset stato batch');
-        self::action_form('clear_affiliate_index','Svuota indice e ricomincia');
+        self::action_form('reset_affiliate_index_state','Reset stato batch','<p class="description alma-affiliate-action-description">Azzera solo il punto di avanzamento del batch. Non elimina l’indice e non elimina i Link affiliati.</p>');
+        self::action_form('clear_affiliate_index','Svuota indice e ricomincia','<p class="description alma-affiliate-action-description">Cancella solo l’indice tecnico rigenerabile. Non elimina i Link affiliati reali.</p>');
         echo '</div></div></div>';
     }
 
@@ -429,14 +430,18 @@ class ALMA_AI_Content_Agent_Admin {
         echo '</div></div>';
 
         echo '<div class="alma-ideas-layout">';
-        echo '<aside class="alma-ideas-col alma-ideas-col-left"><div class="alma-ideas-card"><h3>Idea attiva</h3><p class="alma-idea-title-lg">'.esc_html($active_idea['title'] ?? 'Nessuna idea attiva').'</p><p>'.esc_html(!empty($active_idea['executed_at']) ? ('Eseguita il '.$active_idea['executed_at']) : 'Non eseguita').'</p>';
+        echo '<aside class="alma-ideas-col alma-ideas-col-left"><div class="alma-ideas-card alma-active-idea-box">';
+        echo '<section class="alma-idea-section"><h3 class="alma-idea-section-title">Idea attiva</h3><p class="alma-idea-title-lg">'.esc_html($active_idea['title'] ?? 'Nessuna idea attiva').'</p><div class="alma-idea-meta"><p><strong>Stato:</strong> '.esc_html(!empty($active_idea['executed_at']) ? 'Eseguita' : 'Non eseguita').'</p><p><strong>Ultima modifica:</strong> '.esc_html(!empty($active_idea['modified']) ? $active_idea['modified'] : 'N/D').'</p></div>';
         if ($active_idea_id < 1) { echo '<p class="description">Nessuna idea attiva. Usa il pulsante Crea nuova idea per iniziare.</p>'; }
         if (!empty($active_idea['draft_post_id']) && get_post((int)$active_idea['draft_post_id'])) { echo '<p><a href="'.esc_url(get_edit_post_link((int)$active_idea['draft_post_id'],'raw')).'">Apri bozza</a></p>'; }
-        if (!empty($active_idea['modified'])) { echo '<p class="description">Ultima modifica: '.esc_html($active_idea['modified']).'</p>'; }
-        echo '<h4>Idee create</h4>';
+        echo '</section>';
+
+        echo '<section class="alma-idea-section"><h4 class="alma-idea-section-title">Idee create</h4>';
         if (empty($ideas)) { echo '<p class="description">Nessuna idea creata.</p>'; }
-        else { echo '<ul class="alma-ideas-list">'; foreach($ideas as $idea_post){ echo '<li><strong>'.esc_html($idea_post->post_title).'</strong><br><span class="description">'.esc_html($idea_post->post_modified).'</span> '.(((int)$idea_post->ID===(int)$active_idea_id)?'<span class="alma-added-badge">Attiva</span>':'').'<form method="post" action="'.esc_url(admin_url('admin-post.php')).'">'.wp_nonce_field('alma_ai_agent_action','_wpnonce',true,false).'<input type="hidden" name="action" value="alma_ai_agent_action"><input type="hidden" name="do" value="load_content_idea"><input type="hidden" name="idea_id" value="'.(int)$idea_post->ID.'"><button class="button button-small">Carica</button></form></li>'; } echo '</ul>'; }
-        echo '<ul><li>Contenuti aggiunti: '.(int)($summary['selected_total'] ?? 0).'</li><li>Profilo istruzioni AI: '.(int)($active_idea['profile_id'] ?? 0).'</li><li>Prompt OpenAI: '.(!empty($active_idea['prompt']) ? 'Presente' : 'Assente').'</li></ul></div></aside>';
+        else { foreach($ideas as $idea_post){ $is_active=((int)$idea_post->ID===(int)$active_idea_id); echo '<article class="alma-idea-record"><p class="alma-idea-record-title"><strong>'.esc_html($idea_post->post_title).'</strong>'.($is_active?' <span class="alma-added-badge">Attiva</span>':'').'</p><p class="description alma-idea-record-meta">Ultima modifica: '.esc_html($idea_post->post_modified).'</p><form method="post" action="'.esc_url(admin_url('admin-post.php')).'">'.wp_nonce_field('alma_ai_agent_action','_wpnonce',true,false).'<input type="hidden" name="action" value="alma_ai_agent_action"><input type="hidden" name="do" value="load_content_idea"><input type="hidden" name="idea_id" value="'.(int)$idea_post->ID.'"><button class="button button-small">Carica</button></form></article>'; } }
+        echo '</section>';
+
+        echo '<section class="alma-idea-section alma-idea-details"><h4 class="alma-idea-section-title">Dettagli idea</h4><ul><li><strong>Contenuti aggiunti:</strong> '.(int)($summary['selected_total'] ?? 0).'</li><li><strong>Profilo istruzioni AI:</strong> '.(int)($active_idea['profile_id'] ?? 0).'</li><li><strong>Prompt OpenAI:</strong> '.(!empty($active_idea['prompt']) ? 'Presente' : 'Assente').'</li></ul></section></div></aside>';
 
         echo '<main class="alma-ideas-col alma-ideas-col-main"><div class="alma-ideas-card"><h3>1. Cerca contenuti</h3><form method="post" action="'.esc_url(admin_url('admin-post.php')).'">'.wp_nonce_field('alma_ai_agent_action','_wpnonce',true,false).'<input type="hidden" name="action" value="alma_ai_agent_action"><input type="hidden" name="do" value="search_knowledge_base"><input type="hidden" name="idea_id" value="'.(int)$active_idea_id.'"><p><input class="widefat" type="text" name="content_search_query" placeholder="Cerca contenuti" value="'.esc_attr($session['last_query']['content_search_query'] ?? '').'" required></p><p><label for="alma-idea-instruction-profile">Profilo Istruzioni AI</label><select id="alma-idea-instruction-profile" class="widefat" name="instruction_profile_id"><option value="0">Nessun profilo</option>';
         foreach($profiles as $p){ $sel=selected($selected_profile_id,(int)$p['id'],false); echo '<option value="'.(int)$p['id'].'" '.$sel.'>'.esc_html($p['profile_name']).'</option>'; }
