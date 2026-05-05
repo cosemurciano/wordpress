@@ -10,15 +10,80 @@ class ALMA_AI_Content_Agent_Affiliate_Index {
     public static function batch_size() { return max(10, min(500, (int) apply_filters('alma_ai_affiliate_index_batch_size', 100))); }
 
     public static function index_batch($args = array()) {
+        global $wpdb;
         $limit = isset($args['limit']) ? max(1, min(500, absint($args['limit']))) : self::batch_size();
-        $after_id = isset($args['after_id']) ? absint($args['after_id']) : 0;
-        $q = new WP_Query(array('post_type'=>'affiliate_link','post_status'=>array('publish','draft','pending','private','trash'),'posts_per_page'=>$limit,'orderby'=>'ID','order'=>'ASC','fields'=>'ids','post__not_in'=>array(0),'no_found_rows'=>true,'update_post_meta_cache'=>true,'update_post_term_cache'=>true,'date_query'=>array(),'paged'=>1,'ignore_sticky_posts'=>true,'cache_results'=>true,'suppress_filters'=>false,'post_parent'=>0,'meta_query'=>array(),));
-        $ids = array_values(array_filter(array_map('absint', (array)$q->posts), function($id) use ($after_id){ return $id > $after_id; }));
-        $ids = array_slice($ids, 0, $limit);
+        $state = self::get_batch_state();
+        $after_id = isset($args['after_id']) ? absint($args['after_id']) : (int)$state['last_processed_id'];
+        $rows = $wpdb->get_results(
+            $wpdb->prepare(
+                "SELECT ID FROM {$wpdb->posts} WHERE post_type = %s AND post_status IN ('publish','draft','pending','private','trash') AND ID > %d ORDER BY ID ASC LIMIT %d",
+                'affiliate_link',
+                $after_id,
+                $limit
+            ),
+            ARRAY_A
+        );
+        $ids = array_map('absint', wp_list_pluck((array) $rows, 'ID'));
         $processed = 0; $indexed = 0; $last_id = $after_id;
         foreach ($ids as $id) { $processed++; $last_id = max($last_id, $id); if (self::index_single($id)) { $indexed++; } }
-        update_option('alma_ai_affiliate_index_state', array('last_batch_at'=>current_time('mysql'),'last_processed_id'=>$last_id,'last_batch_processed'=>$processed,'last_batch_indexed'=>$indexed), false);
-        return array('processed'=>$processed,'indexed'=>$indexed,'last_id'=>$last_id,'done'=>$processed < $limit);
+        $updated = array(
+            'last_processed_id' => $last_id,
+            'processed' => (int)$state['processed'] + $processed,
+            'indexed' => (int)$state['indexed'] + $indexed,
+            'skipped' => max(0, ((int)$state['skipped'] + $processed) - ((int)$state['indexed'] + $indexed)),
+            'done' => $processed < $limit,
+            'started_at' => $state['started_at'] ?: current_time('mysql'),
+            'updated_at' => current_time('mysql'),
+            'last_error' => '',
+        );
+        update_option('alma_ai_affiliate_index_state', $updated, false);
+        return array('processed'=>$processed,'indexed'=>$indexed,'last_id'=>$last_id,'done'=>(bool)$updated['done']);
+    }
+
+    public static function get_batch_state() {
+        $state = get_option('alma_ai_affiliate_index_state', array());
+        if (!is_array($state)) { $state = array(); }
+        return array(
+            'last_processed_id' => isset($state['last_processed_id']) ? max(0, absint($state['last_processed_id'])) : 0,
+            'processed' => isset($state['processed']) ? max(0, absint($state['processed'])) : 0,
+            'indexed' => isset($state['indexed']) ? max(0, absint($state['indexed'])) : 0,
+            'skipped' => isset($state['skipped']) ? max(0, absint($state['skipped'])) : 0,
+            'done' => !empty($state['done']),
+            'started_at' => sanitize_text_field($state['started_at'] ?? ''),
+            'updated_at' => sanitize_text_field($state['updated_at'] ?? ($state['last_batch_at'] ?? '')),
+            'last_error' => sanitize_text_field($state['last_error'] ?? ''),
+        );
+    }
+
+    public static function reset_batch_state() {
+        update_option('alma_ai_affiliate_index_state', self::get_batch_state_defaults(), false);
+    }
+
+    private static function get_batch_state_defaults() {
+        return array('last_processed_id'=>0,'processed'=>0,'indexed'=>0,'skipped'=>0,'done'=>false,'started_at'=>'','updated_at'=>'','last_error'=>'');
+    }
+
+    public static function get_index_stats() {
+        global $wpdb;
+        $stats = array(
+            'table_exists' => true,
+            'total_published' => 0,
+            'indexed_active' => 0,
+            'not_indexed' => 0,
+            'without_affiliate_url' => 0,
+            'inactive_index_records' => 0,
+            'last_indexed_at' => '',
+            'batch_state' => self::get_batch_state(),
+        );
+        $table = self::table_name();
+        if (in_array($table, ALMA_AI_Content_Agent_Store::missing_tables(), true)) { $stats['table_exists'] = false; return $stats; }
+        $stats['total_published'] = (int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(1) FROM {$wpdb->posts} WHERE post_type=%s AND post_status='publish'", 'affiliate_link'));
+        $stats['without_affiliate_url'] = (int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(1) FROM {$wpdb->posts} p LEFT JOIN {$wpdb->postmeta} m1 ON p.ID = m1.post_id AND m1.meta_key = %s LEFT JOIN {$wpdb->postmeta} m2 ON p.ID = m2.post_id AND m2.meta_key = %s WHERE p.post_type=%s AND p.post_status='publish' AND TRIM(COALESCE(NULLIF(m1.meta_value,''), NULLIF(m2.meta_value,''), '')) = ''", '_affiliate_url', '_alma_affiliate_url', 'affiliate_link'));
+        $stats['indexed_active'] = (int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(1) FROM $table WHERE status=%s AND post_status='publish' AND affiliate_url_present=1", self::STATUS_ACTIVE));
+        $stats['inactive_index_records'] = (int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(1) FROM $table WHERE status=%s", self::STATUS_INACTIVE));
+        $stats['last_indexed_at'] = (string)$wpdb->get_var("SELECT MAX(indexed_at) FROM $table");
+        $stats['not_indexed'] = max(0, $stats['total_published'] - $stats['indexed_active'] - $stats['without_affiliate_url']);
+        return $stats;
     }
 
     public static function sync_incremental($limit = null) {
