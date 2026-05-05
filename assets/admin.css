@@ -719,3 +719,17 @@ button:disabled {
     color: #0a58ca;
     font-weight: 700;
 }
+
+.alma-ai-agent-admin .alma-results-filters {
+    margin: 12px 0 16px;
+    padding: 12px;
+    border: 1px solid #dcdcde;
+    background: #f6f7f7;
+    border-radius: 4px;
+}
+.alma-ai-agent-admin .alma-results-filter-grid { display: flex; gap: 12px; }
+.alma-ai-agent-admin .alma-results-filter-grid > p { flex: 1; margin: 0; }
+.alma-ai-agent-admin .alma-results-filter-actions { margin: 10px 0 0; display: flex; gap: 8px; }
+@media (max-width: 782px) {
+    .alma-ai-agent-admin .alma-results-filter-grid { flex-direction: column; }
+}

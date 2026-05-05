@@ -141,21 +141,20 @@
 
 # Affiliate Link Manager AI
 
-Versione 2.25.17
+Versione 2.25.18
 
 
 
 
 
-## Novità 2.25.17 — PR 8.17 Affiliate-Only Result Cleanup, 200 Result Cap and Score Highlight
+## Novità 2.25.18 — PR 8.18 Affiliate Results Filters and Stable Idea Title
 
-- La ricerca nella tab **Idee contenuto** (card **2. Risultati ricerca**) usa ora esplicitamente `search_scope=affiliate_links_only` e mostra solo risultati `affiliate_link`.
-- La card risultati propone fino a 200 risultati finali affiliate con paginazione invariata.
-- Il valore numerico dello Score è evidenziato (blu + grassetto) per facilitare la lettura della rilevanza.
-- Esclusi temporaneamente dalla ricerca Idee: Post, Pagine, Documenti TXT, Fonti online AI, Media e risultati editoriali Knowledge Base.
-- Preservato il fallback: se l’indice dedicato non restituisce risultati, la ricerca usa WordPress solo su `post_type=affiliate_link` pubblicati con URL affiliato valido.
-- Il **Profilo Istruzioni AI** resta destinato ai flussi AI/OpenAI e bozza; non modifica la ricerca affiliate-only in questa fase.
-- Nessuna modifica a indice affiliate, batch/sync, scoring, OpenAI Service o Draft Builder.
+- La ricerca nella tab **Idee contenuto** resta affiliate-only (`search_scope=affiliate_links_only`) e mostra risultati `affiliate_link` fino a 200 elementi paginati.
+- Aggiunti filtri in card **2. Risultati ricerca** per **Tipologie Link** e **Fonte / Source / Provider** con applicazione lato rendering/sessione.
+- I filtri sono applicati prima della paginazione e mantenuti nei link pagina; **Reset filtri** rimuove solo i parametri filtro senza effetti distruttivi.
+- Stato vuoto filtrato dedicato quando i risultati esistono ma sono esclusi dai filtri selezionati.
+- Il **Titolo idea** è ora indipendente dal testo in **Cerca contenuti**: la query aggiorna solo `last_query` e non sovrascrive più il titolo di idee esistenti.
+- Nessuna modifica a indice affiliate, batch/sync/scoring, OpenAI Service o Draft Builder.
 
 ## Novità 2.25.15 — PR 8.15 Ideas Active Box UI and Affiliate Index Action Descriptions
 
