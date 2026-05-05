@@ -27,6 +27,78 @@ class ALMA_AI_Content_Agent_Draft_Builder {
         }
         return 0;
     }
+
+    private static function get_affiliate_url($post_id) {
+        $post_id = absint($post_id);
+        if ($post_id < 1) { return ''; }
+
+        $raw = get_post_meta($post_id, '_affiliate_url', true);
+        if (!is_string($raw) || $raw == '') {
+            $raw = get_post_meta($post_id, '_alma_affiliate_url', true);
+        }
+
+        $url = esc_url_raw((string)$raw);
+        if (!is_string($url) || $url === '' || !wp_http_validate_url($url)) {
+            return '';
+        }
+        return $url;
+    }
+
+    private static function build_instruction_profile_payload($session, &$warnings) {
+        $session = is_array($session) ? $session : array();
+        $warnings = is_array($warnings) ? $warnings : array();
+        $profile_id = absint($session['instruction_profile_id'] ?? 0);
+        $profile = array();
+
+        if ($profile_id > 0) {
+            $profile = ALMA_AI_Content_Agent_Instructions_Manager::get_profile($profile_id);
+            if (empty($profile)) {
+                $warnings[] = 'Profilo istruzioni non trovato: #' . $profile_id;
+            }
+        } else {
+            $warnings[] = 'Nessun profilo istruzioni associato alla sessione.';
+        }
+
+        if (!is_array($profile)) { $profile = array(); }
+
+        $profile_name = sanitize_text_field($session['instruction_profile_name'] ?? ($profile['profile_name'] ?? ''));
+        if ($profile_id > 0 && $profile_name === '') {
+            $profile_name = 'Profilo #' . $profile_id;
+        }
+
+        $rules = array(
+            'seo_rules' => sanitize_textarea_field((string)($profile['seo_rules'] ?? '')),
+            'affiliate_rules' => sanitize_textarea_field((string)($profile['affiliate_rules'] ?? '')),
+            'image_rules' => sanitize_textarea_field((string)($profile['image_rules'] ?? '')),
+            'source_rules' => sanitize_textarea_field((string)($profile['source_rules'] ?? '')),
+            'anti_duplication_rules' => sanitize_textarea_field((string)($profile['anti_duplication_rules'] ?? '')),
+            'avoid_rules' => sanitize_textarea_field((string)($profile['avoid_rules'] ?? '')),
+            'disclosure_policy' => sanitize_textarea_field((string)($profile['disclosure_policy'] ?? '')),
+            'custom_prompt' => sanitize_textarea_field((string)($profile['custom_prompt'] ?? '')),
+        );
+
+        $snapshot = sanitize_textarea_field((string)($session['instruction_snapshot'] ?? ''));
+        if ($snapshot === '' && !empty($profile)) {
+            $snapshot = ALMA_AI_Content_Agent_Instructions_Manager::build_compact_instruction_block($profile, (string)($session['last_query']['temporary_instructions'] ?? ''));
+        }
+        $snapshot_hash = sanitize_text_field((string)($session['instruction_snapshot_hash'] ?? ''));
+        if ($snapshot_hash === '' && $snapshot !== '') {
+            $snapshot_hash = ALMA_AI_Content_Agent_Instructions_Manager::snapshot_hash($snapshot);
+        }
+
+        if ($profile_id > 0 && empty($profile)) {
+            $warnings[] = 'Instruction snapshot non disponibile per profilo mancante.';
+        }
+
+        return array(
+            'instruction_profile_id' => $profile_id,
+            'instruction_profile_name' => $profile_name,
+            'instruction_profile' => $profile,
+            'instruction_profile_rules' => $rules,
+            'instruction_snapshot_hash' => $snapshot_hash,
+            'instruction_snapshot' => $snapshot,
+        );
+    }
     private static function fetch_document_chunks($knowledge_item_id, $limit = 3) {
         global $wpdb;
         $table = ALMA_AI_Content_Agent_Store::table('content_chunks');
@@ -153,12 +225,19 @@ class ALMA_AI_Content_Agent_Draft_Builder {
             'output_contract'=>array('title','slug','excerpt','content','seo_title','seo_description','affiliate_shortcodes_used','affiliate_urls_used','media_used','warnings'),
             'warnings'=>array_values(array_unique($warnings)),
             'agent_behavior'=>'',
-        ), $profile_payload, array('instruction_snapshot_hash'=>sanitize_text_field($session['instruction_snapshot_hash'] ?? '')));
+        ), $profile_payload);
     }
 
     public static function download_payload_json_from_selection_session($user_id = 0, $idea_id = 0) {
         if (!current_user_can('manage_options')) { return new WP_Error('alma_forbidden', 'Operazione non autorizzata.'); }
-        $payload = self::build_payload_from_selection_session($user_id);
+        try {
+            $payload = self::build_payload_from_selection_session($user_id);
+        } catch (Throwable $e) {
+            if (defined('WP_DEBUG') && WP_DEBUG) {
+                error_log('ALMA payload download error: ' . $e->getMessage());
+            }
+            return new WP_Error('alma_payload_exception', 'Errore durante la costruzione del payload JSON diagnostico.');
+        }
         if (!is_array($payload) || empty($payload)) {
             return new WP_Error('alma_payload_unavailable', 'Impossibile costruire il payload JSON diagnostico.');
         }
@@ -168,7 +247,12 @@ class ALMA_AI_Content_Agent_Draft_Builder {
             return new WP_Error('alma_payload_encoding_failed', 'Impossibile codificare il payload JSON diagnostico.');
         }
 
-        while (ob_get_level() > 0) { ob_end_clean(); }
+        while (ob_get_level() > 0) {
+            $status = ob_get_status();
+            if (empty($status['del']) || !ob_end_clean()) {
+                break;
+            }
+        }
         nocache_headers();
         $safe_idea_id = max(0, absint($idea_id));
         $filename = 'alma-ai-payload-idea-' . $safe_idea_id . '-' . gmdate('Y-m-d-His') . '.json';
