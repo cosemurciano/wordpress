@@ -25,7 +25,15 @@ class ALMA_OpenAI_Service {
 
         $body = array('model'=>$model,'input'=>$input,'max_output_tokens'=>$max_output_tokens);
         if ($temperature >= 0 && $temperature <= 2) { $body['temperature'] = $temperature; }
-        if (!empty($args['json_output'])) { $body['text'] = array('format'=>array('type'=>'json_object')); }
+
+        $response_format_used = 'none';
+        if (!empty($args['response_format']) && is_array($args['response_format'])) {
+            $body['text'] = array('format'=>$args['response_format']);
+            $response_format_used = sanitize_key((string)($args['response_format']['type'] ?? 'custom'));
+        } elseif (!empty($args['json_output'])) {
+            $body['text'] = array('format'=>array('type'=>'json_object'));
+            $response_format_used = 'json_object';
+        }
 
         $start = microtime(true);
         $res = wp_remote_post('https://api.openai.com/v1/responses', array(
@@ -35,12 +43,20 @@ class ALMA_OpenAI_Service {
         ));
         $rt = round((microtime(true)-$start)*1000);
 
-        if (is_wp_error($res)) return array('success'=>false,'error'=>__('Errore connessione AI', 'affiliate-link-manager-ai'),'response_time'=>$rt);
+        if (is_wp_error($res)) return array('success'=>false,'error'=>__('Errore connessione AI', 'affiliate-link-manager-ai'),'error_code'=>'api_connection_error','error_category'=>'api','response_time'=>$rt,'model'=>$model,'max_output_tokens'=>$max_output_tokens,'response_format_used'=>$response_format_used);
         $code = wp_remote_retrieve_response_code($res);
         $data = json_decode(wp_remote_retrieve_body($res), true);
         if ($code < 200 || $code >= 300) {
             $err = $data['error']['message'] ?? __('Errore OpenAI', 'affiliate-link-manager-ai');
-            return array('success'=>false,'error'=>sanitize_text_field($err),'response_time'=>$rt,'model'=>$model);
+            $error_code = 'openai_http_error';
+            $error_type = sanitize_key((string)($data['error']['type'] ?? ''));
+            $error_msg_l = strtolower((string)($data['error']['message'] ?? ''));
+            if ($code === 401 || $code === 403) { $error_code = 'auth_error'; }
+            elseif ($code === 429) { $error_code = 'rate_limit'; }
+            elseif ($code === 408) { $error_code = 'timeout'; }
+            elseif (strpos($error_msg_l, 'response_format') !== false) { $error_code = 'response_format_unsupported'; }
+            elseif (strpos($error_msg_l, 'model') !== false && strpos($error_msg_l, 'support') !== false) { $error_code = 'model_unsupported'; }
+            return array('success'=>false,'error'=>sanitize_text_field($err),'error_code'=>$error_code,'error_type'=>$error_type,'error_category'=>'api','http_status'=>$code,'response_time'=>$rt,'model'=>$model,'max_output_tokens'=>$max_output_tokens,'response_format_used'=>$response_format_used);
         }
         $text = '';
         if (!empty($data['output_text'])) { $text = (string)$data['output_text']; }
@@ -49,7 +65,7 @@ class ALMA_OpenAI_Service {
                 foreach ((array)($out['content'] ?? array()) as $c) { if (($c['type'] ?? '') === 'output_text' && !empty($c['text'])) { $text .= $c['text']; } }
             }
         }
-        if (trim($text) === '') return array('success'=>false,'error'=>__('Risposta AI non valida', 'affiliate-link-manager-ai'),'response_time'=>$rt,'model'=>$data['model'] ?? $model);
-        return array('success'=>true,'response'=>$text,'model'=>$data['model'] ?? $model,'response_time'=>$rt,'usage'=>$data['usage'] ?? null);
+        if (trim($text) === '') return array('success'=>false,'error'=>__('Risposta AI vuota', 'affiliate-link-manager-ai'),'error_code'=>'empty_response','error_category'=>'api','response_time'=>$rt,'model'=>$data['model'] ?? $model,'max_output_tokens'=>$max_output_tokens,'response_format_used'=>$response_format_used);
+        return array('success'=>true,'response'=>$text,'model'=>$data['model'] ?? $model,'response_time'=>$rt,'usage'=>$data['usage'] ?? null,'max_output_tokens'=>$max_output_tokens,'response_format_used'=>$response_format_used);
     }
 }
