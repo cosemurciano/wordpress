@@ -1,3 +1,9 @@
+## 2.25.19 — PR 8.19 Preserve Affiliate Filter Metadata in Session Results
+- `ALMA_AI_Content_Agent_Selection_Session::normalize_result()` ora preserva nei risultati di sessione i metadati affiliate utili alla UI: `link_types`, `provenance`, `provider`, `source`.
+- `link_types` viene normalizzato in forma stabile (array di stringhe sanificate), con supporto input array/CSV/stringa singola, rimozione vuoti e deduplica.
+- I filtri **Tipologie Link** e **Fonte / Source / Provider** nella card **2. Risultati ricerca** si popolano correttamente dopo una nuova ricerca affiliate.
+- Nessuna modifica a scoring, indice affiliate (batch/sync), OpenAI Service, Draft Builder o provider/importer.
+
 ## 2.25.18 — PR 8.18 Affiliate Results Filters and Stable Idea Title
 - Aggiunti filtri UI nella card **2. Risultati ricerca** per **Tipologie Link** (`alma_link_type_filter`) e **Fonte / Source / Provider** (`alma_source_filter`), costruiti dinamicamente dai risultati presenti in sessione.
 - Filtri applicati lato rendering/sessione, prima della paginazione, senza rifare la ricerca e senza modificare `search_results` o `selected_results`.

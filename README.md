@@ -141,20 +141,18 @@
 
 # Affiliate Link Manager AI
 
-Versione 2.25.18
+Versione 2.25.19
 
 
 
 
 
-## Novità 2.25.18 — PR 8.18 Affiliate Results Filters and Stable Idea Title
+## Novità 2.25.19 — PR 8.19 Preserve Affiliate Filter Metadata in Session Results
 
-- La ricerca nella tab **Idee contenuto** resta affiliate-only (`search_scope=affiliate_links_only`) e mostra risultati `affiliate_link` fino a 200 elementi paginati.
-- Aggiunti filtri in card **2. Risultati ricerca** per **Tipologie Link** e **Fonte / Source / Provider** con applicazione lato rendering/sessione.
-- I filtri sono applicati prima della paginazione e mantenuti nei link pagina; **Reset filtri** rimuove solo i parametri filtro senza effetti distruttivi.
-- Stato vuoto filtrato dedicato quando i risultati esistono ma sono esclusi dai filtri selezionati.
-- Il **Titolo idea** è ora indipendente dal testo in **Cerca contenuti**: la query aggiorna solo `last_query` e non sovrascrive più il titolo di idee esistenti.
-- Nessuna modifica a indice affiliate, batch/sync/scoring, OpenAI Service o Draft Builder.
+- `ALMA_AI_Content_Agent_Selection_Session::normalize_result()` preserva ora nei risultati in sessione i metadati affiliate necessari ai filtri UI: `link_types`, `provenance`, `provider`, `source`.
+- `link_types` viene normalizzato in formato stabile (array di stringhe sanificate) con supporto input array, CSV o stringa singola, deduplica e rimozione valori vuoti.
+- I filtri della card **2. Risultati ricerca** (**Tipologie Link** e **Fonte / Source / Provider**) si popolano correttamente dopo una nuova ricerca affiliate e continuano a funzionare con paginazione/reset.
+- Nessuna modifica a scoring, indice affiliate (batch/sync), OpenAI Service, Draft Builder, provider/importer, shortcode o tracking.
 
 ## Novità 2.25.15 — PR 8.15 Ideas Active Box UI and Affiliate Index Action Descriptions
 
