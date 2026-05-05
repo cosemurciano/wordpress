@@ -1,3 +1,11 @@
+## 2.25.7 — PR 8.7 Affiliate Index Progress Count Fix and Pending Work Semantics
+- Fix doppio conteggio pending nella Dashboard: rimosso l'errore semantico `missing_index + needs_update` che duplicava i mancanti.
+- Aggiunto conteggio `stale_index_records` per separare i Link affiliati mancanti dall'indice da quelli da aggiornare dopo modifica.
+- `needs_update` mantenuto per backward compatibility come totale operativo (`missing_index + stale_index_records`).
+- Barra progresso resa coerente: “Da lavorare totale” non può superare “Candidabili”; percentuale clampata tra 0 e 100.
+- Stato operativo guidato, prossima azione consigliata e CTA primaria riallineati ai nuovi conteggi (batch prima, sync incrementale dopo).
+- Nessuna modifica a ricerca/scoring/batch cursor-based, OpenAI, Draft Builder, provider/importer, shortcode o tracking.
+
 ## 2.25.6 — PR 8.6 Affiliate Index Guided Batch Sync UX and Progress Feedback
 - Aggiunta barra progresso indicizzazione nella card “Indice Link affiliati” con percentuale, candidabili e pending calcolati dai dati già disponibili in `get_index_stats()`.
 - Aggiunto stato operativo guidato e blocco “Prossima azione consigliata” con CTA primaria dinamica per primo batch, continuazione batch e sync incrementale.

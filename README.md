@@ -1,3 +1,11 @@
+## 2.25.7 — PR 8.7 Affiliate Index Progress Count Fix and Pending Work Semantics
+- Corretto il calcolo dei pending nella card “Indice Link affiliati”: eliminato il doppio conteggio (`missing_index + needs_update`) che poteva superare i candidabili.
+- Introdotto `stale_index_records` nei dati indice per distinguere chiaramente i record mancanti dai record presenti ma obsoleti.
+- `needs_update` mantenuto retrocompatibile come totale operativo (`missing_index + stale_index_records`) senza alterare batch cursor-based, ricerca o scoring.
+- Barra progresso resa affidabile con clamp di “Da lavorare totale” entro i candidabili e percentuale sempre tra 0 e 100.
+- Stato operativo, prossima azione consigliata e CTA primaria aggiornati per privilegiare primo batch quando mancano record e sync incrementale solo per obsolescenza/anomalie.
+- Nessuna modifica a ricerca/scoring/batch, OpenAI, Draft Builder, provider/importer, shortcode o tracking.
+
 ## 2.25.6 — PR 8.6 Affiliate Index Guided Batch Sync UX and Progress Feedback
 - Card “Indice Link affiliati” aggiornata con barra di progresso in stile admin (percentuale, candidabili, elementi da lavorare) calcolata da `get_index_stats()` evitando query pesanti aggiuntive.
 - Nuovo stato operativo guidato e sezione “Prossima azione consigliata” con CTA primaria dinamica (primo batch/continua batch/sync incrementale/indice aggiornato).
@@ -135,7 +143,7 @@
 
 # Affiliate Link Manager AI
 
-Versione 2.25.6
+Versione 2.25.7
 
 
 ## Novità 2.12.1 — Pagina Importa contenuti + fix import
