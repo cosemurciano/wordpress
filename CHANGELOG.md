@@ -1,9 +1,11 @@
-## 2.25.17 — PR 8.17 Affiliate-Only Result Cleanup, 200 Result Cap and Score Highlight
-- Fix P1: dopo nuova ricerca con `search_scope=affiliate_links_only`, la card **2. Risultati ricerca** non reintroduce più risultati legacy non affiliate tramite backfill da `selected_results`; la colonna **3. Sessione contenuto** resta invariata.
-- Aumentato il limite finale risultati per gruppo affiliate da 30 a 200 mantenendo paginazione UI invariata.
-- Rafforzato il recupero candidati affiliate (indice + fallback) per supportare fino a 200 risultati finali con limiti ragionevoli.
-- Evidenziato il valore numerico di Score in UI (blu + grassetto) in card risultati e sessione contenuto.
-- Nessuna modifica a indice affiliate (batch/sync/scoring), OpenAI Service o Draft Builder.
+## 2.25.18 — PR 8.18 Affiliate Results Filters and Stable Idea Title
+- Aggiunti filtri UI nella card **2. Risultati ricerca** per **Tipologie Link** (`alma_link_type_filter`) e **Fonte / Source / Provider** (`alma_source_filter`), costruiti dinamicamente dai risultati presenti in sessione.
+- Filtri applicati lato rendering/sessione, prima della paginazione, senza rifare la ricerca e senza modificare `search_results` o `selected_results`.
+- Introdotti i comandi **Applica filtri** e **Reset filtri** (GET), con reset non distruttivo che non cancella risultati/selezioni e non chiama OpenAI.
+- Stato vuoto filtrato dedicato: “Nessun Link affiliato corrisponde ai filtri selezionati.”
+- Payload risultati affiliate esteso con metadati stabili per UI (`link_types`, `provenance`/`provider`/`source`) da indice/fallback esistenti.
+- Fix bug titolo idea: `content_search_query` aggiorna solo `last_query`; le nuove ricerche non sovrascrivono più il titolo dell’idea esistente.
+- Nessuna modifica a indice affiliate (batch/sync/scoring), OpenAI Service, Draft Builder, provider/importer o shortcode/tracking.
 
 ## 2.25.16 — PR 8.16 Restrict Ideas Search to Affiliate Links
 - La ricerca Idee usa ora uno scope esplicito `affiliate_links_only` e interroga solo `search_affiliate_links()`.

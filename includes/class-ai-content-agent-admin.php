@@ -90,7 +90,7 @@ class ALMA_AI_Content_Agent_Admin {
                 if ($active_idea_id > 0) { update_user_meta(get_current_user_id(), '_alma_active_idea_id', $active_idea_id); }
             }
             if ($active_idea_id > 0) {
-                ALMA_AI_Content_Agent_Ideas::save_from_request($active_idea_id, array('idea_title'=>sanitize_text_field($payload['content_search_query'] ?: 'Nuova idea'),'idea_status'=>'bozza','instruction_profile_id'=>$profile_id,'openai_prompt'=>$payload['openai_prompt']));
+                ALMA_AI_Content_Agent_Ideas::save_from_request($active_idea_id, array('idea_status'=>'bozza','instruction_profile_id'=>$profile_id,'openai_prompt'=>$payload['openai_prompt']));
                 update_post_meta($active_idea_id, ALMA_AI_Content_Agent_Ideas::META_LAST_QUERY, array('content_search_query'=>$payload['content_search_query']));
                 ALMA_AI_Content_Agent_Selection_Session::persist_to_idea($active_idea_id);
             }
@@ -449,19 +449,63 @@ class ALMA_AI_Content_Agent_Admin {
 
         $all_rows = array();
         foreach($labels as $k=>$label){ foreach((array)($results_groups[$k]??array()) as $r){ $all_rows[] = array('group'=>$k,'label'=>$label,'row'=>$r); } }
+
+        $link_type_options = array();
+        $source_options = array();
+        foreach ($all_rows as $item) {
+            $row = (array)($item['row'] ?? array());
+            $types_raw = $row['link_types'] ?? array();
+            $types = is_array($types_raw) ? $types_raw : array_filter(array_map('trim', explode(',', (string)$types_raw)));
+            foreach ($types as $type_name) {
+                $safe_type = sanitize_text_field((string)$type_name);
+                if ($safe_type !== '') { $link_type_options[$safe_type] = $safe_type; }
+            }
+            $source_value = sanitize_text_field((string)($row['provenance'] ?? ($row['provider'] ?? ($row['source'] ?? ''))));
+            if ($source_value !== '') { $source_options[$source_value] = $source_value; }
+        }
+        natcasesort($link_type_options);
+        natcasesort($source_options);
+
+        $active_link_type_filter = sanitize_text_field((string)($_GET['alma_link_type_filter'] ?? 'all'));
+        $active_source_filter = sanitize_text_field((string)($_GET['alma_source_filter'] ?? 'all'));
+        if ($active_link_type_filter !== 'all' && !isset($link_type_options[$active_link_type_filter])) { $active_link_type_filter = 'all'; }
+        if ($active_source_filter !== 'all' && !isset($source_options[$active_source_filter])) { $active_source_filter = 'all'; }
+
+        $filtered_rows = array();
+        foreach ($all_rows as $item) {
+            $row = (array)($item['row'] ?? array());
+            $types_raw = $row['link_types'] ?? array();
+            $types = is_array($types_raw) ? $types_raw : array_filter(array_map('trim', explode(',', (string)$types_raw)));
+            $types = array_values(array_filter(array_map('sanitize_text_field', $types)));
+            $row_source = sanitize_text_field((string)($row['provenance'] ?? ($row['provider'] ?? ($row['source'] ?? ''))));
+
+            $matches_link_type = ($active_link_type_filter === 'all') ? true : in_array($active_link_type_filter, $types, true);
+            $matches_source = ($active_source_filter === 'all') ? true : ($row_source !== '' && $row_source === $active_source_filter);
+            if ($matches_link_type && $matches_source) { $filtered_rows[] = $item; }
+        }
+
         $per_page = 10;
-        $total_results = count($all_rows);
+        $total_results = count($filtered_rows);
         $total_pages = max(1, (int)ceil($total_results / $per_page));
         $requested_page = absint($_GET['alma_results_page'] ?? 1);
         $current_page = max(1, min($requested_page, $total_pages));
-        $paged_rows = array_slice($all_rows, ($current_page-1)*$per_page, $per_page);
+        $paged_rows = array_slice($filtered_rows, ($current_page-1)*$per_page, $per_page);
 
-        echo '<div class="alma-ideas-card"><div class="alma-results-header"><h3>2. Risultati ricerca</h3></div><p class="description">In questa fase la ricerca mostra solo Link affiliati indicizzati.</p>'; 
+        echo '<div class="alma-ideas-card"><div class="alma-results-header"><h3>2. Risultati ricerca</h3></div><p class="description">In questa fase la ricerca mostra solo Link affiliati indicizzati.</p>';
+        echo '<form class="alma-results-filters" method="get" action="'.esc_url(admin_url('edit.php')).'">';
+        echo '<input type="hidden" name="post_type" value="affiliate_link"><input type="hidden" name="page" value="alma-ai-content-agent"><input type="hidden" name="tab" value="idee"><input type="hidden" name="alma_results_page" value="1">';
+        echo '<div class="alma-results-filter-grid"><p><label for="alma-link-type-filter"><strong>Tipologie Link</strong></label><select id="alma-link-type-filter" name="alma_link_type_filter" class="widefat"><option value="all">Tutte le tipologie</option>';
+        foreach ($link_type_options as $option_value => $option_label) { echo '<option value="'.esc_attr($option_value).'" '.selected($active_link_type_filter, $option_value, false).'>'.esc_html($option_label).'</option>'; }
+        echo '</select></p><p><label for="alma-source-filter"><strong>Fonte / Source / Provider</strong></label><select id="alma-source-filter" name="alma_source_filter" class="widefat"><option value="all">Tutte le fonti</option>';
+        foreach ($source_options as $option_value => $option_label) { echo '<option value="'.esc_attr($option_value).'" '.selected($active_source_filter, $option_value, false).'>'.esc_html($option_label).'</option>'; }
+        echo '</select></p></div>';
+        $reset_url = add_query_arg(array('post_type'=>'affiliate_link','page'=>'alma-ai-content-agent','tab'=>'idee','alma_results_page'=>1), admin_url('edit.php'));
+        echo '<p class="alma-results-filter-actions"><button class="button button-primary" type="submit">Applica filtri</button> <a class="button" href="'.esc_url($reset_url).'">Reset filtri</a></p></form>';
 
         echo '<div class="tablenav top"><div class="tablenav-pages">';
         echo '<span class="displaying-num">'.(int)$total_results.' elementi</span>';
         echo '<span class="pagination-links">';
-        $base = admin_url('edit.php?post_type=affiliate_link&page=alma-ai-content-agent&tab=idee');
+        $base = add_query_arg(array('post_type'=>'affiliate_link','page'=>'alma-ai-content-agent','tab'=>'idee','alma_link_type_filter'=>$active_link_type_filter,'alma_source_filter'=>$active_source_filter), admin_url('edit.php'));
         $is_first = ($current_page <= 1);
         $is_last = ($current_page >= $total_pages);
         if ($is_first) { echo '<span class="tablenav-pages-navspan button disabled" aria-hidden="true">&laquo;</span><span class="tablenav-pages-navspan button disabled" aria-hidden="true">&lsaquo;</span>'; }
@@ -479,7 +523,7 @@ class ALMA_AI_Content_Agent_Admin {
 
         echo '<form id="alma-bulk-add-form" method="post" action="'.esc_url(admin_url('admin-post.php')).'">'.wp_nonce_field('alma_ai_agent_action','_wpnonce',true,false).'<input type="hidden" name="action" value="alma_ai_agent_action"><input type="hidden" name="do" value="add_selected_to_idea"></form>';
         if (empty($paged_rows)) {
-            echo '<p class="description">Nessun risultato disponibile. Esegui una ricerca per popolare questa sezione.</p>';
+            if (!empty($all_rows) && $total_results === 0) { echo '<p class="description">Nessun Link affiliato corrisponde ai filtri selezionati.</p>'; } else { echo '<p class="description">Nessun risultato disponibile. Esegui una ricerca per popolare questa sezione.</p>'; }
         }
         foreach($paged_rows as $item){ $r=(array)$item['row']; $rk=sanitize_text_field($r['result_key'] ?? ''); if($rk===''){continue;} $in=!empty($selected_map[$rk]); $usage=(int)($usage_counts[$rk] ?? 0); echo '<div class="alma-result-item'.($in?' is-already-added':'').'"><p><strong>'.esc_html($r['title']).'</strong> <span class="alma-count-badge">'.esc_html($item['label']).'</span>'; if($in){echo ' <span class="alma-added-badge">Già nell’idea</span>';} echo ' <span class="alma-usage-badge">Utilizzato in bozze: '.$usage.'</span></p><label><input type="checkbox" name="selected_result_keys[]" value="'.esc_attr($rk).'" form="alma-bulk-add-form" '.disabled($in,true,false).'> Seleziona</label><p class="alma-excerpt">'.esc_html(wp_trim_words((string)($r['excerpt'] ?? ''),20,'…')).'</p><p class="description">Score: <span class="alma-score-value">'.(int)($r['score'] ?? 0).'</span> · '.esc_html($r['reason'] ?? '').'</p>'; if($in){ echo '<button class="button button-small" type="button" disabled>Già aggiunto</button>'; } else { echo '<form method="post" action="'.esc_url(admin_url('admin-post.php')).'">'.wp_nonce_field('alma_ai_agent_action','_wpnonce',true,false).'<input type="hidden" name="action" value="alma_ai_agent_action"><input type="hidden" name="do" value="add_result_to_idea"><input type="hidden" name="result_key" value="'.esc_attr($rk).'"><button class="button button-small">Aggiungi all’idea</button></form>'; } echo '</div>'; }
         echo '<p><button class="button button-primary" type="submit" form="alma-bulk-add-form">Aggiungi selezionati all’idea</button></p></div></main>';
