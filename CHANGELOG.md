@@ -1,4 +1,4 @@
-## 2.25.20 — PR 8.20 Ideas OpenAI Prompt Persistence and Safe JSON Download
+## 2.25.21 — PR 8.21 Safe AI Payload JSON Builder and Download Hardening
 - `ALMA_AI_Content_Agent_Selection_Session::normalize_result()` ora preserva nei risultati di sessione i metadati affiliate utili alla UI: `link_types`, `provenance`, `provider`, `source`.
 - `link_types` viene normalizzato in forma stabile (array di stringhe sanificate), con supporto input array/CSV/stringa singola, rimozione vuoti e deduplica.
 - I filtri **Tipologie Link** e **Fonte / Source / Provider** nella card **2. Risultati ricerca** si popolano correttamente dopo una nuova ricerca affiliate.
