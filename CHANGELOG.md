@@ -1,3 +1,11 @@
+## 2.25.10 — PR 8.10 Affiliate Index Pending Query Consistency and Pre-Test Hardening
+- Allineata in modo rigoroso la semantica pending tra Dashboard e `sync_incremental()`: i candidabili da lavorare restano `missing_index + stale_index_records + non_active_candidate_records`.
+- Hardening SQL su `non_active_candidate_records`: i record non active includono ora in modo esplicito status diverso da `active`, vuoto (`''`) o `NULL` (inclusi valori anomali/non previsti).
+- `sync_incremental()` aggiornato con categorie pending mutualmente esclusive e coerenti: mancanti, obsoleti solo se `active`, non active con status nullo/vuoto/anomalo.
+- Migliorato messaggio admin post-sync: se un batch processa 0 record ma restano pending, non comunica “tutto aggiornato” e suggerisce verifica indice + nuovo sync/batch.
+- Aggiunta nota operativa pre-test in README: primo avvio guidato a batch progressivi e uso di “Svuota indice e ricomincia” solo in caso di diagnostica incoerente.
+- Nessuna modifica a ricerca/scoring, OpenAI, Draft Builder, provider/importer o batch completo cursor-based.
+
 ## 2.25.9 — PR 8.9 Affiliate Incremental Sync Covers Non-Active Candidates
 - Allineata `sync_incremental()` alla semantica pending della Dashboard: ora include record mancanti, record obsoleti e candidabili non attivi.
 - La query incrementale seleziona solo candidabili (`affiliate_link` pubblicati con URL affiliato valorizzato) con `DISTINCT`, `EXISTS`, `LIMIT` e condizione `i.status <> active`.

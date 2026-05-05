@@ -42,7 +42,14 @@ class ALMA_AI_Content_Agent_Admin {
             $result = array('success' => true, 'message' => sprintf('Batch indicizzazione eseguito: processati %d, indicizzati %d. %s', (int)$batch['processed'], (int)$batch['indexed'], !empty($batch['done']) ? 'Indicizzazione completata.' : 'Continua con il prossimo batch per completare l’indice.'));
         } elseif ($do === 'sync_affiliate_links_incremental') {
             $sync = ALMA_AI_Content_Agent_Affiliate_Index::sync_incremental();
-            $result = array('success' => true, 'message' => sprintf('Sync incrementale completata: processati %d, aggiornati %d. %s', (int)$sync['processed'], (int)$sync['indexed'], (int)$sync['processed'] > 0 ? 'Indice tecnico aggiornato su record mancanti, obsoleti e candidabili non attivi rilevati.' : 'Nessun record candidabile da aggiornare in questo batch.'));
+            $stats_after_sync = ALMA_AI_Content_Agent_Affiliate_Index::get_index_stats();
+            $pending_after_sync = max(0, (int)($stats_after_sync['needs_update'] ?? 0));
+            $sync_tail_message = (int)$sync['processed'] > 0
+                ? 'Indice tecnico aggiornato su record mancanti, obsoleti e candidabili non attivi rilevati.'
+                : ($pending_after_sync > 0
+                    ? 'Nessun record processato in questo batch: restano candidabili da lavorare. Verifica indice tecnico e ripeti sync incrementale o batch indicizzazione se presenti mancanti.'
+                    : 'Nessun record candidabile da aggiornare in questo batch.');
+            $result = array('success' => true, 'message' => sprintf('Sync incrementale completata: processati %d, aggiornati %d. %s', (int)$sync['processed'], (int)$sync['indexed'], $sync_tail_message));
         } elseif ($do === 'reset_affiliate_index_state') {
             ALMA_AI_Content_Agent_Affiliate_Index::reset_batch_state();
             $result = array('success' => true, 'message' => 'Stato batch resettato: nessun Link affiliato è stato eliminato e l’indice tecnico resta disponibile.');
