@@ -132,7 +132,13 @@ class ALMA_AI_Content_Agent_Admin {
         } elseif ($do === 'save_content_idea') {
             $idea_id = absint($_POST['idea_id'] ?? 0);
             $ok = ALMA_AI_Content_Agent_Ideas::save_from_request($idea_id, $_POST);
-            if ($ok) { ALMA_AI_Content_Agent_Selection_Session::persist_to_idea($idea_id); }
+            if ($ok) {
+                ALMA_AI_Content_Agent_Selection_Session::persist_to_idea($idea_id);
+                $updated_idea = ALMA_AI_Content_Agent_Ideas::get($idea_id);
+                if (!empty($updated_idea)) {
+                    ALMA_AI_Content_Agent_Selection_Session::load_from_idea($updated_idea);
+                }
+            }
             $result = array('success' => $ok, 'message' => $ok ? 'Idea salvata.' : 'Errore salvataggio idea.');
         } elseif ($do === 'delete_content_idea') {
             $idea_id = absint($_POST['idea_id'] ?? 0); $ok = $idea_id > 0 ? (bool)wp_delete_post($idea_id, true) : false;
