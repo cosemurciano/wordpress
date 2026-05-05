@@ -250,9 +250,35 @@ class ALMA_AI_Content_Agent_Selection_Session {
             'score' => (int)($row['score'] ?? 0),
             'reason' => sanitize_text_field($row['reason'] ?? ''),
             'admin_url' => esc_url_raw($row['admin_url'] ?? ($row['edit_url'] ?? '')),
+            'link_types' => self::normalize_link_types($row['link_types'] ?? array()),
+            'provenance' => sanitize_text_field((string)($row['provenance'] ?? '')),
+            'provider' => sanitize_text_field((string)($row['provider'] ?? '')),
+            'source' => sanitize_text_field((string)($row['source'] ?? '')),
             'selectable' => true,
             'selected' => !empty($row['preselected']),
         );
+    }
+
+    private static function normalize_link_types($raw_link_types) {
+        $values = array();
+        if (is_array($raw_link_types)) {
+            $values = $raw_link_types;
+        } elseif (is_string($raw_link_types)) {
+            $raw = trim($raw_link_types);
+            if ($raw !== '') {
+                $values = strpos($raw, ',') !== false ? explode(',', $raw) : array($raw);
+            }
+        }
+
+        $normalized = array();
+        foreach ($values as $value) {
+            if (!is_scalar($value)) { continue; }
+            $clean = sanitize_text_field((string)$value);
+            if ($clean === '') { continue; }
+            $normalized[$clean] = $clean;
+        }
+
+        return array_values($normalized);
     }
 
     public static function grouped_results($selected_only = false) {
