@@ -141,18 +141,18 @@
 
 # Affiliate Link Manager AI
 
-Versione 2.25.14
+Versione 2.25.15
 
 
 
 
-## Novità 2.25.14 — PR 8.14 Ideas Instruction Profile Save Order and Session Persistence Fix
+## Novità 2.25.15 — PR 8.15 Ideas Active Box UI and Affiliate Index Action Descriptions
 
-- Il **Profilo Istruzioni AI** ora resta persistente sull'Idea contenuto anche dopo **Salva idea**: la persistenza sessione non sovrascrive più il meta idea con valori stale.
-- Hardening su update parziali: `openai_prompt` viene aggiornato solo quando presente nel payload, quindi non viene più azzerato implicitamente.
-- Nel flusso tab Idee la sessione viene riallineata all'idea aggiornata dopo il salvataggio, mantenendo coerenza tra select UI, hidden e metadati persistenti.
-- Il profilo istruzioni resta destinato ai flussi AI/OpenAI (brief/bozza), non alla ricerca dei Link affiliati.
-- Nessuna modifica a indice Link affiliati, batch/sync affiliate o OpenAI Service.
+- Box **Idea attiva** riorganizzato in sezioni leggibili: riepilogo idea attiva, lista **Idee create** con record separati e sezione **Dettagli idea**.
+- Ogni record idea mostra titolo, ultima modifica, badge **Attiva** e pulsante **Carica** mantenendo invariati form/action esistenti.
+- Card Dashboard **Indice Link affiliati** con descrizioni brevi per azioni batch/sync e manutenzione avanzata (reset/svuota indice).
+- CSS admin migliorato con stili scoped sotto `.alma-ai-agent-admin` per sezioni, metadati, badge, record e descrizioni azioni.
+- Nessuna modifica funzionale a indice affiliate, OpenAI Service, Draft Builder, provider/importer, shortcode o tracking.
 
 ## Novità 2.25.13 — PR 8.13 Ideas Instruction Profile Single Select Form Submission Fix
 
