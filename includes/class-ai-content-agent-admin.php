@@ -63,7 +63,22 @@ class ALMA_AI_Content_Agent_Admin {
                 $result = array('success' => false, 'message' => 'Errore durante lo svuotamento dell\'indice tecnico Link affiliati.');
             }
         } elseif ($do === 'search_knowledge_base' || $do === 'add_new_search') {
-            $profile_id = absint($_POST['instruction_profile_id'] ?? 0);
+            $active_idea_id = absint(get_user_meta(get_current_user_id(), '_alma_active_idea_id', true));
+            $active_idea = $active_idea_id > 0 ? ALMA_AI_Content_Agent_Ideas::get($active_idea_id) : array();
+            $current_profile_id = absint($active_idea['instruction_profile_id'] ?? ($active_idea['profile_id'] ?? 0));
+            $profile_id = $current_profile_id;
+            if (array_key_exists('instruction_profile_id', $_POST)) {
+                $raw_profile_id = sanitize_text_field((string) $_POST['instruction_profile_id']);
+                if ($raw_profile_id === '0' || $raw_profile_id === '') {
+                    $profile_id = 0;
+                } else {
+                    $candidate_profile_id = absint($raw_profile_id);
+                    $candidate_profile = $candidate_profile_id > 0 ? ALMA_AI_Content_Agent_Instructions_Manager::get_profile($candidate_profile_id) : array();
+                    if (!empty($candidate_profile['id'])) {
+                        $profile_id = (int) $candidate_profile['id'];
+                    }
+                }
+            }
             $profile = $profile_id ? ALMA_AI_Content_Agent_Instructions_Manager::get_profile($profile_id) : array();
             $payload = array('max_ideas'=>absint($_POST['max_ideas'] ?? 1),'content_search_query'=>sanitize_text_field($_POST['content_search_query'] ?? ($_POST['search_terms'] ?? '')),'search_terms'=>sanitize_text_field($_POST['search_terms'] ?? ($_POST['content_search_query'] ?? '')),'theme'=>sanitize_text_field($_POST['theme'] ?? ''),'destination'=>sanitize_text_field($_POST['destination'] ?? ''),'temporary_instructions'=>sanitize_textarea_field($_POST['temporary_instructions'] ?? ''),'openai_prompt'=>sanitize_textarea_field($_POST['openai_prompt'] ?? $_POST['temporary_instructions'] ?? ''),'instruction_profile_id'=>$profile_id,'instruction_profile_name'=>sanitize_text_field($profile['profile_name'] ?? ''),'instruction_snapshot_hash'=>sanitize_text_field($profile ? ALMA_AI_Content_Agent_Instructions_Manager::snapshot_hash(wp_json_encode($profile)) : ''));
             $search = ALMA_AI_Content_Agent_Knowledge_Search::search($payload);
@@ -401,7 +416,7 @@ class ALMA_AI_Content_Agent_Admin {
         if (!empty($active_idea['draft_post_id']) && get_post((int)$active_idea['draft_post_id'])) { echo '<a class="button" href="'.esc_url(get_edit_post_link((int)$active_idea['draft_post_id'],'raw')).'">Apri bozza</a>'; }
         echo '<div class="alma-actions-inline">';
         self::action_form('new_content_idea','Crea nuova idea');
-        if($active_idea_id){ echo '<form id="alma-save-idea-form" method="post" action="'.esc_url(admin_url('admin-post.php')).'">'.wp_nonce_field('alma_ai_agent_action','_wpnonce',true,false).'<input type="hidden" name="action" value="alma_ai_agent_action"><input type="hidden" name="do" value="save_content_idea"><input type="hidden" name="idea_id" value="'.(int)$active_idea_id.'"><input type="hidden" name="idea_status" value="bozza"><input type="hidden" name="openai_prompt" value="'.esc_attr($active_idea['prompt']??'').'"><input type="hidden" name="instruction_profile_id" value="'.(int)$selected_profile_id.'"><button class="button">Salva idea</button></form>'; }
+        if($active_idea_id){ echo '<form id="alma-save-idea-form" method="post" action="'.esc_url(admin_url('admin-post.php')).'">'.wp_nonce_field('alma_ai_agent_action','_wpnonce',true,false).'<input type="hidden" name="action" value="alma_ai_agent_action"><input type="hidden" name="do" value="save_content_idea"><input type="hidden" name="idea_id" value="'.(int)$active_idea_id.'"><input type="hidden" name="idea_status" value="bozza"><input type="hidden" name="openai_prompt" value="'.esc_attr($active_idea['prompt']??'').'"><input type="hidden" id="alma-save-idea-instruction-profile-id" name="instruction_profile_id" value="'.(int)$selected_profile_id.'"><button class="button">Salva idea</button></form>'; }
         if($active_idea_id){ echo '<form method="post" action="'.esc_url(admin_url('admin-post.php')).'">'.wp_nonce_field('alma_ai_agent_action','_wpnonce',true,false).'<input type="hidden" name="action" value="alma_ai_agent_action"><input type="hidden" name="do" value="delete_content_idea"><input type="hidden" name="idea_id" value="'.(int)$active_idea_id.'"><button class="button">Elimina</button></form>'; }
         self::action_form('download_ai_payload_json','Scarica JSON payload AI');
         self::action_form('create_draft_from_selection','Crea Bozza con OpenAI');
@@ -417,7 +432,7 @@ class ALMA_AI_Content_Agent_Admin {
         else { echo '<ul class="alma-ideas-list">'; foreach($ideas as $idea_post){ echo '<li><strong>'.esc_html($idea_post->post_title).'</strong><br><span class="description">'.esc_html($idea_post->post_modified).'</span> '.(((int)$idea_post->ID===(int)$active_idea_id)?'<span class="alma-added-badge">Attiva</span>':'').'<form method="post" action="'.esc_url(admin_url('admin-post.php')).'">'.wp_nonce_field('alma_ai_agent_action','_wpnonce',true,false).'<input type="hidden" name="action" value="alma_ai_agent_action"><input type="hidden" name="do" value="load_content_idea"><input type="hidden" name="idea_id" value="'.(int)$idea_post->ID.'"><button class="button button-small">Carica</button></form></li>'; } echo '</ul>'; }
         echo '<ul><li>Contenuti aggiunti: '.(int)($summary['selected_total'] ?? 0).'</li><li>Profilo istruzioni AI: '.(int)($active_idea['profile_id'] ?? 0).'</li><li>Prompt OpenAI: '.(!empty($active_idea['prompt']) ? 'Presente' : 'Assente').'</li></ul></div></aside>';
 
-        echo '<main class="alma-ideas-col alma-ideas-col-main"><div class="alma-ideas-card"><h3>1. Cerca contenuti</h3><form method="post" action="'.esc_url(admin_url('admin-post.php')).'">'.wp_nonce_field('alma_ai_agent_action','_wpnonce',true,false).'<input type="hidden" name="action" value="alma_ai_agent_action"><input type="hidden" name="do" value="search_knowledge_base"><input type="hidden" name="idea_id" value="'.(int)$active_idea_id.'"><p><input class="widefat" type="text" name="content_search_query" placeholder="Cerca contenuti" value="'.esc_attr($session['last_query']['content_search_query'] ?? '').'" required></p><p><label for="alma-idea-instruction-profile">Profilo Istruzioni AI</label><select id="alma-idea-instruction-profile" class="widefat" name="instruction_profile_id" form="alma-save-idea-form"><option value="0">Nessun profilo</option>';
+        echo '<main class="alma-ideas-col alma-ideas-col-main"><div class="alma-ideas-card"><h3>1. Cerca contenuti</h3><form method="post" action="'.esc_url(admin_url('admin-post.php')).'">'.wp_nonce_field('alma_ai_agent_action','_wpnonce',true,false).'<input type="hidden" name="action" value="alma_ai_agent_action"><input type="hidden" name="do" value="search_knowledge_base"><input type="hidden" name="idea_id" value="'.(int)$active_idea_id.'"><p><input class="widefat" type="text" name="content_search_query" placeholder="Cerca contenuti" value="'.esc_attr($session['last_query']['content_search_query'] ?? '').'" required></p><p><label for="alma-idea-instruction-profile">Profilo Istruzioni AI</label><select id="alma-idea-instruction-profile" class="widefat" name="instruction_profile_id"><option value="0">Nessun profilo</option>';
         foreach($profiles as $p){ $sel=selected($selected_profile_id,(int)$p['id'],false); echo '<option value="'.(int)$p['id'].'" '.$sel.'>'.esc_html($p['profile_name']).'</option>'; }
         echo '</select></p><p><label>Prompt per OpenAI</label><textarea class="widefat" rows="4" name="openai_prompt">'.esc_textarea($active_idea['prompt'] ?? ($session['openai_prompt'] ?? '')).'</textarea><span class="description">Questo prompt verrà inviato a OpenAI insieme ai contenuti raccolti e guiderà cosa scrivere nella bozza.</span></p><p><button class="button button-primary">Cerca contenuti</button></p></form></div>';
 
