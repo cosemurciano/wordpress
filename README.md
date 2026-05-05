@@ -141,10 +141,19 @@
 
 # Affiliate Link Manager AI
 
-Versione 2.25.15
+Versione 2.25.16
 
 
 
+
+
+## Novità 2.25.16 — PR 8.16 Restrict Ideas Search to Affiliate Links
+
+- La ricerca nella tab **Idee contenuto** (card **2. Risultati ricerca**) usa ora esplicitamente `search_scope=affiliate_links_only` e mostra solo risultati `affiliate_link`.
+- Esclusi temporaneamente dalla ricerca Idee: Post, Pagine, Documenti TXT, Fonti online AI, Media e risultati editoriali Knowledge Base.
+- Preservato il fallback: se l’indice dedicato non restituisce risultati, la ricerca usa WordPress solo su `post_type=affiliate_link` pubblicati con URL affiliato valido.
+- Il **Profilo Istruzioni AI** resta destinato ai flussi AI/OpenAI e bozza; non modifica la ricerca affiliate-only in questa fase.
+- Nessuna modifica a indice affiliate, batch/sync, scoring, OpenAI Service o Draft Builder.
 
 ## Novità 2.25.15 — PR 8.15 Ideas Active Box UI and Affiliate Index Action Descriptions
 

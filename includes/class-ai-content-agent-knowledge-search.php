@@ -8,13 +8,19 @@ class ALMA_AI_Content_Agent_Knowledge_Search {
     public static function search($input = array()) {
         $query = self::normalize_input($input);
         $results = array();
+        $search_scope = sanitize_key((string)($input['search_scope'] ?? ''));
 
-        $affiliate_results = self::search_affiliate_links($query);
-        $results = array_merge($results, $affiliate_results);
-        $results = array_merge($results, self::search_wordpress($query));
-        $results = array_merge($results, self::search_knowledge_items($query));
-        $results = array_merge($results, self::search_sources($query));
-        $results = array_merge($results, self::search_media($query));
+        if ($search_scope === 'affiliate_links_only') {
+            $results = array_merge($results, self::search_affiliate_links($query));
+        } else {
+            $affiliate_results = self::search_affiliate_links($query);
+            $results = array_merge($results, $affiliate_results);
+            // Manteniamo attive le altre sorgenti per fasi future multi-source.
+            $results = array_merge($results, self::search_wordpress($query));
+            $results = array_merge($results, self::search_knowledge_items($query));
+            $results = array_merge($results, self::search_sources($query));
+            $results = array_merge($results, self::search_media($query));
+        }
 
         $results = self::dedupe($results);
         $grouped = self::group_and_rank($results);

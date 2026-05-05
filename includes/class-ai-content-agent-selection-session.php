@@ -78,6 +78,11 @@ class ALMA_AI_Content_Agent_Selection_Session {
 
     public static function add_search_results($payload, $search_results) {
         $session = self::get_session();
+        $search_scope = sanitize_key((string)($payload['search_scope'] ?? ''));
+        if ($search_scope === 'affiliate_links_only') {
+            // Nuova ricerca affiliate-only: sostituisce i risultati precedenti preservando la selezione corrente.
+            $session['search_results'] = array();
+        }
         $added = 0; $duplicates = 0; $found = 0;
         foreach ((array)($search_results['groups'] ?? array()) as $group => $rows) {
             foreach ((array)$rows as $row) {

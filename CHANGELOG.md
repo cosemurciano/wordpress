@@ -1,3 +1,10 @@
+## 2.25.16 — PR 8.16 Restrict Ideas Search to Affiliate Links
+- La ricerca Idee usa ora uno scope esplicito `affiliate_links_only` e interroga solo `search_affiliate_links()`.
+- Escluse temporaneamente dalla card “2. Risultati ricerca” le sorgenti Post/Pagine/TXT/Fonti online/Media e risultati Knowledge Base editoriali.
+- Preservato fallback WordPress solo su CPT `affiliate_link` pubblicati con URL affiliato valido quando l’indice dedicato è vuoto/non disponibile.
+- Nuova ricerca affiliate-only sostituisce i risultati precedenti in sessione per evitare residui legacy (es. Post) senza svuotare i contenuti già aggiunti alla colonna 3.
+- Nessuna modifica a indice affiliate, batch/sync, scoring, OpenAI Service o Draft Builder.
+
 ## 2.25.15 — PR 8.15 Ideas Active Box UI and Affiliate Index Action Descriptions
 - Migliorata la leggibilità del box **Idea attiva** nella tab Idee contenuto con sezioni distinte: riepilogo, lista idee create e dettagli idea.
 - Ogni idea creata viene mostrata come record/card separato con titolo, ultima modifica, badge **Attiva** e pulsante **Carica** invariato lato azioni.
