@@ -1,3 +1,10 @@
+## 2.25.6 — PR 8.6 Affiliate Index Guided Batch Sync UX and Progress Feedback
+- Card “Indice Link affiliati” aggiornata con barra di progresso in stile admin (percentuale, candidabili, elementi da lavorare) calcolata da `get_index_stats()` evitando query pesanti aggiuntive.
+- Nuovo stato operativo guidato e sezione “Prossima azione consigliata” con CTA primaria dinamica (primo batch/continua batch/sync incrementale/indice aggiornato).
+- Azioni tecniche separate in “Manutenzione avanzata” (reset stato batch, svuota indice e ricomincia) con warning non distruttivo mantenuto.
+- Messaggi admin post-action più chiari su avanzamento batch, completamento e sicurezza operazioni sull’indice tecnico.
+- Guida operativa rapida: verifica conteggi, avvia primo batch, continua fino a completamento, usa sync incrementale dopo il primo popolamento completo, usa svuota indice solo per ricostruzione.
+
 ## 2.25.5 — PR 8.5 Affiliate Index Diagnostics Count Accuracy
 - Corretto `missing_index` in `get_index_stats()` per evitare sovrastime dovute a righe duplicate in `postmeta` e contare correttamente i Link affiliati pubblicati con URL non vuoto e assenti dall’indice.
 - Audit dei conteggi diagnostici della card “Indice Link affiliati” con query robuste (`EXISTS` / `NOT EXISTS` / `COUNT(DISTINCT ...)`) per prevenire moltiplicazioni da meta duplicate.
@@ -128,7 +135,7 @@
 
 # Affiliate Link Manager AI
 
-Versione 2.25.5
+Versione 2.25.6
 
 
 ## Novità 2.12.1 — Pagina Importa contenuti + fix import
@@ -391,3 +398,11 @@ La tab Idee contenuto ora usa idee persistenti (CPT), layout operativo in 3 colo
 - Indicatore "Utilizzato in bozze: X" su ogni risultato.
 - Azioni finali spostate sopra il layout a 3 colonne.
 - Nessuna modifica alla logica single-call OpenAI su Crea Bozza con OpenAI.
+
+
+## Guida operativa indice Link affiliati
+- Verifica i conteggi nella card **Indice Link affiliati** (totale pubblicati, candidabili, missing/needs update).
+- Se l’indice è vuoto, avvia **Avvia primo batch**.
+- Continua con **Continua indicizzazione** finché il batch risulta completato.
+- Quando il primo popolamento è completato, usa **Sync incrementale** per allineare le modifiche successive.
+- Usa **Svuota indice e ricomincia** solo quando serve ricostruire da zero l’indice tecnico.

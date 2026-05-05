@@ -1,3 +1,10 @@
+## 2.25.6 — PR 8.6 Affiliate Index Guided Batch Sync UX and Progress Feedback
+- Aggiunta barra progresso indicizzazione nella card “Indice Link affiliati” con percentuale, candidabili e pending calcolati dai dati già disponibili in `get_index_stats()`.
+- Aggiunto stato operativo guidato e blocco “Prossima azione consigliata” con CTA primaria dinamica per primo batch, continuazione batch e sync incrementale.
+- Separata la sezione “Manutenzione avanzata” per azioni tecniche (`reset_affiliate_index_state`, `clear_affiliate_index`) mantenendo warning non distruttivo.
+- Migliorati i messaggi admin post-action per batch/sync/reset/clear con esito più esplicito e indicazioni operative successive.
+- Nessuna modifica a schema DB, query cursor-based batch, ricerca/scoring, OpenAI, Draft Builder, provider/importer, shortcode o tracking.
+
 ## 2.25.5 — PR 8.5 Affiliate Index Diagnostics Count Accuracy
 - Corretto il conteggio `missing_index` in `ALMA_AI_Content_Agent_Affiliate_Index::get_index_stats()` per contare post unici non indicizzati con URL affiliato valido, evitando sovrastime dovute a righe duplicate in `postmeta`.
 - Eseguito audit dei conteggi diagnostici sensibili ai metadati (`without_affiliate_url`, `needs_update`, `missing_index`, `active_invalid_records`) con query robuste basate su `EXISTS` / `NOT EXISTS` / `COUNT(DISTINCT ...)` per prevenire moltiplicazioni da join.

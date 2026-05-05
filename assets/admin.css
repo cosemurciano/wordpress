@@ -664,3 +664,38 @@ button:disabled {
     border-left: 4px solid #dba617;
     padding: 8px 10px;
 }
+
+.alma-ai-agent-admin .alma-affiliate-operational-state {
+    margin: 10px 0;
+    padding: 8px 10px;
+    border-left: 4px solid #2271b1;
+    background: #f6f7f7;
+}
+.alma-ai-agent-admin .alma-affiliate-progress { margin: 12px 0; }
+.alma-ai-agent-admin .alma-affiliate-progress-head {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 6px;
+}
+.alma-ai-agent-admin .alma-affiliate-progress-bar {
+    height: 12px;
+    background: #dcdcde;
+    border-radius: 999px;
+    overflow: hidden;
+}
+.alma-ai-agent-admin .alma-affiliate-progress-bar span {
+    display: block;
+    height: 100%;
+    background: #2271b1;
+}
+.alma-ai-agent-admin .alma-affiliate-next-action {
+    margin: 10px 0 12px;
+    padding: 8px 10px;
+    background: #f0f6fc;
+    border: 1px solid #c3d9ed;
+}
+.alma-ai-agent-admin .alma-affiliate-advanced-maintenance {
+    margin-top: 14px;
+    padding-top: 10px;
+    border-top: 1px dashed #c3c4c7;
+}
