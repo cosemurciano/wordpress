@@ -1,4 +1,11 @@
-## 2.25.1 — PR 8.1 Affiliate Index Batch Progression, Search Fallback and Admin Status UI
+## 2.25.2 — PR 8.2 Affiliate Index Relevance Scoring, Auto Sync Hooks and Result Diagnostics
+- Migliorato scoring `affiliate_link` con pesi per titolo, Contesto AI, tipologie, contenuto e provider; esclusi record non pubblicati/inattivi/senza URL valido.
+- Validazione URL affiliato centralizzata in `ALMA_AI_Content_Agent_Affiliate_Index::get_affiliate_url_data()` riusata da indicizzazione e fallback ricerca.
+- Aggiunte motivazioni diagnostiche leggibili nei risultati affiliate (indice e fallback), con schema uniforme risultati e ordinamento per score desc.
+- Aggiunti hook di auto-sync leggero su `save_post_affiliate_link` (con guard autosave/revision/filtro disable) e gestione coerenza stato indice su delete/trash/status tramite re-index del singolo record.
+- Estese statistiche indice con conteggio `needs_update` e visualizzazione “Da aggiornare” nella card Dashboard.
+
+## 2.25.2 — PR 8.1 Affiliate Index Batch Progression, Search Fallback and Admin Status UI
 - Nuovo indice tecnico dedicato ai soli `affiliate_link` (`{$wpdb->prefix}alma_ai_affiliate_index`) creato via Store/dbDelta.
 - Batch indice affiliate con cursore ID stabile, stato robusto e statistiche leggere per dashboard/admin.
 - Ricerca idee: i risultati `affiliate_link` arrivano prioritariamente dall’indice dedicato con fallback WordPress dedicato per i soli affiliate_link quando tabella indice assente, vuota o senza risultati.
