@@ -1,3 +1,10 @@
+## 2.25.17 — PR 8.17 Affiliate-Only Result Cleanup, 200 Result Cap and Score Highlight
+- Fix P1: dopo nuova ricerca con `search_scope=affiliate_links_only`, la card **2. Risultati ricerca** non reintroduce più risultati legacy non affiliate tramite backfill da `selected_results`; la colonna **3. Sessione contenuto** resta invariata.
+- Aumentato il limite finale risultati per gruppo affiliate da 30 a 200 mantenendo paginazione UI invariata.
+- Rafforzato il recupero candidati affiliate (indice + fallback) per supportare fino a 200 risultati finali con limiti ragionevoli.
+- Evidenziato il valore numerico di Score in UI (blu + grassetto) in card risultati e sessione contenuto.
+- Nessuna modifica a indice affiliate (batch/sync/scoring), OpenAI Service o Draft Builder.
+
 ## 2.25.16 — PR 8.16 Restrict Ideas Search to Affiliate Links
 - La ricerca Idee usa ora uno scope esplicito `affiliate_links_only` e interroga solo `search_affiliate_links()`.
 - Escluse temporaneamente dalla card “2. Risultati ricerca” le sorgenti Post/Pagine/TXT/Fonti online/Media e risultati Knowledge Base editoriali.

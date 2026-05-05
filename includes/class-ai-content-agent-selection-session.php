@@ -53,8 +53,11 @@ class ALMA_AI_Content_Agent_Selection_Session {
         $search_rows = is_array($session['search_results']) ? $session['search_results'] : (is_array($session['results'] ?? null) ? $session['results'] : array());
         $session['search_results'] = self::normalize_session_rows($search_rows, false);
         $session['selected_results'] = self::normalize_session_rows($session['selected_results'], true);
-        foreach ($session['selected_results'] as $key => $row) {
-            if (!isset($session['search_results'][$key])) { $session['search_results'][$key] = $row; }
+        $current_scope = sanitize_key((string)($session['last_query']['search_scope'] ?? ''));
+        if ($current_scope !== 'affiliate_links_only') {
+            foreach ($session['selected_results'] as $key => $row) {
+                if (!isset($session['search_results'][$key])) { $session['search_results'][$key] = $row; }
+            }
         }
         $session['query_history'] = is_array($session['query_history']) ? $session['query_history'] : array();
         $session['last_query'] = is_array($session['last_query']) ? $session['last_query'] : array();
@@ -111,7 +114,7 @@ class ALMA_AI_Content_Agent_Selection_Session {
             $session['search_results'] = array_slice($session['search_results'], -self::MAX_RESULTS, null, true);
         }
         $openai_prompt = sanitize_textarea_field($payload['openai_prompt'] ?? ($payload['temporary_instructions'] ?? ''));
-        $query = array('content_search_query'=>sanitize_text_field($payload['content_search_query'] ?? ($payload['search_terms'] ?? '')),'theme'=>sanitize_text_field($payload['theme'] ?? ''),'destination'=>sanitize_text_field($payload['destination'] ?? ''),'search_terms'=>sanitize_text_field($payload['search_terms'] ?? ''),'temporary_instructions'=>sanitize_textarea_field($payload['temporary_instructions'] ?? ''),'openai_prompt'=>$openai_prompt);
+        $query = array('content_search_query'=>sanitize_text_field($payload['content_search_query'] ?? ($payload['search_terms'] ?? '')),'theme'=>sanitize_text_field($payload['theme'] ?? ''),'destination'=>sanitize_text_field($payload['destination'] ?? ''),'search_terms'=>sanitize_text_field($payload['search_terms'] ?? ''),'temporary_instructions'=>sanitize_textarea_field($payload['temporary_instructions'] ?? ''),'openai_prompt'=>$openai_prompt,'search_scope'=>$search_scope);
         $session['last_query'] = $query;
         $session['query_history'][] = array('at'=>current_time('mysql'),'content_search_query'=>$query['content_search_query']);
         if (count($session['query_history']) > 20) { $session['query_history'] = array_slice($session['query_history'], -20); }
