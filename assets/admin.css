@@ -657,3 +657,10 @@ button:disabled {
 .alma-ai-agent-admin .alma-results-header{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
 @media (max-width:782px){.alma-ai-agent-admin .alma-results-header{align-items:flex-start;flex-direction:column}}
 .alma-ai-agent-admin .alma-ideas-card .tablenav.top{margin:8px 0 12px;}
+
+
+.alma-ai-agent-admin .alma-affiliate-index-card .alma-affiliate-index-warning {
+    background: #fff8e5;
+    border-left: 4px solid #dba617;
+    padding: 8px 10px;
+}

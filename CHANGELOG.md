@@ -1,3 +1,10 @@
+## 2.25.4 — PR 8.4 Affiliate Index Safe Maintenance and Pre-Sync Validation
+- Aggiunte azioni operative sicure in Dashboard per `reset_affiliate_index_state` (non distruttiva) e `clear_affiliate_index` (svuota solo indice tecnico).
+- Implementato svuotamento sicuro di `{$wpdb->prefix}alma_ai_affiliate_index` con fallback table-missing senza fatal e reset automatico di `alma_ai_affiliate_index_state`.
+- Estesa validazione pre-sync con conteggi diagnostici aggregati: `missing_index`, `orphan_index_records`, `active_invalid_records`, oltre a `needs_update`, `without_affiliate_url`, `inactive_index_records`.
+- Nuovo stato operativo leggibile nella card “Indice Link affiliati” per guidare primo sync completo e batch progressivi.
+- Confermata retrocompatibilità: nessuna modifica a OpenAI, Draft Builder, provider/API, importer, shortcode, tracking, Post/Pagine/TXT/Fonti online/Media.
+
 ## 2.25.3 — PR 8.3 Affiliate Index Autosync Ordering and Native Results Pagination
 - Auto-sync indice affiliate su `save_post_affiliate_link` spostato a priorità alta per garantire esecuzione dopo salvataggio meta/tassonomie del CPT `affiliate_link`, mantenendo guard autosave/revision/post type e filtro `alma_ai_affiliate_index_disable_autosync`.
 - Rimossi dalla card “2. Risultati ricerca” il pulsante **Svuota ricerca** e il filtro **Tipologia contenuto** (`alma_result_type`) con relativa logica/rendering UI.
