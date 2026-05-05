@@ -141,8 +141,15 @@
 
 # Affiliate Link Manager AI
 
-Versione 2.25.12
+Versione 2.25.13
 
+
+## Novità 2.25.13 — PR 8.13 Ideas Instruction Profile Single Select Form Submission Fix
+
+- Il select unico **Profilo Istruzioni AI** nella card **1. Cerca contenuti** invia ora correttamente `instruction_profile_id` al form `search_knowledge_base`.
+- Il form **Salva idea** riceve lo stesso valore profilo tramite campo hidden sincronizzato in modo difensivo con JavaScript vanilla (`assets/admin.js`), senza duplicare il select visibile.
+- Hardening backend: `instruction_profile_id` assente non viene interpretato come clear; il profilo esistente viene preservato, mentre `0` resta una scelta esplicita valida (**Nessun profilo**).
+- Nessuna modifica a indice Link affiliati, ricerca/scoring affiliate, batch/sync affiliate o OpenAI Service.
 
 ## Novità 2.25.12 — PR 8.12 Ideas UI Instruction Profile Cleanup and Clear Profile Fix
 

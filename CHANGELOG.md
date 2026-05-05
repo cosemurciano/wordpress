@@ -1,3 +1,9 @@
+## 2.25.13 — PR 8.13 Ideas Instruction Profile Single Select Form Submission Fix
+- Corretto il submit del select unico **Profilo Istruzioni AI** nella tab Idee: il form **Cerca contenuti** invia sempre `instruction_profile_id` (incluso `0` per **Nessun profilo**).
+- Il form **Salva idea** mantiene il profilo tramite hidden `instruction_profile_id` sincronizzato con il select visibile (JS vanilla difensivo in `assets/admin.js`).
+- Hardening backend nel flusso `search_knowledge_base`: se `instruction_profile_id` è assente o invalido, il profilo idea esistente viene preservato e non azzerato implicitamente.
+- Nessuna modifica a indice Link affiliati, batch/sync affiliate o OpenAI Service.
+
 ## 2.25.12 — PR 8.12 Ideas UI Instruction Profile Cleanup and Clear Profile Fix
 - Rimossa la duplicazione UI del campo **Profilo Istruzioni AI** nella tab Idee contenuto (resta un solo select visibile).
 - Corretto il salvataggio esplicito di **Nessun profilo**: `instruction_profile_id=0` viene persistito sull'idea senza richiedere `clear_instruction_profile`.
