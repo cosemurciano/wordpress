@@ -1,3 +1,10 @@
+## 2.25.22 — PR 8.22 Refine AI Draft Payload Affiliate URL Policy and Source Instructions
+- Rifinita la policy payload per link affiliati nel Draft Builder: shortcode WordPress preferiti, `affiliate_url` consentito per link testuali diretti, divieto di URL inventati e uso esclusivo dei link presenti nel payload.
+- Aggiunta sezione globale `source_agent_prompts` con prompt Source non vuoti, deduplicati e collegati ai `link_ids`, per ridurre duplicazioni nei singoli `affiliate_links`.
+- Warnings aggiornati con messaggi più precisi su comportamento agente globale e disponibilità istruzioni Source, inclusa nota sintetica per link manuali/legacy senza prompt dedicato.
+- Gestione esplicita non bloccante dei link manuali/legacy senza Source prompt (link mantenuti utilizzabili nel payload).
+- Nessuna modifica a OpenAI Service, endpoint/chiamata modello, indice Link affiliati, ricerca affiliate, batch/sync, provider/importer, shortcode rendering o tracking.
+
 ## 2.25.21 — PR 8.21 Safe AI Payload JSON Builder and Download Hardening
 - `ALMA_AI_Content_Agent_Selection_Session::normalize_result()` ora preserva nei risultati di sessione i metadati affiliate utili alla UI: `link_types`, `provenance`, `provider`, `source`.
 - `link_types` viene normalizzato in forma stabile (array di stringhe sanificate), con supporto input array/CSV/stringa singola, rimozione vuoti e deduplica.
