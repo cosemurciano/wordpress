@@ -72,6 +72,7 @@ class ALMA_AI_Content_Agent_Affiliate_Index {
             'not_indexed' => 0,
             'without_affiliate_url' => 0,
             'inactive_index_records' => 0,
+            'needs_update' => 0,
             'last_indexed_at' => '',
             'batch_state' => self::get_batch_state(),
         );
@@ -82,6 +83,7 @@ class ALMA_AI_Content_Agent_Affiliate_Index {
         $stats['indexed_active'] = (int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(1) FROM $table WHERE status=%s AND post_status='publish' AND affiliate_url_present=1", self::STATUS_ACTIVE));
         $stats['inactive_index_records'] = (int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(1) FROM $table WHERE status=%s", self::STATUS_INACTIVE));
         $stats['last_indexed_at'] = (string)$wpdb->get_var("SELECT MAX(indexed_at) FROM $table");
+        $stats['needs_update'] = (int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(1) FROM {$wpdb->posts} p LEFT JOIN $table i ON i.affiliate_link_id = p.ID AND i.status = %s WHERE p.post_type=%s AND p.post_status='publish' AND (i.affiliate_link_id IS NULL OR i.post_modified_gmt IS NULL OR p.post_modified_gmt > i.post_modified_gmt)", self::STATUS_ACTIVE, 'affiliate_link'));
         $stats['not_indexed'] = max(0, $stats['total_published'] - $stats['indexed_active'] - $stats['without_affiliate_url']);
         return $stats;
     }
@@ -112,7 +114,8 @@ class ALMA_AI_Content_Agent_Affiliate_Index {
 
     private static function build_row($post) {
         $post_id = (int)$post->ID;
-        $affiliate_url = self::affiliate_url($post_id);
+        $affiliate = self::get_affiliate_url_data($post_id);
+        $affiliate_url = $affiliate['url'];
         $ctx = (string)get_post_meta($post_id, '_alma_ai_context', true);
         $provider = (string)get_post_meta($post_id, '_alma_source_provider', true);
         if ($provider === '') { $provider = (string)get_post_meta($post_id, '_alma_provider', true); }
@@ -131,7 +134,7 @@ class ALMA_AI_Content_Agent_Affiliate_Index {
             'normalized_text'=>sanitize_textarea_field($normalized),
             'keywords'=>sanitize_text_field($keywords),
             'affiliate_url'=>esc_url_raw($affiliate_url),
-            'affiliate_url_present'=>empty($affiliate_url)?0:1,
+            'affiliate_url_present'=>$affiliate['valid'] ? 1 : 0,
             'provenance'=>sanitize_text_field($provider),
             'link_types'=>sanitize_text_field($link_types),
             'featured_image_id'=>$thumb_id,
@@ -139,12 +142,22 @@ class ALMA_AI_Content_Agent_Affiliate_Index {
             'content_hash'=>hash('sha256', $normalized.'|'.$affiliate_url.'|'.$link_types.'|'.$thumb_id),
             'post_modified_gmt'=>gmdate('Y-m-d H:i:s', strtotime((string)$post->post_modified_gmt ?: 'now')),
             'indexed_at'=>current_time('mysql', true),
-            'status'=>($post->post_status === 'publish' && !empty($affiliate_url)) ? self::STATUS_ACTIVE : self::STATUS_INACTIVE,
+            'status'=>($post->post_status === 'publish' && $affiliate['valid']) ? self::STATUS_ACTIVE : self::STATUS_INACTIVE,
         );
     }
 
     private static function extract_terms($text) { $chunks=preg_split('/[^\p{L}\p{N}]+/u', strtolower((string)$text)); $out=array(); foreach((array)$chunks as $c){ $c=trim($c); if(mb_strlen($c)>=4){$out[$c]=true;} if(count($out)>=30){break;}} return array_keys($out); }
-    private static function affiliate_url($post_id) { $url=(string)get_post_meta($post_id,'_affiliate_url',true); if($url===''){ $url=(string)get_post_meta($post_id,'_alma_affiliate_url',true);} return $url; }
+    public static function get_affiliate_url_data($post_id) {
+        $url = trim((string)get_post_meta($post_id, '_affiliate_url', true));
+        if ($url === '') { $url = trim((string)get_post_meta($post_id, '_alma_affiliate_url', true)); }
+        $url = esc_url_raw($url);
+        return array('url' => $url, 'valid' => !empty($url) && (bool)wp_http_validate_url($url));
+    }
+
+    public static function affiliate_url($post_id) {
+        $data = self::get_affiliate_url_data($post_id);
+        return (string)$data['url'];
+    }
 
     public static function search($query, $limit = 200) {
         global $wpdb; $table=self::table_name();
@@ -155,3 +168,18 @@ class ALMA_AI_Content_Agent_Affiliate_Index {
         return is_array($rows)?$rows:array();
     }
 }
+
+
+add_action('save_post_affiliate_link', function($post_id, $post, $update){
+    if (defined('DOING_AUTOSAVE') && DOING_AUTOSAVE) { return; }
+    if (wp_is_post_autosave($post_id) || wp_is_post_revision($post_id)) { return; }
+    if (!($post instanceof WP_Post) || $post->post_type !== 'affiliate_link') { return; }
+    if (apply_filters('alma_ai_affiliate_index_disable_autosync', false, $post_id, $post, $update)) { return; }
+    ALMA_AI_Content_Agent_Affiliate_Index::index_single($post_id, true);
+}, 10, 3);
+
+add_action('before_delete_post', function($post_id){
+    $post = get_post($post_id);
+    if (!$post || $post->post_type !== 'affiliate_link') { return; }
+    ALMA_AI_Content_Agent_Affiliate_Index::index_single($post_id, true);
+});

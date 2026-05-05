@@ -1,4 +1,4 @@
-## 2.25.1 — PR 8.1 Affiliate Index Batch Progression, Search Fallback and Admin Status UI
+## 2.25.2 — PR 8.1 Affiliate Index Batch Progression, Search Fallback and Admin Status UI
 - Nuovo indice tecnico dedicato ai soli `affiliate_link` (`{$wpdb->prefix}alma_ai_affiliate_index`) creato via Store/dbDelta.
 - Batch indice affiliate con cursore ID stabile, stato robusto e statistiche leggere per dashboard/admin.
 - Ricerca idee: i risultati `affiliate_link` arrivano prioritariamente dall’indice dedicato con fallback WordPress dedicato per i soli affiliate_link quando tabella indice assente, vuota o senza risultati.
