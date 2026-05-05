@@ -1,3 +1,12 @@
+## 2.25.23 — PR 8.23 Enforce Valid OpenAI Draft JSON and Improve API Error Feedback
+- Verificato e aggiornato il wrapper OpenAI su endpoint `POST /v1/responses` con gestione strutturata di `response_format`, `max_output_tokens`, `timeout` e codifica errori API.
+- Implementata richiesta output JSON tecnica per `content_draft_generation` con schema contract e fallback automatico a JSON object mode se `response_format` non supportato.
+- Aggiornato prompt finale Draft Builder: risposta solo JSON object, niente Markdown/code-fence, campi contract obbligatori e array vuoti quando non usati.
+- Parser risposta AI reso robusto (decode diretto, strip code-fence, estrazione primo JSON bilanciato) senza retry automatici e senza fatal.
+- Validazione output contract rafforzata con blocco draft su `title/content` vuoti e normalizzazione difensiva dei campi array/stringa non critici.
+- Logging e feedback admin migliorati con distinzione errori API vs JSON (error category/code, `json_last_error_msg`, lunghezza risposta, preview sanitizzata, campi mancanti, uso `response_format`).
+- Confermato uso effettivo di `max_output_tokens` configurato nel task draft generation; nessuna modifica a indice affiliate, ricerca affiliate, batch/sync, provider/importer, shortcode/tracking.
+
 ## 2.25.22 — PR 8.22 Refine AI Draft Payload Affiliate URL Policy and Source Instructions
 - Rifinita la policy payload per link affiliati nel Draft Builder: shortcode WordPress preferiti, `affiliate_url` consentito per link testuali diretti, divieto di URL inventati e uso esclusivo dei link presenti nel payload.
 - Aggiunta sezione globale `source_agent_prompts` con prompt Source non vuoti, deduplicati e collegati ai `link_ids`, per ridurre duplicazioni nei singoli `affiliate_links`.

@@ -141,11 +141,21 @@
 
 # Affiliate Link Manager AI
 
-Versione 2.25.22
+Versione 2.25.23
 
 
 
 
+
+
+## Novità 2.25.23 — PR 8.23 Enforce Valid OpenAI Draft JSON and Improve API Error Feedback
+
+- Creazione bozza articolo da Idea/Sessione con richiesta output JSON più vincolante (solo oggetto JSON, niente Markdown) e contratto campi esplicito.
+- Supporto `response_format` nel wrapper OpenAI con uso prioritario schema JSON per `content_draft_generation` e fallback sicuro quando non supportato dal modello.
+- Parser risposta AI robusto: decode diretto, rimozione code-fence, estrazione JSON bilanciato e diagnostica dettagliata su errori di parsing.
+- Validazione output contract con controllo campi obbligatori e blocco creazione bozza se `title` o `content` sono vuoti.
+- Distinzione esplicita errori API vs errori JSON con log/notice più utili (categoria errore, codice, preview sicura risposta).
+- Nessuna modifica a indice Link affiliati, ricerca affiliate, batch/sync, provider/importer, shortcode rendering o tracking.
 
 ## Novità 2.25.22 — PR 8.22 Refine AI Draft Payload Affiliate URL Policy and Source Instructions
 

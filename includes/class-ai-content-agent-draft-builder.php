@@ -7,6 +7,71 @@ class ALMA_AI_Content_Agent_Draft_Builder {
         return array_merge(array('success'=>false,'error'=>sanitize_text_field($message),'warnings'=>array()), $extra);
     }
 
+
+    private static function sanitize_response_preview($text, $max = 800) {
+        $text = trim(preg_replace('/\s+/', ' ', wp_strip_all_tags((string)$text)));
+        if (strlen($text) > $max) { $text = substr($text, 0, $max) . '…'; }
+        return $text;
+    }
+
+    private static function parse_ai_json_response($response_text) {
+        $raw = (string)$response_text;
+        if (trim($raw) === '') {
+            return new WP_Error('empty_response', 'OpenAI ha restituito una risposta vuota.');
+        }
+
+        $attempt = json_decode($raw, true);
+        if (is_array($attempt)) { return $attempt; }
+        $first_error = function_exists('json_last_error_msg') ? json_last_error_msg() : 'json_decode_failed';
+
+        $clean = preg_replace('/^```(?:json)?\s*/i', '', trim($raw));
+        $clean = preg_replace('/\s*```$/', '', (string)$clean);
+        $attempt = json_decode((string)$clean, true);
+        if (is_array($attempt)) { return $attempt; }
+
+        $extracted = ALMA_AI_Content_Agent_Text_Utils::extract_first_json((string)$clean);
+        $attempt = json_decode((string)$extracted, true);
+        if (is_array($attempt)) { return $attempt; }
+
+        $second_error = function_exists('json_last_error_msg') ? json_last_error_msg() : 'json_decode_failed';
+        $code = (strpos((string)$clean, '```') !== false || strpos((string)$raw, '```') !== false) ? 'markdown_wrapper' : 'json_decode_failed';
+        return new WP_Error($code, 'OpenAI ha restituito una risposta non JSON valida.', array('json_error'=>$second_error ?: $first_error));
+    }
+
+    private static function validate_output_contract($parsed) {
+        if (!is_array($parsed)) { return new WP_Error('json_not_object', 'La risposta JSON non contiene un oggetto valido.'); }
+        $required = array('title','content','excerpt','seo_title','seo_description','affiliate_shortcodes_used','affiliate_urls_used','media_used','warnings');
+        $missing = array();
+        foreach ($required as $key) { if (!array_key_exists($key, $parsed)) { $missing[] = $key; } }
+
+        $out = $parsed;
+        foreach (array('excerpt','seo_title','seo_description','slug') as $k) { if (!isset($out[$k]) || !is_string($out[$k])) { $out[$k] = ''; } }
+        foreach (array('affiliate_shortcodes_used','affiliate_urls_used','media_used','warnings') as $k) { if (!isset($out[$k]) || !is_array($out[$k])) { $out[$k] = array(); } }
+        $out['title'] = isset($out['title']) ? (string)$out['title'] : '';
+        $out['content'] = isset($out['content']) ? (string)$out['content'] : '';
+        if (trim($out['title']) === '') { return new WP_Error('title_empty', 'La risposta JSON è valida ma il campo title è vuoto.', array('missing_fields'=>$missing)); }
+        if (trim(wp_strip_all_tags($out['content'])) === '') { return new WP_Error('content_empty', 'La risposta JSON è valida ma il campo content è vuoto.', array('missing_fields'=>$missing)); }
+        if (!empty($missing)) { $out['_missing_fields'] = $missing; }
+        return $out;
+    }
+
+    private static function build_draft_generation_prompt() {
+        return 'Rispondi esclusivamente con un singolo oggetto JSON valido. Non usare Markdown. Non usare blocchi ```json. Non aggiungere spiegazioni o testo prima/dopo il JSON. Includi sempre: title, slug, excerpt, content, seo_title, seo_description, affiliate_shortcodes_used, affiliate_urls_used, media_used, warnings. content deve essere stringa JSON valida. Se usi shortcode, inseriscili sia in content sia in affiliate_shortcodes_used. Se usi URL affiliati diretti, inseriscili in affiliate_urls_used. Se non usi shortcode/URL/media usa array vuoti. Non inventare campi.';
+    }
+
+    private static function build_draft_response_format() {
+        return array('type'=>'json_schema','name'=>'content_draft_generation','schema'=>array('type'=>'object','additionalProperties'=>false,'required'=>array('title','slug','excerpt','content','seo_title','seo_description','affiliate_shortcodes_used','affiliate_urls_used','media_used','warnings'),'properties'=>array('title'=>array('type'=>'string'),'slug'=>array('type'=>'string'),'excerpt'=>array('type'=>'string'),'content'=>array('type'=>'string'),'seo_title'=>array('type'=>'string'),'seo_description'=>array('type'=>'string'),'affiliate_shortcodes_used'=>array('type'=>'array','items'=>array('type'=>'string')),'affiliate_urls_used'=>array('type'=>'array','items'=>array('type'=>'string')),'media_used'=>array('type'=>'array','items'=>array('type'=>'string')),'warnings'=>array('type'=>'array','items'=>array('type'=>'string')))));
+    }
+
+    private static function map_openai_error_to_admin_message($res, $fallback='Risposta OpenAI fallita.') {
+        $code = sanitize_key((string)($res['error_code'] ?? ''));
+        if ($code === 'empty_response') return 'OpenAI ha restituito una risposta vuota.';
+        if ($code === 'response_format_unsupported') return 'Il modello non supporta response_format: fallback attivo.';
+        if ($code === 'timeout') return 'Timeout OpenAI: aumenta timeout o riduci il payload.';
+        if ($code === 'rate_limit') return 'Rate limit OpenAI raggiunto: riprova tra poco.';
+        if ($code === 'auth_error') return 'Errore autenticazione OpenAI: verifica API key.';
+        return sanitize_text_field((string)($res['error'] ?? $fallback));
+    }
     private static function resolve_document_knowledge_item_id($row) {
         $candidates = array(
             $row['knowledge_item_id'] ?? '',
@@ -404,11 +469,33 @@ class ALMA_AI_Content_Agent_Draft_Builder {
         $payload['sources_online'] = $ctx['sources_online'];
         $payload['pages'] = $ctx['pages'];
         $payload['media'] = $ctx['media'];
-        $prompt = 'Genera solo JSON con chiavi: title,content,slug,warnings. Usa solo shortcode affiliati autorizzati.';
-        $res = ALMA_OpenAI_Service::request(array('system_prompt'=>'Sei un content editor WordPress. Output solo JSON valido.', 'user_prompt'=>$prompt.' CONTEXT: '.wp_json_encode($payload), 'json_output'=>true, 'max_output_tokens'=>1800));
-        if (empty($res['success'])) { return self::fail($res['error'] ?? 'Risposta OpenAI fallita.', $res['model'] ?? '', 'session:user:'.$user_id); }
-        $parsed = json_decode((string)$res['response'], true); if (!is_array($parsed)) { $parsed = json_decode(ALMA_AI_Content_Agent_Text_Utils::extract_first_json((string)$res['response']), true); }
-        if (!is_array($parsed)) { return self::fail('Draft JSON non valido', $res['model'] ?? '', 'session:user:'.$user_id); }
+        $prompt = self::build_draft_generation_prompt();
+        $configured_max_tokens = absint(get_option('alma_openai_max_output_tokens', 1800));
+        $max_output_tokens = $configured_max_tokens > 0 ? $configured_max_tokens : 1800;
+        $response_format = self::build_draft_response_format();
+        $res = ALMA_OpenAI_Service::request(array('system_prompt'=>'Sei un content editor WordPress per output strutturato.', 'user_prompt'=>$prompt.' CONTEXT: '.wp_json_encode($payload), 'response_format'=>$response_format, 'json_output'=>true, 'max_output_tokens'=>$max_output_tokens, 'timeout'=>absint(get_option('alma_openai_timeout', 120))));
+        if (empty($res['success']) && (($res['error_code'] ?? '') === 'response_format_unsupported' || strpos(strtolower((string)($res['error'] ?? '')), 'response_format') !== false)) {
+            $res = ALMA_OpenAI_Service::request(array('system_prompt'=>'Sei un content editor WordPress per output strutturato.', 'user_prompt'=>$prompt.' CONTEXT: '.wp_json_encode($payload), 'json_output'=>true, 'max_output_tokens'=>$max_output_tokens, 'timeout'=>absint(get_option('alma_openai_timeout', 120))));
+            $res['response_format_used'] = 'fallback_json_object';
+        }
+        if (empty($res['success'])) {
+            return self::fail(self::map_openai_error_to_admin_message($res), $res['model'] ?? '', 'session:user:'.$user_id, array('error_category'=>'api','error_code'=>$res['error_code'] ?? 'openai_error'));
+        }
+        $parsed = self::parse_ai_json_response((string)($res['response'] ?? ''));
+        if (is_wp_error($parsed)) {
+            $diag = array('task'=>self::TASK_SELECTION,'model'=>$res['model'] ?? '','error_category'=>'json','error_code'=>$parsed->get_error_code(),'json_error'=>sanitize_text_field((string)$parsed->get_error_data('json_error')),'response_length'=>strlen((string)($res['response'] ?? '')),'response_preview'=>self::sanitize_response_preview((string)($res['response'] ?? ''), 1000),'response_format_used'=>sanitize_text_field((string)($res['response_format_used'] ?? 'none')),'max_output_tokens'=>absint($res['max_output_tokens'] ?? $max_output_tokens));
+            ALMA_AI_Usage_Logger::log(array('task'=>self::TASK_SELECTION,'success'=>false,'error'=>'JSON error ['.$diag['error_code'].']: '.$parsed->get_error_message(),'model'=>$res['model'] ?? '','reference_id'=>'session:user:'.$user_id));
+            if (defined('WP_DEBUG') && WP_DEBUG) { error_log('ALMA Draft JSON diagnostic: '.wp_json_encode($diag)); }
+            return self::fail('OpenAI ha restituito una risposta non JSON. Controlla il log per la preview.', $res['model'] ?? '', 'session:user:'.$user_id, array('error_category'=>'json','error_code'=>$parsed->get_error_code()));
+        }
+        $validated = self::validate_output_contract($parsed);
+        if (is_wp_error($validated)) {
+            $missing_fields = (array)$validated->get_error_data('missing_fields');
+            $diag = array('task'=>self::TASK_SELECTION,'model'=>$res['model'] ?? '','error_category'=>'json_contract','error_code'=>$validated->get_error_code(),'missing_fields'=>$missing_fields,'response_length'=>strlen((string)($res['response'] ?? '')),'response_preview'=>self::sanitize_response_preview((string)($res['response'] ?? ''), 500),'response_format_used'=>sanitize_text_field((string)($res['response_format_used'] ?? 'none')));
+            if (defined('WP_DEBUG') && WP_DEBUG) { error_log('ALMA Draft contract diagnostic: '.wp_json_encode($diag)); }
+            return self::fail($validated->get_error_message(), $res['model'] ?? '', 'session:user:'.$user_id, array('error_category'=>'json_contract','error_code'=>$validated->get_error_code(),'missing_fields'=>$missing_fields));
+        }
+        $parsed = $validated;
         $parsed['content_html'] = (string)($parsed['content'] ?? '');
         $candidate_affiliate_ids = array_values(array_map('absint', wp_list_pluck((array)$ctx['affiliate_links'], 'id')));
         $candidate_image_ids = array_values(array_map('absint', wp_list_pluck((array)$ctx['media'], 'attachment_id')));
