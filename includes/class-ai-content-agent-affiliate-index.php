@@ -107,7 +107,7 @@ class ALMA_AI_Content_Agent_Affiliate_Index {
         $stats['last_indexed_at'] = (string)$wpdb->get_var("SELECT MAX(indexed_at) FROM $table");
         $stats['missing_index'] = (int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(1) FROM {$wpdb->posts} p LEFT JOIN $table i ON i.affiliate_link_id = p.ID WHERE p.post_type=%s AND p.post_status='publish' AND i.affiliate_link_id IS NULL AND EXISTS (SELECT 1 FROM {$wpdb->postmeta} pm WHERE pm.post_id = p.ID AND pm.meta_key IN (%s, %s) AND TRIM(pm.meta_value) <> '')", 'affiliate_link', '_affiliate_url', '_alma_affiliate_url'));
         $stats['stale_index_records'] = (int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(DISTINCT p.ID) FROM {$wpdb->posts} p INNER JOIN $table i ON i.affiliate_link_id = p.ID AND i.status = %s WHERE p.post_type=%s AND p.post_status='publish' AND EXISTS (SELECT 1 FROM {$wpdb->postmeta} pm WHERE pm.post_id = p.ID AND pm.meta_key IN (%s, %s) AND TRIM(pm.meta_value) <> '') AND (i.post_modified_gmt IS NULL OR p.post_modified_gmt > i.post_modified_gmt)", self::STATUS_ACTIVE, 'affiliate_link', '_affiliate_url', '_alma_affiliate_url'));
-        $stats['non_active_candidate_records'] = (int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(DISTINCT p.ID) FROM {$wpdb->posts} p INNER JOIN $table i ON i.affiliate_link_id = p.ID WHERE p.post_type=%s AND p.post_status='publish' AND EXISTS (SELECT 1 FROM {$wpdb->postmeta} pm WHERE pm.post_id = p.ID AND pm.meta_key IN (%s, %s) AND TRIM(pm.meta_value) <> '') AND i.status <> %s", 'affiliate_link', '_affiliate_url', '_alma_affiliate_url', self::STATUS_ACTIVE));
+        $stats['non_active_candidate_records'] = (int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(DISTINCT p.ID) FROM {$wpdb->posts} p INNER JOIN $table i ON i.affiliate_link_id = p.ID WHERE p.post_type=%s AND p.post_status='publish' AND EXISTS (SELECT 1 FROM {$wpdb->postmeta} pm WHERE pm.post_id = p.ID AND pm.meta_key IN (%s, %s) AND TRIM(pm.meta_value) <> '') AND (i.status IS NULL OR TRIM(i.status) = '' OR i.status <> %s)", 'affiliate_link', '_affiliate_url', '_alma_affiliate_url', self::STATUS_ACTIVE));
         $stats['needs_update'] = max(0, (int) $stats['missing_index'] + (int) $stats['stale_index_records'] + (int) $stats['non_active_candidate_records']);
         $stats['orphan_index_records'] = (int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(1) FROM $table i LEFT JOIN {$wpdb->posts} p ON p.ID = i.affiliate_link_id WHERE p.ID IS NULL OR p.post_type <> %s", 'affiliate_link'));
         $stats['active_invalid_records'] = (int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(1) FROM $table i LEFT JOIN {$wpdb->posts} p ON p.ID = i.affiliate_link_id WHERE i.status = %s AND (p.ID IS NULL OR p.post_type <> %s OR p.post_status <> 'publish' OR NOT EXISTS (SELECT 1 FROM {$wpdb->postmeta} pm WHERE pm.post_id = p.ID AND pm.meta_key IN (%s, %s) AND TRIM(pm.meta_value) <> ''))", self::STATUS_ACTIVE, 'affiliate_link', '_affiliate_url', '_alma_affiliate_url'));
@@ -136,15 +136,21 @@ class ALMA_AI_Content_Agent_Affiliate_Index {
                    )
                    AND (
                         i.affiliate_link_id IS NULL
-                        OR i.post_modified_gmt IS NULL
-                        OR p.post_modified_gmt > i.post_modified_gmt
-                        OR i.status <> %s
+                        OR (
+                            i.status = %s
+                            AND (i.post_modified_gmt IS NULL OR p.post_modified_gmt > i.post_modified_gmt)
+                        )
+                        OR (
+                            i.affiliate_link_id IS NOT NULL
+                            AND (i.status IS NULL OR TRIM(i.status) = '' OR i.status <> %s)
+                        )
                    )
                  ORDER BY p.ID ASC
                  LIMIT %d",
                 'affiliate_link',
                 '_affiliate_url',
                 '_alma_affiliate_url',
+                self::STATUS_ACTIVE,
                 self::STATUS_ACTIVE,
                 $limit
             ),

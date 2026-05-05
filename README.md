@@ -1,4 +1,4 @@
-## 2.25.9 — PR 8.9 Affiliate Incremental Sync Covers Non-Active Candidates
+## 2.25.10 — PR 8.10 Affiliate Index Pending Query Consistency and Pre-Test Hardening
 - Allineata `sync_incremental()` alla semantica pending della Dashboard: ora include record mancanti, record obsoleti e candidabili non attivi.
 - La query incrementale seleziona solo candidabili (`affiliate_link` pubblicati con URL affiliato valorizzato) con `DISTINCT`, `EXISTS`, `LIMIT` e condizione `i.status <> active`.
 - La CTA/notice di **Sync incrementale** chiarisce che l’azione recupera mancanti, aggiorna obsoleti e riattiva candidabili non attivi.
@@ -141,15 +141,25 @@
 
 # Affiliate Link Manager AI
 
-Versione 2.25.9
+Versione 2.25.10
 
-## Novità 2.25.9 — Sync incrementale allineata ai candidabili non attivi
+## Novità 2.25.10 — Pending/sync consistency hardening + nota pre-test
 
-- `sync_incremental()` ora processa anche i Link affiliati candidabili (post `publish` con URL affiliato valido) presenti nell’indice con stato non `active`.
-- La CTA **Sync incrementale** risolve in modo diretto anche `non_active_candidate_records`, oltre a record mancanti e obsoleti.
-- Guida operativa: usa **Sync incrementale** quando non ci sono mancanti (`missing_index = 0`) ma restano record obsoleti (`stale_index_records > 0`) o candidabili non attivi (`non_active_candidate_records > 0`).
+- `get_index_stats()` e `sync_incremental()` condividono ora la stessa semantica robusta per i record non active: `status` diverso da `active`, vuoto (`''`) o `NULL`.
+- Categorie pending mutualmente esclusive confermate: `missing_index` (nessun record), `stale_index_records` (record `active` obsoleto), `non_active_candidate_records` (record presente non active).
+- La CTA **Sync incrementale** resta l’azione primaria quando `missing_index = 0` e restano record obsoleti o candidabili non attivi.
 - Nessuna modifica a ricerca/scoring e nessuna modifica al batch completo cursor-based.
 
+
+## Nota operativa pre-test (primo sync controllato indice Link affiliati)
+
+1. Verifica Dashboard e conteggi (`Candidabili`, `Mancanti`, `Obsoleti`, `Candidabili non attivi`).
+2. Non avviare subito sync completo su tutto il dataset reale.
+3. Esegui un primo batch di indicizzazione.
+4. Esegui un secondo batch e verifica avanzamento/progress bar/conteggi.
+5. Prosegui batch-by-batch fino al completamento.
+6. Usa **Sync incrementale** per record obsoleti o candidabili non attivi.
+7. Usa **Svuota indice e ricomincia** solo se la diagnostica risulta incoerente.
 
 ## Novità 2.12.1 — Pagina Importa contenuti + fix import
 
