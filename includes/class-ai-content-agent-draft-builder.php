@@ -36,9 +36,124 @@ class ALMA_AI_Content_Agent_Draft_Builder {
         return (array)$wpdb->get_col($wpdb->prepare("SELECT normalized_text FROM $table WHERE knowledge_item_id=%d ORDER BY id ASC LIMIT %d", absint($knowledge_item_id), $limit));
     }
     private static function build_payload_from_selection_session($user_id = 0) {
+        global $wpdb;
         $user_id = absint($user_id ?: get_current_user_id());
         $session = ALMA_AI_Content_Agent_Selection_Session::build_context_package();
-        return array('task'=>'create_article_draft_from_selected_sources','site_context'=>array('site_name'=>get_bloginfo('name'),'language'=>get_bloginfo('language'),'generated_at'=>current_time('mysql')),'user_inputs'=>array('content_search_query'=>sanitize_text_field($session['last_query']['content_search_query'] ?? ($session['last_query']['search_terms'] ?? '')),'theme'=>sanitize_text_field($session['last_query']['theme'] ?? ''),'destination'=>sanitize_text_field($session['last_query']['destination'] ?? ''),'openai_prompt'=>sanitize_textarea_field($session['openai_prompt'] ?? ($session['last_query']['temporary_instructions'] ?? ''))),'instruction_profile'=>$session['instruction_profile_name'] ?? '','openai_prompt'=>sanitize_textarea_field($session['openai_prompt'] ?? ($session['last_query']['temporary_instructions'] ?? '')), 'temporary_instructions'=>sanitize_textarea_field($session['last_query']['temporary_instructions'] ?? ''),'rules'=>array('output_json'=>true,'title_required'=>true,'content_required'=>true,'slug_optional'=>true,'no_raw_affiliate_urls'=>true),'selection_context'=>array(),'affiliate_links'=>array(),'posts'=>array(),'documents'=>array(),'sources_online'=>array(),'pages'=>array(),'media'=>array(),'affiliate_rules'=>array(),'seo_rules'=>array(),'media_rules'=>array(),'output_contract'=>array('title','slug','excerpt','content','seo_title','seo_description','affiliate_shortcodes_used','media_used','warnings'),'warnings'=>array());
+        $warnings = array();
+        $selection_context = array();
+        $affiliate_links = array();
+        $selected = array_values((array)($session['selected_results'] ?? array()));
+
+        foreach ($selected as $row) {
+            if (!is_array($row)) { continue; }
+            $source_group = sanitize_key($row['source_group'] ?? 'other');
+            $source_id = absint($row['source_id'] ?? 0);
+            $entry = array(
+                'source_type' => sanitize_text_field($row['source_type'] ?? $source_group),
+                'source_group' => $source_group,
+                'source_id' => $source_id,
+                'title' => sanitize_text_field($row['title'] ?? ''),
+                'excerpt' => sanitize_text_field($row['excerpt'] ?? ''),
+                'score' => (int)($row['score'] ?? 0),
+                'reason' => sanitize_text_field($row['reason'] ?? ''),
+                'provider' => sanitize_text_field($row['provider'] ?? ''),
+                'source' => sanitize_text_field($row['source'] ?? ''),
+                'provenance' => sanitize_text_field($row['provenance'] ?? ''),
+                'link_types' => array_values(array_map('sanitize_text_field', (array)($row['link_types'] ?? array()))),
+            );
+            $selection_context[] = $entry;
+
+            if ($source_group !== 'affiliate_link' && sanitize_key($row['source_type'] ?? '') !== 'affiliate_link') { continue; }
+            $p = $source_id > 0 ? get_post($source_id) : null;
+            if (!$p || $p->post_type !== 'affiliate_link') {
+                $warnings[] = 'Affiliate link selezionato non disponibile: #' . $source_id;
+                continue;
+            }
+            $affiliate_url = self::get_affiliate_url($p->ID);
+            $shortcode = '[affiliate_link id="' . $p->ID . '"]';
+            $ai_context = sanitize_textarea_field((string)get_post_meta($p->ID, '_alma_ai_context', true));
+            $content = sanitize_textarea_field((string)$p->post_content);
+            $excerpt = sanitize_text_field((string)$p->post_excerpt);
+            if ($ai_context === '') { $ai_context = $excerpt !== '' ? $excerpt : $content; }
+            if ($affiliate_url === '') { $warnings[] = 'Affiliate link #' . $p->ID . ' senza URL affiliato.'; }
+            if ($shortcode === '') { $warnings[] = 'Affiliate link #' . $p->ID . ' senza shortcode.'; }
+
+            $source_meta_id = absint(get_post_meta($p->ID, '_alma_source_id', true));
+            $source_name = '';
+            $source_provider = sanitize_text_field($row['provider'] ?? '');
+            $source_prompt = '';
+            if ($source_meta_id > 0) {
+                $src = $wpdb->get_row($wpdb->prepare("SELECT name,provider,settings FROM {$wpdb->prefix}alma_affiliate_sources WHERE id=%d", $source_meta_id), ARRAY_A);
+                if (is_array($src)) {
+                    $source_name = sanitize_text_field($src['name'] ?? '');
+                    if ($source_provider === '') { $source_provider = sanitize_key($src['provider'] ?? ''); }
+                    $src_settings = json_decode((string)($src['settings'] ?? '{}'), true);
+                    if (is_array($src_settings)) { $source_prompt = sanitize_textarea_field((string)($src_settings['ai_source_instructions'] ?? '')); }
+                }
+            }
+            if ($source_prompt === '') { $warnings[] = 'Comportamento agente AI/Sources non configurato.'; }
+
+            $affiliate_links[] = array(
+                'id' => (int)$p->ID,
+                'title' => sanitize_text_field($p->post_title),
+                'content' => $content,
+                'excerpt' => $excerpt,
+                'affiliate_url' => $affiliate_url,
+                'ai_context' => $ai_context,
+                'shortcode' => $shortcode,
+                'link_types' => array_values(array_map('sanitize_text_field', (array)($row['link_types'] ?? array()))),
+                'provider' => $source_provider,
+                'source' => $source_name !== '' ? $source_name : sanitize_text_field($row['source'] ?? ''),
+                'provenance' => sanitize_text_field($row['provenance'] ?? ''),
+                'score' => (int)($row['score'] ?? 0),
+                'reason' => sanitize_text_field($row['reason'] ?? ''),
+                'affiliate_link_post_id' => (int)$p->ID,
+                'source_agent_prompt' => $source_prompt,
+            );
+        }
+
+        if (empty($selection_context)) { $warnings[] = 'Nessun selected result nella sessione contenuto.'; }
+        if (empty($affiliate_links)) { $warnings[] = 'Nessun affiliate link selezionato.'; }
+        if (empty($session['openai_prompt']) && empty($session['last_query']['temporary_instructions'])) { $warnings[] = 'Prompt OpenAI assente nella idea/sessione.'; }
+
+        $profile_payload = self::build_instruction_profile_payload($session, $warnings);
+        $affiliate_rules = array(
+            'Usare solo i link affiliati selezionati nel payload.',
+            'Non inventare link affiliati.',
+            'Preferire shortcode WordPress per box/link affiliati.',
+            'Usare affiliate_url solo per link testuali diretti quando necessario.',
+            'Non usare URL raw dove è richiesto shortcode.',
+            'Compilare affiliate_shortcodes_used con gli shortcode realmente usati.',
+            'Non usare link non presenti nel payload.',
+        );
+        if (!empty($profile_payload['instruction_profile_rules']['affiliate_rules'])) { $affiliate_rules[] = $profile_payload['instruction_profile_rules']['affiliate_rules']; }
+        $seo_rules = array(
+            'Produrre seo_title coerente con titolo idea e prompt.',
+            'Produrre seo_description chiara e pertinente.',
+            'Evitare keyword stuffing.',
+            'Usare struttura H2/H3 chiara.',
+            'Scrivere in italiano.',
+        );
+        if (!empty($profile_payload['instruction_profile_rules']['seo_rules'])) { $seo_rules[] = $profile_payload['instruction_profile_rules']['seo_rules']; }
+
+        return array_merge(array(
+            'task'=>'create_article_draft_from_selected_sources',
+            'site_context'=>array('site_name'=>get_bloginfo('name'),'language'=>get_bloginfo('language'),'generated_at'=>current_time('mysql')),
+            'user_inputs'=>array('content_search_query'=>sanitize_text_field($session['last_query']['content_search_query'] ?? ($session['last_query']['search_terms'] ?? '')),'theme'=>sanitize_text_field($session['last_query']['theme'] ?? ''),'destination'=>sanitize_text_field($session['last_query']['destination'] ?? ''),'openai_prompt'=>sanitize_textarea_field($session['openai_prompt'] ?? ($session['last_query']['temporary_instructions'] ?? ''))),
+            'idea_context'=>array('idea_title'=>sanitize_text_field($session['last_query']['content_search_query'] ?? ''),'idea_prompt'=>sanitize_textarea_field($session['openai_prompt'] ?? ''),'search_query'=>sanitize_text_field($session['last_query']['search_terms'] ?? ($session['last_query']['content_search_query'] ?? '')),'selected_results_count'=>count($selection_context)),
+            'openai_prompt'=>sanitize_textarea_field($session['openai_prompt'] ?? ($session['last_query']['temporary_instructions'] ?? '')),
+            'temporary_instructions'=>sanitize_textarea_field($session['last_query']['temporary_instructions'] ?? ''),
+            'rules'=>array('output_json'=>true,'title_required'=>true,'content_required'=>true,'slug_optional'=>true,'no_raw_affiliate_urls'=>true),
+            'selection_context'=>$selection_context,
+            'affiliate_links'=>$affiliate_links,
+            'posts'=>array(),'documents'=>array(),'sources_online'=>array(),'pages'=>array(),'media'=>array(),
+            'affiliate_rules'=>$affiliate_rules,
+            'seo_rules'=>$seo_rules,
+            'media_rules'=>array(),
+            'output_contract'=>array('title','slug','excerpt','content','seo_title','seo_description','affiliate_shortcodes_used','affiliate_urls_used','media_used','warnings'),
+            'warnings'=>array_values(array_unique($warnings)),
+            'agent_behavior'=>'',
+        ), $profile_payload, array('instruction_snapshot_hash'=>sanitize_text_field($session['instruction_snapshot_hash'] ?? '')));
     }
 
     public static function download_payload_json_from_selection_session($user_id = 0) {
