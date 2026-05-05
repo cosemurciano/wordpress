@@ -147,7 +147,7 @@ Versione 2.25.20
 
 
 
-## Novità 2.25.20 — PR 8.20 Complete OpenAI Draft Payload from Content Idea and Selected Affiliate Links
+## Novità 2.25.20 — PR 8.20 Ideas OpenAI Prompt Persistence and Safe JSON Download
 
 - `ALMA_AI_Content_Agent_Selection_Session::normalize_result()` preserva ora nei risultati in sessione i metadati affiliate necessari ai filtri UI: `link_types`, `provenance`, `provider`, `source`.
 - `link_types` viene normalizzato in formato stabile (array di stringhe sanificate) con supporto input array, CSV o stringa singola, deduplica e rimozione valori vuoti.

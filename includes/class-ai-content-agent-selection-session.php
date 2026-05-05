@@ -325,20 +325,26 @@ class ALMA_AI_Content_Agent_Selection_Session {
         $session = self::get_session();
         $session = self::normalize_session_payload($session);
         $idea = ALMA_AI_Content_Agent_Ideas::get($idea_id);
+        if (empty($idea)) { return; }
         update_post_meta($idea_id, ALMA_AI_Content_Agent_Ideas::META_LAST_QUERY, (array)$session['last_query']);
         update_post_meta($idea_id, ALMA_AI_Content_Agent_Ideas::META_RESULTS, array_values($session['search_results']));
         update_post_meta($idea_id, ALMA_AI_Content_Agent_Ideas::META_SELECTION, array_values($session['selected_results']));
+
         $snapshot_hash = sanitize_text_field($session['instruction_snapshot_hash'] ?? '');
-        if ($snapshot_hash === '') {
-            $snapshot_hash = sanitize_text_field($idea['instruction_snapshot_hash'] ?? '');
-        }
-        if ($snapshot_hash !== '') {
-            update_post_meta($idea_id, ALMA_AI_Content_Agent_Ideas::META_INSTRUCTION_SNAPSHOT_HASH, $snapshot_hash);
-        }
+        if ($snapshot_hash === '') { $snapshot_hash = sanitize_text_field($idea['instruction_snapshot_hash'] ?? ''); }
+        update_post_meta($idea_id, ALMA_AI_Content_Agent_Ideas::META_INSTRUCTION_SNAPSHOT_HASH, $snapshot_hash);
+
         $snapshot = sanitize_textarea_field($idea['instruction_snapshot'] ?? '');
-        if ($snapshot !== '') {
-            update_post_meta($idea_id, ALMA_AI_Content_Agent_Ideas::META_INSTRUCTION_SNAPSHOT, $snapshot);
-        }
+        update_post_meta($idea_id, ALMA_AI_Content_Agent_Ideas::META_INSTRUCTION_SNAPSHOT, $snapshot);
+
+        update_post_meta($idea_id, ALMA_AI_Content_Agent_Ideas::META_PROFILE_ID, absint($idea['instruction_profile_id'] ?? ($idea['profile_id'] ?? 0)));
+        update_post_meta($idea_id, ALMA_AI_Content_Agent_Ideas::META_PROMPT, sanitize_textarea_field((string)($idea['prompt'] ?? '')));
+
+        $session['instruction_profile_id'] = absint($idea['instruction_profile_id'] ?? ($idea['profile_id'] ?? 0));
+        $session['openai_prompt'] = sanitize_textarea_field((string)($idea['prompt'] ?? ''));
+        if (!is_array($session['last_query'])) { $session['last_query'] = array(); }
+        $session['last_query']['openai_prompt'] = $session['openai_prompt'];
+        set_transient(self::key(), self::normalize_session_payload($session), self::TTL);
     }
 
     public static function load_from_idea($idea) {
