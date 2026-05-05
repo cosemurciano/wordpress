@@ -63,15 +63,35 @@ class ALMA_AI_Content_Agent_Affiliate_Index {
         return array('last_processed_id'=>0,'processed'=>0,'indexed'=>0,'skipped'=>0,'done'=>false,'started_at'=>'','updated_at'=>'','last_error'=>'');
     }
 
+
+    public static function clear_index() {
+        global $wpdb;
+        $table = self::table_name();
+        if (in_array($table, ALMA_AI_Content_Agent_Store::missing_tables(), true)) {
+            self::reset_batch_state();
+            return array('success' => true, 'deleted' => 0, 'table_exists' => false);
+        }
+        $deleted = $wpdb->query("DELETE FROM {$table}");
+        if ($deleted === false) {
+            self::reset_batch_state();
+            return array('success' => false, 'deleted' => 0, 'table_exists' => true, 'error' => sanitize_text_field($wpdb->last_error));
+        }
+        self::reset_batch_state();
+        return array('success' => true, 'deleted' => (int) $deleted, 'table_exists' => true);
+    }
+
     public static function get_index_stats() {
         global $wpdb;
         $stats = array(
             'table_exists' => true,
             'total_published' => 0,
             'indexed_active' => 0,
+            'missing_index' => 0,
             'not_indexed' => 0,
             'without_affiliate_url' => 0,
             'inactive_index_records' => 0,
+            'orphan_index_records' => 0,
+            'active_invalid_records' => 0,
             'needs_update' => 0,
             'last_indexed_at' => '',
             'batch_state' => self::get_batch_state(),
@@ -84,7 +104,10 @@ class ALMA_AI_Content_Agent_Affiliate_Index {
         $stats['inactive_index_records'] = (int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(1) FROM $table WHERE status=%s", self::STATUS_INACTIVE));
         $stats['last_indexed_at'] = (string)$wpdb->get_var("SELECT MAX(indexed_at) FROM $table");
         $stats['needs_update'] = (int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(1) FROM {$wpdb->posts} p LEFT JOIN $table i ON i.affiliate_link_id = p.ID AND i.status = %s WHERE p.post_type=%s AND p.post_status='publish' AND (i.affiliate_link_id IS NULL OR i.post_modified_gmt IS NULL OR p.post_modified_gmt > i.post_modified_gmt)", self::STATUS_ACTIVE, 'affiliate_link'));
-        $stats['not_indexed'] = max(0, $stats['total_published'] - $stats['indexed_active'] - $stats['without_affiliate_url']);
+        $stats['missing_index'] = (int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(1) FROM {$wpdb->posts} p LEFT JOIN {$wpdb->postmeta} m1 ON p.ID = m1.post_id AND m1.meta_key = %s LEFT JOIN {$wpdb->postmeta} m2 ON p.ID = m2.post_id AND m2.meta_key = %s LEFT JOIN $table i ON i.affiliate_link_id = p.ID WHERE p.post_type=%s AND p.post_status='publish' AND TRIM(COALESCE(NULLIF(m1.meta_value,''), NULLIF(m2.meta_value,''), '')) <> '' AND i.affiliate_link_id IS NULL", '_affiliate_url', '_alma_affiliate_url', 'affiliate_link'));
+        $stats['orphan_index_records'] = (int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(1) FROM $table i LEFT JOIN {$wpdb->posts} p ON p.ID = i.affiliate_link_id WHERE p.ID IS NULL OR p.post_type <> %s", 'affiliate_link'));
+        $stats['active_invalid_records'] = (int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(1) FROM $table i LEFT JOIN {$wpdb->posts} p ON p.ID = i.affiliate_link_id LEFT JOIN {$wpdb->postmeta} m1 ON p.ID = m1.post_id AND m1.meta_key = %s LEFT JOIN {$wpdb->postmeta} m2 ON p.ID = m2.post_id AND m2.meta_key = %s WHERE i.status = %s AND (p.ID IS NULL OR p.post_type <> %s OR p.post_status <> 'publish' OR TRIM(COALESCE(NULLIF(m1.meta_value,''), NULLIF(m2.meta_value,''), '')) = '')", '_affiliate_url', '_alma_affiliate_url', self::STATUS_ACTIVE, 'affiliate_link'));
+        $stats['not_indexed'] = max(0, (int) $stats['missing_index']);
         return $stats;
     }
 

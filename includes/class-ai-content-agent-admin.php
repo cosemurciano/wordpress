@@ -46,6 +46,15 @@ class ALMA_AI_Content_Agent_Admin {
         } elseif ($do === 'reset_affiliate_index_state') {
             ALMA_AI_Content_Agent_Affiliate_Index::reset_batch_state();
             $result = array('success' => true, 'message' => 'Stato batch indice link affiliati resettato (azione non distruttiva).');
+        } elseif ($do === 'clear_affiliate_index') {
+            $clear = ALMA_AI_Content_Agent_Affiliate_Index::clear_index();
+            if (empty($clear['table_exists'])) {
+                $result = array('success' => true, 'message' => 'Indice tecnico non presente: stato batch resettato.');
+            } elseif (!empty($clear['success'])) {
+                $result = array('success' => true, 'message' => sprintf('Indice tecnico Link affiliati svuotato: %d record rimossi. Stato batch azzerato.', (int) ($clear['deleted'] ?? 0)));
+            } else {
+                $result = array('success' => false, 'message' => 'Errore durante lo svuotamento dell\'indice tecnico Link affiliati.');
+            }
         } elseif ($do === 'search_knowledge_base' || $do === 'add_new_search') {
             $profile_id = absint($_POST['instruction_profile_id'] ?? 0);
             $profile = $profile_id ? ALMA_AI_Content_Agent_Instructions_Manager::get_profile($profile_id) : array();
@@ -240,13 +249,23 @@ class ALMA_AI_Content_Agent_Admin {
         $stats = ALMA_AI_Content_Agent_Affiliate_Index::get_index_stats();
         $batch = (array)($stats['batch_state'] ?? array());
         $batch_status = !empty($batch['done']) ? 'completato' : (!empty($batch['updated_at']) ? 'in corso' : 'mai avviato');
-        echo '<div class="alma-agent-card"><h3>Indice Link affiliati</h3>';
-        if (empty($stats['table_exists'])) { echo '<p><em>Tabella indice non disponibile. La ricerca userà fallback WordPress per i Link affiliati.</em></p>'; }
-        echo '<ul><li>Totale Link affiliati pubblicati: '.(int)$stats['total_published'].'</li><li>Indicizzati attivi: '.(int)$stats['indexed_active'].'</li><li>Non indicizzati stimati: '.(int)$stats['not_indexed'].'</li><li>Da aggiornare: '.(int)($stats['needs_update'] ?? 0).'</li><li>Link affiliati senza URL affiliato: '.(int)$stats['without_affiliate_url'].'</li><li>Record indice inattivi: '.(int)$stats['inactive_index_records'].'</li><li>Ultimo aggiornamento indice: '.esc_html($stats['last_indexed_at'] ?: 'N/D').'</li><li>Stato batch: '.esc_html($batch_status).'</li><li>Last processed ID: '.(int)($batch['last_processed_id'] ?? 0).'</li>'.(!empty($batch['last_error'])?'<li>Ultimo errore: '.esc_html($batch['last_error']).'</li>':'').'</ul>';
+        $operational_state = 'Richiede verifica';
+        if (empty($stats['table_exists'])) { $operational_state = 'Indice non ancora creato'; }
+        elseif ((int)$stats['indexed_active'] < 1 && (int)$stats['inactive_index_records'] < 1) { $operational_state = 'Indice vuoto'; }
+        elseif (!empty($batch['updated_at']) && empty($batch['done'])) { $operational_state = 'Indicizzazione in corso'; }
+        elseif (!empty($batch['done']) && (int)$stats['missing_index'] < 1 && (int)$stats['needs_update'] < 1 && (int)$stats['active_invalid_records'] < 1 && (int)$stats['orphan_index_records'] < 1) { $operational_state = 'Indicizzazione completata'; }
+        elseif ((int)$stats['missing_index'] > 0 && (int)$stats['indexed_active'] < 1) { $operational_state = 'Pronto per primo batch'; }
+        elseif ((int)$stats['needs_update'] > 0 || (int)$stats['missing_index'] > 0) { $operational_state = 'Da aggiornare'; }
+
+        echo '<div class="alma-agent-card alma-affiliate-index-card"><h3>Indice Link affiliati</h3>';
+        if (empty($stats['table_exists'])) { echo '<p class="description"><em>Tabella indice non disponibile. La ricerca userà fallback WordPress per i Link affiliati.</em></p>'; }
+        echo '<p class="alma-affiliate-index-warning"><strong>Questa operazione non elimina i Link affiliati. Cancella solo l’indice tecnico rigenerabile.</strong></p>';
+        echo '<ul><li>Totale Link affiliati pubblicati: '.(int)$stats['total_published'].'</li><li>Indicizzati attivi: '.(int)$stats['indexed_active'].'</li><li>Non indicizzati / missing index: '.(int)$stats['missing_index'].'</li><li>Da aggiornare: '.(int)($stats['needs_update'] ?? 0).'</li><li>Link affiliati senza URL affiliato: '.(int)$stats['without_affiliate_url'].'</li><li>Record indice inattivi: '.(int)$stats['inactive_index_records'].'</li><li>Record indice orfani: '.(int)$stats['orphan_index_records'].'</li><li>Record attivi non validi: '.(int)$stats['active_invalid_records'].'</li><li>Ultimo aggiornamento indice: '.esc_html($stats['last_indexed_at'] ?: 'N/D').'</li><li>Stato batch: '.esc_html($batch_status).'</li><li>Last processed ID: '.(int)($batch['last_processed_id'] ?? 0).'</li><li>Stato operativo: <strong>'.esc_html($operational_state).'</strong></li>'.(!empty($batch['last_error'])?'<li>Ultimo errore: '.esc_html($batch['last_error']).'</li>':'').'</ul>';
         echo '<div class="alma-actions-inline">';
         self::action_form('index_affiliate_links','Indicizza prossimo batch');
         self::action_form('sync_affiliate_links_incremental','Sync incrementale');
         self::action_form('reset_affiliate_index_state','Reset stato batch');
+        self::action_form('clear_affiliate_index','Svuota indice e ricomincia');
         echo '</div></div>';
     }
 
