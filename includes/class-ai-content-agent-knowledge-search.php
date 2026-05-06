@@ -80,8 +80,9 @@ class ALMA_AI_Content_Agent_Knowledge_Search {
             $post = get_post($id);
             if (!$post || $post->post_status !== 'publish') { continue; }
             $ctx = (string)get_post_meta($id, '_alma_ai_context', true);
-            list($score, $reasons) = self::score_affiliate_row($query, array('title'=>$r['title'] ?? '', 'ai_context'=>$ctx, 'link_types'=>$r['link_types'] ?? '', 'content'=>$r['normalized_text'] ?? '', 'provider'=>$r['provenance'] ?? '', 'featured_image_id'=>(int)($r['featured_image_id'] ?? 0), 'affiliate_url_valid'=>true));
-            $items[] = self::result(array('key'=>'affiliate_index:'.$id,'source_group'=>'affiliate_link','source_type'=>'affiliate_link','source_id'=>$id,'title'=>sanitize_text_field($r['title'] ?? ''),'excerpt'=>wp_trim_words(wp_strip_all_tags((string)($r['normalized_text'] ?? '')),20),'score'=>$score,'reason'=>implode(' · ', array_slice($reasons,0,5)),'edit_url'=>get_edit_post_link($id,'raw'),'affiliate_url'=>esc_url_raw($r['affiliate_url'] ?? ''),'featured_image_id'=>(int)($r['featured_image_id'] ?? 0),'featured_image_url'=>esc_url_raw($r['featured_image_url'] ?? ''),'link_types'=>array_values(array_filter(array_map('trim', explode(',', (string)($r['link_types'] ?? ''))))),'provenance'=>sanitize_text_field((string)($r['provenance'] ?? '')),'provider'=>sanitize_text_field((string)($r['provenance'] ?? '')),'source'=>sanitize_text_field((string)($r['provenance'] ?? '')),'dedupe_ref'=>'affiliate_link:'.$id));
+            $image = ALMA_AI_Content_Agent_Affiliate_Index::get_image_data($id);
+            list($score, $reasons) = self::score_affiliate_row($query, array('title'=>$r['title'] ?? '', 'ai_context'=>$ctx, 'link_types'=>$r['link_types'] ?? '', 'content'=>$r['normalized_text'] ?? '', 'provider'=>$r['provenance'] ?? '', 'featured_image_id'=>(int)($image['featured_image_id'] ?? 0), 'affiliate_url_valid'=>true));
+            $items[] = self::result(array_merge(array('key'=>'affiliate_index:'.$id,'source_group'=>'affiliate_link','source_type'=>'affiliate_link','source_id'=>$id,'title'=>sanitize_text_field($r['title'] ?? ''),'excerpt'=>wp_trim_words(wp_strip_all_tags((string)($r['normalized_text'] ?? '')),20),'score'=>$score,'reason'=>implode(' · ', array_slice($reasons,0,5)),'edit_url'=>get_edit_post_link($id,'raw'),'affiliate_url'=>esc_url_raw($r['affiliate_url'] ?? ''),'link_types'=>array_values(array_filter(array_map('trim', explode(',', (string)($r['link_types'] ?? ''))))),'provenance'=>sanitize_text_field((string)($r['provenance'] ?? '')),'provider'=>sanitize_text_field((string)($r['provenance'] ?? '')),'source'=>sanitize_text_field((string)($r['provenance'] ?? '')),'dedupe_ref'=>'affiliate_link:'.$id), $image));
         }
         usort($items, function($a,$b){ return ((int)$b['score']) <=> ((int)$a['score']); });
         return $items;
@@ -105,8 +106,9 @@ class ALMA_AI_Content_Agent_Knowledge_Search {
             $link_types = wp_get_object_terms($post_id, 'link_type', array('fields'=>'names'));
             $provider = (string)get_post_meta($post_id, '_alma_source_provider', true);
             if ($provider === '') { $provider = (string)get_post_meta($post_id, '_alma_provider', true); }
-            list($score, $reasons) = self::score_affiliate_row($query, array('title'=>$p->post_title, 'ai_context'=>$ctx, 'link_types'=>implode(', ', is_wp_error($link_types) ? array() : (array)$link_types), 'content'=>wp_strip_all_tags((string)$p->post_content), 'provider'=>$provider, 'featured_image_id'=>(int)get_post_thumbnail_id($post_id), 'affiliate_url_valid'=>true));
-            $items[] = self::result(array(
+            $image = ALMA_AI_Content_Agent_Affiliate_Index::get_image_data($post_id);
+            list($score, $reasons) = self::score_affiliate_row($query, array('title'=>$p->post_title, 'ai_context'=>$ctx, 'link_types'=>implode(', ', is_wp_error($link_types) ? array() : (array)$link_types), 'content'=>wp_strip_all_tags((string)$p->post_content), 'provider'=>$provider, 'featured_image_id'=>(int)($image['featured_image_id'] ?? 0), 'affiliate_url_valid'=>true));
+            $items[] = self::result(array_merge(array(
                 'key' => 'affiliate_wp:' . $post_id,
                 'source_group' => 'affiliate_link',
                 'source_type' => 'affiliate_link',
@@ -118,14 +120,12 @@ class ALMA_AI_Content_Agent_Knowledge_Search {
                 'reason' => implode(' · ', array_slice($reasons,0,5)),
                 'edit_url' => get_edit_post_link($post_id, 'raw'),
                 'affiliate_url' => $affiliate_url,
-                'featured_image_id' => (int)get_post_thumbnail_id($post_id),
-                'featured_image_url' => esc_url_raw((string)get_the_post_thumbnail_url($post_id, 'thumbnail')),
                 'link_types' => is_wp_error($link_types) ? array() : array_values(array_filter(array_map('sanitize_text_field', (array)$link_types))),
                 'provenance' => sanitize_text_field($provider),
                 'provider' => sanitize_text_field($provider),
                 'source' => sanitize_text_field($provider),
                 'dedupe_ref' => 'affiliate_link:' . $post_id,
-            ));
+            ), $image));
         }
         return $items;
     }
@@ -256,6 +256,6 @@ class ALMA_AI_Content_Agent_Knowledge_Search {
         $matches = 0;
         $text = strtolower((string)(($data['title'] ?? '').' '.($data['excerpt'] ?? '').' '.($data['reason'] ?? '')));
         foreach (self::extract_terms($text) as $t) { if (strpos($text, $t) !== false) { $matches++; } }
-        return array('textual_matches'=>$matches,'result_id'=>$safe_key,'result_key'=>$safe_key,'key'=>$data['key'],'source_group'=>$data['source_group'] ?? $data['source_type'],'source_type'=>$data['source_type'],'source_label'=>$labels[$data['source_type']] ?? 'Altro','source_id'=>(int)($data['source_id'] ?? 0),'knowledge_item_id'=>(int)($data['knowledge_item_id'] ?? 0),'title'=>sanitize_text_field($data['title'] ?? ''),'excerpt'=>sanitize_textarea_field($data['excerpt'] ?? ''),'score'=>(int)($data['score'] ?? 0),'reason'=>sanitize_text_field($data['reason'] ?? ''),'edit_url'=>esc_url_raw($data['edit_url'] ?? ''),'affiliate_url'=>esc_url_raw($data['affiliate_url'] ?? ''),'featured_image_id'=>(int)($data['featured_image_id'] ?? 0),'featured_image_url'=>esc_url_raw($data['featured_image_url'] ?? ''),'link_types'=>is_array($data['link_types'] ?? null) ? array_values(array_filter(array_map('sanitize_text_field', (array)$data['link_types']))) : array(),'provenance'=>sanitize_text_field($data['provenance'] ?? ''),'provider'=>sanitize_text_field($data['provider'] ?? ''),'source'=>sanitize_text_field($data['source'] ?? ''),'selected'=>false,'selectable'=>true,'preselected'=>false,'dedupe_ref'=>sanitize_text_field($data['dedupe_ref'] ?? ''));
+        return array('textual_matches'=>$matches,'result_id'=>$safe_key,'result_key'=>$safe_key,'key'=>$data['key'],'source_group'=>$data['source_group'] ?? $data['source_type'],'source_type'=>$data['source_type'],'source_label'=>$labels[$data['source_type']] ?? 'Altro','source_id'=>(int)($data['source_id'] ?? 0),'knowledge_item_id'=>(int)($data['knowledge_item_id'] ?? 0),'title'=>sanitize_text_field($data['title'] ?? ''),'excerpt'=>sanitize_textarea_field($data['excerpt'] ?? ''),'score'=>(int)($data['score'] ?? 0),'reason'=>sanitize_text_field($data['reason'] ?? ''),'edit_url'=>esc_url_raw($data['edit_url'] ?? ''),'affiliate_url'=>esc_url_raw($data['affiliate_url'] ?? ''),'featured_image_id'=>(int)($data['featured_image_id'] ?? 0),'featured_image_url'=>esc_url_raw($data['featured_image_url'] ?? ''),'featured_image_alt'=>sanitize_text_field($data['featured_image_alt'] ?? ''),'featured_image_caption'=>sanitize_text_field($data['featured_image_caption'] ?? ''),'has_featured_image'=>!empty($data['has_featured_image']),'image_source'=>sanitize_text_field($data['image_source'] ?? ''),'image_import_status'=>sanitize_text_field($data['image_import_status'] ?? ''),'link_types'=>is_array($data['link_types'] ?? null) ? array_values(array_filter(array_map('sanitize_text_field', (array)$data['link_types']))) : array(),'provenance'=>sanitize_text_field($data['provenance'] ?? ''),'provider'=>sanitize_text_field($data['provider'] ?? ''),'source'=>sanitize_text_field($data['source'] ?? ''),'selected'=>false,'selectable'=>true,'preselected'=>false,'dedupe_ref'=>sanitize_text_field($data['dedupe_ref'] ?? ''));
     }
 }

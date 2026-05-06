@@ -8,8 +8,13 @@ class ALMA_AI_Content_Agent_Admin {
 
     public static function handle_action() {
         if (!current_user_can('manage_options')) { wp_die('forbidden'); }
-        check_admin_referer('alma_ai_agent_action');
         $do = sanitize_key($_POST['do'] ?? '');
+        if (in_array($do, array('activate_instruction_profile','deactivate_instruction_profile'), true)) {
+            $profile_id_for_nonce = absint($_POST['profile_id'] ?? 0);
+            check_admin_referer('alma_ai_instruction_profile_toggle_' . $profile_id_for_nonce, '_alma_profile_nonce');
+        } else {
+            check_admin_referer('alma_ai_agent_action');
+        }
         $result = array('success' => true, 'message' => 'Azione completata.');
 
         if ($do === 'generate_ideas') {
@@ -80,7 +85,9 @@ class ALMA_AI_Content_Agent_Admin {
                 }
             }
             $profile = $profile_id ? ALMA_AI_Content_Agent_Instructions_Manager::get_profile($profile_id) : array();
-            $payload = array('max_ideas'=>absint($_POST['max_ideas'] ?? 1),'content_search_query'=>sanitize_text_field($_POST['content_search_query'] ?? ($_POST['search_terms'] ?? '')),'search_terms'=>sanitize_text_field($_POST['search_terms'] ?? ($_POST['content_search_query'] ?? '')),'theme'=>sanitize_text_field($_POST['theme'] ?? ''),'destination'=>sanitize_text_field($_POST['destination'] ?? ''),'temporary_instructions'=>sanitize_textarea_field($_POST['temporary_instructions'] ?? ''),'openai_prompt'=>sanitize_textarea_field($_POST['openai_prompt'] ?? $_POST['temporary_instructions'] ?? ''),'instruction_profile_id'=>$profile_id,'instruction_profile_name'=>sanitize_text_field($profile['profile_name'] ?? ''),'instruction_snapshot_hash'=>sanitize_text_field($profile ? ALMA_AI_Content_Agent_Instructions_Manager::snapshot_hash(wp_json_encode($profile)) : ''),'search_scope'=>'affiliate_links_only');
+            $temporary_instructions = sanitize_textarea_field($_POST['temporary_instructions'] ?? '');
+            $instruction_snapshot = !empty($profile) ? ALMA_AI_Content_Agent_Instructions_Manager::build_compact_instruction_block($profile, $temporary_instructions) : '';
+            $payload = array('max_ideas'=>absint($_POST['max_ideas'] ?? 1),'content_search_query'=>sanitize_text_field($_POST['content_search_query'] ?? ($_POST['search_terms'] ?? '')),'search_terms'=>sanitize_text_field($_POST['search_terms'] ?? ($_POST['content_search_query'] ?? '')),'theme'=>sanitize_text_field($_POST['theme'] ?? ''),'destination'=>sanitize_text_field($_POST['destination'] ?? ''),'temporary_instructions'=>$temporary_instructions,'openai_prompt'=>sanitize_textarea_field($_POST['openai_prompt'] ?? $_POST['temporary_instructions'] ?? ''),'instruction_profile_id'=>$profile_id,'instruction_profile_name'=>sanitize_text_field($profile['profile_name'] ?? ''),'instruction_snapshot_hash'=>sanitize_text_field($instruction_snapshot !== '' ? ALMA_AI_Content_Agent_Instructions_Manager::snapshot_hash($instruction_snapshot) : ''),'instruction_snapshot'=>$instruction_snapshot,'search_scope'=>'affiliate_links_only');
             $search = ALMA_AI_Content_Agent_Knowledge_Search::search($payload);
             $stats = ALMA_AI_Content_Agent_Selection_Session::add_search_results($payload, $search);
             $active_idea_id = absint(get_user_meta(get_current_user_id(), '_alma_active_idea_id', true));
@@ -216,6 +223,7 @@ class ALMA_AI_Content_Agent_Admin {
             delete_transient(self::RESULT_TRANSIENT_KEY . get_current_user_id());
             $summary = (array)($r['summary'] ?? array());
             $counts = (array)($summary['source_counts'] ?? array());
+            $affiliate_images = (array)($summary['affiliate_images'] ?? array());
             echo '<div class="notice notice-success"><h3 style="margin-top:0;">Bozza articolo creata</h3>';
             echo '<p><strong>Titolo:</strong> '.esc_html($r['title'] ?? '').'<br><strong>Stato:</strong> Bozza</p><p>';
             if (!empty($r['edit_url'])) { echo '<a class="button button-primary" href="'.esc_url($r['edit_url']).'">Modifica articolo</a> '; }
@@ -229,6 +237,12 @@ class ALMA_AI_Content_Agent_Admin {
             echo '<li><strong>Documenti TXT:</strong> '.(int)($counts['document_txt'] ?? 0).'</li>';
             echo '<li><strong>Fonti online AI:</strong> '.(int)($counts['source_online'] ?? 0).'</li>';
             echo '<li><strong>Media:</strong> '.(int)($counts['media'] ?? 0).'</li>';
+            if (!empty($affiliate_images)) {
+                echo '<li><strong>Immagini affiliate candidate:</strong> '.(int)($affiliate_images['candidates'] ?? 0).'</li>';
+                echo '<li><strong>Immagini affiliate usate:</strong> '.(int)($affiliate_images['used'] ?? 0).'</li>';
+                echo '<li><strong>Immagini affiliate scartate/non usate:</strong> '.(int)($affiliate_images['discarded'] ?? 0).'</li>';
+                if (!empty($affiliate_images['warning'])) { echo '<li><strong>Warning immagini:</strong> '.esc_html($affiliate_images['warning']).'</li>'; }
+            }
             echo '</ul>';
             if (!empty($r['warnings'])) { echo '<p><strong>Warning QA:</strong> '.esc_html(implode(' | ', array_map('sanitize_text_field', (array)$r['warnings']))).'</p>'; }
             echo '<p>Puoi revisionare l’articolo in WordPress prima della pubblicazione.</p></div>';
@@ -385,9 +399,13 @@ class ALMA_AI_Content_Agent_Admin {
         $current = $edit_id ? ALMA_AI_Content_Agent_Instructions_Manager::get_profile($edit_id) : array();
         $is_current_active = $edit_id > 0 && !empty($current['is_active']);
 
-        echo '<h2>Istruzioni AI</h2><h3>Profili</h3><table class="widefat"><thead><tr><th>ID</th><th>Nome</th><th>Attivo</th><th>Default</th><th>Azioni</th></tr></thead><tbody>';
+        echo '<h2>Istruzioni AI</h2><h3>Profili</h3><table class="widefat"><thead><tr><th>ID</th><th>Nome</th><th>Stato</th><th>Default</th><th>Azioni</th></tr></thead><tbody>';
         foreach($profiles as $p){
-            echo '<tr><td>'.(int)$p['id'].'</td><td>'.esc_html($p['profile_name']).'</td><td>'.((int)$p['is_active']?'Sì':'No').'</td><td>'.((int)$p['is_default']?'Sì':'No').'</td><td><a class="button" href="'.esc_url(admin_url('edit.php?post_type=affiliate_link&page=alma-ai-content-agent&tab=istruzioni-ai&profile_id='.(int)$p['id'])).'">Modifica</a> '.self::inline_profile_action_form('activate_instruction_profile','Attiva',(int)$p['id']).' '.self::inline_profile_action_form('deactivate_instruction_profile','Disattiva',(int)$p['id']).'</td></tr>';
+            $is_active = (int)($p['is_active'] ?? 0) === 1;
+            $toggle_do = $is_active ? 'deactivate_instruction_profile' : 'activate_instruction_profile';
+            $toggle_label = $is_active ? 'Disattiva' : 'Attiva';
+            $status_badge = $is_active ? 'Attivo' : 'Non attivo';
+            echo '<tr><td>'.(int)$p['id'].'</td><td>'.esc_html($p['profile_name']).'</td><td><span class="alma-badge '.($is_active?'is-active':'is-inactive').'">'.esc_html($status_badge).'</span></td><td>'.((int)$p['is_default']?'Sì':'No').'</td><td><a class="button" href="'.esc_url(admin_url('edit.php?post_type=affiliate_link&page=alma-ai-content-agent&tab=istruzioni-ai&profile_id='.(int)$p['id'])).'">Modifica</a> '.self::inline_profile_action_form($toggle_do,$toggle_label,(int)$p['id']).'</td></tr>';
         }
         echo '</tbody></table><p><a class="button" href="'.esc_url(admin_url('edit.php?post_type=affiliate_link&page=alma-ai-content-agent&tab=istruzioni-ai&profile_id=0')).'">Crea nuovo profilo</a></p>';
 
@@ -478,13 +496,14 @@ class ALMA_AI_Content_Agent_Admin {
         $active_idea = $active_idea_id ? ALMA_AI_Content_Agent_Ideas::get($active_idea_id) : array();
         if (!empty($active_idea['ID'])) { ALMA_AI_Content_Agent_Selection_Session::load_from_idea($active_idea); }
         else { ALMA_AI_Content_Agent_Selection_Session::clear(); }
-        $profiles = ALMA_AI_Content_Agent_Instructions_Manager::get_profiles(100,0);
+        $all_profiles = ALMA_AI_Content_Agent_Instructions_Manager::get_profiles(100,0);
+        $profiles = ALMA_AI_Content_Agent_Instructions_Manager::get_active_profiles(100,0);
+        if (!is_array($all_profiles)) { $all_profiles = array(); }
         if (!is_array($profiles)) { $profiles = array(); }
         $session = ALMA_AI_Content_Agent_Selection_Session::get_session();
-        $active_profile = ALMA_AI_Content_Agent_Instructions_Manager::get_active_profile();
         $idea_profile_id = absint($active_idea['instruction_profile_id'] ?? ($active_idea['profile_id'] ?? 0));
         $idea_profile_valid = false;
-        foreach ($profiles as $profile_row) {
+        foreach ($all_profiles as $profile_row) {
             if ((int)($profile_row['id'] ?? 0) === $idea_profile_id) {
                 $idea_profile_valid = true;
                 break;
@@ -494,7 +513,7 @@ class ALMA_AI_Content_Agent_Admin {
         if ($idea_profile_valid || ($idea_has_profile_meta && $idea_profile_id === 0)) {
             $selected_profile_id = $idea_profile_id;
         } else {
-            $selected_profile_id = absint($active_profile['id'] ?? 0);
+            $selected_profile_id = 0;
         }
         $summary = ALMA_AI_Content_Agent_Selection_Session::summary();
         $results_groups = ALMA_AI_Content_Agent_Selection_Session::grouped_results(false);
@@ -567,9 +586,17 @@ class ALMA_AI_Content_Agent_Admin {
 
         echo '<section class="alma-idea-section alma-idea-details"><h4 class="alma-idea-section-title">Dettagli idea</h4><ul><li><strong>Contenuti aggiunti:</strong> '.(int)($summary['selected_total'] ?? 0).'</li><li><strong>Profilo istruzioni AI:</strong> '.(int)($active_idea['profile_id'] ?? 0).'</li><li><strong>Prompt OpenAI:</strong> '.(!empty($active_idea['prompt']) ? 'Presente' : 'Assente').'</li></ul></section></div></aside>';
 
-        echo '<main class="alma-ideas-col alma-ideas-col-main"><div class="alma-ideas-card"><h3>1. Cerca contenuti</h3><form method="post" action="'.esc_url(admin_url('admin-post.php')).'">'.wp_nonce_field('alma_ai_agent_action','_wpnonce',true,false).'<input type="hidden" name="action" value="alma_ai_agent_action"><input type="hidden" name="do" value="search_knowledge_base"><input type="hidden" name="idea_id" value="'.(int)$active_idea_id.'"><p><input class="widefat" type="text" name="content_search_query" placeholder="Cerca contenuti" value="'.esc_attr($session['last_query']['content_search_query'] ?? '').'" required></p><p><label for="alma-idea-instruction-profile">Profilo Istruzioni AI</label><select id="alma-idea-instruction-profile" class="widefat" name="instruction_profile_id"><option value="0">Nessun profilo</option>';
-        foreach($profiles as $p){ $sel=selected($selected_profile_id,(int)$p['id'],false); echo '<option value="'.(int)$p['id'].'" '.$sel.'>'.esc_html($p['profile_name']).'</option>'; }
-        echo '</select></p><p><label for="alma-openai-prompt">Prompt per OpenAI</label><textarea id="alma-openai-prompt" class="widefat" rows="4" name="openai_prompt">'.esc_textarea($active_idea['prompt'] ?? ($session['openai_prompt'] ?? '')).'</textarea><span class="description">Questo prompt verrà inviato a OpenAI insieme ai contenuti raccolti e guiderà cosa scrivere nella bozza.</span></p><p><button class="button button-primary">Cerca contenuti</button></p></form></div>';
+        echo '<main class="alma-ideas-col alma-ideas-col-main"><div class="alma-ideas-card"><h3>1. Cerca contenuti</h3><form method="post" action="'.esc_url(admin_url('admin-post.php')).'">'.wp_nonce_field('alma_ai_agent_action','_wpnonce',true,false).'<input type="hidden" name="action" value="alma_ai_agent_action"><input type="hidden" name="do" value="search_knowledge_base"><input type="hidden" name="idea_id" value="'.(int)$active_idea_id.'"><p><input class="widefat" type="text" name="content_search_query" placeholder="Cerca contenuti" value="'.esc_attr($session['last_query']['content_search_query'] ?? '').'" required></p><p><label for="alma-idea-instruction-profile">Profilo istruzioni AI</label><select id="alma-idea-instruction-profile" class="widefat" name="instruction_profile_id"><option value="0">Nessun profilo</option>';
+        $rendered_profile_ids = array();
+        foreach($profiles as $p){ $rendered_profile_ids[(int)$p['id']] = true; $sel=selected($selected_profile_id,(int)$p['id'],false); echo '<option value="'.(int)$p['id'].'" '.$sel.'>'.esc_html($p['profile_name']).'</option>'; }
+        if ($selected_profile_id > 0 && empty($rendered_profile_ids[$selected_profile_id])) {
+            $selected_inactive_profile = ALMA_AI_Content_Agent_Instructions_Manager::get_profile($selected_profile_id);
+            if (!empty($selected_inactive_profile['id'])) { echo '<option value="'.(int)$selected_inactive_profile['id'].'" selected>'.esc_html($selected_inactive_profile['profile_name']).' (non attivo, già scelto)</option>'; }
+        }
+        echo '</select></p>';
+        if (empty($profiles)) { echo '<p class="description"><strong>Nessun profilo istruzioni AI attivo.</strong> Attiva almeno un profilo nella tab Istruzioni AI oppure scegli esplicitamente Nessun profilo.</p>'; }
+        echo '<p><label for="alma-openai-prompt">Prompt per OpenAI</label><textarea id="alma-openai-prompt" class="widefat" rows="4" name="openai_prompt">'.esc_textarea($active_idea['prompt'] ?? ($session['openai_prompt'] ?? '')).'</textarea><span class="description">Questo prompt verrà inviato a OpenAI insieme ai contenuti raccolti e guiderà cosa scrivere nella bozza.</span></p><p><button class="button button-primary">Cerca contenuti</button></p></form></div>';
+
 
         $all_rows = array();
         foreach($labels as $k=>$label){ foreach((array)($results_groups[$k]??array()) as $r){ $all_rows[] = array('group'=>$k,'label'=>$label,'row'=>$r); } }
@@ -663,7 +690,7 @@ echo '<aside class="alma-ideas-col alma-ideas-col-right"><div class="alma-ideas-
     private static function is_table_missing($table_key) { global $wpdb; $map=array('knowledge_items','sources','jobs','media_index','instruction_profiles','content_chunks','content_ideas','editorial_briefs','affiliate_index'); if($table_key==='usage'||$table_key==='alma_ai_usage'){ $table_name=ALMA_AI_Usage_Logger::table_name(); } elseif(!in_array($table_key,$map,true)){ return true; } else { $table_name=ALMA_AI_Content_Agent_Store::table($table_key);} $exists=$wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s',$table_name)); return $exists!==$table_name; }
     private static function inline_document_actions($document_id, $is_active) { $document_id=absint($document_id); if($document_id<1||!current_user_can('manage_options')){return '';} $toggle=$is_active?'inactive':'active'; return '<form method="post" action="'.esc_url(admin_url('admin-post.php')).'">'.wp_nonce_field('alma_ai_agent_action','_wpnonce',true,false).'<input type="hidden" name="action" value="alma_ai_agent_action"><input type="hidden" name="do" value="toggle_txt_document"><input type="hidden" name="document_id" value="'.$document_id.'"><input type="hidden" name="status" value="'.esc_attr($toggle).'"><button class="button button-small">'.($is_active?'Disabilita':'Abilita').'</button></form><form method="post" action="'.esc_url(admin_url('admin-post.php')).'">'.wp_nonce_field('alma_ai_agent_action','_wpnonce',true,false).'<input type="hidden" name="action" value="alma_ai_agent_action"><input type="hidden" name="do" value="delete_txt_document"><input type="hidden" name="document_id" value="'.$document_id.'"><button class="button button-small">Elimina</button></form>'; }
     private static function inline_source_actions($source_id, $is_active) { $source_id=absint($source_id); if($source_id<1||!current_user_can('manage_options')){return '';} $next=(int)$is_active?0:1; return '<form method="post" action="'.esc_url(admin_url('admin-post.php')).'">'.wp_nonce_field('alma_ai_agent_action','_wpnonce',true,false).'<input type="hidden" name="action" value="alma_ai_agent_action"><input type="hidden" name="do" value="toggle_source"><input type="hidden" name="source_id" value="'.$source_id.'"><input type="hidden" name="is_active" value="'.$next.'"><button class="button button-small">'.($is_active?'Disabilita':'Abilita').'</button></form><form method="post" action="'.esc_url(admin_url('admin-post.php')).'">'.wp_nonce_field('alma_ai_agent_action','_wpnonce',true,false).'<input type="hidden" name="action" value="alma_ai_agent_action"><input type="hidden" name="do" value="delete_source"><input type="hidden" name="source_id" value="'.$source_id.'"><button class="button button-small">Elimina</button></form>'; }
-    private static function inline_profile_action_form($do, $label, $profile_id) { $profile_id=absint($profile_id); if($profile_id<1||!current_user_can('manage_options')){return '';} return '<form method="post" action="'.esc_url(admin_url('admin-post.php')).'" style="display:inline-block;margin-left:4px;">'.wp_nonce_field('alma_ai_agent_action','_wpnonce',true,false).'<input type="hidden" name="action" value="alma_ai_agent_action"><input type="hidden" name="do" value="'.esc_attr($do).'"><input type="hidden" name="profile_id" value="'.$profile_id.'"><button class="button button-small">'.esc_html($label).'</button></form>'; }
+    private static function inline_profile_action_form($do, $label, $profile_id) { $profile_id=absint($profile_id); if($profile_id<1||!current_user_can('manage_options')){return '';} return '<form method="post" action="'.esc_url(admin_url('admin-post.php')).'" style="display:inline-block;margin-left:4px;">'.wp_nonce_field('alma_ai_instruction_profile_toggle_'.$profile_id,'_alma_profile_nonce',true,false).'<input type="hidden" name="action" value="alma_ai_agent_action"><input type="hidden" name="do" value="'.esc_attr($do).'"><input type="hidden" name="profile_id" value="'.$profile_id.'"><button class="button button-small">'.esc_html($label).'</button></form>'; }
 
     private static function action_form($do,$label,$extra='',$button_class='button',$icon_class=''){ echo '<form method="post" action="'.esc_url(admin_url('admin-post.php')).'">'; wp_nonce_field('alma_ai_agent_action'); $button_content = $icon_class !== '' ? '<span class="dashicons '.esc_attr($icon_class).'" aria-hidden="true"></span><span>'.esc_html($label).'</span>' : esc_html($label); echo '<input type="hidden" name="action" value="alma_ai_agent_action"><input type="hidden" name="do" value="'.esc_attr($do).'">'.$extra.'<p><button class="'.esc_attr($button_class).'">'.$button_content.'</button></p></form>'; }
 }

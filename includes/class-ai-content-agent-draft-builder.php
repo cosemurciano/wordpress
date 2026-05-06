@@ -90,7 +90,7 @@ class ALMA_AI_Content_Agent_Draft_Builder {
     }
 
     private static function build_draft_generation_prompt() {
-        return 'Rispondi esclusivamente con un singolo oggetto JSON valido. Non usare Markdown. Non usare blocchi ```json. Non aggiungere spiegazioni o testo prima/dopo il JSON. Includi sempre: title, slug, excerpt, content, seo_title, seo_description, affiliate_shortcodes_used, affiliate_urls_used, media_used, warnings. content deve essere stringa JSON valida. Se usi shortcode, inseriscili sia in content sia in affiliate_shortcodes_used. Se usi URL affiliati diretti, inseriscili in affiliate_urls_used. Se non usi shortcode/URL/media usa array vuoti. Non inventare campi.';
+        return 'Rispondi esclusivamente con un singolo oggetto JSON valido. Non usare Markdown. Non usare blocchi ```json. Non aggiungere spiegazioni o testo prima/dopo il JSON. Includi sempre: title, slug, excerpt, content, seo_title, seo_description, affiliate_shortcodes_used, affiliate_urls_used, media_used, warnings. content deve essere stringa JSON valida. Se usi shortcode, inseriscili sia in content sia in affiliate_shortcodes_used. Se usi URL affiliati diretti, inseriscili in affiliate_urls_used. Usa immagini affiliate solo se pertinenti alla sezione: non inventare URL immagini, usa solo image_url presenti in affiliate_links[].image con can_use_in_content=true, non duplicare la stessa immagine, non forzare immagini dove non servono e mantieni disclosure affiliata. Se inserisci un’immagine usa figure/img HTML con alt sensato e registra l’URL in media_used. Se non usi shortcode/URL/media usa array vuoti. Non inventare campi.';
     }
 
     private static function build_draft_response_format() {
@@ -390,6 +390,7 @@ class ALMA_AI_Content_Agent_Draft_Builder {
                 (string)($link['title'] ?? ''),
                 $description
             );
+            $image = is_array($link['image'] ?? null) ? $link['image'] : array();
             $item = array(
                 'id' => absint($link['id'] ?? 0),
                 'title' => sanitize_text_field((string)($link['title'] ?? '')),
@@ -397,7 +398,16 @@ class ALMA_AI_Content_Agent_Draft_Builder {
                 'affiliate_url' => esc_url_raw((string)($link['affiliate_url'] ?? '')),
                 'shortcode' => sanitize_text_field((string)($link['shortcode'] ?? '')),
                 'link_types' => array_values(array_unique(array_filter(array_map('sanitize_text_field', (array)($link['link_types'] ?? array()))))),
+                'image' => array(
+                    'has_image' => !empty($image['has_image']),
+                    'image_url' => esc_url_raw((string)($image['image_url'] ?? '')),
+                    'image_alt' => sanitize_text_field((string)($image['image_alt'] ?? '')),
+                    'image_caption' => self::compact_text((string)($image['image_caption'] ?? ''), 20),
+                    'image_source' => sanitize_text_field((string)($image['image_source'] ?? '')),
+                    'can_use_in_content' => !empty($image['can_use_in_content']),
+                ),
             );
+            if (empty($item['image']['has_image']) || $item['image']['image_url'] === '') { $item['image'] = array('has_image'=>false,'image_url'=>'','image_alt'=>'','image_caption'=>'','image_source'=>'','can_use_in_content'=>false); }
             if ($context !== '') { $item['context'] = $context; }
             $affiliate_links[] = $item;
         }
@@ -430,6 +440,26 @@ class ALMA_AI_Content_Agent_Draft_Builder {
             'source_policies' => $source_rules,
             'warnings' => self::compact_rule_list((array)($payload['warnings'] ?? array())),
         );
+    }
+
+
+    private static function candidate_affiliate_images($affiliate_links) {
+        $images = array();
+        foreach ((array)$affiliate_links as $link) {
+            if (!is_array($link)) { continue; }
+            $image = is_array($link['image'] ?? null) ? $link['image'] : array();
+            $url = esc_url_raw((string)($image['image_url'] ?? ($link['featured_image_url'] ?? '')));
+            if ($url === '' || !wp_http_validate_url($url)) { continue; }
+            $images[] = array(
+                'affiliate_link_id' => absint($link['id'] ?? ($link['affiliate_link_post_id'] ?? 0)),
+                'attachment_id' => absint($link['featured_image_id'] ?? 0),
+                'url' => $url,
+                'alt' => sanitize_text_field((string)($image['image_alt'] ?? ($link['featured_image_alt'] ?? ''))),
+                'caption' => sanitize_text_field((string)($image['image_caption'] ?? ($link['featured_image_caption'] ?? ''))),
+                'source' => sanitize_text_field((string)($image['image_source'] ?? ($link['image_source'] ?? ''))),
+            );
+        }
+        return $images;
     }
 
     private static function fetch_document_chunks($knowledge_item_id, $limit = 3) {
@@ -525,6 +555,9 @@ class ALMA_AI_Content_Agent_Draft_Builder {
                 $source_prompt_key = '';
             }
 
+            $image = ALMA_AI_Content_Agent_Affiliate_Index::get_image_data($p->ID);
+            $has_image = !empty($image['has_featured_image']) && !empty($image['featured_image_url']) && wp_http_validate_url((string)$image['featured_image_url']);
+
             $affiliate_links[] = array(
                 'id' => (int)$p->ID,
                 'title' => sanitize_text_field($p->post_title),
@@ -543,6 +576,21 @@ class ALMA_AI_Content_Agent_Draft_Builder {
                 'source_agent_prompt_key' => $source_prompt_key,
                 'source_agent_prompt_available' => $source_prompt !== '',
                 'source_agent_prompt' => $source_prompt,
+                'featured_image_id' => absint($image['featured_image_id'] ?? 0),
+                'featured_image_url' => esc_url_raw((string)($image['featured_image_url'] ?? '')),
+                'featured_image_alt' => sanitize_text_field((string)($image['featured_image_alt'] ?? '')),
+                'featured_image_caption' => sanitize_text_field((string)($image['featured_image_caption'] ?? '')),
+                'has_featured_image' => (bool)$has_image,
+                'image_source' => sanitize_text_field((string)($image['image_source'] ?? '')),
+                'image_import_status' => sanitize_text_field((string)($image['image_import_status'] ?? '')),
+                'image' => array(
+                    'has_image' => (bool)$has_image,
+                    'image_url' => $has_image ? esc_url_raw((string)$image['featured_image_url']) : '',
+                    'image_alt' => sanitize_text_field((string)($image['featured_image_alt'] ?? '')),
+                    'image_caption' => sanitize_text_field((string)($image['featured_image_caption'] ?? '')),
+                    'image_source' => sanitize_text_field((string)($image['image_source'] ?? '')),
+                    'can_use_in_content' => (bool)$has_image,
+                ),
             );
         }
 
@@ -601,6 +649,8 @@ class ALMA_AI_Content_Agent_Draft_Builder {
                 'allow_affiliate_urls_for_text_links'=>true,
                 'do_not_invent_affiliate_urls'=>true,
                 'use_only_payload_affiliate_links'=>true,
+                'use_only_payload_affiliate_images'=>true,
+                'max_one_image_per_affiliate_link'=>true,
             ),
             'selection_context'=>$selection_context,
             'affiliate_links'=>$affiliate_links,
@@ -608,7 +658,7 @@ class ALMA_AI_Content_Agent_Draft_Builder {
             'posts'=>array(),'documents'=>array(),'sources_online'=>array(),'pages'=>array(),'media'=>array(),
             'affiliate_rules'=>$affiliate_rules,
             'seo_rules'=>$seo_rules,
-            'media_rules'=>array(),
+            'media_rules'=>array('Usare immagini affiliate solo se pertinenti alla sezione.','Non inventare URL immagini.','Usare solo immagini presenti nei link affiliati selezionati.','Non duplicare troppe volte la stessa immagine.','Non scaricare immagini durante la generazione bozza.'),
             'output_contract'=>array('title','slug','excerpt','content','seo_title','seo_description','affiliate_shortcodes_used','affiliate_urls_used','media_used','warnings'),
             'warnings'=>array_values(array_unique($warnings)),
             'agent_behavior'=>$agent_behavior,
@@ -789,7 +839,8 @@ class ALMA_AI_Content_Agent_Draft_Builder {
         $parsed['content_html'] = (string)($parsed['content'] ?? '');
         $candidate_affiliate_ids = array_values(array_map('absint', wp_list_pluck((array)$ctx['affiliate_links'], 'id')));
         $candidate_image_ids = array_values(array_map('absint', wp_list_pluck((array)$ctx['media'], 'attachment_id')));
-        $clean = ALMA_AI_Content_Agent_Draft_Quality_Checker::validate_payload($parsed, $candidate_affiliate_ids, $candidate_image_ids);
+        $candidate_affiliate_images = self::candidate_affiliate_images($ctx['affiliate_links']);
+        $clean = ALMA_AI_Content_Agent_Draft_Quality_Checker::validate_payload($parsed, $candidate_affiliate_ids, $candidate_image_ids, $candidate_affiliate_images);
         if ($clean['title'] === '' || trim(wp_strip_all_tags($clean['content'])) === '') { return self::fail('Titolo o contenuto non validi dopo QA.', $res['model'] ?? '', 'session:user:'.$user_id); }
         $post_id = wp_insert_post(array('post_type'=>'post','post_status'=>'draft','post_author'=>$user_id,'post_title'=>$clean['title'],'post_name'=>$clean['slug'],'post_excerpt'=>$clean['excerpt'],'post_content'=>$clean['content']), true);
         if (is_wp_error($post_id) || !$post_id) { return self::fail('Errore creazione bozza.', $res['model'] ?? '', 'session:user:'.$user_id); }
@@ -802,6 +853,8 @@ class ALMA_AI_Content_Agent_Draft_Builder {
         update_post_meta($post_id, '_alma_ai_agent_selected_document_txt_ids', wp_json_encode(wp_list_pluck($ctx['documents'], 'id')));
         update_post_meta($post_id, '_alma_ai_agent_selected_source_online_ids', wp_json_encode(wp_list_pluck($ctx['sources_online'], 'id')));
         update_post_meta($post_id, '_alma_ai_agent_selected_media_ids', wp_json_encode(wp_list_pluck($ctx['media'], 'attachment_id')));
+        update_post_meta($post_id, '_alma_ai_agent_affiliate_images_available', wp_json_encode($candidate_affiliate_images));
+        update_post_meta($post_id, '_alma_ai_agent_affiliate_images_used', wp_json_encode((array)($clean['affiliate_images_used'] ?? array())));
         update_post_meta($post_id, '_alma_ai_agent_instruction_profile_id', absint($session['instruction_profile_id'] ?? ($profile['id'] ?? 0)));
         update_post_meta($post_id, '_alma_ai_agent_instruction_profile_name', sanitize_text_field($profile['profile_name'] ?? ($session['instruction_profile_name'] ?? '')));
         update_post_meta($post_id, '_alma_ai_agent_instruction_snapshot_hash', sanitize_text_field($session['instruction_snapshot_hash'] ?? ALMA_AI_Content_Agent_Instructions_Manager::snapshot_hash(wp_json_encode($profile))));
@@ -815,6 +868,33 @@ class ALMA_AI_Content_Agent_Draft_Builder {
         }
         ALMA_AI_Content_Agent_Result_Usage::increment_for_results($selected, $post_id);
         ALMA_AI_Usage_Logger::log(array('task'=>self::TASK_SELECTION,'success'=>true,'model'=>$res['model'] ?? '','response_time'=>$res['response_time'] ?? null,'input_tokens'=>$res['usage']['input_tokens'] ?? null,'output_tokens'=>$res['usage']['output_tokens'] ?? null,'reference_id'=>'post:'.$post_id));
-        return array('success'=>true,'post_id'=>$post_id,'title'=>$clean['title'],'edit_url'=>get_edit_post_link($post_id, 'raw'),'preview_url'=>get_preview_post_link($post_id),'warnings'=>array_values(array_unique(array_merge($warnings, (array)$clean['warnings'], (array)($parsed['warnings'] ?? array())))),'model'=>$res['model'] ?? '','usage'=>$res['usage'] ?? array(),'summary'=>array('status'=>'draft','instruction_profile_name'=>sanitize_text_field($profile['profile_name'] ?? ($session['instruction_profile_name'] ?? '')),'source_counts'=>array('post'=>count((array)$ctx['posts']),'page'=>count((array)$ctx['pages']),'affiliate_link'=>count((array)$ctx['affiliate_links']),'document_txt'=>count((array)$ctx['documents']),'source_online'=>count((array)$ctx['sources_online']),'media'=>count((array)$ctx['media']))));
+        return array(
+            'success'=>true,
+            'post_id'=>$post_id,
+            'title'=>$clean['title'],
+            'edit_url'=>get_edit_post_link($post_id, 'raw'),
+            'preview_url'=>get_preview_post_link($post_id),
+            'warnings'=>array_values(array_unique(array_merge($warnings, (array)$clean['warnings'], (array)($parsed['warnings'] ?? array())))),
+            'model'=>$res['model'] ?? '',
+            'usage'=>$res['usage'] ?? array(),
+            'summary'=>array(
+                'status'=>'draft',
+                'instruction_profile_name'=>sanitize_text_field($profile['profile_name'] ?? ($session['instruction_profile_name'] ?? '')),
+                'source_counts'=>array(
+                    'post'=>count((array)$ctx['posts']),
+                    'page'=>count((array)$ctx['pages']),
+                    'affiliate_link'=>count((array)$ctx['affiliate_links']),
+                    'document_txt'=>count((array)$ctx['documents']),
+                    'source_online'=>count((array)$ctx['sources_online']),
+                    'media'=>count((array)$ctx['media']),
+                ),
+                'affiliate_images'=>array(
+                    'candidates'=>count($candidate_affiliate_images),
+                    'used'=>count((array)($clean['affiliate_images_used'] ?? array())),
+                    'discarded'=>max(0, count($candidate_affiliate_images)-count((array)($clean['affiliate_images_used'] ?? array()))),
+                    'warning'=>empty($candidate_affiliate_images)?'Nessun link affiliato selezionato aveva immagini disponibili.':'',
+                ),
+            ),
+        );
     }
 }

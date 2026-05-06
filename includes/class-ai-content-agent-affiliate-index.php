@@ -174,6 +174,53 @@ class ALMA_AI_Content_Agent_Affiliate_Index {
         return (bool)$wpdb->insert($table, $row);
     }
 
+
+    public static function get_image_data($post_id) {
+        $post_id = absint($post_id);
+        $empty = array(
+            'featured_image_id' => 0,
+            'featured_image_url' => '',
+            'featured_image_alt' => '',
+            'featured_image_caption' => '',
+            'has_featured_image' => false,
+            'image_source' => '',
+            'image_import_status' => sanitize_text_field((string)get_post_meta($post_id, '_alma_image_import_status', true)),
+        );
+        if ($post_id < 1) { return $empty; }
+
+        $thumb_id = (int)get_post_thumbnail_id($post_id);
+        if ($thumb_id > 0 && get_post_type($thumb_id) === 'attachment') {
+            $url = wp_get_attachment_image_url($thumb_id, 'large');
+            if (!$url) { $url = wp_get_attachment_image_url($thumb_id, 'full'); }
+            $attachment = get_post($thumb_id);
+            $caption = $attachment ? sanitize_text_field((string)$attachment->post_excerpt) : '';
+            return array(
+                'featured_image_id' => $thumb_id,
+                'featured_image_url' => esc_url_raw((string)$url),
+                'featured_image_alt' => sanitize_text_field((string)get_post_meta($thumb_id, '_wp_attachment_image_alt', true)),
+                'featured_image_caption' => $caption,
+                'has_featured_image' => !empty($url),
+                'image_source' => 'wordpress_featured_image',
+                'image_import_status' => sanitize_text_field((string)(get_post_meta($post_id, '_alma_image_import_status', true) ?: get_post_meta($post_id, '_alma_featured_image_import_status', true))),
+            );
+        }
+
+        $remote_url = esc_url_raw((string)get_post_meta($post_id, '_alma_featured_image_url', true));
+        if ($remote_url !== '' && wp_http_validate_url($remote_url)) {
+            return array(
+                'featured_image_id' => 0,
+                'featured_image_url' => $remote_url,
+                'featured_image_alt' => sanitize_text_field((string)(get_post_meta($post_id, '_alma_featured_image_alt', true) ?: get_the_title($post_id))),
+                'featured_image_caption' => sanitize_text_field((string)get_post_meta($post_id, '_alma_featured_image_caption', true)),
+                'has_featured_image' => true,
+                'image_source' => 'alma_featured_image_url',
+                'image_import_status' => sanitize_text_field((string)(get_post_meta($post_id, '_alma_image_import_status', true) ?: get_post_meta($post_id, '_alma_featured_image_import_status', true))),
+            );
+        }
+
+        return $empty;
+    }
+
     private static function build_row($post) {
         $post_id = (int)$post->ID;
         $affiliate = self::get_affiliate_url_data($post_id);
@@ -184,9 +231,9 @@ class ALMA_AI_Content_Agent_Affiliate_Index {
         if ($provider === '') { $provider = 'manual'; }
         $type_names = wp_get_object_terms($post_id, 'link_type', array('fields'=>'names'));
         $link_types = is_wp_error($type_names) ? '' : implode(', ', array_map('sanitize_text_field', (array)$type_names));
-        $thumb_id = (int)get_post_thumbnail_id($post_id);
-        $thumb_url = $thumb_id > 0 ? wp_get_attachment_image_url($thumb_id, 'thumbnail') : '';
-        if ($thumb_url === '') { $thumb_url = esc_url_raw((string)get_post_meta($post_id, '_alma_featured_image_url', true)); }
+        $image = self::get_image_data($post_id);
+        $thumb_id = (int)($image['featured_image_id'] ?? 0);
+        $thumb_url = esc_url_raw((string)($image['featured_image_url'] ?? ''));
         $text = trim(implode(' ', array($post->post_title, wp_strip_all_tags((string)$post->post_content), $ctx, $affiliate_url, $provider, $link_types)));
         $normalized = strtolower(preg_replace('/\s+/u', ' ', $text));
         $keywords = implode(' ', self::extract_terms($normalized));

@@ -4,7 +4,8 @@ class ALMA_AI_Content_Agent_Brief_Builder {
     public static function generate_for_idea($idea_id) {
         $idea = ALMA_AI_Content_Agent_Store::get_idea($idea_id); if (!$idea) { return array('success'=>false,'error'=>'Idea non trovata'); }
         if (empty(get_option('alma_openai_api_key', ''))) { return array('success'=>false,'error'=>'OpenAI non configurato.'); }
-        $profile = ALMA_AI_Content_Agent_Instructions_Manager::get_active_profile();
+        $profile_id = absint($idea['instruction_profile_id'] ?? 0);
+        $profile = $profile_id > 0 ? ALMA_AI_Content_Agent_Instructions_Manager::get_profile($profile_id) : ALMA_AI_Content_Agent_Instructions_Manager::get_active_profile();
         $instruction_block = ALMA_AI_Content_Agent_Instructions_Manager::build_compact_instruction_block($profile, '');
         $res = ALMA_OpenAI_Service::request(array('system_prompt'=>'Genera brief editoriale JSON rispettando le istruzioni.', 'user_prompt'=>'Crea brief per idea: '.wp_json_encode($idea).' Istruzioni: '.$instruction_block, 'json_output'=>true, 'max_output_tokens'=>1200));
         if (empty($res['success'])) { ALMA_AI_Usage_Logger::log(array('task'=>'content_brief_generation','success'=>false,'error'=>$res['error'] ?? 'errore','model'=>$res['model'] ?? '')); return $res; }

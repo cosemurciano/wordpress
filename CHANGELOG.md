@@ -1,3 +1,13 @@
+## 2.25.34 — AI profiles multi-activation and affiliate images in drafts
+- Corretta l'attivazione multipla dei profili **Istruzioni AI**: ogni profilo mantiene il proprio `is_active` e l'attivazione/disattivazione dalla lista modifica solo il profilo scelto.
+- Aggiornato il pulsante lista profili con label contestuale **Attiva/Disattiva**, badge **Attivo/Non attivo**, nonce dedicato, capability admin e notice chiara dopo redirect.
+- Nei flussi AI Content Agent il select **Profilo istruzioni AI** propone i profili attivi, preserva esplicitamente profili già salvati su vecchie idee/brief e mostra un messaggio quando non ci sono profili attivi.
+- Integrate immagini affiliate nel payload AI compatto per ogni link selezionato: preferenza per featured image WordPress reale, fallback a `_alma_featured_image_url`, alt/caption/source/status e flag `can_use_in_content` senza gallerie.
+- Aggiornato il prompt interno Draft Builder per usare immagini affiliate solo se pertinenti, solo dal payload, senza inventare URL, senza duplicazioni e mantenendo disclosure affiliata.
+- Il QA locale della bozza accetta solo immagini candidate, rimuove immagini non autorizzate/placeholder, segnala duplicazioni e salva un riepilogo immagini candidate/usate/scartate nel risultato admin.
+- Limiti confermati: nessuna generazione immagini, nessun video, nessuna traveler photo, nessuna galleria multipla e nessun download immagini durante la generazione bozza.
+- Versione plugin aggiornata a `2.25.34`.
+
 ## 2.25.33 — Affiliate image admin diagnostics and retry tools
 - Aggiunta sezione diagnostica **Immagine affiliata** nella metabox tecnica del CPT `affiliate_link`, con stato leggibile, URL sorgente, attachment ID, ultimo tentativo, errore sintetico, hash, anteprima e link alla Media Library.
 - Aggiunto retry manuale **Riprova import immagine** con nonce e capability `edit_post`, più opzione locale **Sovrascrivi l’immagine in evidenza esistente**; il default non sovrascrive featured image già presenti.
