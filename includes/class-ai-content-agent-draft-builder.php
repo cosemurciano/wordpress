@@ -310,34 +310,61 @@ class ALMA_AI_Content_Agent_Draft_Builder {
         return strpos($haystack, 'viator') !== false || strpos($haystack, 'productcode') !== false || strpos($haystack, 'codice prodotto') !== false || strpos($haystack, 'destination id') !== false;
     }
 
+    private static function is_affiliate_context_placeholder($value) {
+        $value = trim(wp_strip_all_tags((string)$value));
+        if ($value === '') { return true; }
+        return (bool)preg_match('/^(?:array|object|stdclass|n\/?d|n\.?a\.?|null|none|non disponibile|disponibile nel campo dedicato|-|—|\[\]|\{\})\.?$/iu', $value);
+    }
+
+    private static function is_technical_affiliate_context_line($line) {
+        $line = trim(wp_strip_all_tags((string)$line));
+        if ($line === '') { return true; }
+        if (preg_match('/^(?:fonte|source|source key|provider|fornitore|titolo provider|codice prodotto|product\s*code|productcode|url affiliato|affiliate url|destinazione|destination(?: id)?|destination id|tag(?: id)?|categorie\/?tag provider|lingue disponibili|prompt source|note operative)\s*:/iu', $line)) { return true; }
+        if (preg_match('/\b(?:source[_ -]?key|product[_ -]?code|productcode|destination[_ -]?id|tag[_ -]?id|provider[_ -]?id)\b/iu', $line)) { return true; }
+        if (preg_match('/\b(?:destination|tag)\s*id\b/iu', $line)) { return true; }
+        if (preg_match('/^durata\s*:\s*(?:array|object|n\/?d|null|non disponibile|\[\]|\{\})?\.?$/iu', $line)) { return true; }
+        if (preg_match('/^durata\s*:/iu', $line) && preg_match('/(?:array|object|[{}\[\]])/iu', $line)) { return true; }
+        if (preg_match('/:\s*(?:array|object|stdclass|n\/?d|null|non disponibile|disponibile nel campo dedicato|\[\]|\{\})\.?$/iu', $line)) { return true; }
+        return false;
+    }
+
+    private static function clean_affiliate_context_line($line) {
+        $line = trim(wp_strip_all_tags((string)$line));
+        $line = preg_replace('/(?:^|\s+)durata\s*:\s*array\.?/iu', ' ', $line);
+        $line = preg_replace('/\b(?:source[_ -]?key|product[_ -]?code|productcode|destination[_ -]?id|tag[_ -]?id|provider[_ -]?id)\b\s*[:=]\s*[^;,.]+/iu', ' ', $line);
+        $line = trim(preg_replace('/\s+/', ' ', (string)$line));
+        if (self::is_technical_affiliate_context_line($line)) { return ''; }
+        if (strpos($line, ':') !== false) {
+            list($label, $value) = array_map('trim', explode(':', $line, 2));
+            if (self::is_affiliate_context_placeholder($value)) { return ''; }
+        }
+        return $line;
+    }
+
     private static function summarize_affiliate_context_for_ai($context, $provider = '', $source = '', $title = '', $description = '') {
         $context = sanitize_textarea_field((string)$context);
-        $context = preg_replace('/(?:^|\s+)durata\s*:\s*array\.?/i', ' ', $context);
-        $context = trim(preg_replace('/\s+/', ' ', (string)$context));
-        if ($context === '') { return self::compact_text($description, 50); }
-        if (!self::is_viator_context($provider, $source, $context)) { return self::compact_text($context, 90); }
+        $context = preg_replace('/(?:^|\s+)durata\s*:\s*array\.?/iu', ' ', $context);
+        $context = trim((string)$context);
 
         $allowed = array();
-        $patterns = array('/\btipo\b/i','/\bdescrizione\b/i','/\bprezzo\b/i','/\bvaluta\b/i','/\bdurata\b/i','/cancellazione/i','/privat/i','/inclus/i','/esclus/i','/caratteristiche/i','/tour/i','/esperienza/i');
-        foreach (preg_split('/\r\n|\r|\n|;/', $context) as $line) {
-            $line = trim(wp_strip_all_tags((string)$line));
-            $line = preg_replace('/(?:^|\s+)durata\s*:\s*array\.?/i', ' ', $line);
-            $line = trim(preg_replace('/\s+/', ' ', (string)$line));
+        $editorial_patterns = array('/\btipo\b/iu','/\bdescrizione\b/iu','/\bprezzo\b/iu','/\bvaluta\b/iu','/\bdurata\b/iu','/cancellazione/iu','/privat/iu','/inclus/iu','/esclus/iu','/caratteristiche/iu','/flag/iu','/tour/iu','/esperienza/iu','/attività/iu','/servizio/iu');
+        foreach (preg_split('/\r\n|\r|\n|;|\|/', $context) as $line) {
+            $line = self::clean_affiliate_context_line($line);
             if ($line === '') { continue; }
-            if (preg_match('/fonte\s*:\s*viator|codice prodotto|product\s*code|url affiliato disponibile|rating|recension|destination id|tag id|source key|prompt source|note operative|provider|fornitore|source/i', $line)) { continue; }
-            if (preg_match('/^durata\s*:\s*(array|n\/?d|non disponibile)?\.?$/i', $line)) { continue; }
-            if (preg_match('/^durata\s*:/i', $line) && preg_match('/array|[{}\[\]]/i', $line)) { continue; }
-            foreach ($patterns as $pattern) {
-                if (preg_match($pattern, $line)) {
-                    $allowed[] = self::compact_text($line, 28);
-                    break;
+            if (self::is_viator_context($provider, $source, $context)) {
+                $matches_editorial_pattern = false;
+                foreach ($editorial_patterns as $pattern) {
+                    if (preg_match($pattern, $line)) { $matches_editorial_pattern = true; break; }
                 }
+                if (!$matches_editorial_pattern) { continue; }
             }
+            $allowed[] = self::compact_text($line, 28);
             if (count($allowed) >= 8) { break; }
         }
+
         if (empty($allowed)) {
-            $base = $description !== '' ? $description : $context;
-            $allowed[] = 'Esperienza/tour: ' . self::compact_text($base, 45);
+            $base = self::clean_affiliate_context_line($description !== '' ? $description : $context);
+            if ($base !== '') { $allowed[] = 'Esperienza/tour: ' . self::compact_text($base, 45); }
         }
         $allowed[] = 'Nota: non copiare testo provider e non inventare prezzo, disponibilità o condizioni.';
         return implode(' ', self::compact_rule_list($allowed));

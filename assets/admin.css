@@ -754,3 +754,72 @@ button:disabled {
     border-radius: 6px;
     background: #fff;
 }
+
+/* ===== AI Content Agent: Instruction Profile Form ===== */
+.alma-ai-agent-admin .alma-instructions-profile-form {
+    max-width: 1180px;
+}
+
+.alma-ai-agent-admin .alma-instructions-profile-top,
+.alma-ai-agent-admin .alma-instructions-profile-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px 20px;
+    margin: 0 0 16px;
+}
+
+.alma-ai-agent-admin .alma-instructions-field {
+    margin: 0;
+}
+
+.alma-ai-agent-admin .alma-instructions-field label {
+    display: block;
+}
+
+.alma-ai-agent-admin .alma-instructions-field input.regular-text,
+.alma-ai-agent-admin .alma-instructions-field textarea.large-text {
+    width: 100%;
+    max-width: 100%;
+    margin-top: 6px;
+}
+
+.alma-ai-agent-admin .alma-instructions-profile-wide {
+    box-sizing: border-box;
+    margin: 18px 0;
+}
+
+.alma-ai-agent-admin .alma-instructions-custom-prompt {
+    padding: 16px;
+    border: 1px solid #c3c4c7;
+    border-left: 4px solid #2271b1;
+    background: #fff;
+}
+
+.alma-ai-agent-admin .alma-instructions-custom-prompt textarea.large-text {
+    min-height: 260px;
+}
+
+.alma-ai-agent-admin .alma-instructions-internal-notes {
+    padding: 12px 14px;
+    border: 1px solid #dcdcde;
+    background: #f6f7f7;
+}
+
+.alma-ai-agent-admin .alma-instructions-internal-notes textarea.large-text {
+    min-height: 110px;
+}
+
+.alma-ai-agent-admin .alma-instructions-activate {
+    margin-top: 18px;
+}
+
+@media screen and (max-width: 782px) {
+    .alma-ai-agent-admin .alma-instructions-profile-top,
+    .alma-ai-agent-admin .alma-instructions-profile-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .alma-ai-agent-admin .alma-instructions-custom-prompt {
+        padding: 12px;
+    }
+}

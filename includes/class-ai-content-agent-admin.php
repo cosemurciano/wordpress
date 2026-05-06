@@ -375,11 +375,46 @@ class ALMA_AI_Content_Agent_Admin {
         echo '</div></div></div>';
     }
 
-    private static function render_instructions_tab() { $profiles = ALMA_AI_Content_Agent_Instructions_Manager::get_profiles(50,0); $active = ALMA_AI_Content_Agent_Instructions_Manager::get_active_profile(); $edit_id=absint($_GET['profile_id'] ?? ($active['id'] ?? 0)); $current=$edit_id?ALMA_AI_Content_Agent_Instructions_Manager::get_profile($edit_id):array(); echo '<h2>Istruzioni AI</h2><h3>Profili</h3><table class="widefat"><thead><tr><th>ID</th><th>Nome</th><th>Attivo</th><th>Default</th><th>Azioni</th></tr></thead><tbody>'; foreach($profiles as $p){ echo '<tr><td>'.(int)$p['id'].'</td><td>'.esc_html($p['profile_name']).'</td><td>'.((int)$p['is_active']?'Sì':'No').'</td><td>'.((int)$p['is_default']?'Sì':'No').'</td><td><a class="button" href="'.esc_url(admin_url('edit.php?post_type=affiliate_link&page=alma-ai-content-agent&tab=istruzioni-ai&profile_id='.(int)$p['id'])).'">Modifica</a> '.self::inline_profile_action_form('activate_instruction_profile','Attiva',(int)$p['id']).' '.self::inline_profile_action_form('deactivate_instruction_profile','Disattiva',(int)$p['id']).'</td></tr>'; } echo '</tbody></table><p><a class="button" href="'.esc_url(admin_url('edit.php?post_type=affiliate_link&page=alma-ai-content-agent&tab=istruzioni-ai&profile_id=0')).'">Crea nuovo profilo</a></p>';
-        echo '<h3>'.($edit_id>0?'Modifica profilo':'Nuovo profilo').'</h3><form method="post" action="'.esc_url(admin_url('admin-post.php')).'">'; wp_nonce_field('alma_ai_agent_action'); echo '<input type="hidden" name="action" value="alma_ai_agent_action"><input type="hidden" name="do" value="save_instruction_profile"><input type="hidden" name="profile_id" value="'.(int)$edit_id.'">';
-        $fields=['profile_name'=>'Nome profilo','language_code'=>'Lingua','tone_of_voice'=>'Tono di voce','target_audience'=>'Pubblico target','editorial_style'=>'Stile editoriale','seo_rules'=>'Regole SEO','affiliate_rules'=>'Regole affiliate','image_rules'=>'Regole immagini','source_rules'=>'Regole fonti','anti_duplication_rules'=>'Regole anti-duplicazione','avoid_rules'=>'Cose da evitare','disclosure_policy'=>'Disclosure policy','custom_prompt'=>'Prompt libero personalizzato','internal_notes'=>'Note interne'];
-        foreach($fields as $k=>$l){ echo '<p><label><strong>'.esc_html($l).'</strong><br>'; if(in_array($k,['profile_name','language_code'],true)){ echo '<input class="regular-text" name="'.esc_attr($k).'" value="'.esc_attr($current[$k]??'').'">'; } else { echo '<textarea class="large-text" rows="3" name="'.esc_attr($k).'">'.esc_textarea($current[$k]??'').'</textarea>'; } echo '</label></p>'; }
-        echo '<p><label><input type="checkbox" name="activate_profile" value="1"> Attiva questo profilo dopo il salvataggio</label></p><p><button class="button button-primary">Salva profilo</button></p></form>';
+    private static function render_instructions_tab() {
+        $profiles = ALMA_AI_Content_Agent_Instructions_Manager::get_profiles(50,0);
+        $active = ALMA_AI_Content_Agent_Instructions_Manager::get_active_profile();
+        $edit_id = absint($_GET['profile_id'] ?? ($active['id'] ?? 0));
+        $current = $edit_id ? ALMA_AI_Content_Agent_Instructions_Manager::get_profile($edit_id) : array();
+        $is_current_active = $edit_id > 0 && !empty($current['is_active']);
+
+        echo '<h2>Istruzioni AI</h2><h3>Profili</h3><table class="widefat"><thead><tr><th>ID</th><th>Nome</th><th>Attivo</th><th>Default</th><th>Azioni</th></tr></thead><tbody>';
+        foreach($profiles as $p){
+            echo '<tr><td>'.(int)$p['id'].'</td><td>'.esc_html($p['profile_name']).'</td><td>'.((int)$p['is_active']?'Sì':'No').'</td><td>'.((int)$p['is_default']?'Sì':'No').'</td><td><a class="button" href="'.esc_url(admin_url('edit.php?post_type=affiliate_link&page=alma-ai-content-agent&tab=istruzioni-ai&profile_id='.(int)$p['id'])).'">Modifica</a> '.self::inline_profile_action_form('activate_instruction_profile','Attiva',(int)$p['id']).' '.self::inline_profile_action_form('deactivate_instruction_profile','Disattiva',(int)$p['id']).'</td></tr>';
+        }
+        echo '</tbody></table><p><a class="button" href="'.esc_url(admin_url('edit.php?post_type=affiliate_link&page=alma-ai-content-agent&tab=istruzioni-ai&profile_id=0')).'">Crea nuovo profilo</a></p>';
+
+        echo '<h3>'.($edit_id>0?'Modifica profilo':'Nuovo profilo').'</h3><form class="alma-instructions-profile-form" method="post" action="'.esc_url(admin_url('admin-post.php')).'">';
+        wp_nonce_field('alma_ai_agent_action');
+        echo '<input type="hidden" name="action" value="alma_ai_agent_action"><input type="hidden" name="do" value="save_instruction_profile"><input type="hidden" name="profile_id" value="'.(int)$edit_id.'">';
+
+        echo '<div class="alma-instructions-profile-top">';
+        echo '<p class="alma-instructions-field"><label><strong>Nome profilo</strong><br><input class="regular-text" name="profile_name" value="'.esc_attr($current['profile_name']??'').'"></label></p>';
+        echo '<p class="alma-instructions-field"><label><strong>Lingua</strong><br><input class="regular-text" name="language_code" value="'.esc_attr($current['language_code']??'it').'"></label></p>';
+        echo '</div>';
+
+        $main_fields = array('tone_of_voice'=>'Tono di voce','target_audience'=>'Pubblico target','editorial_style'=>'Stile editoriale','seo_rules'=>'Regole SEO','affiliate_rules'=>'Regole affiliate','image_rules'=>'Regole immagini','source_rules'=>'Regole fonti','anti_duplication_rules'=>'Regole anti-duplicazione','avoid_rules'=>'Cose da evitare','disclosure_policy'=>'Disclosure policy');
+        echo '<div class="alma-instructions-profile-grid">';
+        foreach($main_fields as $k=>$l){
+            echo '<p class="alma-instructions-field"><label><strong>'.esc_html($l).'</strong><br><textarea class="large-text" rows="5" name="'.esc_attr($k).'">'.esc_textarea($current[$k]??'').'</textarea></label></p>';
+        }
+        echo '</div>';
+
+        echo '<div class="alma-instructions-profile-wide alma-instructions-custom-prompt">';
+        echo '<p class="alma-instructions-field"><label><strong>Prompt libero personalizzato</strong><br><textarea class="large-text" rows="12" name="custom_prompt">'.esc_textarea($current['custom_prompt']??'').'</textarea></label></p>';
+        echo '<p class="description">Campo principale per istruzioni editoriali aggiuntive specifiche del profilo.</p>';
+        echo '</div>';
+
+        echo '<div class="alma-instructions-profile-wide alma-instructions-internal-notes">';
+        echo '<p class="alma-instructions-field"><label><strong>Note interne</strong><br><textarea class="large-text" rows="4" name="internal_notes">'.esc_textarea($current['internal_notes']??'').'</textarea></label></p>';
+        echo '<p class="description">Note amministrative interne: non vengono esposte nel payload OpenAI normalizzato.</p>';
+        echo '</div>';
+
+        echo '<p class="alma-instructions-activate"><label><input type="checkbox" name="activate_profile" value="1" '.checked($is_current_active, true, false).'> Attiva questo profilo dopo il salvataggio</label></p><p><button class="button button-primary">Salva profilo</button></p></form>';
     }
 
     private static function render_ideas_tab() {
