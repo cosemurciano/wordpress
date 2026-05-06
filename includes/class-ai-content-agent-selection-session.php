@@ -41,10 +41,50 @@ class ALMA_AI_Content_Agent_Selection_Session {
             if ($key === '') { continue; }
             $row['result_key'] = $key;
             $row['source_group'] = self::normalize_group($row['source_group'] ?? '');
+            $row = self::normalize_affiliate_image_fields($row);
             $row['selected'] = $force_selected ? true : !empty($row['selected']);
             $normalized[$key] = $row;
         }
         return $normalized;
+    }
+
+    private static function normalize_affiliate_image_fields($row) {
+        if (!is_array($row)) { return array(); }
+        $source_group = self::normalize_group($row['source_group'] ?? '');
+        if ($source_group !== 'affiliate_link') { return $row; }
+
+        $wp_id = absint($row['wp_id'] ?? ($row['source_id'] ?? 0));
+        $image = array();
+        if ($wp_id > 0 && class_exists('ALMA_AI_Content_Agent_Affiliate_Index')) {
+            $image = ALMA_AI_Content_Agent_Affiliate_Index::get_image_data($wp_id);
+        }
+
+        $featured_image_id = absint($image['featured_image_id'] ?? ($row['featured_image_id'] ?? 0));
+        $featured_image_url = esc_url_raw((string)($image['featured_image_url'] ?? ($row['featured_image_url'] ?? ($row['image_url'] ?? ''))));
+        if ($featured_image_id > 0 && ($featured_image_url === '' || !wp_http_validate_url($featured_image_url))) {
+            $attachment_url = wp_get_attachment_image_url($featured_image_id, 'large');
+            if (!$attachment_url) { $attachment_url = wp_get_attachment_image_url($featured_image_id, 'full'); }
+            $featured_image_url = esc_url_raw((string)$attachment_url);
+        }
+        if ($featured_image_url !== '' && !wp_http_validate_url($featured_image_url)) { $featured_image_url = ''; }
+
+        $row['featured_image_id'] = $featured_image_id;
+        $row['featured_image_url'] = $featured_image_url;
+        $row['featured_image_alt'] = sanitize_text_field((string)($image['featured_image_alt'] ?? ($row['featured_image_alt'] ?? ($row['image_alt'] ?? ($row['title'] ?? '')))));
+        $row['featured_image_caption'] = sanitize_text_field((string)($image['featured_image_caption'] ?? ($row['featured_image_caption'] ?? ($row['image_caption'] ?? ''))));
+        $row['has_featured_image'] = $featured_image_url !== '';
+        $row['image_source'] = sanitize_text_field((string)($image['image_source'] ?? ($row['image_source'] ?? '')));
+        $row['image_import_status'] = sanitize_text_field((string)($image['image_import_status'] ?? ($row['image_import_status'] ?? '')));
+        $row['image'] = array(
+            'has_image' => $featured_image_url !== '',
+            'image_url' => $featured_image_url,
+            'image_alt' => sanitize_text_field((string)($row['featured_image_alt'] ?? ($row['title'] ?? ''))),
+            'image_caption' => sanitize_text_field((string)($row['featured_image_caption'] ?? '')),
+            'image_source' => sanitize_text_field((string)($row['image_source'] ?? '')),
+            'can_use_in_content' => $featured_image_url !== '',
+        );
+
+        return $row;
     }
 
     private static function normalize_session_payload($session) {
@@ -237,7 +277,7 @@ class ALMA_AI_Content_Agent_Selection_Session {
         elseif ($source_group === 'media' && $wp_id > 0) { $result_key = 'media:' . $wp_id; }
         else { $result_key = $source_group . ':' . ($source_id ?: ($knowledge_item_id ?: ($wp_id ?: substr(md5(wp_json_encode($row)), 0, 12)))); }
 
-        return array(
+        $normalized = array(
             'result_key' => sanitize_text_field($result_key),
             'origin_key' => $origin_key,
             'raw_key' => sanitize_text_field($row['result_key'] ?? ''),
@@ -259,12 +299,22 @@ class ALMA_AI_Content_Agent_Selection_Session {
             'has_featured_image' => !empty($row['has_featured_image']),
             'image_source' => sanitize_text_field($row['image_source'] ?? ''),
             'image_import_status' => sanitize_text_field($row['image_import_status'] ?? ''),
+            'image' => is_array($row['image'] ?? null) ? array(
+                'has_image' => !empty($row['image']['has_image']),
+                'image_url' => esc_url_raw((string)($row['image']['image_url'] ?? '')),
+                'image_alt' => sanitize_text_field((string)($row['image']['image_alt'] ?? '')),
+                'image_caption' => sanitize_text_field((string)($row['image']['image_caption'] ?? '')),
+                'image_source' => sanitize_text_field((string)($row['image']['image_source'] ?? '')),
+                'can_use_in_content' => !empty($row['image']['can_use_in_content']),
+            ) : array(),
             'provenance' => sanitize_text_field((string)($row['provenance'] ?? '')),
             'provider' => sanitize_text_field((string)($row['provider'] ?? '')),
             'source' => sanitize_text_field((string)($row['source'] ?? '')),
             'selectable' => true,
             'selected' => !empty($row['preselected']),
         );
+
+        return self::normalize_affiliate_image_fields($normalized);
     }
 
     private static function normalize_link_types($raw_link_types) {

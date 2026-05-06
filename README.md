@@ -1,3 +1,10 @@
+## 2.25.35 — AI search result affiliate image thumbnails
+- Aggiunta la miniatura dell'immagine affiliata nei **Risultati ricerca** dell'AI Content Agent, allineata a destra del record senza modificare i pulsanti di selezione/aggiunta.
+- La miniatura usa la stessa risoluzione strutturata del payload AI: featured image WordPress reale del CPT `affiliate_link`, fallback a `_alma_featured_image_url` solo se URL assoluto valido, nessun placeholder pesante quando manca l'immagine.
+- Rafforzato il payload OpenAI compatto affinché `image.image_url` sia sempre un URL assoluto valido quando disponibile e mai un attachment ID o path relativo.
+- Confermati limiti PR: nessun download remoto, nessun sideload, nessuna creazione attachment, nessuna galleria multipla e nessuna generazione immagini AI.
+- Versione plugin aggiornata a `2.25.35`.
+
 ## 2.25.34 — AI profiles multi-activation and affiliate images in drafts
 - Corretta l'attivazione multipla dei profili **Istruzioni AI**: ogni profilo mantiene il proprio `is_active` e l'attivazione/disattivazione dalla lista modifica solo il profilo scelto.
 - Aggiornato il pulsante lista profili con label contestuale **Attiva/Disattiva**, badge **Attivo/Non attivo**, nonce dedicato, capability admin e notice chiara dopo redirect.

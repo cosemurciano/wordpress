@@ -192,17 +192,21 @@ class ALMA_AI_Content_Agent_Affiliate_Index {
         if ($thumb_id > 0 && get_post_type($thumb_id) === 'attachment') {
             $url = wp_get_attachment_image_url($thumb_id, 'large');
             if (!$url) { $url = wp_get_attachment_image_url($thumb_id, 'full'); }
-            $attachment = get_post($thumb_id);
-            $caption = $attachment ? sanitize_text_field((string)$attachment->post_excerpt) : '';
-            return array(
-                'featured_image_id' => $thumb_id,
-                'featured_image_url' => esc_url_raw((string)$url),
-                'featured_image_alt' => sanitize_text_field((string)get_post_meta($thumb_id, '_wp_attachment_image_alt', true)),
-                'featured_image_caption' => $caption,
-                'has_featured_image' => !empty($url),
-                'image_source' => 'wordpress_featured_image',
-                'image_import_status' => sanitize_text_field((string)(get_post_meta($post_id, '_alma_image_import_status', true) ?: get_post_meta($post_id, '_alma_featured_image_import_status', true))),
-            );
+            $url = esc_url_raw((string)$url);
+            if ($url !== '' && !wp_http_validate_url($url)) { $url = ''; }
+            if ($url !== '') {
+                $attachment = get_post($thumb_id);
+                $caption = $attachment ? sanitize_text_field((string)$attachment->post_excerpt) : '';
+                return array(
+                    'featured_image_id' => $thumb_id,
+                    'featured_image_url' => $url,
+                    'featured_image_alt' => sanitize_text_field((string)get_post_meta($thumb_id, '_wp_attachment_image_alt', true)),
+                    'featured_image_caption' => $caption,
+                    'has_featured_image' => true,
+                    'image_source' => 'wordpress_featured_image',
+                    'image_import_status' => sanitize_text_field((string)(get_post_meta($post_id, '_alma_image_import_status', true) ?: get_post_meta($post_id, '_alma_featured_image_import_status', true))),
+                );
+            }
         }
 
         $remote_url = esc_url_raw((string)get_post_meta($post_id, '_alma_featured_image_url', true));

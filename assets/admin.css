@@ -714,6 +714,10 @@ button:disabled {
 .alma-ai-agent-admin .alma-results-group{margin:0 0 12px}
 .alma-ai-agent-admin .alma-result-item{padding:10px;border:1px solid #e2e4e7;border-radius:4px;margin:0 0 8px}
 .alma-ai-agent-admin .alma-result-item.is-already-added{background:#eef8f0;border-color:#46b450}
+.alma-ai-agent-admin .alma-result-body{display:flex;align-items:flex-start;justify-content:space-between;gap:14px}
+.alma-ai-agent-admin .alma-result-copy{min-width:0;flex:1 1 auto}
+.alma-ai-agent-admin .alma-result-thumbnail{flex:0 0 92px;align-self:flex-start;border:1px solid #dcdcde;border-radius:6px;overflow:hidden;background:#f6f7f7}
+.alma-ai-agent-admin .alma-result-thumbnail-img{display:block;width:92px;height:92px;object-fit:cover}
 .alma-ai-agent-admin .alma-added-badge,.alma-ai-agent-admin .alma-usage-badge,.alma-ai-agent-admin .alma-count-badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;margin-left:6px}
 .alma-ai-agent-admin .alma-added-badge{background:#e7f5ea;color:#1e7e34}
 .alma-ai-agent-admin .alma-usage-badge{background:#f0f0f1;color:#1d2327}
@@ -739,6 +743,9 @@ button:disabled {
     .alma-ai-agent-admin .alma-idea-title-input{min-width:100%;width:100%}
     .alma-ai-agent-admin .alma-idea-main-actions,.alma-ai-agent-admin .alma-idea-main-actions form{width:100%}
     .alma-ai-agent-admin .alma-action-button{justify-content:center;width:100%}
+    .alma-ai-agent-admin .alma-result-body{gap:10px}
+    .alma-ai-agent-admin .alma-result-thumbnail{flex-basis:72px}
+    .alma-ai-agent-admin .alma-result-thumbnail-img{width:72px;height:72px}
     .alma-ai-agent-admin .alma-ideas-pagination{align-items:stretch;flex-direction:column}
     .alma-ai-agent-admin .alma-ideas-pagination .button{text-align:center}
 }

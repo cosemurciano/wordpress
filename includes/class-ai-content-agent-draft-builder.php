@@ -391,6 +391,15 @@ class ALMA_AI_Content_Agent_Draft_Builder {
                 $description
             );
             $image = is_array($link['image'] ?? null) ? $link['image'] : array();
+            $image_url = esc_url_raw((string)($image['image_url'] ?? ($link['featured_image_url'] ?? '')));
+            $attachment_id = absint($link['featured_image_id'] ?? 0);
+            if ($attachment_id > 0 && ($image_url === '' || !wp_http_validate_url($image_url))) {
+                $attachment_url = wp_get_attachment_image_url($attachment_id, 'large');
+                if (!$attachment_url) { $attachment_url = wp_get_attachment_image_url($attachment_id, 'full'); }
+                $image_url = esc_url_raw((string)$attachment_url);
+            }
+            if ($image_url !== '' && !wp_http_validate_url($image_url)) { $image_url = ''; }
+            $has_image = $image_url !== '' && (!empty($image['has_image']) || !empty($link['has_featured_image']) || !empty($link['featured_image_url']));
             $item = array(
                 'id' => absint($link['id'] ?? 0),
                 'title' => sanitize_text_field((string)($link['title'] ?? '')),
@@ -399,15 +408,15 @@ class ALMA_AI_Content_Agent_Draft_Builder {
                 'shortcode' => sanitize_text_field((string)($link['shortcode'] ?? '')),
                 'link_types' => array_values(array_unique(array_filter(array_map('sanitize_text_field', (array)($link['link_types'] ?? array()))))),
                 'image' => array(
-                    'has_image' => !empty($image['has_image']),
-                    'image_url' => esc_url_raw((string)($image['image_url'] ?? '')),
-                    'image_alt' => sanitize_text_field((string)($image['image_alt'] ?? '')),
-                    'image_caption' => self::compact_text((string)($image['image_caption'] ?? ''), 20),
-                    'image_source' => sanitize_text_field((string)($image['image_source'] ?? '')),
-                    'can_use_in_content' => !empty($image['can_use_in_content']),
+                    'has_image' => (bool)$has_image,
+                    'image_url' => $has_image ? $image_url : '',
+                    'image_alt' => sanitize_text_field((string)($image['image_alt'] ?? ($link['featured_image_alt'] ?? ($link['title'] ?? '')))),
+                    'image_caption' => self::compact_text((string)($image['image_caption'] ?? ($link['featured_image_caption'] ?? '')), 20),
+                    'image_source' => sanitize_text_field((string)($image['image_source'] ?? ($link['image_source'] ?? ''))),
+                    'can_use_in_content' => (bool)($has_image && !empty($image['can_use_in_content'])),
                 ),
             );
-            if (empty($item['image']['has_image']) || $item['image']['image_url'] === '') { $item['image'] = array('has_image'=>false,'image_url'=>'','image_alt'=>'','image_caption'=>'','image_source'=>'','can_use_in_content'=>false); }
+            if (!$has_image || empty($item['image']['can_use_in_content'])) { $item['image'] = array('has_image'=>false,'image_url'=>'','image_alt'=>'','image_caption'=>'','image_source'=>'','can_use_in_content'=>false); }
             if ($context !== '') { $item['context'] = $context; }
             $affiliate_links[] = $item;
         }
