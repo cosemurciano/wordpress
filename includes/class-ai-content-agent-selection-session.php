@@ -76,7 +76,7 @@ class ALMA_AI_Content_Agent_Selection_Session {
     public static function clear() { delete_transient(self::key()); }
 
     private static function empty_session() {
-        return array('status'=>'empty','last_query'=>array(),'query_history'=>array(),'search_results'=>array(),'selected_results'=>array(),'counts'=>array(),'updated_at'=>'','instruction_profile_id'=>0,'instruction_profile_name'=>'','instruction_snapshot_hash'=>'','openai_prompt'=>'');
+        return array('status'=>'empty','last_query'=>array(),'query_history'=>array(),'search_results'=>array(),'selected_results'=>array(),'counts'=>array(),'updated_at'=>'','instruction_profile_id'=>0,'instruction_profile_name'=>'','instruction_snapshot_hash'=>'','instruction_snapshot'=>'','openai_prompt'=>'');
     }
 
     public static function add_search_results($payload, $search_results) {
@@ -123,6 +123,7 @@ class ALMA_AI_Content_Agent_Selection_Session {
         $session['instruction_profile_id'] = absint($payload['instruction_profile_id'] ?? 0);
         $session['instruction_profile_name'] = sanitize_text_field($payload['instruction_profile_name'] ?? '');
         $session['instruction_snapshot_hash'] = sanitize_text_field($payload['instruction_snapshot_hash'] ?? '');
+        $session['instruction_snapshot'] = sanitize_textarea_field($payload['instruction_snapshot'] ?? '');
         $session['openai_prompt'] = $openai_prompt;
         $session['counts'] = self::count_summary($session['search_results'], $session['selected_results']);
         $session = self::normalize_session_payload($session);
@@ -251,6 +252,13 @@ class ALMA_AI_Content_Agent_Selection_Session {
             'reason' => sanitize_text_field($row['reason'] ?? ''),
             'admin_url' => esc_url_raw($row['admin_url'] ?? ($row['edit_url'] ?? '')),
             'link_types' => self::normalize_link_types($row['link_types'] ?? array()),
+            'featured_image_id' => absint($row['featured_image_id'] ?? 0),
+            'featured_image_url' => esc_url_raw($row['featured_image_url'] ?? ''),
+            'featured_image_alt' => sanitize_text_field($row['featured_image_alt'] ?? ''),
+            'featured_image_caption' => sanitize_text_field($row['featured_image_caption'] ?? ''),
+            'has_featured_image' => !empty($row['has_featured_image']),
+            'image_source' => sanitize_text_field($row['image_source'] ?? ''),
+            'image_import_status' => sanitize_text_field($row['image_import_status'] ?? ''),
             'provenance' => sanitize_text_field((string)($row['provenance'] ?? '')),
             'provider' => sanitize_text_field((string)($row['provider'] ?? '')),
             'source' => sanitize_text_field((string)($row['source'] ?? '')),
@@ -334,7 +342,8 @@ class ALMA_AI_Content_Agent_Selection_Session {
         if ($snapshot_hash === '') { $snapshot_hash = sanitize_text_field($idea['instruction_snapshot_hash'] ?? ''); }
         update_post_meta($idea_id, ALMA_AI_Content_Agent_Ideas::META_INSTRUCTION_SNAPSHOT_HASH, $snapshot_hash);
 
-        $snapshot = sanitize_textarea_field($idea['instruction_snapshot'] ?? '');
+        $snapshot = sanitize_textarea_field($session['instruction_snapshot'] ?? '');
+        if ($snapshot === '') { $snapshot = sanitize_textarea_field($idea['instruction_snapshot'] ?? ''); }
         update_post_meta($idea_id, ALMA_AI_Content_Agent_Ideas::META_INSTRUCTION_SNAPSHOT, $snapshot);
 
         update_post_meta($idea_id, ALMA_AI_Content_Agent_Ideas::META_PROFILE_ID, absint($idea['instruction_profile_id'] ?? ($idea['profile_id'] ?? 0)));
@@ -357,6 +366,7 @@ class ALMA_AI_Content_Agent_Selection_Session {
         $profile = $session['instruction_profile_id'] > 0 ? ALMA_AI_Content_Agent_Instructions_Manager::get_profile($session['instruction_profile_id']) : array();
         $session['instruction_profile_name'] = sanitize_text_field($profile['profile_name'] ?? '');
         $session['instruction_snapshot_hash'] = sanitize_text_field($idea['instruction_snapshot_hash'] ?? '');
+        $session['instruction_snapshot'] = sanitize_textarea_field($idea['instruction_snapshot'] ?? '');
         $session['updated_at'] = current_time('mysql');
         $session['openai_prompt'] = sanitize_textarea_field($idea['prompt'] ?? ($session['last_query']['openai_prompt'] ?? ''));
         $session['counts'] = self::count_summary($session['search_results'], $session['selected_results']);
@@ -380,6 +390,6 @@ class ALMA_AI_Content_Agent_Selection_Session {
         $s = self::get_session();
         $s = self::normalize_session_payload($s);
         $selected = array_values((array)$s['selected_results']);
-        return array('last_query'=>$s['last_query'],'query_history'=>$s['query_history'],'selected_results'=>$selected,'counts'=>$s['counts'],'updated_at'=>$s['updated_at'],'instruction_profile_id'=>$s['instruction_profile_id'],'instruction_profile_name'=>sanitize_text_field($s['instruction_profile_name'] ?? ''),'instruction_snapshot_hash'=>sanitize_text_field($s['instruction_snapshot_hash'] ?? ''),'openai_prompt'=>sanitize_textarea_field($s['openai_prompt'] ?? ''));
+        return array('last_query'=>$s['last_query'],'query_history'=>$s['query_history'],'selected_results'=>$selected,'counts'=>$s['counts'],'updated_at'=>$s['updated_at'],'instruction_profile_id'=>$s['instruction_profile_id'],'instruction_profile_name'=>sanitize_text_field($s['instruction_profile_name'] ?? ''),'instruction_snapshot_hash'=>sanitize_text_field($s['instruction_snapshot_hash'] ?? ''),'instruction_snapshot'=>sanitize_textarea_field($s['instruction_snapshot'] ?? ''),'openai_prompt'=>sanitize_textarea_field($s['openai_prompt'] ?? ''));
     }
 }

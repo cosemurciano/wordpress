@@ -16,7 +16,8 @@ class ALMA_AI_Content_Agent_Affiliate_Selector {
             $score = 0;
             foreach (array($keywords,$theme,$destination) as $needle) { if ($needle !== '' && str_contains($blob, strtolower($needle))) { $score += 35; } }
             if ($score <= 0) { continue; }
-            $items[] = array('link_id'=>$post->ID,'title'=>$post->post_title,'detected'=>$destination ?: $theme ?: 'generic','reason'=>'Match con keyword/tema/destinazione','score_match'=>min(100, $score),'shortcode'=>'[affiliate_link id="'.$post->ID.'"]','warning'=>$ctx === '' ? 'Contesto AI non disponibile' : '');
+            $image = class_exists('ALMA_AI_Content_Agent_Affiliate_Index') ? ALMA_AI_Content_Agent_Affiliate_Index::get_image_data($post->ID) : array();
+            $items[] = array_merge(array('link_id'=>$post->ID,'title'=>$post->post_title,'detected'=>$destination ?: $theme ?: 'generic','reason'=>'Match con keyword/tema/destinazione','score_match'=>min(100, $score),'shortcode'=>'[affiliate_link id="'.$post->ID.'"]','warning'=>$ctx === '' ? 'Contesto AI non disponibile' : ''), $image);
             if (count($items) >= $limit) { break; }
         }
         if (empty($items)) { $warnings[] = 'Link affiliati insufficienti per match forte.'; }
