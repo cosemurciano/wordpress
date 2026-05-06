@@ -3,7 +3,7 @@
  * Plugin Name: Affiliate Link Manager AI
  * Plugin URI: https://your-website.com
  * Description: Gestisce link affiliati con intelligenza artificiale per ottimizzazione e tracking automatico.
- * Version: 2.25.32
+ * Version: 2.25.33
  * Author: Cosè Murciano
  * License: GPL v2 or later
  * Text Domain: affiliate-link-manager-ai
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Definisci costanti del plugin
-define('ALMA_VERSION', '2.25.32');
+define('ALMA_VERSION', '2.25.33');
 define('ALMA_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('ALMA_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('ALMA_PLUGIN_FILE', __FILE__);
@@ -1113,6 +1113,7 @@ class AffiliateManagerAI {
                 $new_columns[$key] = $value;
                 $new_columns['shortcode'] = __('Shortcode', 'affiliate-link-manager-ai');
                 $new_columns['link_type'] = __('Tipologia', 'affiliate-link-manager-ai');
+                $new_columns['affiliate_image'] = __('Immagine', 'affiliate-link-manager-ai');
                 $new_columns['clicks'] = __('Click', 'affiliate-link-manager-ai');
                 $new_columns['ai_score'] = __('AI Score', 'affiliate-link-manager-ai');
                 $new_columns['usage'] = __('Utilizzi', 'affiliate-link-manager-ai');
@@ -1146,6 +1147,26 @@ class AffiliateManagerAI {
                     echo implode(', ', $term_names);
                 } else {
                     echo '—';
+                }
+                break;
+
+            case 'affiliate_image':
+                $thumb_id = (int) get_post_thumbnail_id($post_id);
+                $status = sanitize_key(get_post_meta($post_id, '_alma_featured_image_import_status', true));
+                $error = sanitize_text_field((string) get_post_meta($post_id, '_alma_featured_image_last_error', true));
+                if ($thumb_id > 0) {
+                    echo get_the_post_thumbnail($post_id, array(48, 48), array('style' => 'display:block;margin-bottom:4px;'));
+                }
+                if ($status === 'downloaded') {
+                    echo '<span class="alma-image-badge alma-image-badge-ok">' . esc_html__('Importata', 'affiliate-link-manager-ai') . '</span>';
+                } elseif ($status === 'reused_existing_attachment') {
+                    echo '<span class="alma-image-badge alma-image-badge-ok">' . esc_html__('Riutilizzata', 'affiliate-link-manager-ai') . '</span>';
+                } elseif (strpos($status, 'failed_') === 0) {
+                    echo '<span class="alma-image-badge alma-image-badge-error" title="' . esc_attr($error) . '">' . esc_html__('Errore', 'affiliate-link-manager-ai') . '</span>';
+                } elseif ($thumb_id < 1) {
+                    echo '<span class="alma-image-badge alma-image-badge-missing">' . esc_html__('Mancante', 'affiliate-link-manager-ai') . '</span>';
+                } else {
+                    echo '<span class="alma-image-badge alma-image-badge-ok">' . esc_html__('Presente', 'affiliate-link-manager-ai') . '</span>';
                 }
                 break;
                 
