@@ -1,3 +1,13 @@
+## 2.25.32 — Remote media sideload and featured image assignment
+- Aggiunto sideload non bloccante di una singola immagine remota prodotta dai provider durante l'import effettivo, con download in Media Library tramite API WordPress native.
+- Aggiunta associazione automatica dell'attachment come **Immagine in evidenza** del CPT `affiliate_link`, senza sovrascrivere featured image esistenti di default.
+- Aggiunta deduplicazione attachment tramite hash stabile dell'URL normalizzato e meta `_alma_remote_image_hash`, evitando duplicati al reimport dello stesso prodotto.
+- Aggiunti meta diagnostici sul Link affiliato per stato import immagine, attachment, errore, timestamp, URL sorgente e hash; aggiunti meta di tracciabilità sugli attachment importati.
+- Il fallimento di validazione/download/attachment immagine resta non bloccante: il Link affiliato viene comunque creato o aggiornato e il riepilogo import mostra un warning compatto.
+- Caso primario testato: immagini Viator candidate da `_alma_featured_image_url`; il servizio resta generico per altri provider che producono `featured_image_url`.
+- Video, traveler photos, gallerie multiple e download di più immagini per Link affiliato non sono ancora implementati.
+- Versione plugin aggiornata a `2.25.32`.
+
 ## 2.25.31 — Viator media extraction and import preview
 - Aggiunta estrazione difensiva delle immagini Viator da `images[]`/`variants[]` con selezione di un URL candidato principale senza download o creazione attachment.
 - Aggiunta colonna **Immagine** nella preview import Viator con miniatura, badge Cover/Supplier e warning non bloccanti quando l'immagine manca o non ha URL valido.

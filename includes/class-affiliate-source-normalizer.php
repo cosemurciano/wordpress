@@ -21,7 +21,7 @@ class ALMA_Affiliate_Source_Normalizer {
             $meta['_alma_metadata_json'] = wp_json_encode($item);
         }
 
-        $featured_image_url = esc_url_raw($item['image'] ?? '');
+        $featured_image_url = esc_url_raw($item['featured_image_url'] ?? ($item['image'] ?? ''));
         if ($effective_provider === 'viator') {
             $media = self::resolve_viator_media($item);
             $featured_image_url = !empty($media['has_image']) ? esc_url_raw((string)$media['featured_image_url']) : '';
