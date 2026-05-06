@@ -233,7 +233,7 @@ class ALMA_AI_Content_Agent_Draft_Builder {
         foreach (preg_split('/\r\n|\r|\n|;/', $context) as $line) {
             $line = trim(wp_strip_all_tags((string)$line));
             if ($line === '') { continue; }
-            if (preg_match('/fonte\s*:\s*viator|codice prodotto|product\s*code|url affiliato disponibile|rating|recension|destination id|tag id|source key|prompt source|note operative/i', $line)) { continue; }
+            if (preg_match('/fonte\s*:\s*viator|codice prodotto|product\s*code|url affiliato disponibile|rating|recension|destination id|tag id|source key|prompt source|note operative|provider|fornitore|source/i', $line)) { continue; }
             foreach ($patterns as $pattern) {
                 if (preg_match($pattern, $line)) {
                     $allowed[] = self::compact_text($line, 28);
@@ -495,23 +495,43 @@ class ALMA_AI_Content_Agent_Draft_Builder {
         ), $profile_payload);
     }
 
-    public static function download_payload_json_from_selection_session($user_id = 0, $idea_id = 0) {
+    private static function build_payload_download_document($full_payload, $mode = 'openai') {
+        $full_payload = is_array($full_payload) ? $full_payload : array();
+        $normalized_payload = self::normalize_payload_for_openai($full_payload);
+        $mode = sanitize_key($mode);
+
+        if ($mode === 'debug') {
+            return array(
+                'payload_type' => 'debug_payload_full_with_openai_payload_normalized',
+                'description' => 'debug_payload_full contiene il contesto diagnostico completo; openai_payload_normalized è il payload compatto realmente inviato a OpenAI.',
+                'debug_payload_full' => $full_payload,
+                'openai_payload_normalized' => $normalized_payload,
+            );
+        }
+
+        return $normalized_payload;
+    }
+
+    public static function download_payload_json_from_selection_session($user_id = 0, $idea_id = 0, $mode = 'openai') {
         if (!current_user_can('manage_options')) { return new WP_Error('alma_forbidden', 'Operazione non autorizzata.'); }
+        $mode = sanitize_key($mode);
+        if (!in_array($mode, array('openai', 'debug'), true)) { $mode = 'openai'; }
         try {
             $payload = self::build_payload_from_selection_session($user_id);
+            $download_payload = self::build_payload_download_document($payload, $mode);
         } catch (Throwable $e) {
             if (defined('WP_DEBUG') && WP_DEBUG) {
                 error_log('ALMA payload download error: ' . $e->getMessage());
             }
-            return new WP_Error('alma_payload_exception', 'Errore durante la costruzione del payload JSON diagnostico.');
+            return new WP_Error('alma_payload_exception', 'Errore durante la costruzione del payload JSON.');
         }
-        if (!is_array($payload) || empty($payload)) {
-            return new WP_Error('alma_payload_unavailable', 'Impossibile costruire il payload JSON diagnostico.');
+        if (!is_array($download_payload) || empty($download_payload)) {
+            return new WP_Error('alma_payload_unavailable', 'Impossibile costruire il payload JSON.');
         }
 
-        $json = wp_json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+        $json = wp_json_encode($download_payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
         if (!is_string($json) || $json === '') {
-            return new WP_Error('alma_payload_encoding_failed', 'Impossibile codificare il payload JSON diagnostico.');
+            return new WP_Error('alma_payload_encoding_failed', 'Impossibile codificare il payload JSON.');
         }
 
         while (ob_get_level() > 0) {
@@ -522,7 +542,8 @@ class ALMA_AI_Content_Agent_Draft_Builder {
         }
         nocache_headers();
         $safe_idea_id = max(0, absint($idea_id));
-        $filename = 'alma-ai-payload-idea-' . $safe_idea_id . '-' . gmdate('Y-m-d-His') . '.json';
+        $prefix = $mode === 'debug' ? 'alma-ai-debug-payload-idea-' : 'alma-ai-openai-payload-idea-';
+        $filename = $prefix . $safe_idea_id . '-' . gmdate('Y-m-d-His') . '.json';
         header('Content-Type: application/json; charset=utf-8');
         header('Content-Disposition: attachment; filename="' . sanitize_file_name($filename) . '"');
         header('Content-Transfer-Encoding: binary');

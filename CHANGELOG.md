@@ -1,3 +1,10 @@
+## 2.25.25 — PR 8.25 Separate OpenAI Payload Download from Full Debug JSON
+- Corretto il download **Scarica JSON payload OpenAI**: ora esporta il payload compatto prodotto da `normalize_payload_for_openai()`, non il payload diagnostico completo.
+- Aggiunto il download separato **Scarica JSON debug completo**, con wrapper esplicito `debug_payload_full` + `openai_payload_normalized` per confrontare diagnostica interna e payload realmente inviato al modello.
+- Confermata esclusione dal payload OpenAI normalizzato di `content_search_query`, `theme`, `destination`, `selected_results_count`, `selection_context`, score/reason/provider/source/provenance, Source prompt, snapshot istruzioni, `internal_notes`, autori e timestamp amministrativi.
+- Rafforzata la sintesi del contesto Viator escludendo anche righe tecniche provider/source dal contesto breve dei link affiliati.
+- Versione plugin aggiornata a `2.25.25`.
+
 ## 2.25.24 — PR 8.24 Compact OpenAI Draft Payload and JSON Diagnostics
 - Normalizzato il payload inviato a OpenAI nel flusso `create_article_draft_from_selected_sources`: dati editoriali, profilo, regole e link affiliati vengono inviati in sezioni compatte dedicate, senza campi diagnostici o duplicazioni del prompt.
 - Separati payload completo diagnostico/download e payload effettivamente inviato a OpenAI, preservando i dati tecnici per debug interno senza esporli al modello.
