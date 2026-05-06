@@ -186,6 +186,7 @@ class ALMA_AI_Content_Agent_Affiliate_Index {
         $link_types = is_wp_error($type_names) ? '' : implode(', ', array_map('sanitize_text_field', (array)$type_names));
         $thumb_id = (int)get_post_thumbnail_id($post_id);
         $thumb_url = $thumb_id > 0 ? wp_get_attachment_image_url($thumb_id, 'thumbnail') : '';
+        if ($thumb_url === '') { $thumb_url = esc_url_raw((string)get_post_meta($post_id, '_alma_featured_image_url', true)); }
         $text = trim(implode(' ', array($post->post_title, wp_strip_all_tags((string)$post->post_content), $ctx, $affiliate_url, $provider, $link_types)));
         $normalized = strtolower(preg_replace('/\s+/u', ' ', $text));
         $keywords = implode(' ', self::extract_terms($normalized));
@@ -201,7 +202,7 @@ class ALMA_AI_Content_Agent_Affiliate_Index {
             'link_types'=>sanitize_text_field($link_types),
             'featured_image_id'=>$thumb_id,
             'featured_image_url'=>esc_url_raw((string)$thumb_url),
-            'content_hash'=>hash('sha256', $normalized.'|'.$affiliate_url.'|'.$link_types.'|'.$thumb_id),
+            'content_hash'=>hash('sha256', $normalized.'|'.$affiliate_url.'|'.$link_types.'|'.$thumb_id.'|'.$thumb_url),
             'post_modified_gmt'=>gmdate('Y-m-d H:i:s', strtotime((string)$post->post_modified_gmt ?: 'now')),
             'indexed_at'=>current_time('mysql', true),
             'status'=>($post->post_status === 'publish' && $affiliate['valid']) ? self::STATUS_ACTIVE : self::STATUS_INACTIVE,
