@@ -1,3 +1,11 @@
+## 2.25.24 — PR 8.24 Compact OpenAI Draft Payload and JSON Diagnostics
+- Normalizzato il payload inviato a OpenAI nel flusso `create_article_draft_from_selected_sources`: dati editoriali, profilo, regole e link affiliati vengono inviati in sezioni compatte dedicate, senza campi diagnostici o duplicazioni del prompt.
+- Separati payload completo diagnostico/download e payload effettivamente inviato a OpenAI, preservando i dati tecnici per debug interno senza esporli al modello.
+- Ripuliti i link affiliati nel payload AI: mantenuti solo ID, titolo, descrizione sintetica, URL affiliato, shortcode, tipologie e contesto breve; rimossi score, reason, provider/source/provenance, Source prompt e note interne.
+- Aggiunta sintesi prudente del contesto Viator per evitare blocchi tecnici/provider-specific e istruzioni operative lunghe nel prompt AI.
+- Reso `slug` obbligatorio nel contract OpenAI con fallback locale sanificato dal titolo e warning non bloccante se mancante o non valido.
+- Migliorata la diagnostica JSON admin distinguendo risposta vuota, probabile troncamento, JSON non parsabile/testo fuori oggetto, campi obbligatori mancanti e contenuto troppo corto.
+
 ## 2.25.23 — PR 8.23 Enforce Valid OpenAI Draft JSON and Improve API Error Feedback
 - Verificato e aggiornato il wrapper OpenAI su endpoint `POST /v1/responses` con gestione strutturata di `response_format`, `max_output_tokens`, `timeout` e codifica errori API.
 - Implementata richiesta output JSON tecnica per `content_draft_generation` con schema contract e fallback automatico a JSON object mode se `response_format` non supportato.
