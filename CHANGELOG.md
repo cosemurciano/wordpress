@@ -1,3 +1,12 @@
+## 2.25.36 — AI payload profile and affiliate image consistency
+- Aggiunto nel payload OpenAI normalizzato il blocco `instruction_profile` compatto (`id`, `name`, `snapshot_hash`) riferito solo al profilo istruzioni selezionato dall’utente.
+- Garantito che il payload OpenAI non includa liste di profili attivi e non scelga un profilo diverso da quello associato alla sessione/idea.
+- Propagate immagini affiliate coerenti in `selection_context`, sessione selezione e `affiliate_links`, usando featured image WordPress reale con fallback a `_alma_featured_image_url` solo se URL assoluto valido.
+- Aggiunte `media_rules` al payload OpenAI compatto senza duplicarle inutilmente nelle istruzioni editoriali.
+- Migliorata la diagnostica debug per immagini mancanti dei link affiliati con `image_debug`, utile anche per verificare link Viator senza featured image/meta URL/import status valido.
+- Confermata l’assenza di download remoto, sideload, gallerie multiple, traveler photos, video o generazione immagini AI durante la generazione bozza.
+- Versione plugin aggiornata a `2.25.36`.
+
 ## 2.25.35 — AI search result affiliate image thumbnails
 - Aggiunta la miniatura dell'immagine affiliata nei **Risultati ricerca** dell'AI Content Agent, allineata a destra del record senza modificare i pulsanti di selezione/aggiunta.
 - La miniatura usa la stessa risoluzione strutturata del payload AI: featured image WordPress reale del CPT `affiliate_link`, fallback a `_alma_featured_image_url` solo se URL assoluto valido, nessun placeholder pesante quando manca l'immagine.
