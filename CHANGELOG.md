@@ -1,3 +1,9 @@
+## 2.25.28 — PR 8.28 Affiliate Context Cleanup and AI Instructions Profile UI
+- Rafforzata la pulizia finale di `affiliate_links[].context` nel payload OpenAI normalizzato per rimuovere residui Viator/legacy come fonte/provider, codice prodotto, URL affiliato diagnostico, destination/tag ID, `Durata: Array` e placeholder tecnici.
+- Migliorata la UI di **Istruzioni AI → Modifica profilo**: Nome profilo e Lingua restano in alto, i campi principali sono organizzati in griglia responsive a due colonne, il Prompt libero personalizzato è ampio e a tutta larghezza e le Note interne restano secondarie.
+- Corretta la checkbox **Attiva questo profilo dopo il salvataggio** per riflettere lo stato `is_active` del profilo in modifica, mantenendo la logica esistente di attivazione.
+- Versione plugin aggiornata a `2.25.28`.
+
 ## 2.25.27 — PR 8.27 Advanced Debug Download and Rule Sentence Normalization
 - Spostato il download **Scarica JSON debug completo** negli **Strumenti avanzati**, con label diagnostica esplicita e visibilità limitata agli admin con capability adeguata.
 - Rifinita la normalizzazione di `affiliate_rules`, `seo_rules` e `source_policies` per preservare frasi/listati naturali, completare frammenti pendenti e pulire virgolette/caratteri speciali.

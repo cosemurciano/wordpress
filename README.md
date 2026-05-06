@@ -141,11 +141,17 @@
 
 # Affiliate Link Manager AI
 
-Versione 2.25.27
+Versione 2.25.28
 
 
 
 
+
+## Novità 2.25.28 — PR 8.28 Affiliate Context Cleanup and AI Instructions Profile UI
+
+- Pulizia finale di `affiliate_links[].context` nel payload OpenAI normalizzato: rimossi residui tecnici Viator/legacy come fonte/provider, codice prodotto, URL affiliato diagnostico, destination/tag ID, `Durata: Array` e placeholder non utili.
+- UI **Istruzioni AI → Modifica profilo** più leggibile: Nome profilo e Lingua in alto, campi principali in griglia responsive a due colonne, Prompt libero personalizzato ampio a tutta larghezza e Note interne secondarie.
+- Checkbox **Attiva questo profilo dopo il salvataggio** allineata allo stato `is_active` del profilo esistente, senza modificare la logica di attivazione/predefinito.
 
 ## Novità 2.25.27 — PR 8.27 Advanced Debug Download and Rule Sentence Normalization
 
