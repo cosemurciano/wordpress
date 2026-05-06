@@ -651,8 +651,28 @@ button:disabled {
 .alma-ai-agent-admin .alma-count-badge{background:#eef2f7;color:#3c434a}
 .alma-ai-agent-admin .alma-excerpt{margin:6px 0;color:#50575e}
 .alma-ai-agent-admin .alma-actions-inline{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.alma-ai-agent-admin .alma-idea-main-actions{align-items:stretch;justify-content:flex-start}
+.alma-ai-agent-admin .alma-actions-inline form{margin:0}
+.alma-ai-agent-admin .alma-actions-inline p{margin:0}
+.alma-ai-agent-admin .alma-action-button{display:inline-flex;align-items:center;gap:6px;border-radius:4px;border-width:1px;font-weight:600;min-height:34px;line-height:1.2;white-space:normal;text-align:left}
+.alma-ai-agent-admin .alma-action-button .dashicons{width:18px;height:18px;font-size:18px;line-height:18px;flex:0 0 auto}
+.alma-ai-agent-admin .alma-action-primary{background:#2271b1;border-color:#135e96;color:#fff}
+.alma-ai-agent-admin .alma-action-primary:hover,.alma-ai-agent-admin .alma-action-primary:focus{background:#135e96;border-color:#0a4b78;color:#fff}
+.alma-ai-agent-admin .alma-action-success{background:#1e7e34;border-color:#17692a;color:#fff}
+.alma-ai-agent-admin .alma-action-success:hover,.alma-ai-agent-admin .alma-action-success:focus{background:#17692a;border-color:#0f5320;color:#fff}
+.alma-ai-agent-admin .alma-action-danger{background:#d63638;border-color:#b32d2e;color:#fff}
+.alma-ai-agent-admin .alma-action-danger:hover,.alma-ai-agent-admin .alma-action-danger:focus{background:#b32d2e;border-color:#8a2424;color:#fff}
+.alma-ai-agent-admin .alma-action-secondary{background:#f6f7f7;border-color:#c3c4c7;color:#2c3338}
+.alma-ai-agent-admin .alma-action-secondary:hover,.alma-ai-agent-admin .alma-action-secondary:focus{background:#f0f0f1;border-color:#8c8f94;color:#1d2327}
 @media (max-width: 1450px){.alma-ai-agent-admin .alma-ideas-layout{grid-template-columns:1fr}}
-@media (max-width: 782px){.alma-ai-agent-admin .alma-idea-title-input{min-width:100%}}
+@media (max-width: 782px){
+    .alma-ai-agent-admin .alma-ideas-toolbar{align-items:stretch}
+    .alma-ai-agent-admin .alma-idea-title-input{min-width:100%;width:100%}
+    .alma-ai-agent-admin .alma-idea-main-actions,.alma-ai-agent-admin .alma-idea-main-actions form{width:100%}
+    .alma-ai-agent-admin .alma-action-button{justify-content:center;width:100%}
+    .alma-ai-agent-admin .alma-ideas-pagination{align-items:stretch;flex-direction:column}
+    .alma-ai-agent-admin .alma-ideas-pagination .button{text-align:center}
+}
 
 .alma-ai-agent-admin .alma-results-header{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
 @media (max-width:782px){.alma-ai-agent-admin .alma-results-header{align-items:flex-start;flex-direction:column}}
@@ -704,9 +724,15 @@ button:disabled {
 .alma-ai-agent-admin .alma-active-idea-box .alma-idea-section:first-child{padding-top:0;border-top:0}
 .alma-ai-agent-admin .alma-idea-section-title{margin:0 0 8px;color:#1d2327}
 .alma-ai-agent-admin .alma-idea-meta p{margin:4px 0}
-.alma-ai-agent-admin .alma-idea-record{border:1px solid #dcdcde;background:#f8f9fa;border-radius:6px;padding:10px;margin:0 0 8px}
-.alma-ai-agent-admin .alma-idea-record-title{margin:0 0 4px}
+.alma-ai-agent-admin .alma-ideas-list{display:flex;flex-direction:column;gap:8px}
+.alma-ai-agent-admin .alma-idea-record{border:1px solid #dcdcde;background:#f8f9fa;border-radius:6px;padding:10px;margin:0}
+.alma-ai-agent-admin .alma-idea-record.is-active{border:2px solid #1e7e34;background:#f0f8f2;box-shadow:0 0 0 1px rgba(30,126,52,.08)}
+.alma-ai-agent-admin .alma-idea-record-title{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:0 0 4px}
+.alma-ai-agent-admin .alma-active-idea-badge{display:inline-block;padding:2px 8px;border-radius:999px;background:#d1e7dd;color:#0f5132;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.02em}
 .alma-ai-agent-admin .alma-idea-record-meta{margin:0 0 8px}
+.alma-ai-agent-admin .alma-ideas-pagination{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-top:12px;padding-top:10px;border-top:1px solid #e2e4e7}
+.alma-ai-agent-admin .alma-ideas-page-indicator{font-size:12px;color:#50575e;font-weight:600}
+.alma-ai-agent-admin .alma-ideas-pagination .disabled{opacity:.55;pointer-events:none}
 .alma-ai-agent-admin .alma-idea-details ul{margin:0;padding-left:18px}
 .alma-ai-agent-admin .alma-idea-details li{margin:0 0 6px}
 .alma-ai-agent-admin .alma-affiliate-actions-group{margin-top:10px}

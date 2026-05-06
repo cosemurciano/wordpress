@@ -1,3 +1,10 @@
+## 2.25.29 — PR 8.29 AI Content Agent Toolbar and Ideas Pagination UI
+- Migliorata la toolbar principale di **AI Content Agent** con pulsanti scoped più distinguibili: azioni primarie blu, salvataggio verde, eliminazione rossa con icona trash e download JSON OpenAI grigio/secondario.
+- Aggiunta paginazione server-side alla colonna **Idee create** con massimo 10 idee per pagina, controlli **Precedente**/**Successiva**, indicatore pagina corrente e mantenimento dell’idea attiva.
+- Evidenziata l’idea attiva nella lista con bordo verde, sfondo leggero e badge **Idea attiva**, preservando form, link, nonce e azioni esistenti.
+- Confermati gli **Strumenti avanzati** per il download **Scarica JSON debug completo (solo diagnostica, non inviato a OpenAI)**, visibile solo agli admin con `manage_options` e stile secondario.
+- Versione plugin aggiornata a `2.25.29`.
+
 ## 2.25.10 — PR 8.10 Affiliate Index Pending Query Consistency and Pre-Test Hardening
 - Allineata `sync_incremental()` alla semantica pending della Dashboard: ora include record mancanti, record obsoleti e candidabili non attivi.
 - La query incrementale seleziona solo candidabili (`affiliate_link` pubblicati con URL affiliato valorizzato) con `DISTINCT`, `EXISTS`, `LIMIT` e condizione `i.status <> active`.
