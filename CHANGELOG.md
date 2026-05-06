@@ -1,3 +1,10 @@
+## 2.25.29 — PR 8.29 AI Content Agent Toolbar and Ideas Pagination UI
+- Migliorata la toolbar principale di **AI Content Agent** con pulsanti scoped più distinguibili: azioni primarie blu, salvataggio verde, eliminazione rossa con icona trash e download JSON OpenAI grigio/secondario.
+- Aggiunta paginazione server-side alla colonna **Idee create** con massimo 10 idee per pagina, controlli **Precedente**/**Successiva**, indicatore pagina corrente e mantenimento dell’idea attiva.
+- Evidenziata l’idea attiva nella lista con bordo verde, sfondo leggero e badge **Idea attiva**, preservando form, link, nonce e azioni esistenti.
+- Confermati gli **Strumenti avanzati** per il download **Scarica JSON debug completo (solo diagnostica, non inviato a OpenAI)**, visibile solo agli admin con `manage_options` e stile secondario.
+- Versione plugin aggiornata a `2.25.29`.
+
 ## 2.25.28 — PR 8.28 Affiliate Context Cleanup and AI Instructions Profile UI
 - Rafforzata la pulizia finale di `affiliate_links[].context` nel payload OpenAI normalizzato per rimuovere residui Viator/legacy come fonte/provider, codice prodotto, URL affiliato diagnostico, destination/tag ID, `Durata: Array` e placeholder tecnici.
 - Migliorata la UI di **Istruzioni AI → Modifica profilo**: Nome profilo e Lingua restano in alto, i campi principali sono organizzati in griglia responsive a due colonne, il Prompt libero personalizzato è ampio e a tutta larghezza e le Note interne restano secondarie.
