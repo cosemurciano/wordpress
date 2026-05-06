@@ -141,11 +141,17 @@
 
 # Affiliate Link Manager AI
 
-Versione 2.25.26
+Versione 2.25.27
 
 
 
 
+
+## Novità 2.25.27 — PR 8.27 Advanced Debug Download and Rule Sentence Normalization
+
+- **Scarica JSON payload OpenAI** resta il download principale del payload normalizzato.
+- **Scarica JSON debug completo (solo diagnostica, non inviato a OpenAI)** è ora in **Strumenti avanzati** ed è visibile solo agli admin con capability adeguata.
+- La normalizzazione di `affiliate_rules`, `seo_rules` e `source_policies` conserva frasi complete, unisce frammenti pendenti e ripulisce virgolette/caratteri speciali senza reintrodurre campi diagnostici nel payload OpenAI.
 
 
 ## Novità 2.25.26 — PR 8.26 Refine OpenAI Payload Rules and Viator Duration

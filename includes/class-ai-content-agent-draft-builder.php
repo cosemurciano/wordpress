@@ -219,32 +219,90 @@ class ALMA_AI_Content_Agent_Draft_Builder {
     }
 
     private static function normalize_rule_items($rule) {
-        $rule = wp_strip_all_tags((string)$rule);
-        $rule = preg_replace('/^[ \t]*(?:[•*]|-|–|—)[ \t]+/m', '', $rule);
-        $rule = trim($rule);
+        $rule = self::normalize_rule_text($rule);
         if ($rule === '') { return array(); }
 
-        $parts = preg_split('/\r\n|\r|\n/', $rule, -1, PREG_SPLIT_NO_EMPTY);
+        $raw_parts = preg_split('/\r\n|\r|\n/', $rule, -1, PREG_SPLIT_NO_EMPTY);
         $items = array();
-        foreach ((array)$parts as $part) {
-            $part = trim(preg_replace('/\s+/', ' ', $part));
+        foreach ((array)$raw_parts as $part) {
+            $part = self::normalize_rule_fragment($part);
             if ($part === '') { continue; }
-            $sentences = preg_split('/(?<=[.!?。！？])\s+/u', $part, -1, PREG_SPLIT_NO_EMPTY);
-            foreach ((array)$sentences as $sentence) {
-                $sentence = self::normalize_complete_rule_sentence($sentence);
-                if ($sentence !== '') { $items[] = $sentence; }
+
+            if (!empty($items) && self::rule_waits_for_completion(end($items))) {
+                $previous = array_pop($items);
+                $items[] = self::normalize_complete_rule_sentence(self::join_rule_fragments($previous, $part));
+                continue;
             }
+
+            if (self::is_standalone_quoted_claim($part)) {
+                $part = 'Evitare formule assolute o non verificabili come ' . $part;
+            }
+
+            if (self::is_orphan_reader_need_fragment($part)) {
+                $part = 'Collega il link affiliato a un bisogno concreto del lettore, per esempio ' . self::lowercase_first_ascii($part);
+            }
+
+            $part = self::normalize_complete_rule_sentence($part);
+            if ($part !== '') { $items[] = $part; }
         }
         return $items;
     }
 
-    private static function normalize_complete_rule_sentence($sentence) {
+    private static function normalize_rule_text($rule) {
+        $rule = wp_strip_all_tags((string)$rule);
+        $rule = str_replace(array('�', '“?', '”?'), array('', '“', '”'), $rule);
+        $rule = preg_replace('/^[ \t]*(?:[•*]|-|–|—|\d+[.)])[ \t]+/m', '', $rule);
+        $rule = preg_replace_callback('/(^|[\s(])\?(?=[\p{L}])|([\s(])\?([«“"])/u', function ($m) { return (isset($m[1]) ? $m[1] : '') . '“' . (isset($m[2]) ? $m[2] : '') . (isset($m[3]) ? $m[3] : ''); }, $rule);
+        $rule = preg_replace('/[ \t]+/', ' ', $rule);
+        return trim($rule);
+    }
+
+    private static function normalize_rule_fragment($sentence) {
         $sentence = trim(preg_replace('/\s+/', ' ', (string)$sentence));
         $sentence = preg_replace('/(?:\.\.\.|…)+$/u', '', $sentence);
-        $sentence = trim($sentence, " \t\n\r\0\x0B-–—:;,");
-        if ($sentence === '') { return ''; }
-        if (!preg_match('/[.!?。！？]$/u', $sentence)) { $sentence .= '.'; }
+        $sentence = preg_replace_callback('/(^|[\s(])\?(?=[\p{L}«“"])/u', function ($m) { return (isset($m[1]) ? $m[1] : '') . '“'; }, $sentence);
+        $sentence = preg_replace('/([.!?])\s*([»”"])(?:\s*[.!?])+$/u', '${2}${1}', $sentence);
+        $sentence = preg_replace('/([»”"])(?:\s*[.!?]){2,}$/u', '${1}.', $sentence);
+        $sentence = preg_replace('/([.!?]){2,}$/u', '$1', $sentence);
+        $sentence = preg_replace('/^[\s\-–—:;,]+|[\s\-–—:;,]+$/u', '', $sentence);
         return $sentence;
+    }
+
+    private static function normalize_complete_rule_sentence($sentence) {
+        $sentence = self::normalize_rule_fragment($sentence);
+        if ($sentence === '') { return ''; }
+        if (!preg_match('/[.!?。！？][»”"]?$/u', $sentence)) { $sentence .= '.'; }
+        return $sentence;
+    }
+
+    private static function rule_waits_for_completion($sentence) {
+        $sentence = trim((string)$sentence);
+        return (bool)preg_match('/\b(?:con|come|per esempio|ad esempio)\.$/iu', $sentence);
+    }
+
+    private static function join_rule_fragments($previous, $next) {
+        $previous = preg_replace('/\.$/', '', trim((string)$previous));
+        $next = trim((string)$next);
+        if ($next === '') { return $previous; }
+        return $previous . ' ' . self::lowercase_first_ascii($next);
+    }
+
+
+    private static function lowercase_first_ascii($text) {
+        $text = (string)$text;
+        if ($text !== '' && preg_match('/^[A-Z]/', $text)) {
+            return strtolower(substr($text, 0, 1)) . substr($text, 1);
+        }
+        return $text;
+    }
+
+    private static function is_standalone_quoted_claim($sentence) {
+        return (bool)preg_match('/^[«“"][^«“"]{3,}[»”"]\.?$/u', trim((string)$sentence));
+    }
+
+    private static function is_orphan_reader_need_fragment($sentence) {
+        $sentence = trim((string)$sentence);
+        return (bool)preg_match('/^(?:prenotare|acquistare|confrontare|scegliere|organizzare|risparmiare|trovare)\b/iu', $sentence);
     }
 
     private static function is_viator_context($provider, $source, $context) {
@@ -254,6 +312,8 @@ class ALMA_AI_Content_Agent_Draft_Builder {
 
     private static function summarize_affiliate_context_for_ai($context, $provider = '', $source = '', $title = '', $description = '') {
         $context = sanitize_textarea_field((string)$context);
+        $context = preg_replace('/(?:^|\s+)durata\s*:\s*array\.?/i', ' ', $context);
+        $context = trim(preg_replace('/\s+/', ' ', (string)$context));
         if ($context === '') { return self::compact_text($description, 50); }
         if (!self::is_viator_context($provider, $source, $context)) { return self::compact_text($context, 90); }
 
@@ -261,6 +321,8 @@ class ALMA_AI_Content_Agent_Draft_Builder {
         $patterns = array('/\btipo\b/i','/\bdescrizione\b/i','/\bprezzo\b/i','/\bvaluta\b/i','/\bdurata\b/i','/cancellazione/i','/privat/i','/inclus/i','/esclus/i','/caratteristiche/i','/tour/i','/esperienza/i');
         foreach (preg_split('/\r\n|\r|\n|;/', $context) as $line) {
             $line = trim(wp_strip_all_tags((string)$line));
+            $line = preg_replace('/(?:^|\s+)durata\s*:\s*array\.?/i', ' ', $line);
+            $line = trim(preg_replace('/\s+/', ' ', (string)$line));
             if ($line === '') { continue; }
             if (preg_match('/fonte\s*:\s*viator|codice prodotto|product\s*code|url affiliato disponibile|rating|recension|destination id|tag id|source key|prompt source|note operative|provider|fornitore|source/i', $line)) { continue; }
             if (preg_match('/^durata\s*:\s*(array|n\/?d|non disponibile)?\.?$/i', $line)) { continue; }

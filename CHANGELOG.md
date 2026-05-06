@@ -1,3 +1,9 @@
+## 2.25.27 — PR 8.27 Advanced Debug Download and Rule Sentence Normalization
+- Spostato il download **Scarica JSON debug completo** negli **Strumenti avanzati**, con label diagnostica esplicita e visibilità limitata agli admin con capability adeguata.
+- Rifinita la normalizzazione di `affiliate_rules`, `seo_rules` e `source_policies` per preservare frasi/listati naturali, completare frammenti pendenti e pulire virgolette/caratteri speciali.
+- Il payload OpenAI normalizzato mantiene la struttura pubblica compatta e resta privo di diagnostica; il debug completo continua a includere `debug_payload_full` e `openai_payload_normalized` per confronto.
+- Versione plugin aggiornata a `2.25.27`.
+
 ## 2.25.26 — PR 8.26 Refine OpenAI Payload Rules and Viator Duration
 - Rifinito il payload OpenAI normalizzato del flusso `create_article_draft_from_selected_sources` senza modificare la struttura pubblica né reintrodurre campi diagnostici.
 - Omessa la durata dal contesto sintetico Viator quando il valore non è scalare o non è leggibile, evitando output tecnici come `Durata: Array`.
