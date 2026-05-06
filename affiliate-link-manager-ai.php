@@ -3,7 +3,7 @@
  * Plugin Name: Affiliate Link Manager AI
  * Plugin URI: https://your-website.com
  * Description: Gestisce link affiliati con intelligenza artificiale per ottimizzazione e tracking automatico.
- * Version: 2.25.29
+ * Version: 2.25.30
  * Author: Cosè Murciano
  * License: GPL v2 or later
  * Text Domain: affiliate-link-manager-ai
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Definisci costanti del plugin
-define('ALMA_VERSION', '2.25.29');
+define('ALMA_VERSION', '2.25.30');
 define('ALMA_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('ALMA_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('ALMA_PLUGIN_FILE', __FILE__);
@@ -79,6 +79,10 @@ require_once ALMA_PLUGIN_DIR . 'includes/class-affiliate-links-source-filter.php
  * Classe principale del plugin
  */
 class AffiliateManagerAI {
+    const AI_CONTENT_AGENT_MENU_SLUG = 'alma-ai-content-agent';
+    const AI_CONTENT_AGENT_CAPABILITY = 'manage_options';
+    const AFFILIATE_LINK_PARENT_MENU = 'edit.php?post_type=affiliate_link';
+
     private $dashboard_stats;
     private $source_manager;
     private $affiliate_links_source_filter;
@@ -667,6 +671,7 @@ class AffiliateManagerAI {
 
         // Dashboard widget
         add_action('wp_dashboard_setup', array($this, 'add_dashboard_widget'));
+        add_action('wp_dashboard_setup', array($this, 'add_ai_content_agent_dashboard_widget'));
         add_action('pre_get_posts', array($this, 'filter_posts_without_affiliates'));
     }
     
@@ -1250,11 +1255,11 @@ class AffiliateManagerAI {
 
         // AI Content Agent
         add_submenu_page(
-            'edit.php?post_type=affiliate_link',
+            self::AFFILIATE_LINK_PARENT_MENU,
             __('AI Content Agent', 'affiliate-link-manager-ai'),
             __('AI Content Agent', 'affiliate-link-manager-ai'),
-            'manage_options',
-            'alma-ai-content-agent',
+            self::AI_CONTENT_AGENT_CAPABILITY,
+            self::AI_CONTENT_AGENT_MENU_SLUG,
             array('ALMA_AI_Content_Agent_Admin', 'render_page')
         );
 
@@ -1311,7 +1316,7 @@ class AffiliateManagerAI {
             'alma-bot-affiliate-settings',
             'affiliate-chat-ai',
             'alma-affiliate-sources',
-            'alma-ai-content-agent',
+            self::AI_CONTENT_AGENT_MENU_SLUG,
             'affiliate-link-manager-settings',
             'alma-css-editor',
         );
@@ -1818,6 +1823,65 @@ class AffiliateManagerAI {
         echo '<a href="' . admin_url('edit.php?post_type=affiliate_link') . '" class="button button-primary">Gestisci Link</a> ';
         echo '<a href="' . admin_url('admin.php?page=affiliate-link-manager-dashboard') . '" class="button">Dashboard Completa</a>';
         echo '</p>';
+    }
+
+    /**
+     * Build the existing AI Content Agent admin URL without duplicating routing logic in widgets.
+     *
+     * @param string $tab Optional AI Content Agent tab.
+     * @return string
+     */
+    private function get_ai_content_agent_admin_url($tab = 'dashboard') {
+        $args = array(
+            'post_type' => 'affiliate_link',
+            'page'      => self::AI_CONTENT_AGENT_MENU_SLUG,
+        );
+
+        $tab = sanitize_key($tab);
+        if ($tab !== '') {
+            $args['tab'] = $tab;
+        }
+
+        return add_query_arg($args, admin_url('edit.php'));
+    }
+
+    /**
+     * Add a lightweight WordPress Dashboard shortcut to AI Content Agent.
+     */
+    public function add_ai_content_agent_dashboard_widget() {
+        if (!current_user_can(self::AI_CONTENT_AGENT_CAPABILITY)) {
+            return;
+        }
+
+        wp_add_dashboard_widget(
+            'alma_ai_content_agent_dashboard_widget',
+            __('AI Content Agent', 'affiliate-link-manager-ai'),
+            array($this, 'render_ai_content_agent_dashboard_widget'),
+            null,
+            null,
+            'normal',
+            'high'
+        );
+    }
+
+    /**
+     * Render the AI Content Agent dashboard shortcut widget.
+     */
+    public function render_ai_content_agent_dashboard_widget() {
+        if (!current_user_can(self::AI_CONTENT_AGENT_CAPABILITY)) {
+            return;
+        }
+
+        $agent_url = $this->get_ai_content_agent_admin_url('dashboard');
+
+        echo '<div class="alma-ai-content-agent-widget">';
+        echo '<div class="alma-ai-content-agent-widget__icon" aria-hidden="true"><span class="dashicons dashicons-edit-page"></span></div>';
+        echo '<div class="alma-ai-content-agent-widget__content">';
+        echo '<p class="alma-ai-content-agent-widget__description">' . esc_html__('Crea idee, genera brief e prepara bozze articolo con supporto AI.', 'affiliate-link-manager-ai') . '</p>';
+        echo '<p class="alma-ai-content-agent-widget__actions"><a class="button button-primary" href="' . esc_url($agent_url) . '">' . esc_html__('Apri AI Content Agent', 'affiliate-link-manager-ai') . '</a></p>';
+        echo '<p class="alma-ai-content-agent-widget__note">' . esc_html__('Scorciatoia rapida alla sezione admin: nessun dato AI o payload OpenAI viene mostrato nella Bacheca.', 'affiliate-link-manager-ai') . '</p>';
+        echo '</div>';
+        echo '</div>';
     }
 
     /**

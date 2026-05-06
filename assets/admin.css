@@ -58,6 +58,75 @@
     margin-top: 5px;
 }
 
+
+/* ===== WordPress Dashboard: AI Content Agent shortcut ===== */
+#alma_ai_content_agent_dashboard_widget .inside {
+    margin-bottom: 0;
+}
+
+#alma_ai_content_agent_dashboard_widget .alma-ai-content-agent-widget {
+    display: flex;
+    gap: 14px;
+    align-items: flex-start;
+    padding: 4px 0 2px;
+}
+
+#alma_ai_content_agent_dashboard_widget .alma-ai-content-agent-widget__icon {
+    display: inline-flex;
+    width: 42px;
+    height: 42px;
+    flex: 0 0 42px;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    background: #f0f6fc;
+    color: #2271b1;
+}
+
+#alma_ai_content_agent_dashboard_widget .alma-ai-content-agent-widget__icon .dashicons {
+    width: 24px;
+    height: 24px;
+    font-size: 24px;
+    line-height: 1;
+}
+
+#alma_ai_content_agent_dashboard_widget .alma-ai-content-agent-widget__content {
+    min-width: 0;
+}
+
+#alma_ai_content_agent_dashboard_widget .alma-ai-content-agent-widget__description {
+    margin: 0 0 12px;
+    color: #1d2327;
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+#alma_ai_content_agent_dashboard_widget .alma-ai-content-agent-widget__actions {
+    margin: 0 0 10px;
+}
+
+#alma_ai_content_agent_dashboard_widget .alma-ai-content-agent-widget__note {
+    margin: 0;
+    color: #646970;
+    font-size: 12px;
+    line-height: 1.4;
+}
+
+@media (max-width: 480px) {
+    #alma_ai_content_agent_dashboard_widget .alma-ai-content-agent-widget {
+        display: block;
+    }
+
+    #alma_ai_content_agent_dashboard_widget .alma-ai-content-agent-widget__icon {
+        margin-bottom: 10px;
+    }
+
+    #alma_ai_content_agent_dashboard_widget .alma-ai-content-agent-widget__actions .button {
+        width: 100%;
+        text-align: center;
+    }
+}
+
 /* ===== Editor Modal Styles ===== */
 .alma-modal-overlay {
     position: fixed !important;
