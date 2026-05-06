@@ -141,12 +141,20 @@
 
 # Affiliate Link Manager AI
 
-Versione 2.25.23
+Versione 2.25.24
 
 
 
 
 
+
+## Novità 2.25.24 — PR 8.24 Compact OpenAI Draft Payload and JSON Diagnostics
+
+- Payload OpenAI della bozza da risultati selezionati normalizzato in sezioni compatte (`task`, `site`, `article_request`, `editorial_instructions`, `output_requirements`, `affiliate_links`, regole e warning).
+- Rimossi dal payload inviato al modello campi diagnostici/deduplicati come `theme`, `destination`, `selected_results_count`, score/reason/provider/source/provenance, prompt Source completi, snapshot istruzioni ridondanti e `internal_notes`.
+- Separati payload completo di debug/download e payload effettivamente inviato a OpenAI.
+- `slug` ora obbligatorio nel contract JSON, con fallback locale sanificato dal titolo e warning non bloccante.
+- Diagnostica JSON più specifica per risposta vuota, probabile troncamento, JSON non parsabile/testo fuori oggetto, campi obbligatori mancanti e contenuto troppo corto.
 
 ## Novità 2.25.23 — PR 8.23 Enforce Valid OpenAI Draft JSON and Improve API Error Feedback
 
@@ -403,6 +411,19 @@ Miglioramenti principali:
 ## Versione 2.13.0
 - Nuova UX Importa contenuti con criteri ricerca runtime (max 100).
 
+
+
+### AI Content Agent — payload OpenAI compatto (2.25.24)
+
+Nel flusso **Crea Bozza con OpenAI** da risultati selezionati, il payload effettivamente inviato al modello viene ora normalizzato in una struttura compatta focalizzata sulla generazione editoriale.
+
+- Il modello riceve sezioni dedicate per task, sito, richiesta articolo, istruzioni editoriali, requisiti output, link affiliati, regole affiliate/SEO, policy fonti e warning.
+- I dati diagnostici o amministrativi restano disponibili nel payload completo di debug/download, ma non vengono inviati a OpenAI.
+- Sono esclusi dal payload AI campi come `theme`, `destination`, `selected_results_count`, score/reason/provider/source/provenance, prompt Source completi, snapshot istruzioni ridondanti e `internal_notes`.
+- Il prompt personalizzato del profilo istruzioni viene esposto in alto dentro le istruzioni editoriali, insieme a tono, pubblico e stile.
+- Il contesto Viator viene sintetizzato in modo prudente, senza blocchi provider tecnici, rating/recensioni aggregate, product code o note operative lunghe.
+- Il contract JSON richiede sempre `title`, `slug`, `excerpt`, `content`, `seo_title`, `seo_description`, `affiliate_shortcodes_used`, `affiliate_urls_used`, `media_used` e `warnings`. Se lo slug manca o non è valido, viene generato/sanificato localmente senza bloccare la bozza.
+- La diagnostica errori distingue risposta vuota, risposta probabilmente troncata, JSON non parsabile, testo fuori dall’oggetto JSON, campi obbligatori mancanti e contenuto troppo corto, senza esporre API key o prompt completi nei messaggi admin.
 
 ## OpenAI-only AI Core (2.15.0)
 - Provider AI attivo unico: OpenAI.
