@@ -141,12 +141,20 @@
 
 # Affiliate Link Manager AI
 
-Versione 2.25.24
+Versione 2.25.25
 
 
 
 
 
+
+## Novità 2.25.25 — PR 8.25 Separate OpenAI Payload Download from Full Debug JSON
+
+- Il pulsante **Scarica JSON payload OpenAI** genera ora il JSON normalizzato compatto prodotto da `normalize_payload_for_openai()`, cioè la struttura usata nel contesto inviato a OpenAI.
+- Aggiunto il pulsante separato **Scarica JSON debug completo**: il file contiene `payload_type`, `debug_payload_full` e `openai_payload_normalized`, così è esplicito quali dati restano solo diagnostici e quali dati entrano nel prompt OpenAI.
+- Il payload OpenAI esportabile resta privo di campi diagnostici/amministrativi (`content_search_query`, `theme`, `destination`, `selected_results_count`, `selection_context`, score/reason/provider/source/provenance, Source prompt, snapshot istruzioni, `internal_notes`, audit timestamps/autori) e mantiene `slug_required: true`.
+- Le regole duplicate restano deduplicate nelle sezioni finali `affiliate_rules`, `seo_rules`, `source_policies` ed `editorial_instructions.operational_rules`; il prompt personalizzato del profilo è disponibile in alto in `editorial_instructions.custom_prompt`.
+- Il contesto Viator nei link affiliati viene ulteriormente sintetizzato escludendo righe tecniche su provider/source oltre a product code, rating/recensioni e note operative.
 
 ## Novità 2.25.24 — PR 8.24 Compact OpenAI Draft Payload and JSON Diagnostics
 
@@ -413,13 +421,15 @@ Miglioramenti principali:
 
 
 
-### AI Content Agent — payload OpenAI compatto (2.25.24)
+### AI Content Agent — payload OpenAI compatto e download debug separato (2.25.25)
 
 Nel flusso **Crea Bozza con OpenAI** da risultati selezionati, il payload effettivamente inviato al modello viene ora normalizzato in una struttura compatta focalizzata sulla generazione editoriale.
 
 - Il modello riceve sezioni dedicate per task, sito, richiesta articolo, istruzioni editoriali, requisiti output, link affiliati, regole affiliate/SEO, policy fonti e warning.
-- I dati diagnostici o amministrativi restano disponibili nel payload completo di debug/download, ma non vengono inviati a OpenAI.
-- Sono esclusi dal payload AI campi come `theme`, `destination`, `selected_results_count`, score/reason/provider/source/provenance, prompt Source completi, snapshot istruzioni ridondanti e `internal_notes`.
+- **Scarica JSON payload OpenAI** esporta il payload normalizzato realmente usato nel contesto OpenAI (`alma-ai-openai-payload-idea-*.json`).
+- **Scarica JSON debug completo** esporta un wrapper diagnostico (`alma-ai-debug-payload-idea-*.json`) con `debug_payload_full` per troubleshooting e `openai_payload_normalized` per confronto diretto.
+- I dati diagnostici o amministrativi restano disponibili solo in `debug_payload_full`, ma non vengono inviati a OpenAI.
+- Sono esclusi dal payload AI campi come `content_search_query`, `theme`, `destination`, `selected_results_count`, `selection_context`, score/reason/provider/source/provenance, prompt Source completi, snapshot istruzioni ridondanti, `internal_notes`, autori e timestamp amministrativi.
 - Il prompt personalizzato del profilo istruzioni viene esposto in alto dentro le istruzioni editoriali, insieme a tono, pubblico e stile.
 - Il contesto Viator viene sintetizzato in modo prudente, senza blocchi provider tecnici, rating/recensioni aggregate, product code o note operative lunghe.
 - Il contract JSON richiede sempre `title`, `slug`, `excerpt`, `content`, `seo_title`, `seo_description`, `affiliate_shortcodes_used`, `affiliate_urls_used`, `media_used` e `warnings`. Se lo slug manca o non è valido, viene generato/sanificato localmente senza bloccare la bozza.
