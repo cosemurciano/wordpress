@@ -676,7 +676,21 @@ class ALMA_AI_Content_Agent_Admin {
         if (empty($paged_rows)) {
             if (!empty($all_rows) && $total_results === 0) { echo '<p class="description">Nessun Link affiliato corrisponde ai filtri selezionati.</p>'; } else { echo '<p class="description">Nessun risultato disponibile. Esegui una ricerca per popolare questa sezione.</p>'; }
         }
-        foreach($paged_rows as $item){ $r=(array)$item['row']; $rk=sanitize_text_field($r['result_key'] ?? ''); if($rk===''){continue;} $in=!empty($selected_map[$rk]); $usage=(int)($usage_counts[$rk] ?? 0); echo '<div class="alma-result-item'.($in?' is-already-added':'').'"><p><strong>'.esc_html($r['title']).'</strong> <span class="alma-count-badge">'.esc_html($item['label']).'</span>'; if($in){echo ' <span class="alma-added-badge">Già nell’idea</span>';} echo ' <span class="alma-usage-badge">Utilizzato in bozze: '.$usage.'</span></p><label><input type="checkbox" name="selected_result_keys[]" value="'.esc_attr($rk).'" form="alma-bulk-add-form" '.disabled($in,true,false).'> Seleziona</label><p class="alma-excerpt">'.esc_html(wp_trim_words((string)($r['excerpt'] ?? ''),20,'…')).'</p><p class="description">Score: <span class="alma-score-value">'.(int)($r['score'] ?? 0).'</span> · '.esc_html($r['reason'] ?? '').'</p>'; if($in){ echo '<button class="button button-small" type="button" disabled>Già aggiunto</button>'; } else { echo '<form method="post" action="'.esc_url(admin_url('admin-post.php')).'">'.wp_nonce_field('alma_ai_agent_action','_wpnonce',true,false).'<input type="hidden" name="action" value="alma_ai_agent_action"><input type="hidden" name="do" value="add_result_to_idea"><input type="hidden" name="result_key" value="'.esc_attr($rk).'"><button class="button button-small">Aggiungi all’idea</button></form>'; } echo '</div>'; }
+        foreach($paged_rows as $item){
+            $r=(array)$item['row'];
+            $rk=sanitize_text_field($r['result_key'] ?? '');
+            if($rk===''){continue;}
+            $in=!empty($selected_map[$rk]);
+            $usage=(int)($usage_counts[$rk] ?? 0);
+            $thumbnail_html = self::render_affiliate_result_thumbnail($r);
+            echo '<div class="alma-result-item alma-result-item-with-thumbnail'.($in?' is-already-added':'').'"><div class="alma-result-body">';
+            echo '<div class="alma-result-copy"><p><strong>'.esc_html($r['title']).'</strong> <span class="alma-count-badge">'.esc_html($item['label']).'</span>';
+            if($in){echo ' <span class="alma-added-badge">Già nell’idea</span>';}
+            echo ' <span class="alma-usage-badge">Utilizzato in bozze: '.$usage.'</span></p><label><input type="checkbox" name="selected_result_keys[]" value="'.esc_attr($rk).'" form="alma-bulk-add-form" '.disabled($in,true,false).'> Seleziona</label><p class="alma-excerpt">'.esc_html(wp_trim_words((string)($r['excerpt'] ?? ''),20,'…')).'</p><p class="description">Score: <span class="alma-score-value">'.(int)($r['score'] ?? 0).'</span> · '.esc_html($r['reason'] ?? '').'</p>';
+            if($in){ echo '<button class="button button-small" type="button" disabled>Già aggiunto</button>'; }
+            else { echo '<form method="post" action="'.esc_url(admin_url('admin-post.php')).'">'.wp_nonce_field('alma_ai_agent_action','_wpnonce',true,false).'<input type="hidden" name="action" value="alma_ai_agent_action"><input type="hidden" name="do" value="add_result_to_idea"><input type="hidden" name="result_key" value="'.esc_attr($rk).'"><button class="button button-small">Aggiungi all’idea</button></form>'; }
+            echo '</div>'.$thumbnail_html.'</div></div>';
+        }
         echo '<p><button class="button button-primary" type="submit" form="alma-bulk-add-form">Aggiungi selezionati all’idea</button></p></div></main>';
 
 echo '<aside class="alma-ideas-col alma-ideas-col-right"><div class="alma-ideas-card"><h3>3. Sessione contenuto</h3><p><strong>Totale elementi aggiunti:</strong> '.(int)($summary['selected_total'] ?? 0).'</p>';
@@ -691,6 +705,23 @@ echo '<aside class="alma-ideas-col alma-ideas-col-right"><div class="alma-ideas-
     private static function inline_document_actions($document_id, $is_active) { $document_id=absint($document_id); if($document_id<1||!current_user_can('manage_options')){return '';} $toggle=$is_active?'inactive':'active'; return '<form method="post" action="'.esc_url(admin_url('admin-post.php')).'">'.wp_nonce_field('alma_ai_agent_action','_wpnonce',true,false).'<input type="hidden" name="action" value="alma_ai_agent_action"><input type="hidden" name="do" value="toggle_txt_document"><input type="hidden" name="document_id" value="'.$document_id.'"><input type="hidden" name="status" value="'.esc_attr($toggle).'"><button class="button button-small">'.($is_active?'Disabilita':'Abilita').'</button></form><form method="post" action="'.esc_url(admin_url('admin-post.php')).'">'.wp_nonce_field('alma_ai_agent_action','_wpnonce',true,false).'<input type="hidden" name="action" value="alma_ai_agent_action"><input type="hidden" name="do" value="delete_txt_document"><input type="hidden" name="document_id" value="'.$document_id.'"><button class="button button-small">Elimina</button></form>'; }
     private static function inline_source_actions($source_id, $is_active) { $source_id=absint($source_id); if($source_id<1||!current_user_can('manage_options')){return '';} $next=(int)$is_active?0:1; return '<form method="post" action="'.esc_url(admin_url('admin-post.php')).'">'.wp_nonce_field('alma_ai_agent_action','_wpnonce',true,false).'<input type="hidden" name="action" value="alma_ai_agent_action"><input type="hidden" name="do" value="toggle_source"><input type="hidden" name="source_id" value="'.$source_id.'"><input type="hidden" name="is_active" value="'.$next.'"><button class="button button-small">'.($is_active?'Disabilita':'Abilita').'</button></form><form method="post" action="'.esc_url(admin_url('admin-post.php')).'">'.wp_nonce_field('alma_ai_agent_action','_wpnonce',true,false).'<input type="hidden" name="action" value="alma_ai_agent_action"><input type="hidden" name="do" value="delete_source"><input type="hidden" name="source_id" value="'.$source_id.'"><button class="button button-small">Elimina</button></form>'; }
     private static function inline_profile_action_form($do, $label, $profile_id) { $profile_id=absint($profile_id); if($profile_id<1||!current_user_can('manage_options')){return '';} return '<form method="post" action="'.esc_url(admin_url('admin-post.php')).'" style="display:inline-block;margin-left:4px;">'.wp_nonce_field('alma_ai_instruction_profile_toggle_'.$profile_id,'_alma_profile_nonce',true,false).'<input type="hidden" name="action" value="alma_ai_agent_action"><input type="hidden" name="do" value="'.esc_attr($do).'"><input type="hidden" name="profile_id" value="'.$profile_id.'"><button class="button button-small">'.esc_html($label).'</button></form>'; }
+
+
+    private static function render_affiliate_result_thumbnail($row) {
+        if (!is_array($row) || sanitize_key((string)($row['source_group'] ?? '')) !== 'affiliate_link') { return ''; }
+        $image = is_array($row['image'] ?? null) ? $row['image'] : array();
+        $url = esc_url_raw((string)($image['image_url'] ?? ($row['featured_image_url'] ?? ($row['image_url'] ?? ''))));
+        $attachment_id = absint($row['featured_image_id'] ?? 0);
+        if ($attachment_id > 0) {
+            $attachment_url = wp_get_attachment_image_url($attachment_id, 'thumbnail');
+            if (!$attachment_url) { $attachment_url = wp_get_attachment_image_url($attachment_id, 'large'); }
+            if ($attachment_url) { $url = esc_url_raw((string)$attachment_url); }
+        }
+        if ($url === '' || !wp_http_validate_url($url)) { return ''; }
+        $alt = sanitize_text_field((string)($image['image_alt'] ?? ($row['featured_image_alt'] ?? ($row['title'] ?? ''))));
+        if ($alt === '') { $alt = sanitize_text_field((string)($row['title'] ?? '')); }
+        return '<div class="alma-result-thumbnail" aria-label="'.esc_attr__('Immagine link affiliato', 'affiliate-link-manager-ai').'"><img class="alma-result-thumbnail-img" src="'.esc_url($url).'" alt="'.esc_attr($alt).'" loading="lazy" decoding="async"></div>';
+    }
 
     private static function action_form($do,$label,$extra='',$button_class='button',$icon_class=''){ echo '<form method="post" action="'.esc_url(admin_url('admin-post.php')).'">'; wp_nonce_field('alma_ai_agent_action'); $button_content = $icon_class !== '' ? '<span class="dashicons '.esc_attr($icon_class).'" aria-hidden="true"></span><span>'.esc_html($label).'</span>' : esc_html($label); echo '<input type="hidden" name="action" value="alma_ai_agent_action"><input type="hidden" name="do" value="'.esc_attr($do).'">'.$extra.'<p><button class="'.esc_attr($button_class).'">'.$button_content.'</button></p></form>'; }
 }
