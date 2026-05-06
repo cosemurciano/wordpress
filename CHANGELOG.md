@@ -1,3 +1,9 @@
+## 2.25.26 — PR 8.26 Refine OpenAI Payload Rules and Viator Duration
+- Rifinito il payload OpenAI normalizzato del flusso `create_article_draft_from_selected_sources` senza modificare la struttura pubblica né reintrodurre campi diagnostici.
+- Omessa la durata dal contesto sintetico Viator quando il valore non è scalare o non è leggibile, evitando output tecnici come `Durata: Array`.
+- Aggiornata la normalizzazione di `affiliate_rules`, `seo_rules` e `source_policies` per deduplicare regole complete senza troncamenti con puntini di sospensione.
+- Versione plugin aggiornata a `2.25.26`.
+
 ## 2.25.25 — PR 8.25 Separate OpenAI Payload Download from Full Debug JSON
 - Corretto il download **Scarica JSON payload OpenAI**: ora esporta il payload compatto prodotto da `normalize_payload_for_openai()`, non il payload diagnostico completo.
 - Aggiunto il download separato **Scarica JSON debug completo**, con wrapper esplicito `debug_payload_full` + `openai_payload_normalized` per confrontare diagnostica interna e payload realmente inviato al modello.
