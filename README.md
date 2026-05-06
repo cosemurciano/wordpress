@@ -1,3 +1,11 @@
+## 2.25.31 — Viator media extraction and import preview
+- Aggiunta estrazione difensiva delle immagini Viator da `images[]`/`variants[]` con selezione di un URL candidato principale senza download o creazione attachment.
+- Aggiunta colonna **Immagine** nella preview import Viator con miniatura, badge Cover/Supplier e warning non bloccanti quando l'immagine manca o non ha URL valido.
+- Salvati nel CPT `affiliate_link` URL candidato e metadati media sicuri (`_alma_featured_image_url`, fonte, caption, dimensioni, flag cover, conteggi e JSON media normalizzato).
+- Aggiornato il fallback dell'indice AI per usare `_alma_featured_image_url` quando non esiste una featured image WordPress.
+- Sideload in Media Library, `media_handle_sideload`, `download_url`, `set_post_thumbnail` e `_thumbnail_id` non sono implementati in questa PR e restano per una PR successiva.
+- Versione plugin aggiornata a `2.25.31`.
+
 ## 2.25.30 — PR 8.30 AI Content Agent Dashboard Shortcut Widget
 - Aggiunto nella Bacheca WordPress il widget leggero **AI Content Agent**, registrato con `wp_dashboard_setup` in contesto principale ad alta priorità per apparire nella fascia alta al primo caricamento.
 - Il widget mostra una descrizione sintetica, icona Dashicons e pulsante primario **Apri AI Content Agent** verso l'URL admin già registrato (`alma-ai-content-agent`).
@@ -155,7 +163,7 @@
 
 # Affiliate Link Manager AI
 
-Versione 2.25.28
+Versione 2.25.31
 
 
 

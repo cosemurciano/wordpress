@@ -39,6 +39,11 @@ class ALMA_Affiliate_Source_Import_Preview_Service {
         if ($title === '') $warnings[] = __('Titolo mancante: verrà usato fallback controllato.', 'affiliate-link-manager-ai');
         if ($affiliate_url_valid && !$contains_code) $warnings[] = __('URL affiliato sospetto: productCode non riconoscibile nel link.', 'affiliate-link-manager-ai');
 
+        $media = $this->resolve_viator_media($item);
+        if (empty($media['has_image'])) {
+            $warnings[] = __('Immagine Viator mancante o senza URL valido: import consentito senza immagine.', 'affiliate-link-manager-ai');
+        }
+
         $item['_alma_validation'] = array(
             'external_id' => $external_id,
             'url_origin' => 'productUrl',
@@ -46,12 +51,30 @@ class ALMA_Affiliate_Source_Import_Preview_Service {
             'product_code_in_url' => $contains_code,
             'errors' => $errors,
             'warnings' => $warnings,
+            'media' => $media,
             'status' => empty($errors) ? (empty($warnings) ? 'ok' : 'warning') : 'error',
             'selectable_default' => empty($errors),
         );
         return $item;
     }
 
+    private function resolve_viator_media($item) {
+        if (!class_exists('ALMA_Affiliate_Source_Viator_Media_Resolver')) {
+            return array('has_image'=>false,'featured_image_url'=>'','image_source'=>'','caption'=>'','is_cover'=>false,'width'=>0,'height'=>0,'warnings'=>array(__('Resolver media Viator non disponibile.', 'affiliate-link-manager-ai')));
+        }
+        $resolver = new ALMA_Affiliate_Source_Viator_Media_Resolver();
+        $media = $resolver->resolve($item);
+        return array(
+            'has_image' => !empty($media['has_image']),
+            'featured_image_url' => esc_url_raw((string)($media['featured_image_url'] ?? '')),
+            'image_source' => sanitize_text_field((string)($media['image_source'] ?? '')),
+            'caption' => sanitize_text_field((string)($media['caption'] ?? '')),
+            'is_cover' => !empty($media['is_cover']),
+            'width' => absint($media['width'] ?? 0),
+            'height' => absint($media['height'] ?? 0),
+            'warnings' => array_values(array_filter(array_map('sanitize_text_field', (array)($media['warnings'] ?? array())))),
+        );
+    }
 
 
     public function build_dedupe_map($source, $items, $duplicate_policy = 'skip_existing') {

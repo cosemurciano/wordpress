@@ -163,12 +163,33 @@ class ALMA_Affiliate_Source_Manager {
             $load_more_url=add_query_arg(array_merge($_GET,array('criteria_token'=>$criteria_token,'load_preview'=>'1','import_start'=>$next_start)),admin_url('edit.php'));
             echo '<div class="postbox"><h2 class="hndle"><span>Risultati anteprima</span></h2><div class="inside"><p>Recuperati API: '.count((array)$items).' · Nuovi mostrati: '.count($visible).' · Già importati nascosti: '.count($existing).' · Start corrente: '.(int)$criteria['import_start'].' · Prossimo start: '.$next_start.'</p><p><button type="button" class="button alma-load-more-results" data-href="'.esc_url($load_more_url).'">Carica altri risultati</button></p>';
             echo '<form method="post">'; wp_nonce_field('alma_import_selected','alma_import_selected_nonce'); echo '<input type="hidden" name="action_type" value="import_selected_items"/><input type="hidden" name="source_id" value="'.(int)$source_id.'"/><input type="hidden" name="criteria_token" value="'.esc_attr($criteria_token).'"/><input type="hidden" name="import_search_model" value="'.esc_attr($criteria['import_search_model']).'"/><input type="hidden" name="import_search_term" value="'.esc_attr($criteria['import_search_term']).'"/><input type="hidden" name="import_destination_id" value="'.esc_attr($criteria['import_destination_id']).'"/><input type="hidden" name="import_limit" value="'.(int)$criteria['import_limit'].'"/><input type="hidden" name="import_start" value="'.(int)$criteria['import_start'].'"/><input type="hidden" name="next_start" value="'.(int)$criteria['next_start'].'"/><input type="hidden" name="hide_existing" value="'.esc_attr($criteria['hide_existing']).'"/><input type="hidden" name="show_existing" value="'.esc_attr($criteria['show_existing']).'"/><input type="hidden" name="auto_fill_new_items" value="'.esc_attr($criteria['auto_fill_new_items']).'"/>';
-            echo '<p><button type="button" class="button alma-select-all">Seleziona tutti</button> <button type="button" class="button alma-deselect-all">Deseleziona tutti</button> <span class="alma-selected-counter">0 selezionati</span></p><table class="widefat striped alma-import-preview"><thead><tr><th></th><th>Titolo</th><th>Link affiliato</th><th>External ID</th><th>Azione</th></tr></thead><tbody>';
-            foreach((array)$visible as $it){$eid=(string)($it['productCode']??''); if($eid==='')continue; $exists=!empty($dedupe_map[$eid]['post_id']); $product_url=isset($it['productUrl'])?(string)$it['productUrl']:''; $affiliate_link=$product_url!==''?'<a class="alma-affiliate-link" href="'.esc_url($product_url).'" target="_blank" rel="noopener noreferrer" title="'.esc_attr($product_url).'">Apri</a>':'<span class="alma-affiliate-link-empty">N/D</span>'; echo '<tr'.($exists?' class="alma-row-existing"':'').'><td><input class="alma-select-item" type="checkbox" name="selected_external_ids[]" value="'.esc_attr($eid).'" '.checked(!$exists,true,false).'></td><td>'.esc_html($it['title']??$it['name']??'—').'</td><td>'.$affiliate_link.'</td><td>'.esc_html($eid).'</td><td>'.($exists?'salta':'crea').'</td></tr>';}
+            echo '<p><button type="button" class="button alma-select-all">Seleziona tutti</button> <button type="button" class="button alma-deselect-all">Deseleziona tutti</button> <span class="alma-selected-counter">0 selezionati</span></p><table class="widefat striped alma-import-preview"><thead><tr><th></th><th>Immagine</th><th>Titolo</th><th>Link affiliato</th><th>External ID</th><th>Azione</th></tr></thead><tbody>';
+            foreach((array)$visible as $it){$eid=(string)($it['productCode']??''); if($eid==='')continue; $exists=!empty($dedupe_map[$eid]['post_id']); $product_url=isset($it['productUrl'])?(string)$it['productUrl']:''; $affiliate_link=$product_url!==''?'<a class="alma-affiliate-link" href="'.esc_url($product_url).'" target="_blank" rel="noopener noreferrer" title="'.esc_attr($product_url).'">Apri</a>':'<span class="alma-affiliate-link-empty">N/D</span>'; $image_preview=$this->render_import_media_preview_cell($it); echo '<tr'.($exists?' class="alma-row-existing"':'').'><td><input class="alma-select-item" type="checkbox" name="selected_external_ids[]" value="'.esc_attr($eid).'" '.checked(!$exists,true,false).'></td><td>'.$image_preview.'</td><td>'.esc_html($it['title']??$it['name']??'—').'</td><td>'.$affiliate_link.'</td><td>'.esc_html($eid).'</td><td>'.($exists?'salta':'crea').'</td></tr>';}
             if(empty($term_ids)){ echo '<p class="description">I Link saranno creati senza Tipologia Link.</p>'; }
             echo '</tbody></table><p><button class="button button-primary">Importa selezionati</button></p></form></div></div>';
         }
         echo '</div>';
+    }
+    private function render_import_media_preview_cell($item){
+        $validation = is_array($item['_alma_validation'] ?? null) ? $item['_alma_validation'] : array();
+        $media = is_array($validation['media'] ?? null) ? $validation['media'] : array();
+        $url = esc_url_raw((string)($media['featured_image_url'] ?? ''));
+        $has_image = !empty($media['has_image']) && $url !== '' && wp_http_validate_url($url);
+        $warnings = array_values(array_filter(array_map('sanitize_text_field',(array)($media['warnings'] ?? array()))));
+        if(!$has_image){
+            $html = '<div class="alma-media-empty">Nessuna immagine</div>';
+        } else {
+            $alt = sanitize_text_field((string)($media['caption'] ?? ($item['title'] ?? $item['name'] ?? __('Anteprima immagine', 'affiliate-link-manager-ai'))));
+            $html = '<div class="alma-media-preview"><img src="'.esc_url($url).'" alt="'.esc_attr($alt).'" loading="lazy"/><div class="alma-media-badges">';
+            if(!empty($media['is_cover'])) $html .= '<span class="alma-media-badge">Cover</span>';
+            $source = sanitize_text_field((string)($media['image_source'] ?? ''));
+            if($source !== '' && stripos($source, 'supplier') !== false) $html .= '<span class="alma-media-badge">Supplier</span>';
+            $html .= '</div></div>';
+        }
+        if(!empty($warnings)){
+            $html .= '<div class="alma-media-warning">'.esc_html($warnings[0]).'</div>';
+        }
+        return $html;
     }
     private function handle_import_selected_items(){
         if(!wp_verify_nonce($_POST['alma_import_selected_nonce']??'','alma_import_selected')) wp_die('Nonce non valido');

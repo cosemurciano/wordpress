@@ -17,6 +17,13 @@
 .alma-import-filters p{margin:0 0 8px}
 .alma-import-filters p:last-child{margin-bottom:0}
 .alma-import-filters label{display:flex;align-items:center;gap:8px}
-.alma-import-preview th:nth-child(3),.alma-import-preview td:nth-child(3){width:170px}
+.alma-import-preview th:nth-child(2),.alma-import-preview td:nth-child(2){width:120px}.alma-import-preview th:nth-child(4),.alma-import-preview td:nth-child(4){width:170px}
 .alma-affiliate-link{display:inline-block;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom}
 .alma-affiliate-link-empty{color:#646970}
+
+.alma-import-preview .alma-media-preview{max-width:96px}
+.alma-import-preview .alma-media-preview img{display:block;width:72px;height:54px;object-fit:cover;border:1px solid #c3c4c7;border-radius:4px;background:#f6f7f7}
+.alma-import-preview .alma-media-badges{margin-top:4px;display:flex;gap:4px;flex-wrap:wrap}
+.alma-import-preview .alma-media-badge{display:inline-block;padding:1px 6px;border-radius:10px;background:#eef3ff;color:#1d2327;font-size:11px;line-height:1.5}
+.alma-import-preview .alma-media-empty{display:inline-block;padding:4px 7px;border-radius:4px;background:#f6f7f7;color:#646970;font-size:12px}
+.alma-import-preview .alma-media-warning{margin-top:4px;max-width:140px;color:#8a6d3b;font-size:11px;line-height:1.3}
