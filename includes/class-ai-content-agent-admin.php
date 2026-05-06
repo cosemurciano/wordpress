@@ -26,7 +26,8 @@ class ALMA_AI_Content_Agent_Admin {
             $result['message'] = empty($result['success']) ? ($result['error'] ?? 'Errore generazione bozza.') : 'Bozza generata: '.esc_url_raw($result['edit_url'] ?? '');
         } elseif ($do === 'save_instruction_profile') {
             $id = absint($_POST['profile_id'] ?? 0);
-            $new_id = ALMA_AI_Content_Agent_Instructions_Manager::save_profile($_POST, $id);
+            $profile_data = wp_unslash($_POST);
+            $new_id = ALMA_AI_Content_Agent_Instructions_Manager::save_profile($profile_data, $id);
             if (!empty($_POST['activate_profile'])) { ALMA_AI_Content_Agent_Instructions_Manager::set_active($new_id); }
             $result = array('success' => $new_id > 0, 'message' => $new_id > 0 ? 'Profilo istruzioni salvato.' : 'Errore salvataggio profilo.');
         } elseif ($do === 'activate_instruction_profile') {
@@ -85,9 +86,9 @@ class ALMA_AI_Content_Agent_Admin {
                 }
             }
             $profile = $profile_id ? ALMA_AI_Content_Agent_Instructions_Manager::get_profile($profile_id) : array();
-            $temporary_instructions = sanitize_textarea_field($_POST['temporary_instructions'] ?? '');
+            $temporary_instructions = ALMA_AI_Content_Agent_Instructions_Manager::sanitize_profile_textarea(wp_unslash($_POST['temporary_instructions'] ?? ''));
             $instruction_snapshot = !empty($profile) ? ALMA_AI_Content_Agent_Instructions_Manager::build_compact_instruction_block($profile, $temporary_instructions) : '';
-            $payload = array('max_ideas'=>absint($_POST['max_ideas'] ?? 1),'content_search_query'=>sanitize_text_field($_POST['content_search_query'] ?? ($_POST['search_terms'] ?? '')),'search_terms'=>sanitize_text_field($_POST['search_terms'] ?? ($_POST['content_search_query'] ?? '')),'theme'=>sanitize_text_field($_POST['theme'] ?? ''),'destination'=>sanitize_text_field($_POST['destination'] ?? ''),'temporary_instructions'=>$temporary_instructions,'openai_prompt'=>sanitize_textarea_field($_POST['openai_prompt'] ?? $_POST['temporary_instructions'] ?? ''),'instruction_profile_id'=>$profile_id,'instruction_profile_name'=>sanitize_text_field($profile['profile_name'] ?? ''),'instruction_snapshot_hash'=>sanitize_text_field($instruction_snapshot !== '' ? ALMA_AI_Content_Agent_Instructions_Manager::snapshot_hash($instruction_snapshot) : ''),'instruction_snapshot'=>$instruction_snapshot,'search_scope'=>'affiliate_links_only');
+            $payload = array('max_ideas'=>absint($_POST['max_ideas'] ?? 1),'content_search_query'=>sanitize_text_field($_POST['content_search_query'] ?? ($_POST['search_terms'] ?? '')),'search_terms'=>sanitize_text_field($_POST['search_terms'] ?? ($_POST['content_search_query'] ?? '')),'theme'=>sanitize_text_field($_POST['theme'] ?? ''),'destination'=>sanitize_text_field($_POST['destination'] ?? ''),'temporary_instructions'=>$temporary_instructions,'openai_prompt'=>ALMA_AI_Content_Agent_Instructions_Manager::sanitize_profile_textarea(wp_unslash($_POST['openai_prompt'] ?? $_POST['temporary_instructions'] ?? '')),'instruction_profile_id'=>$profile_id,'instruction_profile_name'=>sanitize_text_field($profile['profile_name'] ?? ''),'instruction_snapshot_hash'=>sanitize_text_field($instruction_snapshot !== '' ? ALMA_AI_Content_Agent_Instructions_Manager::snapshot_hash($instruction_snapshot) : ''),'instruction_snapshot'=>$instruction_snapshot,'search_scope'=>'affiliate_links_only');
             $search = ALMA_AI_Content_Agent_Knowledge_Search::search($payload);
             $stats = ALMA_AI_Content_Agent_Selection_Session::add_search_results($payload, $search);
             $active_idea_id = absint(get_user_meta(get_current_user_id(), '_alma_active_idea_id', true));

@@ -1,3 +1,12 @@
+## 2.25.37 — AI profile textarea preservation
+- Corretta la preservazione dei contenuti textarea nei profili **Istruzioni AI**, salvando testo libero admin non escaped e normalizzando solo line ending e caratteri di controllo non validi.
+- Preservati nei prompt esempi HTML testuali con `<a>`, `<img>`, placeholder come `{affiliate_url}` e `{image.image_url}`, simboli, virgolette e caratteri accentati.
+- Risolto l'escape multiplo di virgolette/backslash: il JSON OpenAI usa solo l'escaping naturale di `wp_json_encode`, senza slash già salvati nello storage.
+- Rimossa la normalizzazione semantica aggressiva delle regole: la conversione textarea → array mantiene righe non vuote così come scritte, salvo trim esterno e deduplica conservativa.
+- Migliorata la propagazione di `image_rules` in `media_rules` nel payload OpenAI, insieme alle regole media hardcoded esistenti.
+- Test manuale round-trip consigliato: salvare `affiliate_rules` e `image_rules` con HTML di esempio, ricaricare il profilo, scaricare il JSON debug e verificare `openai_payload_normalized` valido senza escape multipli o righe rimosse.
+- Versione plugin aggiornata a `2.25.37`.
+
 ## 2.25.36 — AI payload profile and affiliate image consistency
 - Aggiunto nel payload OpenAI normalizzato il blocco `instruction_profile` compatto (`id`, `name`, `snapshot_hash`) riferito solo al profilo istruzioni selezionato dall’utente.
 - Garantito che il payload OpenAI non includa liste di profili attivi e non scelga un profilo diverso da quello associato alla sessione/idea.

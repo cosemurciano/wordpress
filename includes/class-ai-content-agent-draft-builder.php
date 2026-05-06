@@ -166,17 +166,17 @@ class ALMA_AI_Content_Agent_Draft_Builder {
         }
 
         $rules = array(
-            'seo_rules' => sanitize_textarea_field((string)($profile['seo_rules'] ?? '')),
-            'affiliate_rules' => sanitize_textarea_field((string)($profile['affiliate_rules'] ?? '')),
-            'image_rules' => sanitize_textarea_field((string)($profile['image_rules'] ?? '')),
-            'source_rules' => sanitize_textarea_field((string)($profile['source_rules'] ?? '')),
-            'anti_duplication_rules' => sanitize_textarea_field((string)($profile['anti_duplication_rules'] ?? '')),
-            'avoid_rules' => sanitize_textarea_field((string)($profile['avoid_rules'] ?? '')),
-            'disclosure_policy' => sanitize_textarea_field((string)($profile['disclosure_policy'] ?? '')),
-            'custom_prompt' => sanitize_textarea_field((string)($profile['custom_prompt'] ?? '')),
+            'seo_rules' => ALMA_AI_Content_Agent_Instructions_Manager::sanitize_profile_textarea((string)($profile['seo_rules'] ?? '')),
+            'affiliate_rules' => ALMA_AI_Content_Agent_Instructions_Manager::sanitize_profile_textarea((string)($profile['affiliate_rules'] ?? '')),
+            'image_rules' => ALMA_AI_Content_Agent_Instructions_Manager::sanitize_profile_textarea((string)($profile['image_rules'] ?? '')),
+            'source_rules' => ALMA_AI_Content_Agent_Instructions_Manager::sanitize_profile_textarea((string)($profile['source_rules'] ?? '')),
+            'anti_duplication_rules' => ALMA_AI_Content_Agent_Instructions_Manager::sanitize_profile_textarea((string)($profile['anti_duplication_rules'] ?? '')),
+            'avoid_rules' => ALMA_AI_Content_Agent_Instructions_Manager::sanitize_profile_textarea((string)($profile['avoid_rules'] ?? '')),
+            'disclosure_policy' => ALMA_AI_Content_Agent_Instructions_Manager::sanitize_profile_textarea((string)($profile['disclosure_policy'] ?? '')),
+            'custom_prompt' => ALMA_AI_Content_Agent_Instructions_Manager::sanitize_profile_textarea((string)($profile['custom_prompt'] ?? '')),
         );
 
-        $snapshot = sanitize_textarea_field((string)($session['instruction_snapshot'] ?? ''));
+        $snapshot = ALMA_AI_Content_Agent_Instructions_Manager::sanitize_profile_textarea((string)($session['instruction_snapshot'] ?? ''));
         if ($snapshot === '' && !empty($profile)) {
             $snapshot = ALMA_AI_Content_Agent_Instructions_Manager::build_compact_instruction_block($profile, (string)($session['last_query']['temporary_instructions'] ?? ''));
         }
@@ -251,91 +251,18 @@ class ALMA_AI_Content_Agent_Draft_Builder {
     }
 
     private static function normalize_rule_items($rule) {
-        $rule = self::normalize_rule_text($rule);
+        $rule = ALMA_AI_Content_Agent_Instructions_Manager::sanitize_profile_textarea($rule);
         if ($rule === '') { return array(); }
 
-        $raw_parts = preg_split('/\r\n|\r|\n/', $rule, -1, PREG_SPLIT_NO_EMPTY);
         $items = array();
-        foreach ((array)$raw_parts as $part) {
-            $part = self::normalize_rule_fragment($part);
-            if ($part === '') { continue; }
-
-            if (!empty($items) && self::rule_waits_for_completion(end($items))) {
-                $previous = array_pop($items);
-                $items[] = self::normalize_complete_rule_sentence(self::join_rule_fragments($previous, $part));
-                continue;
-            }
-
-            if (self::is_standalone_quoted_claim($part)) {
-                $part = 'Evitare formule assolute o non verificabili come ' . $part;
-            }
-
-            if (self::is_orphan_reader_need_fragment($part)) {
-                $part = 'Collega il link affiliato a un bisogno concreto del lettore, per esempio ' . self::lowercase_first_ascii($part);
-            }
-
-            $part = self::normalize_complete_rule_sentence($part);
-            if ($part !== '') { $items[] = $part; }
+        foreach (preg_split('/\n/', $rule) as $line) {
+            $line = trim((string)$line);
+            if ($line === '') { continue; }
+            $items[] = $line;
         }
         return $items;
     }
 
-    private static function normalize_rule_text($rule) {
-        $rule = wp_strip_all_tags((string)$rule);
-        $rule = str_replace(array('�', '“?', '”?'), array('', '“', '”'), $rule);
-        $rule = preg_replace('/^[ \t]*(?:[•*]|-|–|—|\d+[.)])[ \t]+/m', '', $rule);
-        $rule = preg_replace_callback('/(^|[\s(])\?(?=[\p{L}])|([\s(])\?([«“"])/u', function ($m) { return (isset($m[1]) ? $m[1] : '') . '“' . (isset($m[2]) ? $m[2] : '') . (isset($m[3]) ? $m[3] : ''); }, $rule);
-        $rule = preg_replace('/[ \t]+/', ' ', $rule);
-        return trim($rule);
-    }
-
-    private static function normalize_rule_fragment($sentence) {
-        $sentence = trim(preg_replace('/\s+/', ' ', (string)$sentence));
-        $sentence = preg_replace('/(?:\.\.\.|…)+$/u', '', $sentence);
-        $sentence = preg_replace_callback('/(^|[\s(])\?(?=[\p{L}«“"])/u', function ($m) { return (isset($m[1]) ? $m[1] : '') . '“'; }, $sentence);
-        $sentence = preg_replace('/([.!?])\s*([»”"])(?:\s*[.!?])+$/u', '${2}${1}', $sentence);
-        $sentence = preg_replace('/([»”"])(?:\s*[.!?]){2,}$/u', '${1}.', $sentence);
-        $sentence = preg_replace('/([.!?]){2,}$/u', '$1', $sentence);
-        $sentence = preg_replace('/^[\s\-–—:;,]+|[\s\-–—:;,]+$/u', '', $sentence);
-        return $sentence;
-    }
-
-    private static function normalize_complete_rule_sentence($sentence) {
-        $sentence = self::normalize_rule_fragment($sentence);
-        if ($sentence === '') { return ''; }
-        if (!preg_match('/[.!?。！？][»”"]?$/u', $sentence)) { $sentence .= '.'; }
-        return $sentence;
-    }
-
-    private static function rule_waits_for_completion($sentence) {
-        $sentence = trim((string)$sentence);
-        return (bool)preg_match('/\b(?:con|come|per esempio|ad esempio)\.$/iu', $sentence);
-    }
-
-    private static function join_rule_fragments($previous, $next) {
-        $previous = preg_replace('/\.$/', '', trim((string)$previous));
-        $next = trim((string)$next);
-        if ($next === '') { return $previous; }
-        return $previous . ' ' . self::lowercase_first_ascii($next);
-    }
-
-
-    private static function lowercase_first_ascii($text) {
-        $text = (string)$text;
-        if ($text !== '' && preg_match('/^[A-Z]/', $text)) {
-            return strtolower(substr($text, 0, 1)) . substr($text, 1);
-        }
-        return $text;
-    }
-
-    private static function is_standalone_quoted_claim($sentence) {
-        return (bool)preg_match('/^[«“"][^«“"]{3,}[»”"]\.?$/u', trim((string)$sentence));
-    }
-
-    private static function is_orphan_reader_need_fragment($sentence) {
-        $sentence = trim((string)$sentence);
-        return (bool)preg_match('/^(?:prenotare|acquistare|confrontare|scegliere|organizzare|risparmiare|trovare)\b/iu', $sentence);
-    }
 
     private static function is_viator_context($provider, $source, $context) {
         $haystack = mb_strtolower((string)$provider . ' ' . (string)$source . ' ' . (string)$context);
@@ -407,7 +334,7 @@ class ALMA_AI_Content_Agent_Draft_Builder {
         $profile = is_array($payload['instruction_profile'] ?? null) ? $payload['instruction_profile'] : array();
         $compact_instruction_profile = self::compact_instruction_profile_payload($payload);
         $profile_rules = is_array($payload['instruction_profile_rules'] ?? null) ? $payload['instruction_profile_rules'] : array();
-        $user_prompt = sanitize_textarea_field((string)($payload['openai_prompt'] ?? ($payload['user_inputs']['openai_prompt'] ?? '')));
+        $user_prompt = ALMA_AI_Content_Agent_Instructions_Manager::sanitize_profile_textarea((string)($payload['openai_prompt'] ?? ($payload['user_inputs']['openai_prompt'] ?? '')));
         $idea_title = sanitize_text_field((string)($payload['idea_context']['idea_title'] ?? ''));
         $search_query = sanitize_text_field((string)($payload['idea_context']['search_query'] ?? ''));
         $language = sanitize_text_field((string)($profile['language_code'] ?? ($payload['site_context']['language'] ?? get_bloginfo('language'))));
@@ -458,17 +385,17 @@ class ALMA_AI_Content_Agent_Draft_Builder {
             'article_request' => array('prompt'=>$user_prompt, 'idea_title'=>$idea_title, 'keyword_or_topic'=>$search_query),
             'instruction_profile' => $compact_instruction_profile,
             'editorial_instructions' => array(
-                'custom_prompt' => sanitize_textarea_field((string)($profile['custom_prompt'] ?? ($profile_rules['custom_prompt'] ?? ''))),
-                'tone_of_voice' => sanitize_textarea_field((string)($profile['tone_of_voice'] ?? '')),
-                'target_audience' => sanitize_textarea_field((string)($profile['target_audience'] ?? '')),
-                'editorial_style' => sanitize_textarea_field((string)($profile['editorial_style'] ?? '')),
+                'custom_prompt' => ALMA_AI_Content_Agent_Instructions_Manager::sanitize_profile_textarea((string)($profile['custom_prompt'] ?? ($profile_rules['custom_prompt'] ?? ''))),
+                'tone_of_voice' => ALMA_AI_Content_Agent_Instructions_Manager::sanitize_profile_textarea((string)($profile['tone_of_voice'] ?? '')),
+                'target_audience' => ALMA_AI_Content_Agent_Instructions_Manager::sanitize_profile_textarea((string)($profile['target_audience'] ?? '')),
+                'editorial_style' => ALMA_AI_Content_Agent_Instructions_Manager::sanitize_profile_textarea((string)($profile['editorial_style'] ?? '')),
                 'operational_rules' => self::compact_rule_list($core_rules),
             ),
             'output_requirements' => array('required_fields'=>array('title','slug','excerpt','content','seo_title','seo_description','affiliate_shortcodes_used','affiliate_urls_used','media_used','warnings'), 'slug_required'=>true, 'content_format'=>'HTML string in JSON'),
             'affiliate_links' => $affiliate_links,
             'affiliate_rules' => $affiliate_rules,
             'seo_rules' => $seo_rules,
-            'media_rules' => self::compact_rule_list((array)($payload['media_rules'] ?? array())),
+            'media_rules' => self::compact_rule_list(array_merge((array)($payload['media_rules'] ?? array()), array($profile_rules['image_rules'] ?? ''))),
             'source_policies' => $source_rules,
             'warnings' => self::compact_rule_list((array)($payload['warnings'] ?? array())),
         );
@@ -698,7 +625,7 @@ class ALMA_AI_Content_Agent_Draft_Builder {
             'posts'=>array(),'documents'=>array(),'sources_online'=>array(),'pages'=>array(),'media'=>array(),
             'affiliate_rules'=>$affiliate_rules,
             'seo_rules'=>$seo_rules,
-            'media_rules'=>array('Usare immagini affiliate solo se pertinenti alla sezione.','Non inventare URL immagini.','Usare solo immagini presenti nei link affiliati selezionati.','Non duplicare troppe volte la stessa immagine.','Non scaricare immagini durante la generazione bozza.'),
+            'media_rules'=>array_filter(array('Usare immagini affiliate solo se pertinenti alla sezione.','Non inventare URL immagini.','Usare solo immagini presenti nei link affiliati selezionati.','Non duplicare troppe volte la stessa immagine.','Non scaricare immagini durante la generazione bozza.', $profile_payload['instruction_profile_rules']['image_rules'] ?? '')),
             'output_contract'=>array('title','slug','excerpt','content','seo_title','seo_description','affiliate_shortcodes_used','affiliate_urls_used','media_used','warnings'),
             'warnings'=>array_values(array_unique($warnings)),
             'agent_behavior'=>$agent_behavior,

@@ -23,23 +23,38 @@ class ALMA_AI_Content_Agent_Instructions_Manager {
     public static function get_active_profiles($limit = 100, $offset = 0){ global $wpdb; $t=ALMA_AI_Content_Agent_Store::table('instruction_profiles'); $exists=$wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s',$t)); if($exists!==$t){return array();} $rows=$wpdb->get_results($wpdb->prepare("SELECT * FROM $t WHERE is_active=1 ORDER BY is_default DESC, profile_name ASC, id DESC LIMIT %d OFFSET %d", max(1, absint($limit)), max(0, absint($offset))),ARRAY_A); return is_array($rows)?$rows:array(); }
     public static function get_active_profile(){ $profiles=self::get_active_profiles(1,0); return !empty($profiles[0]) && is_array($profiles[0]) ? $profiles[0] : array(); }
 
+    public static function sanitize_profile_textarea($value) {
+        if (is_array($value) || is_object($value)) {
+            $value = '';
+        }
+
+        $text = (string) $value;
+        $text = wp_check_invalid_utf8($text, true);
+        $text = str_replace(array("\r\n", "\r"), "\n", $text);
+        $text = str_replace("\0", '', $text);
+        $text = preg_replace('/[\x01-\x08\x0B\x0C\x0E-\x1F\x7F]/u', '', $text);
+
+        return is_string($text) ? $text : '';
+    }
+
     public static function save_profile($data, $id = 0) {
         global $wpdb; $t = ALMA_AI_Content_Agent_Store::table('instruction_profiles');
+        $data = is_array($data) ? $data : array();
         $payload = array(
             'profile_name'=>sanitize_text_field($data['profile_name'] ?? 'Profilo editoriale'),
             'language_code'=>sanitize_text_field($data['language_code'] ?? 'it'),
-            'tone_of_voice'=>sanitize_textarea_field($data['tone_of_voice'] ?? ''),
-            'target_audience'=>sanitize_textarea_field($data['target_audience'] ?? ''),
-            'editorial_style'=>sanitize_textarea_field($data['editorial_style'] ?? ''),
-            'seo_rules'=>sanitize_textarea_field($data['seo_rules'] ?? ''),
-            'affiliate_rules'=>sanitize_textarea_field($data['affiliate_rules'] ?? ''),
-            'image_rules'=>sanitize_textarea_field($data['image_rules'] ?? ''),
-            'source_rules'=>sanitize_textarea_field($data['source_rules'] ?? ''),
-            'anti_duplication_rules'=>sanitize_textarea_field($data['anti_duplication_rules'] ?? ''),
-            'avoid_rules'=>sanitize_textarea_field($data['avoid_rules'] ?? ''),
-            'disclosure_policy'=>sanitize_textarea_field($data['disclosure_policy'] ?? ''),
-            'custom_prompt'=>sanitize_textarea_field($data['custom_prompt'] ?? ''),
-            'internal_notes'=>sanitize_textarea_field($data['internal_notes'] ?? ''),
+            'tone_of_voice'=>self::sanitize_profile_textarea($data['tone_of_voice'] ?? ''),
+            'target_audience'=>self::sanitize_profile_textarea($data['target_audience'] ?? ''),
+            'editorial_style'=>self::sanitize_profile_textarea($data['editorial_style'] ?? ''),
+            'seo_rules'=>self::sanitize_profile_textarea($data['seo_rules'] ?? ''),
+            'affiliate_rules'=>self::sanitize_profile_textarea($data['affiliate_rules'] ?? ''),
+            'image_rules'=>self::sanitize_profile_textarea($data['image_rules'] ?? ''),
+            'source_rules'=>self::sanitize_profile_textarea($data['source_rules'] ?? ''),
+            'anti_duplication_rules'=>self::sanitize_profile_textarea($data['anti_duplication_rules'] ?? ''),
+            'avoid_rules'=>self::sanitize_profile_textarea($data['avoid_rules'] ?? ''),
+            'disclosure_policy'=>self::sanitize_profile_textarea($data['disclosure_policy'] ?? ''),
+            'custom_prompt'=>self::sanitize_profile_textarea($data['custom_prompt'] ?? ''),
+            'internal_notes'=>self::sanitize_profile_textarea($data['internal_notes'] ?? ''),
             'updated_by'=>get_current_user_id(),
             'updated_at'=>current_time('mysql')
         );
@@ -55,7 +70,7 @@ class ALMA_AI_Content_Agent_Instructions_Manager {
         if ($profile) {
             $parts[] = 'Istruzioni Admin: Lingua '.$profile['language_code'].'; Tono '.$profile['tone_of_voice'].'; Target '.$profile['target_audience'].'; Stile '.$profile['editorial_style'].'; SEO '.$profile['seo_rules'].'; Affiliate '.$profile['affiliate_rules'].'; Immagini '.$profile['image_rules'].'; Fonti '.$profile['source_rules'].'; Anti-duplicazione '.$profile['anti_duplication_rules'].'; Evitare '.$profile['avoid_rules'].'; Disclosure '.$profile['disclosure_policy'].'; Extra '.$profile['custom_prompt'];
         }
-        if ($temporary !== '') { $parts[] = 'Istruzioni temporanee: '.sanitize_textarea_field($temporary); }
+        if ($temporary !== '') { $parts[] = 'Istruzioni temporanee: '.self::sanitize_profile_textarea($temporary); }
         return trim(implode("\n", $parts));
     }
     public static function snapshot_hash($text){ return hash('sha256', (string) $text); }
