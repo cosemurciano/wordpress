@@ -16,7 +16,7 @@ class ALMA_Affiliate_Source_Manual_Import_Service {
         $source_link_type_term_ids = array_values(array_unique(array_filter(array_map('absint', array()))));
         $importer = new ALMA_Affiliate_Source_Importer();
         $dedupe = new ALMA_Affiliate_Source_Import_Dedupe_Service();
-        $result = array('created'=>0,'updated'=>0,'skipped'=>0,'errors'=>0,'processed'=>array());
+        $result = array('created'=>0,'updated'=>0,'skipped'=>0,'errors'=>0,'image_imported'=>0,'image_reused'=>0,'image_skipped'=>0,'image_failed'=>0,'processed'=>array());
         foreach ((array)$items as $item) {
             $external_id = (string)($item['external_id'] ?? $item['productCode'] ?? '');
             if ($external_id === '' || !isset($selected_map[$external_id])) continue;
@@ -36,6 +36,11 @@ class ALMA_Affiliate_Source_Manual_Import_Service {
             $res = $importer->import_item($normalized, $source, array('build_ai_context'=>$regenerate_ai));
             if (is_wp_error($res)) { $result['errors']++; continue; }
             if (($res['status'] ?? '') === 'updated') $result['updated']++; else $result['created']++;
+            $image_status = (string)($res['featured_image']['status'] ?? '');
+            if ($image_status === 'downloaded') $result['image_imported']++;
+            elseif ($image_status === 'reused_existing_attachment') $result['image_reused']++;
+            elseif (strpos($image_status, 'failed_') === 0) $result['image_failed']++;
+            elseif ($image_status !== '') $result['image_skipped']++;
             if (!$regenerate_ai) {
                 // Preserve existing AI context when regeneration is disabled.
             }
@@ -48,7 +53,7 @@ class ALMA_Affiliate_Source_Manual_Import_Service {
                     wp_set_object_terms((int)$res['post_id'], $merged, 'link_type', false);
                 }
             }
-            $result['processed'][] = array('external_id'=>$external_id,'status'=>$res['status'],'post_id'=>(int)$res['post_id']);
+            $result['processed'][] = array('external_id'=>$external_id,'status'=>$res['status'],'post_id'=>(int)$res['post_id'],'featured_image_status'=>$image_status,'featured_image_message'=>(string)($res['featured_image']['message'] ?? ''));
         }
         return $result;
     }

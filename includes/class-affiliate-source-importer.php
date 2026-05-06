@@ -19,12 +19,58 @@ class ALMA_Affiliate_Source_Importer {
         if (!empty($normalized['affiliate_url'])) { update_post_meta($post_id, '_affiliate_url', $normalized['affiliate_url']); update_post_meta($post_id, '_alma_affiliate_url', $normalized['affiliate_url']); }
         update_post_meta($post_id, '_alma_original_url', $normalized['original_url']); update_post_meta($post_id, '_alma_import_status', $status); update_post_meta($post_id, '_alma_last_sync_at', current_time('mysql')); update_post_meta($post_id, '_alma_import_mode', sanitize_text_field($mode));
         foreach ($normalized['meta'] as $key => $value) update_post_meta($post_id, $key, $value);
+        $image_result = $this->maybe_import_featured_image($post_id, $normalized, $source, $settings, $options);
         if ($build_ai_context) { $builder = new ALMA_Affiliate_Link_AI_Context_Builder(); $builder->maybe_build_and_store($post_id, $normalized, $source); }
         if (empty(get_post_meta($post_id, '_alma_ai_visibility', true))) update_post_meta($post_id, '_alma_ai_visibility', 'available');
         $term_ids = array(); $decoded = json_decode((string)($source['destination_term_ids'] ?? ''), true); if (is_array($decoded)) $term_ids = array_values(array_unique(array_filter(array_map('absint', $decoded))));
         if (empty($term_ids) && !empty($source['destination_term_id'])) $term_ids = array(absint($source['destination_term_id']));
         if (!empty($term_ids)) wp_set_object_terms($post_id, $term_ids, 'link_type', true);
-        return array('status' => $status, 'post_id' => $post_id);
+        $response = array('status' => $status, 'post_id' => $post_id);
+        if (is_array($image_result)) {
+            $response['featured_image'] = $image_result;
+            if (!$this->is_successful_or_expected_image_status($image_result['status'] ?? '')) {
+                $response['warning'] = sanitize_text_field((string)($image_result['message'] ?? __('Immagine non importata.', 'affiliate-link-manager-ai')));
+            }
+        }
+        return $response;
+    }
+
+    private function maybe_import_featured_image($post_id, $normalized, $source, $settings, $options) {
+        if (!class_exists('ALMA_Affiliate_Source_Media_Sideload_Service')) return array();
+        $normalized = is_array($normalized) ? $normalized : array();
+        $meta = is_array($normalized['meta'] ?? null) ? $normalized['meta'] : array();
+        $image_url = esc_url_raw((string)($normalized['featured_image_url'] ?? ''));
+        if ($image_url === '') {
+            $image_url = esc_url_raw((string)get_post_meta($post_id, '_alma_featured_image_url', true));
+        }
+        if ($image_url === '' && !empty($meta['_alma_featured_image_url'])) {
+            $image_url = esc_url_raw((string)$meta['_alma_featured_image_url']);
+        }
+        $overwrite = !empty($options['overwrite_existing_featured_image']) || !empty($options['overwrite_existing']);
+        if (!$overwrite) {
+            $overwrite = isset($settings['overwrite_existing_featured_image']) && (string)$settings['overwrite_existing_featured_image'] === '1';
+        }
+        $provider_value = (string)($meta['_alma_provider'] ?? '');
+        if ($provider_value === '') { $provider_value = (string)($source['provider_preset'] ?? ''); }
+        if ($provider_value === '') { $provider_value = (string)($source['provider'] ?? ''); }
+        $provider = sanitize_key($provider_value);
+        $service = new ALMA_Affiliate_Source_Media_Sideload_Service();
+        return $service->import_featured_image($post_id, $image_url, array(
+            'provider' => $provider,
+            'source_id' => (string)($meta['_alma_source_id'] ?? ($source['id'] ?? '')),
+            'external_id' => (string)($meta['_alma_external_id'] ?? ''),
+            'overwrite_existing' => $overwrite,
+            'dry_run' => !empty($options['dry_run_featured_image']),
+            'context' => array(
+                'import_status' => $normalized['meta']['_alma_import_status'] ?? '',
+                'source_provider' => $source['provider'] ?? '',
+                'provider_preset' => $source['provider_preset'] ?? '',
+            ),
+        ));
+    }
+
+    private function is_successful_or_expected_image_status($status) {
+        return in_array((string)$status, array('downloaded', 'reused_existing_attachment', 'skipped_existing_thumbnail', 'skipped_no_url'), true);
     }
     private function find_existing_link($normalized) { global $wpdb;
         $provider = $normalized['meta']['_alma_provider'] ?? '';
