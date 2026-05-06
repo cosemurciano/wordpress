@@ -141,12 +141,18 @@
 
 # Affiliate Link Manager AI
 
-Versione 2.25.25
+Versione 2.25.26
 
 
 
 
 
+
+## Novità 2.25.26 — PR 8.26 Refine OpenAI Payload Rules and Viator Duration
+
+- Il payload OpenAI normalizzato mantiene la struttura compatta attuale e non reintroduce campi diagnostici.
+- Il contesto sintetico dei link Viator omette la durata quando il valore non è leggibile, ad esempio array o placeholder tecnici.
+- Le sezioni `affiliate_rules`, `seo_rules` e `source_policies` deduplicano le regole senza troncarle con puntini di sospensione, preservando frasi complete e autonome.
 
 ## Novità 2.25.25 — PR 8.25 Separate OpenAI Payload Download from Full Debug JSON
 

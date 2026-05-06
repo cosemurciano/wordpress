@@ -208,14 +208,43 @@ class ALMA_AI_Content_Agent_Draft_Builder {
         $out = array();
         $seen = array();
         foreach ((array)$rules as $rule) {
-            $rule = self::compact_text($rule, 70);
-            if ($rule === '') { continue; }
-            $key = md5(mb_strtolower($rule));
-            if (isset($seen[$key])) { continue; }
-            $seen[$key] = true;
-            $out[] = $rule;
+            foreach (self::normalize_rule_items($rule) as $rule_item) {
+                $key = md5(mb_strtolower($rule_item));
+                if (isset($seen[$key])) { continue; }
+                $seen[$key] = true;
+                $out[] = $rule_item;
+            }
         }
         return $out;
+    }
+
+    private static function normalize_rule_items($rule) {
+        $rule = wp_strip_all_tags((string)$rule);
+        $rule = preg_replace('/^[ \t]*(?:[•*]|-|–|—)[ \t]+/m', '', $rule);
+        $rule = trim($rule);
+        if ($rule === '') { return array(); }
+
+        $parts = preg_split('/\r\n|\r|\n/', $rule, -1, PREG_SPLIT_NO_EMPTY);
+        $items = array();
+        foreach ((array)$parts as $part) {
+            $part = trim(preg_replace('/\s+/', ' ', $part));
+            if ($part === '') { continue; }
+            $sentences = preg_split('/(?<=[.!?。！？])\s+/u', $part, -1, PREG_SPLIT_NO_EMPTY);
+            foreach ((array)$sentences as $sentence) {
+                $sentence = self::normalize_complete_rule_sentence($sentence);
+                if ($sentence !== '') { $items[] = $sentence; }
+            }
+        }
+        return $items;
+    }
+
+    private static function normalize_complete_rule_sentence($sentence) {
+        $sentence = trim(preg_replace('/\s+/', ' ', (string)$sentence));
+        $sentence = preg_replace('/(?:\.\.\.|…)+$/u', '', $sentence);
+        $sentence = trim($sentence, " \t\n\r\0\x0B-–—:;,");
+        if ($sentence === '') { return ''; }
+        if (!preg_match('/[.!?。！？]$/u', $sentence)) { $sentence .= '.'; }
+        return $sentence;
     }
 
     private static function is_viator_context($provider, $source, $context) {
@@ -234,6 +263,8 @@ class ALMA_AI_Content_Agent_Draft_Builder {
             $line = trim(wp_strip_all_tags((string)$line));
             if ($line === '') { continue; }
             if (preg_match('/fonte\s*:\s*viator|codice prodotto|product\s*code|url affiliato disponibile|rating|recension|destination id|tag id|source key|prompt source|note operative|provider|fornitore|source/i', $line)) { continue; }
+            if (preg_match('/^durata\s*:\s*(array|n\/?d|non disponibile)?\.?$/i', $line)) { continue; }
+            if (preg_match('/^durata\s*:/i', $line) && preg_match('/array|[{}\[\]]/i', $line)) { continue; }
             foreach ($patterns as $pattern) {
                 if (preg_match($pattern, $line)) {
                     $allowed[] = self::compact_text($line, 28);

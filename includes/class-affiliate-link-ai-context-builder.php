@@ -65,6 +65,8 @@ class ALMA_Affiliate_Link_AI_Context_Builder {
         $description = wp_strip_all_tags((string)($item['description'] ?? $normalized['post_content'] ?? ''));
         if (strlen($description) > 400) { $description = substr($description, 0, 400) . '…'; }
 
+        $duration = $this->format_duration($item['duration'] ?? '');
+
         $lines = array(
             'Fonte: ' . ($source['provider_label'] ?? $source['provider'] ?? 'N/D') . '.',
             'Tipo contenuto: esperienza/tour.',
@@ -73,7 +75,7 @@ class ALMA_Affiliate_Link_AI_Context_Builder {
             'URL affiliato: disponibile nel campo dedicato.',
             'Descrizione sintetica: ' . ($description ?: 'N/D') . '.',
             $this->format_destination($item) . '.',
-            'Durata: ' . $this->format_duration($item['duration'] ?? 'N/D') . '.',
+            $duration !== '' ? 'Durata: ' . $duration . '.' : '',
             'Prezzo indicativo: ' . $this->format_price($item) . '.',
             'Rating aggregato: ' . sanitize_text_field((string)($item['reviews']['combinedAverageRating'] ?? $item['rating'] ?? 'N/D')) . '.',
             'Numero recensioni: ' . sanitize_text_field((string)($item['reviews']['totalReviews'] ?? 'N/D')) . '.',
@@ -154,15 +156,11 @@ class ALMA_Affiliate_Link_AI_Context_Builder {
         return !empty($flat) ? implode(', ', array_slice($flat, 0, 20)) : 'N/D';
     }
     private function format_duration($duration) {
-        if (is_array($duration)) {
-            $fixed = (int)($duration['fixedDurationInMinutes'] ?? 0);
-            if ($fixed > 0) return $fixed . ' minuti';
-            $from = (int)($duration['minDurationInMinutes'] ?? 0);
-            $to = (int)($duration['maxDurationInMinutes'] ?? 0);
-            if ($from > 0 && $to > 0) return 'da ' . $from . ' a ' . $to . ' minuti';
-            return $this->short_text(wp_json_encode($duration));
-        }
-        return $this->short_text((string)$duration);
+        if (is_array($duration) || is_object($duration)) { return ''; }
+        if (!is_scalar($duration)) { return ''; }
+        $duration = trim((string)$duration);
+        if ($duration === '' || strcasecmp($duration, 'Array') === 0 || strcasecmp($duration, 'N/D') === 0) { return ''; }
+        return $this->short_text($duration);
     }
     private function format_translation_auto($translation_info) { return (is_array($translation_info) && !empty($translation_info['containsMachineTranslatedText'])) ? 'sì' : 'no'; }
     private function format_translation_source($translation_info) { return is_array($translation_info) ? sanitize_text_field((string)($translation_info['translationSource'] ?? 'N/D')) : 'N/D'; }
