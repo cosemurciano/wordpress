@@ -184,7 +184,7 @@ class ALMA_AI_Content_Agent_Affiliate_Index {
             'featured_image_caption' => '',
             'has_featured_image' => false,
             'image_source' => '',
-            'image_import_status' => sanitize_text_field((string)get_post_meta($post_id, '_alma_image_import_status', true)),
+            'image_import_status' => sanitize_text_field((string)(get_post_meta($post_id, '_alma_image_import_status', true) ?: get_post_meta($post_id, '_alma_featured_image_import_status', true))),
         );
         if ($post_id < 1) { return $empty; }
 
@@ -223,6 +223,40 @@ class ALMA_AI_Content_Agent_Affiliate_Index {
         }
 
         return $empty;
+    }
+
+
+    public static function get_image_debug_data($post_id) {
+        $post_id = absint($post_id);
+        $featured_image_id = $post_id > 0 ? (int)get_post_thumbnail_id($post_id) : 0;
+        $featured_meta_raw = $post_id > 0 ? (string)get_post_meta($post_id, '_alma_featured_image_url', true) : '';
+        $source_url_raw = $post_id > 0 ? (string)get_post_meta($post_id, '_alma_featured_image_source_url', true) : '';
+        $import_status = $post_id > 0 ? sanitize_text_field((string)(get_post_meta($post_id, '_alma_image_import_status', true) ?: get_post_meta($post_id, '_alma_featured_image_import_status', true) ?: get_post_meta($post_id, '_alma_import_status', true))) : '';
+        $featured_meta_url = esc_url_raw($featured_meta_raw);
+        $source_meta_url = esc_url_raw($source_url_raw);
+        $reason = 'no_featured_image_or_meta_url';
+
+        if ($featured_image_id > 0) {
+            $attachment_url = wp_get_attachment_image_url($featured_image_id, 'large');
+            if (!$attachment_url) { $attachment_url = wp_get_attachment_image_url($featured_image_id, 'full'); }
+            $reason = ($attachment_url && wp_http_validate_url((string)$attachment_url)) ? 'featured_image_available' : 'featured_image_url_invalid';
+        } elseif ($featured_meta_raw !== '' && ($featured_meta_url === '' || !wp_http_validate_url($featured_meta_url))) {
+            $reason = 'alma_featured_image_url_invalid';
+        } elseif ($featured_meta_url !== '' && wp_http_validate_url($featured_meta_url)) {
+            $reason = 'alma_featured_image_url_available';
+        } elseif ($source_url_raw !== '' && ($source_meta_url === '' || !wp_http_validate_url($source_meta_url))) {
+            $reason = 'source_url_meta_invalid';
+        } elseif ($import_status !== '' && preg_match('/fail|error|invalid|missing/i', $import_status)) {
+            $reason = 'image_import_status_' . sanitize_key($import_status);
+        }
+
+        return array(
+            'featured_image_id' => $featured_image_id,
+            'featured_image_url_meta_present' => $featured_meta_raw !== '',
+            'source_url_meta_present' => $source_url_raw !== '',
+            'import_status' => $import_status,
+            'reason' => $reason,
+        );
     }
 
     private static function build_row($post) {
