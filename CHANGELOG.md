@@ -1,3 +1,10 @@
+## 2.25.30 — PR 8.30 AI Content Agent Dashboard Shortcut Widget
+- Aggiunto nella Bacheca WordPress il widget leggero **AI Content Agent**, registrato con `wp_dashboard_setup` in contesto principale ad alta priorità per apparire nella fascia alta al primo caricamento.
+- Il widget mostra una descrizione sintetica, icona Dashicons e pulsante primario **Apri AI Content Agent** verso l'URL admin già registrato (`alma-ai-content-agent`).
+- La scorciatoia è visibile solo agli utenti autorizzati con la stessa capability della pagina AI Content Agent (`manage_options`).
+- Nessun impatto su OpenAI, payload AI, CPT, shortcode, tracking, import provider o logica AI; il widget espone solo link di navigazione e testo statico.
+- Versione plugin aggiornata a `2.25.30`.
+
 ## 2.25.29 — PR 8.29 AI Content Agent Toolbar and Ideas Pagination UI
 - Migliorata la toolbar principale di **AI Content Agent** con pulsanti scoped più distinguibili: azioni primarie blu, salvataggio verde, eliminazione rossa con icona trash e download JSON OpenAI grigio/secondario.
 - Aggiunta paginazione server-side alla colonna **Idee create** con massimo 10 idee per pagina, controlli **Precedente**/**Successiva**, indicatore pagina corrente e mantenimento dell’idea attiva.
