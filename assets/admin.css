@@ -733,3 +733,24 @@ button:disabled {
 @media (max-width: 782px) {
     .alma-ai-agent-admin .alma-results-filter-grid { flex-direction: column; }
 }
+
+.alma-ai-agent-admin .alma-idea-advanced-tools {
+    flex-basis: 100%;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px dashed #c3c4c7;
+}
+.alma-ai-agent-admin .alma-idea-advanced-tools summary {
+    cursor: pointer;
+    color: #50575e;
+    font-weight: 600;
+}
+.alma-ai-agent-admin .alma-idea-advanced-tools .description {
+    max-width: 720px;
+}
+.alma-ai-agent-admin .alma-idea-advanced-tools form {
+    padding: 8px;
+    border: 1px solid #e2e4e7;
+    border-radius: 6px;
+    background: #fff;
+}
