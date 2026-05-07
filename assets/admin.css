@@ -1055,3 +1055,77 @@ button:disabled {
     .alma-ai-agent-admin .alma-dashboard-actions form { width: 100%; }
     .alma-ai-agent-admin .alma-dashboard-actions .button { text-align: center; }
 }
+
+.alma-ai-agent-admin .alma-dashboard-alerts {
+    margin: 18px 0 22px;
+}
+.alma-ai-agent-admin .alma-dashboard-alerts-head {
+    margin-bottom: 10px;
+}
+.alma-ai-agent-admin .alma-dashboard-alerts-head h2 {
+    margin: 0 0 4px;
+}
+.alma-ai-agent-admin .alma-dashboard-alert {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    margin: 10px 0;
+    padding: 14px 16px;
+    border: 1px solid #dcdcde;
+    border-left: 4px solid #8c8f94;
+    background: #fff;
+    border-radius: 4px;
+}
+.alma-ai-agent-admin .alma-dashboard-alert--ok { border-left-color: #00a32a; }
+.alma-ai-agent-admin .alma-dashboard-alert--warning { border-left-color: #dba617; }
+.alma-ai-agent-admin .alma-dashboard-alert--error { border-left-color: #d63638; }
+.alma-ai-agent-admin .alma-dashboard-alert-icon {
+    flex: 0 0 28px;
+    min-width: 28px;
+    height: 28px;
+    border: 1px solid #c3c4c7;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    background: #f6f7f7;
+}
+.alma-ai-agent-admin .alma-dashboard-alert--ok .alma-dashboard-alert-icon { color: #008a20; }
+.alma-ai-agent-admin .alma-dashboard-alert--warning .alma-dashboard-alert-icon { color: #8a6100; }
+.alma-ai-agent-admin .alma-dashboard-alert--error .alma-dashboard-alert-icon { color: #b32d2e; }
+.alma-ai-agent-admin .alma-dashboard-alert-body {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+.alma-ai-agent-admin .alma-dashboard-alert-body h3 {
+    margin: 0 0 6px;
+}
+.alma-ai-agent-admin .alma-dashboard-alert-body p {
+    margin: 0 0 6px;
+}
+.alma-ai-agent-admin .alma-dashboard-alert-actions {
+    flex: 0 0 250px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+}
+.alma-ai-agent-admin .alma-dashboard-alert-actions form,
+.alma-ai-agent-admin .alma-dashboard-alert-actions form p {
+    margin: 0;
+}
+
+@media (max-width: 782px) {
+    .alma-ai-agent-admin .alma-dashboard-alert {
+        flex-direction: column;
+    }
+    .alma-ai-agent-admin .alma-dashboard-alert-actions {
+        flex-basis: auto;
+        width: 100%;
+    }
+    .alma-ai-agent-admin .alma-dashboard-alert-actions .button,
+    .alma-ai-agent-admin .alma-dashboard-alert-actions form {
+        width: 100%;
+    }
+}

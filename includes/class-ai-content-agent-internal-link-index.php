@@ -31,14 +31,90 @@ class ALMA_AI_Content_Agent_Internal_Link_Index {
         $exists = $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $table));
         $state = get_option(self::OPTION_STATE, array());
         if ($exists !== $table) {
-            return array('table_exists'=>false,'indexed_count'=>0,'last_rebuild_at'=>sanitize_text_field($state['last_rebuild_at'] ?? ''),'last_indexed_at'=>'');
+            return array('table_exists'=>false,'indexed_count'=>0,'last_rebuild_at'=>sanitize_text_field($state['last_rebuild_at'] ?? ''),'last_indexed_at'=>'','pending'=>self::empty_pending_counts(false, sanitize_text_field($state['last_rebuild_at'] ?? '')));
+
         }
         return array(
             'table_exists' => true,
             'indexed_count' => (int) $wpdb->get_var("SELECT COUNT(*) FROM $table WHERE post_status='publish'"),
             'last_rebuild_at' => sanitize_text_field($state['last_rebuild_at'] ?? ''),
             'last_indexed_at' => (string) $wpdb->get_var("SELECT MAX(indexed_at) FROM $table"),
+            'pending' => self::get_pending_counts(),
         );
+    }
+
+
+    private static function empty_pending_counts($table_exists = true, $last_rebuild_at = '') {
+        return array(
+            'table_exists' => (bool) $table_exists,
+            'new' => 0,
+            'modified' => 0,
+            'stale' => 0,
+            'indexed' => 0,
+            'last_rebuild_at' => sanitize_text_field($last_rebuild_at),
+            'last_indexed_at' => '',
+        );
+    }
+
+    private static function post_type_sql_placeholders($post_types) {
+        $post_types = array_values(array_filter(array_map('sanitize_key', (array) $post_types)));
+        return !empty($post_types) ? implode(',', array_fill(0, count($post_types), '%s')) : "''";
+    }
+
+    public static function get_pending_counts() {
+        global $wpdb;
+        $table = self::table_name();
+        $state = get_option(self::OPTION_STATE, array());
+        $exists = $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $table));
+        if ($exists !== $table) { return self::empty_pending_counts(false, sanitize_text_field($state['last_rebuild_at'] ?? '')); }
+        $post_types = self::supported_post_types();
+        if (empty($post_types)) { return self::empty_pending_counts(true, sanitize_text_field($state['last_rebuild_at'] ?? '')); }
+        $type_placeholders = self::post_type_sql_placeholders($post_types);
+
+        $indexed = (int) $wpdb->get_var("SELECT COUNT(*) FROM $table WHERE post_status='publish'");
+        $last_indexed_at = (string) $wpdb->get_var("SELECT MAX(indexed_at) FROM $table");
+        $new_sql = "SELECT COUNT(1) FROM {$wpdb->posts} p LEFT JOIN $table i ON i.post_id = p.ID WHERE p.post_type IN ($type_placeholders) AND p.post_status='publish' AND i.post_id IS NULL";
+        $modified_sql = "SELECT COUNT(1) FROM {$wpdb->posts} p INNER JOIN $table i ON i.post_id = p.ID WHERE p.post_type IN ($type_placeholders) AND p.post_status='publish' AND (i.indexed_at IS NULL OR p.post_modified_gmt > i.indexed_at)";
+        $stale_sql = "SELECT COUNT(1) FROM $table i LEFT JOIN {$wpdb->posts} p ON p.ID = i.post_id WHERE p.ID IS NULL OR p.post_type NOT IN ($type_placeholders) OR p.post_status <> 'publish'";
+
+        return array(
+            'table_exists' => true,
+            'new' => (int) $wpdb->get_var($wpdb->prepare($new_sql, $post_types)),
+            'modified' => (int) $wpdb->get_var($wpdb->prepare($modified_sql, $post_types)),
+            'stale' => (int) $wpdb->get_var($wpdb->prepare($stale_sql, $post_types)),
+            'indexed' => $indexed,
+            'last_rebuild_at' => sanitize_text_field($state['last_rebuild_at'] ?? ''),
+            'last_indexed_at' => $last_indexed_at,
+        );
+    }
+
+    public static function sync_pending($limit = 300) {
+        global $wpdb;
+        self::install_table();
+        $table = self::table_name();
+        $post_types = self::supported_post_types();
+        $limit = max(1, min(500, absint($limit)));
+        $result = array('new'=>0,'modified'=>0,'stale'=>0,'errors'=>0);
+        if (empty($post_types)) { return $result; }
+        $type_placeholders = self::post_type_sql_placeholders($post_types);
+
+        $new_sql = "SELECT p.ID FROM {$wpdb->posts} p LEFT JOIN $table i ON i.post_id = p.ID WHERE p.post_type IN ($type_placeholders) AND p.post_status='publish' AND i.post_id IS NULL ORDER BY p.ID ASC LIMIT %d";
+        $new_ids = $wpdb->get_col($wpdb->prepare($new_sql, array_merge($post_types, array($limit))));
+        foreach ((array) $new_ids as $post_id) {
+            if (self::index_post((int) $post_id)) { $result['new']++; } else { $result['errors']++; }
+        }
+
+        $remaining = max(1, $limit - count((array) $new_ids));
+        $modified_sql = "SELECT p.ID FROM {$wpdb->posts} p INNER JOIN $table i ON i.post_id = p.ID WHERE p.post_type IN ($type_placeholders) AND p.post_status='publish' AND (i.indexed_at IS NULL OR p.post_modified_gmt > i.indexed_at) ORDER BY p.ID ASC LIMIT %d";
+        $modified_ids = $wpdb->get_col($wpdb->prepare($modified_sql, array_merge($post_types, array($remaining))));
+        foreach ((array) $modified_ids as $post_id) {
+            if (self::index_post((int) $post_id)) { $result['modified']++; } else { $result['errors']++; }
+        }
+
+        $stale_sql = "DELETE i FROM $table i LEFT JOIN {$wpdb->posts} p ON p.ID = i.post_id WHERE p.ID IS NULL OR p.post_type NOT IN ($type_placeholders) OR p.post_status <> 'publish'";
+        $deleted = $wpdb->query($wpdb->prepare($stale_sql, $post_types));
+        if ($deleted === false) { $result['errors']++; } else { $result['stale'] = (int) $deleted; }
+        return $result;
     }
 
     public static function rebuild_index($per_page = 200) {
