@@ -1,3 +1,10 @@
+## 2.25.43 — Fix media index image detection
+- Corretta la ricostruzione dell’Indice Media: gli attachment vengono letti con stati WordPress compatibili, incluso `inherit`, e il riconoscimento immagini accetta tutti i MIME che iniziano con `image/`.
+- Il rebuild carica sempre il post completo prima di indicizzare, non scarta immagini con alt/caption/description vuoti, parent assente, metadata dimensioni mancanti o URL large/medium non disponibili, e salta solo immagini senza URL full.
+- Aggiunta diagnostica admin dettagliata con attachment processati, immagini rilevate, immagini indicizzate, non immagini saltati, attachment senza URL, errori insert/update e record rimossi; gli errori DB mostrano un warning sintetico basato su `wpdb->last_error`.
+- Rafforzata la verifica tabella: il rebuild tenta `install_table()` e restituisce un errore chiaro se la tabella media index non è disponibile.
+- Versione plugin aggiornata a `2.25.43`.
+
 ## 2.25.42 — AI Media Library index and affiliate media separation
 - Aggiunto indice leggero della Media Library per AI Content Agent nella tabella `alma_ai_media_index`, creato via dbDelta su attivazione/upgrade.
 - Indicizzati attachment immagine con title, alt, caption, description, filename, URL full/large/medium, dimensioni, mime type, parent post e testo aggregato di ricerca.
