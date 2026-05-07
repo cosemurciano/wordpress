@@ -260,7 +260,72 @@ class ALMA_AI_Content_Agent_Media_Index {
 
     public static function get_status() {
         global $wpdb; $table = self::table_name(); $exists = $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $table));
-        return array('table_exists'=>$exists === $table,'total'=>self::count_records(),'editorial'=>self::count_records('editorial'),'affiliate'=>self::count_records('affiliate'),'last_rebuild_at'=>get_option(self::OPTION_LAST_REBUILD_AT, ''));
+        return array('table_exists'=>$exists === $table,'total'=>self::count_records(),'editorial'=>self::count_records('editorial'),'affiliate'=>self::count_records('affiliate'),'last_rebuild_at'=>get_option(self::OPTION_LAST_REBUILD_AT, ''),'pending'=>self::get_pending_counts());
+    }
+
+
+    private static function valid_attachment_statuses() {
+        return array('inherit','private','publish','draft','pending','future');
+    }
+
+    private static function status_placeholders($statuses) {
+        $statuses = array_values(array_filter(array_map('sanitize_key', (array) $statuses)));
+        return !empty($statuses) ? implode(',', array_fill(0, count($statuses), '%s')) : "''";
+    }
+
+    public static function get_pending_counts() {
+        global $wpdb;
+        $table = self::table_name();
+        $exists = $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $table));
+        $last_rebuild = get_option(self::OPTION_LAST_REBUILD_AT, '');
+        $empty = array('table_exists'=>false,'new'=>0,'modified'=>0,'stale'=>0,'indexed_total'=>0,'indexed_editorial'=>0,'indexed_affiliate'=>0,'last_rebuild'=>$last_rebuild,'last_rebuild_at'=>$last_rebuild,'last_indexed_at'=>'');
+        if ($exists !== $table) { return $empty; }
+        $statuses = self::valid_attachment_statuses();
+        $status_placeholders = self::status_placeholders($statuses);
+        $new_sql = "SELECT COUNT(1) FROM {$wpdb->posts} p LEFT JOIN $table i ON i.attachment_id = p.ID WHERE p.post_type='attachment' AND p.post_status IN ($status_placeholders) AND p.post_mime_type LIKE 'image/%' AND i.attachment_id IS NULL";
+        $modified_sql = "SELECT COUNT(1) FROM {$wpdb->posts} p INNER JOIN $table i ON i.attachment_id = p.ID WHERE p.post_type='attachment' AND p.post_status IN ($status_placeholders) AND p.post_mime_type LIKE 'image/%' AND (i.indexed_at IS NULL OR p.post_modified_gmt > i.indexed_at)";
+        $stale_sql = "SELECT COUNT(1) FROM $table i LEFT JOIN {$wpdb->posts} p ON p.ID = i.attachment_id WHERE p.ID IS NULL OR p.post_type <> 'attachment' OR p.post_status NOT IN ($status_placeholders) OR p.post_mime_type NOT LIKE 'image/%'";
+        return array(
+            'table_exists'=>true,
+            'new'=>(int) $wpdb->get_var($wpdb->prepare($new_sql, $statuses)),
+            'modified'=>(int) $wpdb->get_var($wpdb->prepare($modified_sql, $statuses)),
+            'stale'=>(int) $wpdb->get_var($wpdb->prepare($stale_sql, $statuses)),
+            'indexed_total'=>self::count_records(),
+            'indexed_editorial'=>self::count_records('editorial'),
+            'indexed_affiliate'=>self::count_records('affiliate'),
+            'last_rebuild'=>$last_rebuild,
+            'last_rebuild_at'=>$last_rebuild,
+            'last_indexed_at'=>(string) $wpdb->get_var("SELECT MAX(indexed_at) FROM $table"),
+        );
+    }
+
+    public static function sync_pending($limit = 300) {
+        global $wpdb;
+        $schema = self::install_table();
+        $result = array('new'=>0,'modified'=>0,'stale'=>0,'errors'=>0,'schema'=>$schema);
+        if (empty($schema['success'])) { $result['errors'] = 1; return $result; }
+        $table = self::table_name();
+        $limit = max(1, min(500, absint($limit)));
+        $statuses = self::valid_attachment_statuses();
+        $status_placeholders = self::status_placeholders($statuses);
+
+        $new_sql = "SELECT p.ID FROM {$wpdb->posts} p LEFT JOIN $table i ON i.attachment_id = p.ID WHERE p.post_type='attachment' AND p.post_status IN ($status_placeholders) AND p.post_mime_type LIKE 'image/%' AND i.attachment_id IS NULL ORDER BY p.ID ASC LIMIT %d";
+        $new_ids = $wpdb->get_col($wpdb->prepare($new_sql, array_merge($statuses, array($limit))));
+        foreach ((array) $new_ids as $attachment_id) {
+            if (self::index_attachment((int) $attachment_id)) { $result['new']++; } else { $result['errors']++; }
+        }
+
+        $remaining = max(1, $limit - count((array) $new_ids));
+        $modified_sql = "SELECT p.ID FROM {$wpdb->posts} p INNER JOIN $table i ON i.attachment_id = p.ID WHERE p.post_type='attachment' AND p.post_status IN ($status_placeholders) AND p.post_mime_type LIKE 'image/%' AND (i.indexed_at IS NULL OR p.post_modified_gmt > i.indexed_at) ORDER BY p.ID ASC LIMIT %d";
+        $modified_ids = $wpdb->get_col($wpdb->prepare($modified_sql, array_merge($statuses, array($remaining))));
+        foreach ((array) $modified_ids as $attachment_id) {
+            if (self::index_attachment((int) $attachment_id)) { $result['modified']++; } else { $result['errors']++; }
+        }
+
+        $stale_sql = "DELETE i FROM $table i LEFT JOIN {$wpdb->posts} p ON p.ID = i.attachment_id WHERE p.ID IS NULL OR p.post_type <> 'attachment' OR p.post_status NOT IN ($status_placeholders) OR p.post_mime_type NOT LIKE 'image/%'";
+        $deleted = $wpdb->query($wpdb->prepare($stale_sql, $statuses));
+        if ($deleted === false) { $result['errors']++; } else { $result['stale'] = (int) $deleted; }
+        return $result;
     }
 
     private static function is_valid_image_attachment($attachment) {

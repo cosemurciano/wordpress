@@ -68,6 +68,13 @@ class ALMA_AI_Content_Agent_Admin {
         } elseif ($do === 'rebuild_internal_link_index') {
             $stats = ALMA_AI_Content_Agent_Internal_Link_Index::rebuild_index(200);
             $result = array('success' => true, 'message' => sprintf('Indice link interni ricostruito: processati %d, indicizzati %d post pubblicati.', (int)$stats['processed'], (int)$stats['indexed']));
+        } elseif ($do === 'alma_sync_internal_links_pending') {
+            $stats = ALMA_AI_Content_Agent_Internal_Link_Index::sync_pending(300);
+            $result = array('success' => empty($stats['errors']), 'message' => sprintf('Indice link interni aggiornato: %d nuovi post, %d aggiornati, %d obsoleti rimossi, %d errori.', (int)($stats['new'] ?? 0), (int)($stats['modified'] ?? 0), (int)($stats['stale'] ?? 0), (int)($stats['errors'] ?? 0)));
+        } elseif ($do === 'alma_sync_media_pending') {
+            $stats = ALMA_AI_Content_Agent_Media_Index::sync_pending(300);
+            $result = array('success' => empty($stats['errors']), 'message' => sprintf('Indice media aggiornato: %d nuove immagini, %d immagini aggiornate, %d record obsoleti rimossi, %d errori.', (int)($stats['new'] ?? 0), (int)($stats['modified'] ?? 0), (int)($stats['stale'] ?? 0), (int)($stats['errors'] ?? 0)));
+
         } elseif ($do === 'index_affiliate_links') {
             $state = get_option('alma_ai_affiliate_index_state', array());
             $batch = ALMA_AI_Content_Agent_Affiliate_Index::index_batch(array('after_id'=>absint($state['last_processed_id'] ?? 0)));
@@ -331,6 +338,8 @@ class ALMA_AI_Content_Agent_Admin {
         echo '<a class="button" href="'.esc_url($log_url).'">Apri Stato/log</a>';
         echo '</div></section>';
 
+        self::render_dashboard_update_alerts($affiliate, $internal, $media);
+
         if ($openai !== 'Configurata') { echo '<div class="notice notice-warning inline"><p>OpenAI non è configurata.</p></div>'; }
         if (!empty($missing)) { echo '<div class="notice notice-info inline"><p>Tabelle mancanti: '.esc_html(implode(', ', $missing)).'. Alcuni dati possono risultare non disponibili.</p></div>'; }
 
@@ -364,6 +373,79 @@ class ALMA_AI_Content_Agent_Admin {
     private static function render_media_tab(){ global $wpdb; echo '<h2>Media Library</h2>'; if (self::is_table_missing('media_index')) { echo '<p><em>Tabella media_index mancante.</em></p>'; return; } $rows=$wpdb->get_results("SELECT id,attachment_id,file_name,alt_text,is_affiliate_media,is_editorial_candidate FROM ".ALMA_AI_Content_Agent_Store::table('media_index')." ORDER BY id DESC LIMIT 20",ARRAY_A); echo '<table class="widefat"><thead><tr><th>ID</th><th>Attachment ID</th><th>Filename</th><th>Alt text</th><th>Tipo</th><th>Preview</th></tr></thead><tbody>'; foreach($rows as $r){ $thumb=wp_get_attachment_image((int)$r['attachment_id'],array(60,60)); echo '<tr><td>'.(int)$r['id'].'</td><td>'.(int)$r['attachment_id'].'</td><td>'.esc_html($r['file_name']).'</td><td>'.esc_html($r['alt_text']).'</td><td>'.((int)$r['is_affiliate_media']?'Affiliato':((int)$r['is_editorial_candidate']?'Editoriale':'Escluso')).'</td><td>'.($thumb?$thumb:'-').'</td></tr>'; } echo '</tbody></table>'; }
     private static function render_reindex_tab(){ echo '<h2>Reindicizza</h2><div class="alma-agent-card"><p><label><input type="checkbox"> Articoli</label> <label><input type="checkbox"> Pagine</label> <label><input type="checkbox"> Affiliate Links</label> <label><input type="checkbox"> Documenti TXT</label> <label><input type="checkbox"> Fonti online AI</label> <label><input type="checkbox"> Media</label></p><p><button class="button button-primary" disabled>Reindicizza selezionati</button> Disponibile nella prossima fase.</p><ul><li>Elementi analizzati: Nessun dato</li><li>Elementi aggiornati: Nessun dato</li><li>Elementi saltati: Nessun dato</li><li>Errori: Nessun dato</li><li>Durata: Non disponibile</li><li>Link al log: vai a Stato/log</li></ul></div>'; self::action_form('reindex_knowledge','Reindicizza knowledge base'); self::render_media_index_status_box(); }
     private static function render_log_tab(){ global $wpdb; $missing=ALMA_AI_Content_Agent_Store::missing_tables(); $jobs=array(); if (!self::is_table_missing('jobs')) { $jobs=$wpdb->get_results("SELECT id,job_type,status,last_error,updated_at FROM ".ALMA_AI_Content_Agent_Store::table('jobs')." ORDER BY id DESC LIMIT 20",ARRAY_A); } $logs=ALMA_AI_Usage_Logger::get_recent_logs(20); echo '<h2>Stato/log</h2>'; self::render_affiliate_index_status_box(); self::render_media_index_status_box(); echo '<div class="alma-agent-grid"><div class="alma-agent-card"><h3>Job programmati</h3><p>Nessun dato</p></div><div class="alma-agent-card"><h3>Job in corso</h3><p>Nessun dato</p></div><div class="alma-agent-card"><h3>Job completati</h3><p>Nessun dato</p></div><div class="alma-agent-card"><h3>Job falliti</h3><p>Nessun dato</p></div><div class="alma-agent-card"><h3>Ultime chiamate AI</h3><p>'.(empty($logs)?'Nessun dato':'Disponibili sotto').'</p></div><div class="alma-agent-card"><h3>Errori recenti</h3><p>Nessun dato</p></div><div class="alma-agent-card"><h3>Bozze create</h3><p>'.count(ALMA_AI_Content_Agent_Store::get_agent_drafts(50)).'</p></div></div><p><strong>Tabelle mancanti:</strong> '.(empty($missing)?'Nessuna':esc_html(implode(', ',$missing))).'</p>'; if (self::is_table_missing('jobs')) { echo '<p><em>Tabella jobs mancante: sezione job non disponibile.</em></p>'; } echo '<h3>Ultimi job/errori</h3><table class="widefat"><thead><tr><th>ID</th><th>Tipo</th><th>Stato</th><th>Errore</th><th>Aggiornato</th></tr></thead><tbody>'; foreach($jobs as $j){ echo '<tr><td>'.(int)$j['id'].'</td><td>'.esc_html($j['job_type']).'</td><td><span class="alma-badge is-pending">'.esc_html($j['status']).'</span></td><td>'.esc_html($j['last_error']).'</td><td>'.esc_html($j['updated_at']).'</td></tr>'; } echo '</tbody></table>'; echo '<h3>Ultimi log AI</h3><table class="widefat"><thead><tr><th>Data</th><th>Task</th><th>Model</th><th>Successo</th><th>Errore</th></tr></thead><tbody>'; foreach($logs as $l){ echo '<tr><td>'.esc_html($l['created_at']).'</td><td>'.esc_html($l['task']).'</td><td>'.esc_html($l['model']).'</td><td>'.((int)$l['success']?'si':'no').'</td><td>'.esc_html($l['error_message']).'</td></tr>'; } echo '</tbody></table>'; }
+
+
+    private static function render_dashboard_update_alerts($affiliate, $internal, $media) {
+        $internal_pending = (array)($internal['pending'] ?? ALMA_AI_Content_Agent_Internal_Link_Index::get_pending_counts());
+        $media_pending = (array)($media['pending'] ?? ALMA_AI_Content_Agent_Media_Index::get_pending_counts());
+        $maintenance_url = '#alma-dashboard-maintenance-advanced';
+
+        echo '<section class="alma-dashboard-alerts" aria-labelledby="alma-dashboard-alerts-title"><div class="alma-dashboard-alerts-head"><h2 id="alma-dashboard-alerts-title">Aggiornamenti disponibili</h2><p class="description">Controlla contenuti nuovi, modificati o obsoleti negli indici usati dall’AI Content Agent. Le ricostruzioni complete restano in Manutenzione avanzata.</p></div>';
+
+        self::render_dashboard_update_alert(array(
+            'title' => 'Link affiliati',
+            'table_exists' => !empty($affiliate['table_exists']),
+            'new' => (int)($affiliate['missing_index'] ?? 0),
+            'modified' => (int)($affiliate['stale_index_records'] ?? 0),
+            'stale' => (int)($affiliate['orphan_index_records'] ?? 0) + (int)($affiliate['active_invalid_records'] ?? 0),
+            'indexed' => (int)($affiliate['indexed_active'] ?? 0),
+            'description' => 'Riuso della sync incrementale esistente per aggiornare link mancanti, modificati o non più validi.',
+            'button_do' => 'sync_affiliate_links_incremental',
+            'button_label' => 'Sync incrementale',
+            'maintenance_url' => $maintenance_url,
+        ));
+
+        self::render_dashboard_update_alert(array(
+            'title' => 'Link interni',
+            'table_exists' => !empty($internal_pending['table_exists']),
+            'new' => (int)($internal_pending['new'] ?? 0),
+            'modified' => (int)($internal_pending['modified'] ?? 0),
+            'stale' => (int)($internal_pending['stale'] ?? 0),
+            'indexed' => (int)($internal_pending['indexed'] ?? ($internal['indexed_count'] ?? 0)),
+            'description' => 'Confronta i post pubblicati con l’indice leggero, senza indicizzare il contenuto completo.',
+            'button_do' => 'alma_sync_internal_links_pending',
+            'button_label' => 'Aggiorna post nuovi/modificati',
+            'maintenance_url' => $maintenance_url,
+        ));
+
+        self::render_dashboard_update_alert(array(
+            'title' => 'Media Library',
+            'table_exists' => !empty($media_pending['table_exists']),
+            'new' => (int)($media_pending['new'] ?? 0),
+            'modified' => (int)($media_pending['modified'] ?? 0),
+            'stale' => (int)($media_pending['stale'] ?? 0),
+            'indexed' => (int)($media_pending['indexed_total'] ?? ($media['total'] ?? 0)),
+            'description' => 'Indicizza solo metadati degli attachment immagine: nessun OCR, download o lettura binaria.',
+            'button_do' => 'alma_sync_media_pending',
+            'button_label' => 'Aggiorna media nuovi/modificati',
+            'maintenance_url' => $maintenance_url,
+        ));
+
+        echo '</section>';
+    }
+
+    private static function render_dashboard_update_alert($args) {
+        $new = (int)($args['new'] ?? 0);
+        $modified = (int)($args['modified'] ?? 0);
+        $stale = (int)($args['stale'] ?? 0);
+        $indexed = (int)($args['indexed'] ?? 0);
+        $has_pending = ($new + $modified + $stale) > 0;
+        $table_exists = !empty($args['table_exists']);
+        $state_class = !$table_exists ? 'alma-dashboard-alert--error' : ($has_pending ? 'alma-dashboard-alert--warning' : 'alma-dashboard-alert--ok');
+        $icon = !$table_exists ? '✕' : ($has_pending ? '⚠' : '✓');
+        $status = !$table_exists ? 'Errore: tabella indice non disponibile' : ($has_pending ? 'Aggiornamenti disponibili' : 'Indice aggiornato');
+        $counts = sprintf('%d nuovi · %d modificati · %d obsoleti · %d indicizzati', $new, $modified, $stale, $indexed);
+
+        echo '<article class="alma-dashboard-alert '.esc_attr($state_class).'">';
+        echo '<div class="alma-dashboard-alert-icon" aria-hidden="true">'.esc_html($icon).'</div><div class="alma-dashboard-alert-body">';
+        echo '<h3>'.esc_html($args['title'] ?? '').'</h3><p><strong>'.esc_html($status).'</strong> · '.esc_html($counts).'</p><p class="description">'.esc_html($args['description'] ?? '').'</p>';
+        echo '</div><div class="alma-dashboard-alert-actions">';
+        if ($table_exists && $has_pending && !empty($args['button_do'])) { self::action_form($args['button_do'], $args['button_label'] ?? 'Aggiorna pendenti'); }
+        elseif ($table_exists) { echo '<button class="button" type="button" disabled>Indice aggiornato</button>'; }
+        else { echo '<button class="button" type="button" disabled>Azione non disponibile</button>'; }
+        echo '<a href="'.esc_url($args['maintenance_url'] ?? '#').'">Manutenzione avanzata / rebuild completo</a>';
+        echo '</div></article>';
+    }
 
     private static function get_affiliate_index_view_data() {
         $empty = array(
@@ -489,7 +571,7 @@ class ALMA_AI_Content_Agent_Admin {
     }
 
     private static function render_dashboard_maintenance_section($affiliate, $internal, $internal_state, $media) {
-        echo '<details class="alma-maintenance-advanced"><summary>Manutenzione avanzata</summary><p class="description">Strumenti tecnici per ricostruire indici o azzerare stati batch. Usali solo per manutenzione: non eliminano contenuti editoriali o Link affiliati reali.</p>';
+        echo '<details id="alma-dashboard-maintenance-advanced" class="alma-maintenance-advanced"><summary>Manutenzione avanzata</summary><p class="description">Strumenti tecnici per ricostruire indici o azzerare stati batch. Usali solo per manutenzione: non eliminano contenuti editoriali o Link affiliati reali.</p>';
         echo '<div class="alma-maintenance-grid">';
         echo '<section class="alma-maintenance-card"><h3>Indice Link affiliati</h3><ul><li>Record orfani: '.(int)$affiliate['orphan_index_records'].'</li><li>Record attivi non validi: '.(int)$affiliate['active_invalid_records'].'</li><li>Record indice inattivi: '.(int)$affiliate['inactive_index_records'].'</li><li>Mancanti dall’indice: '.(int)$affiliate['missing_index'].'</li><li>Da aggiornare: '.(int)$affiliate['stale_index_records'].'</li><li>Stato batch: '.esc_html($affiliate['batch_status']).'</li><li>Last processed ID: '.(int)($affiliate['batch']['last_processed_id'] ?? 0).'</li></ul>';
         if (!empty($affiliate['batch']['last_error'])) { echo '<p class="description"><strong>Ultimo errore batch:</strong> '.esc_html($affiliate['batch']['last_error']).'</p>'; }

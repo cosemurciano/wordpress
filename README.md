@@ -1,3 +1,12 @@
+## 2.25.47 — Dashboard index update alerts
+- Aggiunti alert operativi in alto nella Dashboard AI Content Agent per Link affiliati, Link interni e Media Library.
+- Gli alert mostrano stato, conteggi nuovi/modificati/obsoleti e totale indicizzato, con CTA per aggiornare solo i pendenti.
+- Aggiunti conteggi pending e sync incrementale per Link interni, confrontando post pubblicati con l’indice senza indicizzare il contenuto completo.
+- Aggiunti conteggi pending e sync incrementale per Media Library su attachment immagine, senza OCR, download o lettura file binari.
+- Riusata la sync incrementale esistente dei Link affiliati nella nuova UI alert.
+- Le ricostruzioni complete e reset/svuota indice restano disponibili nella sezione Manutenzione avanzata.
+- Versione plugin aggiornata a `2.25.47`.
+
 ## 2.25.46 — AI Content Agent dashboard UI operativa
 - Riorganizzata la dashboard **AI Content Agent** con quick actions in alto per Idee contenuto, creazione idea, Istruzioni AI e Stato/log.
 - Aggiunte card riepilogative per OpenAI, Idee contenuto, Link affiliati, Link interni, Media Library e Stato/log.
