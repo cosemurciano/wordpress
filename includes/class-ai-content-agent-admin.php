@@ -42,6 +42,9 @@ class ALMA_AI_Content_Agent_Admin {
         } elseif ($do === 'reindex_media') {
             $count = ALMA_AI_Content_Agent_Media_Indexer::reindex_batch(30);
             $result = array('success' => true, 'message' => sprintf('Reindex media completato: %d elementi.', (int)$count));
+        } elseif ($do === 'rebuild_internal_link_index') {
+            $stats = ALMA_AI_Content_Agent_Internal_Link_Index::rebuild_index(200);
+            $result = array('success' => true, 'message' => sprintf('Indice link interni ricostruito: processati %d, indicizzati %d post pubblicati.', (int)$stats['processed'], (int)$stats['indexed']));
         } elseif ($do === 'index_affiliate_links') {
             $state = get_option('alma_ai_affiliate_index_state', array());
             $batch = ALMA_AI_Content_Agent_Affiliate_Index::index_batch(array('after_id'=>absint($state['last_processed_id'] ?? 0)));
@@ -238,6 +241,7 @@ class ALMA_AI_Content_Agent_Admin {
             echo '<li><strong>Documenti TXT:</strong> '.(int)($counts['document_txt'] ?? 0).'</li>';
             echo '<li><strong>Fonti online AI:</strong> '.(int)($counts['source_online'] ?? 0).'</li>';
             echo '<li><strong>Media:</strong> '.(int)($counts['media'] ?? 0).'</li>';
+            echo '<li><strong>Link interni candidati:</strong> '.(int)($counts['internal_link'] ?? 0).'</li>';
             if (!empty($affiliate_images)) {
                 echo '<li><strong>Immagini affiliate candidate:</strong> '.(int)($affiliate_images['candidates'] ?? 0).'</li>';
                 echo '<li><strong>Immagini affiliate usate:</strong> '.(int)($affiliate_images['used'] ?? 0).'</li>';
@@ -275,6 +279,7 @@ class ALMA_AI_Content_Agent_Admin {
         echo '<div class="alma-agent-hero"><h2>Dashboard</h2><p>Panoramica operativa del nuovo workflow AI Content Agent.</p></div>';
         if ($openai !== 'Configurata') { echo '<div class="notice notice-warning inline"><p>OpenAI non è configurata.</p></div>'; }
         self::render_affiliate_index_status_box();
+        self::render_internal_link_index_status_box();
         echo '<div class="alma-agent-grid">';
         echo '<div class="alma-agent-card"><h3>OpenAI</h3><span class="alma-badge '.($openai === 'Configurata' ? 'is-success' : 'is-warning').'">'.esc_html($openai).'</span></div>';
         echo '<div class="alma-agent-card"><h3>Knowledge Base</h3><strong>'.(self::is_table_missing('knowledge_items') ? 'Non disponibile' : (int)$wpdb->get_var("SELECT COUNT(*) FROM ".ALMA_AI_Content_Agent_Store::table('knowledge_items'))).'</strong></div>';
@@ -391,6 +396,15 @@ class ALMA_AI_Content_Agent_Admin {
         self::action_form('reset_affiliate_index_state','Reset stato batch','<p class="description alma-affiliate-action-description">Azzera solo il punto di avanzamento del batch. Non elimina l’indice e non elimina i Link affiliati.</p>');
         self::action_form('clear_affiliate_index','Svuota indice e ricomincia','<p class="description alma-affiliate-action-description">Cancella solo l’indice tecnico rigenerabile. Non elimina i Link affiliati reali.</p>');
         echo '</div></div></div>';
+    }
+
+    private static function render_internal_link_index_status_box() {
+        $stats = ALMA_AI_Content_Agent_Internal_Link_Index::get_stats();
+        $state = empty($stats['table_exists']) ? 'Tabella non disponibile' : ((int)$stats['indexed_count'] > 0 ? 'Indice disponibile' : 'Indice vuoto');
+        echo '<div class="alma-agent-card alma-internal-link-index-card"><h3>Link interni</h3>';
+        echo '<ul><li>Stato indice: '.esc_html($state).'</li><li>Post indicizzati: '.(int)($stats['indexed_count'] ?? 0).'</li><li>Ultima ricostruzione: '.esc_html($stats['last_rebuild_at'] ?: 'N/D').'</li><li>Ultimo aggiornamento record: '.esc_html($stats['last_indexed_at'] ?: 'N/D').'</li></ul>';
+        self::action_form('rebuild_internal_link_index', 'Ricostruisci indice link interni', '<p class="description">Ricostruisce sincronicamente l’indice leggero dei post pubblicati: titolo, permalink, excerpt, categorie e tag. Non indicizza il contenuto completo.</p>');
+        echo '</div>';
     }
 
     private static function render_instructions_tab() {
@@ -702,7 +716,7 @@ echo '<aside class="alma-ideas-col alma-ideas-col-right"><div class="alma-ideas-
     }
 
 
-    private static function is_table_missing($table_key) { global $wpdb; $map=array('knowledge_items','sources','jobs','media_index','instruction_profiles','content_chunks','content_ideas','editorial_briefs','affiliate_index'); if($table_key==='usage'||$table_key==='alma_ai_usage'){ $table_name=ALMA_AI_Usage_Logger::table_name(); } elseif(!in_array($table_key,$map,true)){ return true; } else { $table_name=ALMA_AI_Content_Agent_Store::table($table_key);} $exists=$wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s',$table_name)); return $exists!==$table_name; }
+    private static function is_table_missing($table_key) { global $wpdb; $map=array('knowledge_items','sources','jobs','media_index','instruction_profiles','content_chunks','content_ideas','editorial_briefs','affiliate_index','internal_link_index'); if($table_key==='usage'||$table_key==='alma_ai_usage'){ $table_name=ALMA_AI_Usage_Logger::table_name(); } elseif(!in_array($table_key,$map,true)){ return true; } else { $table_name=ALMA_AI_Content_Agent_Store::table($table_key);} $exists=$wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s',$table_name)); return $exists!==$table_name; }
     private static function inline_document_actions($document_id, $is_active) { $document_id=absint($document_id); if($document_id<1||!current_user_can('manage_options')){return '';} $toggle=$is_active?'inactive':'active'; return '<form method="post" action="'.esc_url(admin_url('admin-post.php')).'">'.wp_nonce_field('alma_ai_agent_action','_wpnonce',true,false).'<input type="hidden" name="action" value="alma_ai_agent_action"><input type="hidden" name="do" value="toggle_txt_document"><input type="hidden" name="document_id" value="'.$document_id.'"><input type="hidden" name="status" value="'.esc_attr($toggle).'"><button class="button button-small">'.($is_active?'Disabilita':'Abilita').'</button></form><form method="post" action="'.esc_url(admin_url('admin-post.php')).'">'.wp_nonce_field('alma_ai_agent_action','_wpnonce',true,false).'<input type="hidden" name="action" value="alma_ai_agent_action"><input type="hidden" name="do" value="delete_txt_document"><input type="hidden" name="document_id" value="'.$document_id.'"><button class="button button-small">Elimina</button></form>'; }
     private static function inline_source_actions($source_id, $is_active) { $source_id=absint($source_id); if($source_id<1||!current_user_can('manage_options')){return '';} $next=(int)$is_active?0:1; return '<form method="post" action="'.esc_url(admin_url('admin-post.php')).'">'.wp_nonce_field('alma_ai_agent_action','_wpnonce',true,false).'<input type="hidden" name="action" value="alma_ai_agent_action"><input type="hidden" name="do" value="toggle_source"><input type="hidden" name="source_id" value="'.$source_id.'"><input type="hidden" name="is_active" value="'.$next.'"><button class="button button-small">'.($is_active?'Disabilita':'Abilita').'</button></form><form method="post" action="'.esc_url(admin_url('admin-post.php')).'">'.wp_nonce_field('alma_ai_agent_action','_wpnonce',true,false).'<input type="hidden" name="action" value="alma_ai_agent_action"><input type="hidden" name="do" value="delete_source"><input type="hidden" name="source_id" value="'.$source_id.'"><button class="button button-small">Elimina</button></form>'; }
     private static function inline_profile_action_form($do, $label, $profile_id) { $profile_id=absint($profile_id); if($profile_id<1||!current_user_can('manage_options')){return '';} return '<form method="post" action="'.esc_url(admin_url('admin-post.php')).'" style="display:inline-block;margin-left:4px;">'.wp_nonce_field('alma_ai_instruction_profile_toggle_'.$profile_id,'_alma_profile_nonce',true,false).'<input type="hidden" name="action" value="alma_ai_agent_action"><input type="hidden" name="do" value="'.esc_attr($do).'"><input type="hidden" name="profile_id" value="'.$profile_id.'"><button class="button button-small">'.esc_html($label).'</button></form>'; }
