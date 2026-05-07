@@ -78,7 +78,7 @@ class ALMA_Affiliate_Source_Provider_Client_GetYourGuide {
         $data = json_decode($body, true);
         if (!is_array($data)) return new WP_Error('invalid_json', __('Risposta GetYourGuide non JSON o non interpretabile.', 'affiliate-link-manager-ai'));
         $items = $this->extract_items($data);
-        return array('success'=>true,'items'=>$items,'raw'=>$data,'error'=>'','status_code'=>$code);
+        return array('success'=>true,'items'=>$items,'raw'=>$data,'error'=>'','status_code'=>$code,'warnings'=>empty($items) ? array(__('Nessun tour GetYourGuide restituito per questi criteri.', 'affiliate-link-manager-ai')) : array());
     }
 
     private function extract_items($data) {

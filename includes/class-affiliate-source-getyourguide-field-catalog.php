@@ -19,6 +19,7 @@ class ALMA_Affiliate_Source_GetYourGuide_Field_Catalog {
             self::row('tours[].pictures[] / images[]','Immagini','Media','/1/tours','array','Immagini candidate nel payload.','[{url:...}]','featured_image_url','documented','Preview non scarica immagini.'),
             self::row('cnt_language','Lingua contenuti','Parametri','/1/tours','string','Parametro localizzazione contenuti.','it','runtime criteria','documented',''),
             self::row('currency','Valuta richiesta','Parametri','/1/tours','string','Parametro valuta.','EUR','runtime criteria','documented',''),
+            self::row('timeout','Timeout richiesta','Parametri','/1/tours','integer','Timeout HTTP configurabile dal plugin, clamp 3-30 secondi.','10','runtime criteria','plugin','Non è un campo API, controlla solo wp_remote_get.'),
         );
     }
 

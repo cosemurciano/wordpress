@@ -1,3 +1,11 @@
+## 2.25.51 — Harden GetYourGuide API provider configuration
+- Rifinito il provider ufficiale `getyourguide` come sola source API `GetYourGuide API`, con descrizione allineata alla Partner API ufficiale e senza modalità manual, deeplink, CSV, scraping o fallback Travelpayouts.
+- Aggiunto il campo guidato `timeout` per GetYourGuide e rafforzato il clamp server-side di `limit` e `timeout`; il token `access_token` resta preservato se lasciato vuoto e mostrato solo come stato configurato/non configurato.
+- Bloccato l'import GetYourGuide se manca un URL prodotto/affiliato restituito dalla API, evitando home generiche o URL inventati e mantenendo la preview come fase selettiva senza sideload.
+- Ridotto il metadata JSON salvato per GetYourGuide a un riepilogo sicuro, mantenendo i meta `_alma_gyg_*`, immagini candidate, sideload in import, deduplica e compatibilità AI Content Agent.
+- Confermati limiti: nessun manual/deeplink/CSV, scraping, booking, cart, checkout, availability detail o chiamate extra fuori `GET /1/tours`.
+- Versione plugin aggiornata a `2.25.51`.
+
 ## 2.25.50 — Add GetYourGuide affiliate source provider
 - Aggiunto provider ufficiale GetYourGuide nel modulo Affiliate Source Manager, con configurazione guidata per Access token GetYourGuide, lingua contenuti, valuta, query predefinita, limite risultati e ordinamento opzionale.
 - Aggiunto client Partner API GetYourGuide per `GET /1/tours` con header `X-ACCESS-TOKEN`, `Accept: application/json`, parametri `cnt_language`, `currency`, `q`, `limit` e `offset`, gestione errori HTTP/WP_Error/JSON non valido e nessun logging del token.

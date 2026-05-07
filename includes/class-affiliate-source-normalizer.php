@@ -30,6 +30,9 @@ class ALMA_Affiliate_Source_Normalizer {
         if ($effective_provider === 'getyourguide') {
             $item = self::prepare_getyourguide_item($item);
             $meta['_alma_external_id'] = sanitize_text_field((string)($item['external_id'] ?? ''));
+            if ($write_provider_specific_meta) {
+                $meta['_alma_metadata_json'] = self::get_getyourguide_safe_metadata_json($item);
+            }
             $media = self::resolve_getyourguide_media($item);
             $featured_image_url = !empty($media['has_image']) ? esc_url_raw((string)$media['featured_image_url']) : '';
             self::add_getyourguide_meta($meta, $item, $media, $write_provider_specific_meta);
@@ -57,6 +60,42 @@ class ALMA_Affiliate_Source_Normalizer {
         $item['duration'] = is_scalar($item['duration'] ?? '') ? sanitize_text_field((string)$item['duration']) : wp_json_encode($item['duration']);
         $item['destination'] = $item['destination'] ?? ($item['city'] ?? ($item['location'] ?? ''));
         return $item;
+    }
+
+
+    private static function get_getyourguide_safe_metadata_json($item) {
+        $item = is_array($item) ? $item : array();
+        $summary = array_intersect_key($item, array_flip(array(
+            'external_id',
+            'tour_id',
+            'id',
+            'title',
+            'name',
+            'abstract',
+            'description',
+            'summary',
+            'affiliate_url',
+            'original_url',
+            'url',
+            'marketplace_url',
+            'product_url',
+            'price',
+            'from_price',
+            'price_from',
+            'currency',
+            'rating',
+            'average_rating',
+            'review_count',
+            'reviews_count',
+            'number_of_reviews',
+            'duration',
+            'destination',
+            'city',
+            'location',
+            'language',
+            'cnt_language',
+        )));
+        return wp_json_encode($summary);
     }
 
     private static function resolve_getyourguide_media($item) {

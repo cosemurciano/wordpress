@@ -84,8 +84,12 @@ class ALMA_Affiliate_Source_Manager {
                 $settings[$key] = array_values(array_unique(array_filter(array_map('absint', (array) $v))));
                 continue;
             }
-            if ($key === 'import_limit') {
+            if (in_array($key, array('import_limit', 'limit'), true)) {
                 $settings[$key] = max(1, min(100, (int) $v));
+                continue;
+            }
+            if ($key === 'timeout') {
+                $settings[$key] = max(3, min(30, (int) $v));
                 continue;
             }
             if ($key === 'regenerate_ai_context_on_import') {
