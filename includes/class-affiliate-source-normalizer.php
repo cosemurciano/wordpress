@@ -10,7 +10,7 @@ class ALMA_Affiliate_Source_Normalizer {
         $provider_preset = sanitize_key($source['provider_preset'] ?? '');
         $effective_provider = $provider_preset !== '' ? $provider_preset : $provider;
         $meta = array(
-            '_alma_provider' => $provider,
+            '_alma_provider' => $effective_provider,
             '_alma_provider_preset' => $provider_preset,
             '_alma_source_id' => (string) ($source['id'] ?? ''),
             '_alma_external_id' => sanitize_text_field($item['external_id'] ?? ($item['productCode'] ?? '')),
@@ -27,11 +27,69 @@ class ALMA_Affiliate_Source_Normalizer {
             $featured_image_url = !empty($media['has_image']) ? esc_url_raw((string)$media['featured_image_url']) : '';
             self::add_viator_media_meta($meta, $media);
         }
+        if ($effective_provider === 'getyourguide') {
+            $item = self::prepare_getyourguide_item($item);
+            $meta['_alma_external_id'] = sanitize_text_field((string)($item['external_id'] ?? ''));
+            $media = self::resolve_getyourguide_media($item);
+            $featured_image_url = !empty($media['has_image']) ? esc_url_raw((string)$media['featured_image_url']) : '';
+            self::add_getyourguide_meta($meta, $item, $media, $write_provider_specific_meta);
+        }
 
-        $normalized = array('post_title'=>sanitize_text_field($item['title'] ?? ($item['name'] ?? '')),'post_content'=>wp_kses_post($item['description'] ?? ''),'featured_image_url'=>$featured_image_url,'affiliate_url'=>esc_url_raw($item['affiliate_url'] ?? ($item['productUrl'] ?? '')),'original_url'=>esc_url_raw($item['original_url'] ?? ($item['productUrl'] ?? '')),'meta'=>$meta,'raw_item'=>$item);
+        $normalized = array('post_title'=>sanitize_text_field($item['title'] ?? ($item['name'] ?? '')),'post_content'=>wp_kses_post($item['description'] ?? ($item['abstract'] ?? '')),'featured_image_url'=>$featured_image_url,'affiliate_url'=>esc_url_raw($item['affiliate_url'] ?? ($item['productUrl'] ?? ($item['url'] ?? ($item['marketplace_url'] ?? '')))),'original_url'=>esc_url_raw($item['original_url'] ?? ($item['productUrl'] ?? ($item['url'] ?? ($item['marketplace_url'] ?? '')))),'meta'=>$meta,'raw_item'=>$item);
         $hash_base = !empty($normalized['original_url']) ? $normalized['original_url'] : $normalized['affiliate_url'];
         $normalized['meta']['_alma_sync_hash'] = $hash_base ? wp_hash($hash_base) : '';
         return $normalized;
+    }
+
+
+    private static function prepare_getyourguide_item($item) {
+        $item = is_array($item) ? $item : array();
+        $tour_id = $item['tour_id'] ?? $item['id'] ?? $item['tourId'] ?? $item['external_id'] ?? '';
+        $item['external_id'] = sanitize_text_field((string)$tour_id);
+        $item['title'] = sanitize_text_field((string)($item['title'] ?? $item['name'] ?? ''));
+        $item['description'] = wp_strip_all_tags((string)($item['description'] ?? $item['abstract'] ?? $item['summary'] ?? ''));
+        $item['affiliate_url'] = esc_url_raw((string)($item['url'] ?? $item['marketplace_url'] ?? $item['product_url'] ?? $item['affiliate_url'] ?? ''));
+        $item['original_url'] = esc_url_raw((string)($item['original_url'] ?? $item['affiliate_url'] ?? ''));
+        $item['price'] = $item['price'] ?? ($item['from_price'] ?? ($item['price_from'] ?? ($item['pricing']['price'] ?? '')));
+        $item['currency'] = sanitize_text_field((string)($item['currency'] ?? ($item['pricing']['currency'] ?? '')));
+        $item['rating'] = $item['rating'] ?? ($item['average_rating'] ?? '');
+        $item['review_count'] = $item['review_count'] ?? ($item['reviews_count'] ?? ($item['number_of_reviews'] ?? ''));
+        $item['duration'] = is_scalar($item['duration'] ?? '') ? sanitize_text_field((string)$item['duration']) : wp_json_encode($item['duration']);
+        $item['destination'] = $item['destination'] ?? ($item['city'] ?? ($item['location'] ?? ''));
+        return $item;
+    }
+
+    private static function resolve_getyourguide_media($item) {
+        if (!class_exists('ALMA_Affiliate_Source_GetYourGuide_Media_Resolver')) {
+            return array('has_image'=>false,'featured_image_url'=>'','image_source'=>'','caption'=>'','width'=>0,'height'=>0,'images_count'=>0,'warnings'=>array());
+        }
+        $resolver = new ALMA_Affiliate_Source_GetYourGuide_Media_Resolver();
+        return $resolver->resolve($item);
+    }
+
+    private static function add_getyourguide_meta(&$meta, $item, $media, $write_raw_summary) {
+        $media = is_array($media) ? $media : array();
+        $meta['_alma_gyg_tour_id'] = sanitize_text_field((string)($item['external_id'] ?? ''));
+        $meta['_alma_gyg_url'] = esc_url_raw((string)($item['affiliate_url'] ?? ''));
+        $meta['_alma_gyg_rating'] = sanitize_text_field((string)($item['rating'] ?? ''));
+        $meta['_alma_gyg_review_count'] = sanitize_text_field((string)($item['review_count'] ?? ''));
+        $meta['_alma_gyg_price'] = sanitize_text_field((string)($item['price'] ?? ''));
+        $meta['_alma_gyg_currency'] = sanitize_text_field((string)($item['currency'] ?? ''));
+        $meta['_alma_gyg_duration'] = sanitize_text_field((string)($item['duration'] ?? ''));
+        if ($write_raw_summary) {
+            $summary = array_intersect_key($item, array_flip(array('external_id','title','abstract','description','affiliate_url','price','currency','rating','review_count','duration','destination')));
+            $meta['_alma_gyg_raw_summary_json'] = wp_json_encode($summary);
+        }
+        $meta['_alma_featured_image_url'] = esc_url_raw((string)($media['featured_image_url'] ?? ''));
+        $meta['_alma_media_provider'] = 'getyourguide';
+        $meta['_alma_media_source'] = sanitize_text_field((string)($media['image_source'] ?? ''));
+        $meta['_alma_media_caption'] = sanitize_text_field((string)($media['caption'] ?? ''));
+        $meta['_alma_featured_image_caption'] = sanitize_text_field((string)($media['caption'] ?? ''));
+        $meta['_alma_featured_image_alt'] = sanitize_text_field((string)($item['title'] ?? ''));
+        $meta['_alma_media_width'] = (string)absint($media['width'] ?? 0);
+        $meta['_alma_media_height'] = (string)absint($media['height'] ?? 0);
+        $meta['_alma_gyg_images_count'] = (string)absint($media['images_count'] ?? 0);
+        $meta['_alma_gyg_media_warnings_json'] = wp_json_encode(array_values(array_filter(array_map('sanitize_text_field', (array)($media['warnings'] ?? array())))));
     }
 
     private static function resolve_viator_media($item) {

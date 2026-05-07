@@ -67,8 +67,11 @@ class ALMA_Affiliate_Link_AI_Context_Builder {
 
         $duration = $this->format_duration($item['duration'] ?? '');
 
+        $provider_name = sanitize_key((string)($meta['_alma_provider'] ?? ($source['provider_preset'] ?? $source['provider'] ?? '')));
+        $source_label = $provider_name === 'getyourguide' ? 'GetYourGuide' : ($source['provider_label'] ?? $source['provider'] ?? 'N/D');
+        $image_url = esc_url_raw((string)($normalized['featured_image_url'] ?? ($meta['_alma_featured_image_url'] ?? '')));
         $lines = array(
-            'Fonte: ' . ($source['provider_label'] ?? $source['provider'] ?? 'N/D') . '.',
+            'Fonte: ' . $source_label . '.',
             'Tipo contenuto: esperienza/tour.',
             'Titolo provider: ' . ($normalized['post_title'] ?? 'N/D') . '.',
             'Codice prodotto: ' . ($meta['_alma_external_id'] ?? 'N/D') . '.',
@@ -78,7 +81,7 @@ class ALMA_Affiliate_Link_AI_Context_Builder {
             $duration !== '' ? 'Durata: ' . $duration . '.' : '',
             'Prezzo indicativo: ' . $this->format_price($item) . '.',
             'Rating aggregato: ' . sanitize_text_field((string)($item['reviews']['combinedAverageRating'] ?? $item['rating'] ?? 'N/D')) . '.',
-            'Numero recensioni: ' . sanitize_text_field((string)($item['reviews']['totalReviews'] ?? 'N/D')) . '.',
+            'Numero recensioni: ' . sanitize_text_field((string)($item['reviews']['totalReviews'] ?? $item['review_count'] ?? 'N/D')) . '.',
             'Tag provider IDs: ' . $this->join_list($item['tags'] ?? array()) . '.',
             'Flag rilevanti: ' . $this->join_list($item['flags'] ?? array()) . '.',
             'Incluso: ' . $this->join_list($item['inclusions'] ?? array()) . '.',
@@ -87,6 +90,8 @@ class ALMA_Affiliate_Link_AI_Context_Builder {
             'Traduzione automatica: ' . $this->format_translation_auto($item['translationInfo'] ?? array()) . '.',
             'Fonte traduzione: ' . $this->format_translation_source($item['translationInfo'] ?? array()) . '.',
             'Fornitore: ' . sanitize_text_field((string)($item['supplier']['name'] ?? 'N/D')) . '.',
+            $image_url !== '' ? 'Immagine: disponibile come immagine affiliata candidata.' : 'Immagine: non disponibile.',
+            $provider_name === 'getyourguide' ? 'Nota GetYourGuide: non copiare testo provider; prezzo e disponibilità possono cambiare; non inventare disponibilità o condizioni.' : '',
             'Nota: contesto item-only. Le source instructions sono separate nella configurazione Source.',
         );
 
@@ -103,7 +108,7 @@ class ALMA_Affiliate_Link_AI_Context_Builder {
             'price' => $item['pricing']['summary']['fromPrice'] ?? ($item['price'] ?? ''),
             'currency' => $item['pricing']['currency'] ?? ($item['currency'] ?? ''),
             'rating' => $item['reviews']['combinedAverageRating'] ?? ($item['rating'] ?? ''),
-            'reviews_total' => $item['reviews']['totalReviews'] ?? '',
+            'reviews_total' => $item['reviews']['totalReviews'] ?? ($item['review_count'] ?? ''),
             'duration' => $item['duration'] ?? '',
             'destination' => $item['destinations'] ?? ($item['destination'] ?? ''),
             'tags' => $item['tags'] ?? array(),

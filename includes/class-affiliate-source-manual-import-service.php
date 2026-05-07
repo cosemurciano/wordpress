@@ -18,7 +18,7 @@ class ALMA_Affiliate_Source_Manual_Import_Service {
         $dedupe = new ALMA_Affiliate_Source_Import_Dedupe_Service();
         $result = array('created'=>0,'updated'=>0,'skipped'=>0,'errors'=>0,'image_imported'=>0,'image_reused'=>0,'image_skipped'=>0,'image_failed'=>0,'processed'=>array());
         foreach ((array)$items as $item) {
-            $external_id = (string)($item['external_id'] ?? $item['productCode'] ?? '');
+            $external_id = (string)($item['external_id'] ?? $item['productCode'] ?? $item['tour_id'] ?? $item['id'] ?? '');
             if ($external_id === '' || !isset($selected_map[$external_id])) continue;
             $validation = is_array($item['_alma_validation'] ?? null) ? $item['_alma_validation'] : array();
             if (($validation['status'] ?? '') === 'error') {
