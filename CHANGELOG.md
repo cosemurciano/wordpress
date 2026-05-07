@@ -1,3 +1,10 @@
+## 2.25.44 — Fix media index schema migration
+- Allineato lo schema dichiarato di `alma_ai_media_index` alle colonne usate da insert/update, mantenendo `post_status` e tutte le colonne tecniche dell’indice media.
+- Aggiunta migrazione difensiva `ensure_schema()` per verificare le colonne esistenti con `SHOW COLUMNS` e aggiungere in sicurezza quelle mancanti con `ALTER TABLE`, senza affidarsi solo a `dbDelta()`.
+- Il rebuild dell’Indice Media aggiorna/verifica lo schema prima di processare gli attachment e si interrompe con errore admin chiaro se la tabella resta incompleta, evitando migliaia di insert/update destinati a fallire.
+- Aggiunta diagnostica sintetica quando vengono aggiunte colonne mancanti allo schema indice media.
+- Versione plugin aggiornata a `2.25.44`.
+
 ## 2.25.43 — Fix media index image detection
 - Corretta la ricostruzione dell’Indice Media: gli attachment vengono letti con stati WordPress compatibili, incluso `inherit`, e il riconoscimento immagini accetta tutti i MIME che iniziano con `image/`.
 - Il rebuild carica sempre il post completo prima di indicizzare, non scarta immagini con alt/caption/description vuoti, parent assente, metadata dimensioni mancanti o URL large/medium non disponibili, e salta solo immagini senza URL full.

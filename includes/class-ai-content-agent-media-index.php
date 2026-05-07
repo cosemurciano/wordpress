@@ -25,7 +25,90 @@ class ALMA_AI_Content_Agent_Media_Index {
         global $wpdb;
         require_once ABSPATH . 'wp-admin/includes/upgrade.php';
         $c = $wpdb->get_charset_collate();
-        dbDelta("CREATE TABLE " . self::table_name() . " (id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,attachment_id BIGINT UNSIGNED NOT NULL,post_status VARCHAR(20) NOT NULL DEFAULT 'inherit',mime_type VARCHAR(120) NOT NULL DEFAULT '',title TEXT NULL,alt_text TEXT NULL,caption TEXT NULL,description LONGTEXT NULL,file_name VARCHAR(255) NOT NULL DEFAULT '',url_full TEXT NULL,url_large TEXT NULL,url_medium TEXT NULL,width INT UNSIGNED NOT NULL DEFAULT 0,height INT UNSIGNED NOT NULL DEFAULT 0,post_parent BIGINT UNSIGNED NOT NULL DEFAULT 0,attached_post_title TEXT NULL,media_origin VARCHAR(60) NOT NULL DEFAULT 'editorial',media_role VARCHAR(80) NOT NULL DEFAULT 'editorial_image',provider VARCHAR(80) NOT NULL DEFAULT '',source_id VARCHAR(190) NOT NULL DEFAULT '',external_id VARCHAR(190) NOT NULL DEFAULT '',related_post_id BIGINT UNSIGNED NOT NULL DEFAULT 0,related_post_type VARCHAR(60) NOT NULL DEFAULT '',is_affiliate_media TINYINT(1) NOT NULL DEFAULT 0,is_editorial_candidate TINYINT(1) NOT NULL DEFAULT 1,search_text LONGTEXT NULL,created_at DATETIME NULL,modified_at DATETIME NULL,indexed_at DATETIME NULL,PRIMARY KEY (id),UNIQUE KEY attachment_id (attachment_id),KEY post_status (post_status),KEY mime_type (mime_type),KEY post_parent (post_parent),KEY media_origin (media_origin),KEY media_role (media_role),KEY is_affiliate_media (is_affiliate_media),KEY is_editorial_candidate (is_editorial_candidate),KEY related_post (related_post_id, related_post_type),KEY indexed_at (indexed_at)) $c;");
+        dbDelta("CREATE TABLE " . self::table_name() . " (id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,attachment_id BIGINT UNSIGNED NOT NULL,post_status VARCHAR(20) NOT NULL DEFAULT '',mime_type VARCHAR(120) NOT NULL DEFAULT '',title TEXT NULL,alt_text TEXT NULL,caption TEXT NULL,description LONGTEXT NULL,file_name VARCHAR(255) NOT NULL DEFAULT '',url_full TEXT NULL,url_large TEXT NULL,url_medium TEXT NULL,width INT UNSIGNED NOT NULL DEFAULT 0,height INT UNSIGNED NOT NULL DEFAULT 0,post_parent BIGINT UNSIGNED NOT NULL DEFAULT 0,attached_post_title TEXT NULL,media_origin VARCHAR(60) NOT NULL DEFAULT 'editorial',media_role VARCHAR(80) NOT NULL DEFAULT 'editorial_image',provider VARCHAR(80) NOT NULL DEFAULT '',source_id VARCHAR(190) NOT NULL DEFAULT '',external_id VARCHAR(190) NOT NULL DEFAULT '',related_post_id BIGINT UNSIGNED NOT NULL DEFAULT 0,related_post_type VARCHAR(60) NOT NULL DEFAULT '',is_affiliate_media TINYINT(1) NOT NULL DEFAULT 0,is_editorial_candidate TINYINT(1) NOT NULL DEFAULT 1,search_text LONGTEXT NULL,created_at DATETIME NULL,modified_at DATETIME NULL,indexed_at DATETIME NULL,PRIMARY KEY (id),UNIQUE KEY attachment_id (attachment_id),KEY post_status (post_status),KEY mime_type (mime_type),KEY post_parent (post_parent),KEY media_origin (media_origin),KEY media_role (media_role),KEY is_affiliate_media (is_affiliate_media),KEY is_editorial_candidate (is_editorial_candidate),KEY related_post (related_post_id, related_post_type),KEY indexed_at (indexed_at)) $c;");
+        return self::ensure_schema();
+    }
+
+    public static function maybe_upgrade_schema() {
+        return self::ensure_schema();
+    }
+
+    public static function expected_columns() {
+        return array(
+            'attachment_id' => 'BIGINT UNSIGNED NOT NULL DEFAULT 0',
+            'post_status' => "VARCHAR(20) NOT NULL DEFAULT ''",
+            'mime_type' => "VARCHAR(120) NOT NULL DEFAULT ''",
+            'title' => 'TEXT NULL',
+            'alt_text' => 'TEXT NULL',
+            'caption' => 'TEXT NULL',
+            'description' => 'LONGTEXT NULL',
+            'file_name' => "VARCHAR(255) NOT NULL DEFAULT ''",
+            'url_full' => 'TEXT NULL',
+            'url_large' => 'TEXT NULL',
+            'url_medium' => 'TEXT NULL',
+            'width' => 'INT UNSIGNED NOT NULL DEFAULT 0',
+            'height' => 'INT UNSIGNED NOT NULL DEFAULT 0',
+            'post_parent' => 'BIGINT UNSIGNED NOT NULL DEFAULT 0',
+            'attached_post_title' => 'TEXT NULL',
+            'media_origin' => "VARCHAR(60) NOT NULL DEFAULT 'editorial'",
+            'media_role' => "VARCHAR(80) NOT NULL DEFAULT 'editorial_image'",
+            'provider' => "VARCHAR(80) NOT NULL DEFAULT ''",
+            'source_id' => "VARCHAR(190) NOT NULL DEFAULT ''",
+            'external_id' => "VARCHAR(190) NOT NULL DEFAULT ''",
+            'related_post_id' => 'BIGINT UNSIGNED NOT NULL DEFAULT 0',
+            'related_post_type' => "VARCHAR(60) NOT NULL DEFAULT ''",
+            'is_affiliate_media' => 'TINYINT(1) NOT NULL DEFAULT 0',
+            'is_editorial_candidate' => 'TINYINT(1) NOT NULL DEFAULT 1',
+            'search_text' => 'LONGTEXT NULL',
+            'created_at' => 'DATETIME NULL',
+            'modified_at' => 'DATETIME NULL',
+            'indexed_at' => 'DATETIME NULL',
+        );
+    }
+
+    public static function ensure_schema() {
+        global $wpdb;
+        $table = self::table_name();
+        $table_exists = $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $table));
+        if ($table_exists !== $table) {
+            return array('success'=>false,'added_columns'=>array(),'missing_columns'=>array_keys(self::expected_columns()),'checked_columns'=>array_keys(self::expected_columns()),'error'=>'Tabella media_index non disponibile.');
+        }
+
+        $wpdb->last_error = '';
+        $existing = $wpdb->get_results('SHOW COLUMNS FROM `' . str_replace('`', '``', $table) . '`', ARRAY_A);
+        if (!is_array($existing)) {
+            return array('success'=>false,'added_columns'=>array(),'missing_columns'=>array_keys(self::expected_columns()),'checked_columns'=>array_keys(self::expected_columns()),'error'=>sanitize_text_field($wpdb->last_error ?: 'SHOW COLUMNS non riuscito.'));
+        }
+
+        $existing_columns = array();
+        foreach ($existing as $column) {
+            if (!empty($column['Field'])) { $existing_columns[(string)$column['Field']] = true; }
+        }
+
+        $added = array();
+        $errors = array();
+        foreach (self::expected_columns() as $column => $definition) {
+            if (isset($existing_columns[$column])) { continue; }
+            $wpdb->last_error = '';
+            $ok = $wpdb->query('ALTER TABLE `' . str_replace('`', '``', $table) . '` ADD COLUMN `' . str_replace('`', '``', $column) . '` ' . $definition);
+            if ($ok === false) {
+                $errors[] = $column . ': ' . sanitize_text_field($wpdb->last_error ?: 'ALTER TABLE non riuscito.');
+                continue;
+            }
+            $added[] = $column;
+            $existing_columns[$column] = true;
+        }
+
+        $missing = array();
+        foreach (array_keys(self::expected_columns()) as $column) {
+            if (!isset($existing_columns[$column])) { $missing[] = $column; }
+        }
+
+        $success = empty($missing) && empty($errors);
+        $error = '';
+        if (!$success) { $error = implode(' | ', array_merge($errors, array_map('sanitize_text_field', $missing))); }
+        if (!empty($added)) { error_log('ALMA media index schema updated: added missing columns ' . implode(', ', array_map('sanitize_key', $added))); }
+        return array('success'=>$success,'added_columns'=>$added,'missing_columns'=>$missing,'checked_columns'=>array_keys(self::expected_columns()),'error'=>$error);
     }
 
     public static function handle_attachment_change($attachment_id) { self::index_attachment(absint($attachment_id)); }
@@ -49,11 +132,10 @@ class ALMA_AI_Content_Agent_Media_Index {
 
     public static function rebuild_index($batch_size = 100) {
         global $wpdb;
-        self::install_table();
+        $schema = self::install_table();
         $table = self::table_name();
-        $table_exists = $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $table));
-        if ($table_exists !== $table) {
-            return array('processed'=>0,'detected_images'=>0,'indexed'=>0,'non_images_skipped'=>0,'missing_url'=>0,'errors'=>1,'error_messages'=>array('Tabella media_index non disponibile dopo install_table().'),'deleted'=>0,'batch_size'=>max(10, min(250, absint($batch_size))));
+        if (empty($schema['success'])) {
+            return array('processed'=>0,'detected_images'=>0,'indexed'=>0,'non_images_skipped'=>0,'missing_url'=>0,'errors'=>1,'error_messages'=>array($schema['error'] ?: 'Schema tabella media_index incompleto.'),'deleted'=>0,'batch_size'=>max(10, min(250, absint($batch_size))),'schema_error'=>true,'schema'=>$schema);
         }
 
         $batch_size = max(10, min(250, absint($batch_size)));
@@ -104,7 +186,7 @@ class ALMA_AI_Content_Agent_Media_Index {
             }
         }
         update_option(self::OPTION_LAST_REBUILD_AT, current_time('mysql'), false);
-        return array('processed'=>$processed,'detected_images'=>$detected_images,'indexed'=>$indexed,'non_images_skipped'=>$non_images_skipped,'missing_url'=>$missing_url,'errors'=>$errors,'error_messages'=>array_values(array_unique(array_slice($error_messages, 0, 3))),'deleted'=>$deleted,'batch_size'=>$batch_size);
+        return array('processed'=>$processed,'detected_images'=>$detected_images,'indexed'=>$indexed,'non_images_skipped'=>$non_images_skipped,'missing_url'=>$missing_url,'errors'=>$errors,'error_messages'=>array_values(array_unique(array_slice($error_messages, 0, 3))),'deleted'=>$deleted,'batch_size'=>$batch_size,'schema'=>$schema);
     }
 
     public static function index_attachment($attachment_id, $post = null) {
