@@ -6,6 +6,10 @@ class ALMA_Affiliate_Source_Importer {
         $build_ai_context = !isset($options['build_ai_context']) || (bool)$options['build_ai_context'];
         $mode = $source['import_mode'] ?? 'create_update';
         $settings = json_decode((string)($source['settings'] ?? '{}'), true) ?: array();
+        $provider = sanitize_key((string)($normalized['meta']['_alma_provider'] ?? ($source['provider_preset'] ?? $source['provider'] ?? '')));
+        if ($provider === 'getyourguide' && empty($normalized['affiliate_url'])) {
+            return new WP_Error('missing_affiliate_url', __('Import GetYourGuide bloccato: URL prodotto/affiliato mancante nel payload API.', 'affiliate-link-manager-ai'));
+        }
         $duplicate_policy = sanitize_key($settings['duplicate_policy'] ?? 'skip_existing');
         $dedupe = new ALMA_Affiliate_Source_Import_Dedupe_Service();
         $match = $dedupe->find_match($normalized, $duplicate_policy);

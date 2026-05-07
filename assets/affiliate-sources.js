@@ -27,17 +27,16 @@ jQuery(function($){
       $creds.append('<p><label><strong>Viator API key *</strong><br/><input type="password" name="credentials_fields[api_key]" class="regular-text" '+(existingCredFlags.api_key ? '' : 'required')+' placeholder="'+(existingCredFlags.api_key ? 'già salvata' : '')+'" autocomplete="off"></label></p>');
     }
     if(isGetYourGuide){
-      $settings.append('<p class="description">Richiede accesso GetYourGuide Partner API. Il livello API disponibile può influire sui campi restituiti.</p>');
+      $settings.append('<p class="description">Richiede accesso GetYourGuide Partner API e token X-ACCESS-TOKEN. Il livello API disponibile può influire sui campi restituiti.</p>');
       $settings.append('<p><label><strong>Lingua contenuti</strong><br/><input type="text" name="settings_fields[cnt_language]" value="it" class="regular-text"></label></p>');
       $settings.append('<p><label><strong>Valuta</strong><br/><input type="text" name="settings_fields[currency]" value="EUR" class="regular-text"></label></p>');
       $settings.append('<p><label><strong>Query predefinita</strong><br/><input type="text" name="settings_fields[default_query]" class="regular-text" placeholder="es. Lecce"></label></p>');
       $settings.append('<p><label><strong>Limite risultati</strong><br/><input type="number" name="settings_fields[limit]" value="20" min="1" max="100"></label></p>');
-      $settings.append('<p><label>Sort field <input type="text" name="settings_fields[sortfield]" class="regular-text"></label></p>');
-      $settings.append('<p><label>Sort direction <input type="text" name="settings_fields[sortdirection]" class="regular-text"></label></p>');
+      $settings.append('<p><label><strong>Timeout API</strong><br/><input type="number" name="settings_fields[timeout]" value="10" min="3" max="30"></label></p>');
       $creds.append('<p><label><strong>Access token GetYourGuide *</strong><br/><input type="password" name="credentials_fields[access_token]" class="regular-text" '+(existingCredFlags.access_token ? '' : 'required')+' placeholder="'+(existingCredFlags.access_token ? 'già salvato' : '')+'" autocomplete="off"></label></p><p class="description">Token configurato/non configurato: il valore salvato non viene mostrato in chiaro.</p>');
     }
     if(existingSettings.mode){ $settings.find('select[name="settings_fields[mode]"]').val(existingSettings.mode); }
-    ['cnt_language','currency','default_query','limit','sortfield','sortdirection'].forEach(function(k){ if(existingSettings[k] !== undefined){ $settings.find('[name="settings_fields['+k+']"]').val(existingSettings[k]); } });
+    ['cnt_language','currency','default_query','limit','timeout'].forEach(function(k){ if(existingSettings[k] !== undefined){ $settings.find('[name="settings_fields['+k+']"]').val(existingSettings[k]); } });
   }
 
   $(document).on('click','.alma-toggle-source-form',function(){
