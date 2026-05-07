@@ -1,3 +1,13 @@
+## 2.25.42 — AI Media Library index and affiliate media separation
+- Aggiunto indice leggero della Media Library per AI Content Agent nella tabella `alma_ai_media_index`, creato via dbDelta su attivazione/upgrade.
+- Indicizzati attachment immagine con title, alt, caption, description, filename, URL full/large/medium, dimensioni, mime type, parent post e testo aggregato di ricerca.
+- Aggiunta distinzione esplicita tra media editoriale e media affiliato: le immagini affiliate hanno `is_affiliate_media=1` e `is_editorial_candidate=0`, così non diventano candidate editoriali future.
+- Aggiunti meta espliciti al sideload immagini affiliate: `_alma_media_origin=affiliate_source`, `_alma_media_role=affiliate_featured_image`, `_alma_related_post_id` e `_alma_related_post_type=affiliate_link`, mantenendo i meta storici esistenti.
+- Aggiunta compatibilità retroattiva nella ricostruzione indice per riconoscere immagini affiliate già importate tramite provider, hash remoto, external ID o post affiliato collegato.
+- Aggiunto box admin **Indice Media** con conteggi, ultima ricostruzione e pulsante con nonce/capability per ricostruzione sincrona paginata.
+- Confermati limiti PR: nessun invio immagini a OpenAI, nessuna generazione immagini, nessun OCR/embeddings e nessun inserimento automatico immagini nella bozza.
+- Versione plugin aggiornata a `2.25.42`.
+
 ## 2.25.41 — AI taxonomy assignment and internal link QA fixes
 - Allineata la versione plugin tra header WordPress `Version:` e costante `ALMA_VERSION`, aggiornando la documentazione alla stessa release.
 - Corretto il QA dei link interni relativi: gli URL same-site che iniziano con `/` vengono normalizzati con `home_url()`, confrontati con `internal_links`, convertiti all’URL assoluto autorizzato e registrati in `internal_urls_used`; i relativi non autorizzati vengono de-linkati lasciando il testo.

@@ -178,9 +178,9 @@ class ALMA_AI_Content_Agent_Knowledge_Search {
 
     private static function search_media($query) { global $wpdb; if (in_array(ALMA_AI_Content_Agent_Store::table('media_index'), ALMA_AI_Content_Agent_Store::missing_tables(), true)) { return array(); }
         $table = ALMA_AI_Content_Agent_Store::table('media_index'); $like = '%' . $wpdb->esc_like($query['text']) . '%';
-        $rows = $wpdb->get_results($wpdb->prepare("SELECT id,attachment_id,filename,title,alt_text,caption,description,keywords,destinations,manual_notes FROM $table WHERE filename LIKE %s OR title LIKE %s OR alt_text LIKE %s OR caption LIKE %s OR description LIKE %s OR keywords LIKE %s OR destinations LIKE %s OR manual_notes LIKE %s ORDER BY indexed_at DESC LIMIT 30",$like,$like,$like,$like,$like,$like,$like,$like), ARRAY_A);
+        $rows = $wpdb->get_results($wpdb->prepare("SELECT id,attachment_id,file_name,title,alt_text,caption,description,search_text FROM $table WHERE is_editorial_candidate=1 AND (file_name LIKE %s OR title LIKE %s OR alt_text LIKE %s OR caption LIKE %s OR description LIKE %s OR search_text LIKE %s OR attached_post_title LIKE %s OR url_full LIKE %s) ORDER BY indexed_at DESC LIMIT 30",$like,$like,$like,$like,$like,$like,$like,$like), ARRAY_A);
         if (!is_array($rows)) { return array(); }
-        $items=array(); foreach($rows as $r){ $score=self::score_text($query, implode(' ', $r)) + 6; $items[]=self::result(array('key'=>'media:'.$r['id'],'source_type'=>'media','source_id'=>(int)$r['attachment_id'],'title'=>sanitize_text_field($r['title']?:$r['filename']),'excerpt'=>wp_trim_words((string)($r['alt_text']?:$r['caption']),16),'score'=>$score,'reason'=>'Match su metadata media','edit_url'=>get_edit_post_link((int)$r['attachment_id'], 'raw'))); }
+        $items=array(); foreach($rows as $r){ $score=self::score_text($query, implode(' ', $r)) + 6; $items[]=self::result(array('key'=>'media:'.$r['id'],'source_type'=>'media','source_id'=>(int)$r['attachment_id'],'title'=>sanitize_text_field($r['title']?:$r['file_name']),'excerpt'=>wp_trim_words((string)($r['alt_text']?:$r['caption']),16),'score'=>$score,'reason'=>'Match su metadata media','edit_url'=>get_edit_post_link((int)$r['attachment_id'], 'raw'))); }
         return $items; }
 
     private static function build_dedupe_ref($stype, $row) {

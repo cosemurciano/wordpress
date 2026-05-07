@@ -8,6 +8,10 @@ class ALMA_Affiliate_Source_Media_Sideload_Service {
     const META_SOURCE_ID = '_alma_source_id';
     const META_EXTERNAL_ID = '_alma_external_id';
     const META_IMPORTED_FOR_POST_ID = '_alma_imported_for_post_id';
+    const META_MEDIA_ORIGIN = '_alma_media_origin';
+    const META_MEDIA_ROLE = '_alma_media_role';
+    const META_RELATED_POST_ID = '_alma_related_post_id';
+    const META_RELATED_POST_TYPE = '_alma_related_post_type';
 
     public function import_featured_image($post_id, $image_url, $args = array()) {
         $post_id = absint($post_id);
@@ -189,8 +193,15 @@ class ALMA_Affiliate_Source_Media_Sideload_Service {
         update_post_meta($attachment_id, self::META_SOURCE_ID, sanitize_text_field($source_id));
         update_post_meta($attachment_id, self::META_EXTERNAL_ID, sanitize_text_field($external_id));
         update_post_meta($attachment_id, self::META_IMPORTED_FOR_POST_ID, absint($post_id));
+        update_post_meta($attachment_id, self::META_MEDIA_ORIGIN, 'affiliate_source');
+        update_post_meta($attachment_id, self::META_MEDIA_ROLE, 'affiliate_featured_image');
+        update_post_meta($attachment_id, self::META_RELATED_POST_ID, absint($post_id));
+        update_post_meta($attachment_id, self::META_RELATED_POST_TYPE, 'affiliate_link');
         if (!empty($context)) {
             update_post_meta($attachment_id, '_alma_media_import_context_json', wp_json_encode($context));
+        }
+        if (class_exists('ALMA_AI_Content_Agent_Media_Index')) {
+            ALMA_AI_Content_Agent_Media_Index::index_attachment(absint($attachment_id));
         }
     }
 
