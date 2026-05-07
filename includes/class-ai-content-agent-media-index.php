@@ -50,19 +50,53 @@ class ALMA_AI_Content_Agent_Media_Index {
     public static function rebuild_index($batch_size = 100) {
         global $wpdb;
         self::install_table();
-        $batch_size = max(10, min(250, absint($batch_size)));
-        $processed = 0; $indexed = 0; $deleted = 0; $paged = 1; $seen = array();
-        do {
-            $q = new WP_Query(array('post_type'=>'attachment','post_mime_type'=>'image','post_status'=>'inherit','posts_per_page'=>$batch_size,'paged'=>$paged,'fields'=>'ids','orderby'=>'ID','order'=>'ASC','no_found_rows'=>true));
-            $ids = is_array($q->posts) ? array_map('absint', $q->posts) : array();
-            foreach ($ids as $attachment_id) {
-                $processed++; $seen[] = $attachment_id;
-                if (self::index_attachment($attachment_id)) { $indexed++; }
-            }
-            $paged++;
-        } while (count($ids) === $batch_size);
-
         $table = self::table_name();
+        $table_exists = $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $table));
+        if ($table_exists !== $table) {
+            return array('processed'=>0,'detected_images'=>0,'indexed'=>0,'non_images_skipped'=>0,'missing_url'=>0,'errors'=>1,'error_messages'=>array('Tabella media_index non disponibile dopo install_table().'),'deleted'=>0,'batch_size'=>max(10, min(250, absint($batch_size))));
+        }
+
+        $batch_size = max(10, min(250, absint($batch_size)));
+        $processed = 0; $detected_images = 0; $indexed = 0; $non_images_skipped = 0; $missing_url = 0; $errors = 0; $deleted = 0; $last_id = 0; $seen = array(); $error_messages = array();
+        $valid_statuses = array('inherit','private','publish','draft','pending','future');
+        $status_placeholders = implode(',', array_fill(0, count($valid_statuses), '%s'));
+        do {
+            $params = array_merge($valid_statuses, array($last_id, $batch_size));
+            $posts = $wpdb->get_results($wpdb->prepare("SELECT ID, post_mime_type, post_status, (post_mime_type LIKE 'image/%') AS is_image_mime FROM {$wpdb->posts} WHERE post_type = 'attachment' AND post_status IN ($status_placeholders) AND ID > %d ORDER BY ID ASC LIMIT %d", $params));
+            $posts = is_array($posts) ? $posts : array();
+            foreach ($posts as $attachment_stub) {
+                $attachment_id = absint($attachment_stub->ID ?? 0);
+                if ($attachment_id < 1) { continue; }
+                $last_id = $attachment_id;
+                $processed++;
+                $post = get_post($attachment_id);
+                if (!self::is_valid_image_attachment($post)) {
+                    $non_images_skipped++;
+                    self::delete_attachment($attachment_id);
+                    continue;
+                }
+
+                $detected_images++;
+                $seen[] = $attachment_id;
+                $url_full = wp_get_attachment_url($attachment_id);
+                if (!$url_full) {
+                    $missing_url++;
+                    self::delete_attachment($attachment_id);
+                    continue;
+                }
+
+                $index_result = self::index_attachment($attachment_id, $post);
+                if ($index_result) {
+                    $indexed++;
+                } else {
+                    $errors++;
+                    if (!empty($wpdb->last_error)) {
+                        $error_messages[] = sanitize_text_field($wpdb->last_error);
+                    }
+                }
+            }
+        } while (count($posts) === $batch_size);
+
         $rows = $wpdb->get_col("SELECT attachment_id FROM $table");
         foreach ((array)$rows as $attachment_id) {
             if (!in_array((int)$attachment_id, $seen, true) && !self::is_valid_image_attachment((int)$attachment_id)) {
@@ -70,15 +104,18 @@ class ALMA_AI_Content_Agent_Media_Index {
             }
         }
         update_option(self::OPTION_LAST_REBUILD_AT, current_time('mysql'), false);
-        return array('processed'=>$processed,'indexed'=>$indexed,'deleted'=>$deleted,'batch_size'=>$batch_size);
+        return array('processed'=>$processed,'detected_images'=>$detected_images,'indexed'=>$indexed,'non_images_skipped'=>$non_images_skipped,'missing_url'=>$missing_url,'errors'=>$errors,'error_messages'=>array_values(array_unique(array_slice($error_messages, 0, 3))),'deleted'=>$deleted,'batch_size'=>$batch_size);
     }
 
-    public static function index_attachment($attachment_id) {
+    public static function index_attachment($attachment_id, $post = null) {
         global $wpdb;
         $attachment_id = absint($attachment_id);
-        if (!self::is_valid_image_attachment($attachment_id)) { self::delete_attachment($attachment_id); return false; }
-        $post = get_post($attachment_id);
+        $post = $post instanceof WP_Post ? $post : get_post($attachment_id);
+        if (!self::is_valid_image_attachment($post)) { self::delete_attachment($attachment_id); return false; }
+        $url_full = wp_get_attachment_url($attachment_id);
+        if (!$url_full) { self::delete_attachment($attachment_id); return false; }
         $meta = wp_get_attachment_metadata($attachment_id);
+        $meta = is_array($meta) ? $meta : array();
         $file = get_attached_file($attachment_id);
         $file_name = sanitize_file_name(wp_basename((string)$file));
         if ($file_name === '') { $file_name = sanitize_file_name(wp_basename((string)get_post_meta($attachment_id, '_wp_attached_file', true))); }
@@ -94,7 +131,7 @@ class ALMA_AI_Content_Agent_Media_Index {
             'caption'=>sanitize_text_field($post->post_excerpt),
             'description'=>wp_kses_post($post->post_content),
             'file_name'=>$file_name,
-            'url_full'=>esc_url_raw((string)wp_get_attachment_url($attachment_id)),
+            'url_full'=>esc_url_raw((string)$url_full),
             'url_large'=>esc_url_raw((string)wp_get_attachment_image_url($attachment_id, 'large')),
             'url_medium'=>esc_url_raw((string)wp_get_attachment_image_url($attachment_id, 'medium')),
             'width'=>absint($meta['width'] ?? 0),
@@ -116,7 +153,11 @@ class ALMA_AI_Content_Agent_Media_Index {
             'indexed_at'=>current_time('mysql'),
         );
         $exists = $wpdb->get_var($wpdb->prepare("SELECT id FROM " . self::table_name() . " WHERE attachment_id=%d", $attachment_id));
-        return $exists ? (false !== $wpdb->update(self::table_name(), $row, array('attachment_id'=>$attachment_id))) : (false !== $wpdb->insert(self::table_name(), $row));
+        $ok = $exists ? (false !== $wpdb->update(self::table_name(), $row, array('attachment_id'=>$attachment_id))) : (false !== $wpdb->insert(self::table_name(), $row));
+        if (!$ok && !empty($wpdb->last_error)) {
+            error_log('ALMA media index insert/update failed: ' . sanitize_text_field($wpdb->last_error));
+        }
+        return $ok;
     }
 
     public static function delete_attachment($attachment_id) {
@@ -140,9 +181,10 @@ class ALMA_AI_Content_Agent_Media_Index {
         return array('table_exists'=>$exists === $table,'total'=>self::count_records(),'editorial'=>self::count_records('editorial'),'affiliate'=>self::count_records('affiliate'),'last_rebuild_at'=>get_option(self::OPTION_LAST_REBUILD_AT, ''));
     }
 
-    private static function is_valid_image_attachment($attachment_id) {
-        $post = get_post($attachment_id);
-        return $post && $post->post_type === 'attachment' && $post->post_status !== 'trash' && strpos((string)$post->post_mime_type, 'image/') === 0;
+    private static function is_valid_image_attachment($attachment) {
+        $post = $attachment instanceof WP_Post ? $attachment : get_post(absint($attachment));
+        if (!$post || $post->post_type !== 'attachment' || $post->post_status === 'trash') { return false; }
+        return strpos(strtolower((string)$post->post_mime_type), 'image/') === 0;
     }
 
     private static function classify($attachment_id) {

@@ -41,7 +41,20 @@ class ALMA_AI_Content_Agent_Admin {
             $result = array('success' => true, 'message' => sprintf('Reindex knowledge completato: %d elementi.', (int)$count));
         } elseif ($do === 'reindex_media') {
             $stats = ALMA_AI_Content_Agent_Media_Index::rebuild_index(100);
-            $result = array('success' => true, 'message' => sprintf('Indice media ricostruito: processati %d attachment, indicizzati %d, rimossi %d record non validi.', (int)$stats['processed'], (int)$stats['indexed'], (int)$stats['deleted']));
+            $message = sprintf(
+                'Indice media ricostruito: processati %d attachment, immagini rilevate %d, indicizzati %d, non immagini saltati %d, senza URL %d, errori %d, rimossi %d record non validi.',
+                (int)($stats['processed'] ?? 0),
+                (int)($stats['detected_images'] ?? 0),
+                (int)($stats['indexed'] ?? 0),
+                (int)($stats['non_images_skipped'] ?? 0),
+                (int)($stats['missing_url'] ?? 0),
+                (int)($stats['errors'] ?? 0),
+                (int)($stats['deleted'] ?? 0)
+            );
+            if (!empty($stats['error_messages'])) {
+                $message .= ' Warning DB: ' . implode(' | ', array_map('sanitize_text_field', (array)$stats['error_messages']));
+            }
+            $result = array('success' => empty($stats['errors']), 'message' => $message);
         } elseif ($do === 'rebuild_internal_link_index') {
             $stats = ALMA_AI_Content_Agent_Internal_Link_Index::rebuild_index(200);
             $result = array('success' => true, 'message' => sprintf('Indice link interni ricostruito: processati %d, indicizzati %d post pubblicati.', (int)$stats['processed'], (int)$stats['indexed']));
