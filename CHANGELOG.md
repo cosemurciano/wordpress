@@ -1,3 +1,11 @@
+## 2.25.45
+- Aggiunti `featured_image_candidates` e `media_candidates` editoriali nel payload OpenAI, alimentati dall’indice Media Library senza inviare file, base64 o dati binari.
+- Escluse le immagini affiliate dai candidati media editoriali (`is_editorial_candidate=1` e `is_affiliate_media=0`); le immagini affiliate restano gestite separatamente tramite `affiliate_links[].image`.
+- Aggiunto `featured_image_id` al contratto di output e regole dedicate per scegliere solo immagini presenti nel payload.
+- Impostato a 5 il limite massimo di immagini editoriali nel corpo articolo, con filtro `alma_ai_max_editorial_media_used` e rispetto di eventuali limiti profilo più bassi.
+- Aggiunta validazione QA minima per azzerare `featured_image_id` invalido, rimuovere `media_used` non candidato e tagliare i media editoriali al limite.
+- Nessuna generazione immagini AI e nessuna applicazione automatica featured image editoriale: l’applicazione finale è rimandata a una PR successiva.
+
 ## 2.25.44 — Fix media index schema migration
 - Allineato lo schema dichiarato di `alma_ai_media_index` alle colonne usate da insert/update, mantenendo `post_status` e tutte le colonne tecniche dell’indice media.
 - Aggiunta migrazione difensiva `ensure_schema()` per verificare le colonne esistenti con `SHOW COLUMNS` e aggiungere in sicurezza quelle mancanti con `ALTER TABLE`, senza affidarsi solo a `dbDelta()`.

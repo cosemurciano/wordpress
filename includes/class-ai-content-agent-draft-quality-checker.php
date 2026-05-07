@@ -293,6 +293,69 @@ class ALMA_AI_Content_Agent_Draft_Quality_Checker {
     }
 
 
+    private static function build_editorial_media_index($featured_candidates, $media_candidates) {
+        $index = array('featured_ids'=>array(), 'media_ids'=>array(), 'by_url'=>array(), 'by_key'=>array(), 'urls'=>array());
+        foreach ((array)$featured_candidates as $candidate) {
+            if (!is_array($candidate)) { continue; }
+            $id = absint($candidate['attachment_id'] ?? 0);
+            if ($id > 0) { $index['featured_ids'][$id] = true; }
+        }
+        foreach ((array)$media_candidates as $candidate) {
+            if (!is_array($candidate)) { continue; }
+            $id = absint($candidate['attachment_id'] ?? 0);
+            $url = esc_url_raw((string)($candidate['url'] ?? ''));
+            if ($id < 1 || $url === '' || !wp_http_validate_url($url)) { continue; }
+            $record = array(
+                'attachment_id' => $id,
+                'url' => $url,
+                'title' => sanitize_text_field((string)($candidate['title'] ?? '')),
+                'alt' => sanitize_text_field((string)($candidate['alt'] ?? ($candidate['alt_text'] ?? ''))),
+            );
+            $index['media_ids'][$id] = $record;
+            $index['by_url'][$url] = $record;
+            $key = self::normalize_url_key($url);
+            if ($key !== '') { $index['by_key'][$key] = $record; }
+            $index['urls'][$url] = $url;
+        }
+        return $index;
+    }
+
+    private static function normalize_editorial_media_used($payload_media_used, $editorial_index, $max_editorial_media_used, &$warnings) {
+        $items = array();
+        $seen = array();
+        $max = max(0, min(5, absint($max_editorial_media_used)));
+        foreach ((array)$payload_media_used as $media_item) {
+            if (!is_array($media_item)) { continue; }
+            if (!empty($media_item['affiliate_url']) || !empty($media_item['affiliate_link_id'])) { continue; }
+            $id = absint($media_item['attachment_id'] ?? 0);
+            $url = esc_url_raw((string)($media_item['url'] ?? ($media_item['image_url'] ?? '')));
+            $record = null;
+            if ($id > 0 && isset($editorial_index['media_ids'][$id])) { $record = $editorial_index['media_ids'][$id]; }
+            if (!$record && $url !== '') {
+                $key = self::normalize_url_key($url);
+                if (isset($editorial_index['by_url'][$url])) { $record = $editorial_index['by_url'][$url]; }
+                elseif ($key !== '' && isset($editorial_index['by_key'][$key])) { $record = $editorial_index['by_key'][$key]; }
+            }
+            if (!$record) { $warnings[] = 'Media editoriale non candidato rimosso da media_used.'; continue; }
+            $key = (string)$record['attachment_id'];
+            if (isset($seen[$key])) { continue; }
+            $seen[$key] = true;
+            $items[] = array(
+                'attachment_id' => absint($record['attachment_id']),
+                'url' => esc_url_raw((string)$record['url']),
+                'placement' => sanitize_text_field((string)($media_item['placement'] ?? '')),
+            );
+            if (count($items) >= $max) { break; }
+        }
+        $raw_editorial_count = 0;
+        foreach ((array)$payload_media_used as $media_item) {
+            if (is_array($media_item) && (empty($media_item['affiliate_url']) && empty($media_item['affiliate_link_id']))) { $raw_editorial_count++; }
+        }
+        if ($raw_editorial_count > count($items)) { $warnings[] = 'media_used editoriali limitato a massimo ' . $max . ' immagini candidate.'; }
+        return $items;
+    }
+
+
     private static function build_internal_link_index($candidate_internal_links) {
         $index = array('by_url_key'=>array(), 'urls'=>array(), 'home_host'=>'');
         $home = wp_parse_url(home_url('/'));
@@ -401,7 +464,7 @@ class ALMA_AI_Content_Agent_Draft_Quality_Checker {
         return array_values($out);
     }
 
-    public static function validate_payload($payload, $candidate_affiliate_ids = array(), $candidate_image_ids = array(), $candidate_affiliate_images = array(), $candidate_internal_links = array()) {
+    public static function validate_payload($payload, $candidate_affiliate_ids = array(), $candidate_image_ids = array(), $candidate_affiliate_images = array(), $candidate_internal_links = array(), $featured_image_candidates = array(), $media_candidates = array(), $max_editorial_media_used = 5) {
         $warnings = array();
         $title = sanitize_text_field($payload['title'] ?? '');
         $excerpt = sanitize_textarea_field($payload['excerpt'] ?? '');
@@ -414,7 +477,8 @@ class ALMA_AI_Content_Agent_Draft_Quality_Checker {
         $content = preg_replace('#<(script|iframe|embed)[^>]*>.*?</\1>#is', '', $content);
 
         $index = self::build_affiliate_link_index($candidate_affiliate_ids, $candidate_affiliate_images);
-        $candidate_image_urls = $index['image_urls'];
+        $editorial_index = self::build_editorial_media_index($featured_image_candidates, $media_candidates);
+        $candidate_image_urls = array_merge($index['image_urls'], $editorial_index['urls']);
         foreach ((array)$payload['media_used'] as $media_item) {
             $url = is_array($media_item) ? ($media_item['image_url'] ?? ($media_item['url'] ?? '')) : $media_item;
             $url = esc_url_raw((string)$url);
@@ -454,7 +518,7 @@ class ALMA_AI_Content_Agent_Draft_Quality_Checker {
             return $matches[0];
         }, $content);
         $featured = absint($payload['featured_image_id'] ?? 0);
-        if ($featured && (!in_array($featured, $candidate_image_ids, true) || get_post_type($featured) !== 'attachment')) { $warnings[]='Featured image non valida rimossa.'; $featured=0; }
+        if ($featured && (empty($editorial_index['featured_ids'][$featured]) || get_post_type($featured) !== 'attachment')) { $warnings[]='featured_image_id non presente in featured_image_candidates: azzerato.'; $featured=0; }
         $inline = array_values(array_filter(array_map('absint', (array)($payload['inline_image_ids'] ?? array()))));
         $inline = array_values(array_filter($inline, function($id) use($candidate_image_ids){ return $id > 0 && in_array($id, $candidate_image_ids, true) && get_post_type($id)==='attachment'; }));
 
@@ -464,7 +528,9 @@ class ALMA_AI_Content_Agent_Draft_Quality_Checker {
         }
 
         $content = self::sanitize_content_html($content);
-        list($affiliate_urls_used, $media_used, $affiliate_images_used) = self::collect_final_affiliate_usage($content, $index);
+        $editorial_media_used = self::normalize_editorial_media_used((array)($payload['media_used'] ?? array()), $editorial_index, $max_editorial_media_used, $warnings);
+        list($affiliate_urls_used, $affiliate_media_used, $affiliate_images_used) = self::collect_final_affiliate_usage($content, $index);
+        $media_used = array_merge($editorial_media_used, (array)$affiliate_media_used);
         $affiliate_urls_used = self::dedupe_strings($affiliate_urls_used);
         $shortcodes_used = self::dedupe_strings(array_merge((array)($payload['affiliate_shortcodes_used'] ?? array()), $shortcodes_used));
 
