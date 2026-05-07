@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Definisci costanti del plugin
-define('ALMA_VERSION', '2.25.39');
+define('ALMA_VERSION', '2.25.40');
 define('ALMA_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('ALMA_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('ALMA_PLUGIN_FILE', __FILE__);

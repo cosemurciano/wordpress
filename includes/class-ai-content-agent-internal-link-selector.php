@@ -9,16 +9,23 @@ class ALMA_AI_Content_Agent_Internal_Link_Selector {
         $args = is_array($args) ? $args : array();
         $table = ALMA_AI_Content_Agent_Internal_Link_Index::table_name();
         $exists = $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $table));
-        if ($exists !== $table) { return array('items'=>array(),'diagnostics'=>array('table_exists'=>false,'query_terms'=>array(),'candidates_found'=>0,'candidates_sent'=>0)); }
+        if ($exists !== $table) {
+            $empty_analysis = self::analyze_terms($args);
+            return array('items'=>array(),'diagnostics'=>array_merge(array('table_exists'=>false,'query_terms'=>array(),'candidates_found'=>0,'candidates_sent'=>0,'candidates_passed'=>0,'min_score'=>self::min_score()), $empty_analysis));
+        }
 
-        $terms = self::extract_terms($args);
+        $analysis = self::analyze_terms($args);
         $exclude_post_id = absint($args['exclude_post_id'] ?? 0);
-        $limit_scan = 80;
+        $min_score = self::min_score();
+        $limit_scan = 120;
         $rows = array();
-        if (!empty($terms)) {
+        $query_terms = !empty($analysis['strong_terms']) ? array_merge($analysis['strong_terms'], $analysis['related_terms']) : $analysis['raw_terms'];
+        $query_terms = array_values(array_unique(array_filter(array_map('sanitize_text_field', (array)$query_terms))));
+
+        if (!empty($query_terms)) {
             $likes = array();
             $params = array();
-            foreach (array_slice($terms, 0, 8) as $term) {
+            foreach (array_slice($query_terms, 0, 16) as $term) {
                 $like = '%' . $wpdb->esc_like($term) . '%';
                 $likes[] = '(search_text LIKE %s OR post_title LIKE %s OR post_slug LIKE %s)';
                 $params[] = $like; $params[] = $like; $params[] = $like;
@@ -28,21 +35,19 @@ class ALMA_AI_Content_Agent_Internal_Link_Selector {
             if ($exclude_post_id > 0) { array_unshift($params, $exclude_post_id); }
             $params[] = $limit_scan;
             $rows = $wpdb->get_results($wpdb->prepare($sql, $params), ARRAY_A);
+        } elseif ($exclude_post_id > 0) {
+            $rows = $wpdb->get_results($wpdb->prepare("SELECT * FROM $table WHERE post_status='publish' AND post_id <> %d ORDER BY modified_at DESC LIMIT %d", $exclude_post_id, 30), ARRAY_A);
+        } else {
+            $rows = $wpdb->get_results($wpdb->prepare("SELECT * FROM $table WHERE post_status='publish' ORDER BY modified_at DESC LIMIT %d", 30), ARRAY_A);
         }
-        if (empty($rows)) {
-            if ($exclude_post_id > 0) {
-                $rows = $wpdb->get_results($wpdb->prepare("SELECT * FROM $table WHERE post_status='publish' AND post_id <> %d ORDER BY modified_at DESC LIMIT %d", $exclude_post_id, 30), ARRAY_A);
-            } else {
-                $rows = $wpdb->get_results($wpdb->prepare("SELECT * FROM $table WHERE post_status='publish' ORDER BY modified_at DESC LIMIT %d", 30), ARRAY_A);
-            }
-        }
+
         $items = array();
         $seen = array();
         foreach ((array)$rows as $row) {
             $url = esc_url_raw((string)($row['permalink'] ?? ''));
             if ($url === '' || isset($seen[self::url_key($url)])) { continue; }
-            $score = self::score_row($row, $args, $terms);
-            if ($score['score'] < 8 && !empty($terms)) { continue; }
+            $score = self::score_row($row, $analysis);
+            if (empty($score['passes']) || $score['score'] < $min_score) { continue; }
             $seen[self::url_key($url)] = true;
             $items[] = array(
                 'id' => absint($row['post_id'] ?? 0),
@@ -52,6 +57,7 @@ class ALMA_AI_Content_Agent_Internal_Link_Selector {
                 'categories' => self::decode_string_list($row['categories_json'] ?? '[]'),
                 'tags' => self::decode_string_list($row['tags_json'] ?? '[]'),
                 'score' => (int)$score['score'],
+                'matched_terms' => array_values(array_unique(array_map('sanitize_text_field', (array)$score['matched_terms']))),
                 'reason' => sanitize_text_field($score['reason']),
             );
         }
@@ -60,47 +66,131 @@ class ALMA_AI_Content_Agent_Internal_Link_Selector {
             if ($s !== 0) { return $s; }
             return strcasecmp((string)$a['title'], (string)$b['title']);
         });
+        $passed_count = count($items);
         $items = array_slice($items, 0, self::MAX_CANDIDATES);
-        return array('items'=>$items,'diagnostics'=>array('table_exists'=>true,'query_terms'=>$terms,'candidates_found'=>count($rows),'candidates_sent'=>count($items),'reasons'=>wp_list_pluck($items, 'reason')));
+        $diagnostics = array_merge(array(
+            'table_exists' => true,
+            'query_terms' => $query_terms,
+            'candidates_found' => count($rows),
+            'candidates_sent' => count($items),
+            'candidates_passed' => $passed_count,
+            'min_score' => $min_score,
+            'reasons' => wp_list_pluck($items, 'reason'),
+        ), $analysis);
+        return array('items'=>$items,'diagnostics'=>$diagnostics);
     }
 
-    private static function extract_terms($args) {
-        $text = implode(' ', array(
-            $args['idea'] ?? '', $args['keyword'] ?? '', $args['destination'] ?? '', $args['prompt'] ?? '', $args['idea_title'] ?? '', $args['context'] ?? '',
-        ));
-        $text = remove_accents(strtolower(wp_strip_all_tags((string)$text)));
+    private static function analyze_terms($args) {
+        $sources = array(
+            $args['content_search_query'] ?? ($args['search_query'] ?? ($args['idea'] ?? '')),
+            $args['idea_title'] ?? '',
+            $args['openai_prompt'] ?? ($args['idea_prompt'] ?? ($args['prompt'] ?? '')),
+            $args['keyword'] ?? '',
+            $args['destination'] ?? '',
+        );
+        $text = self::norm(implode(' ', $sources));
         preg_match_all('/[a-z0-9]{3,}/u', $text, $m);
-        $stop = array_flip(array('con','per','una','uno','del','della','delle','degli','nel','nella','sul','sulla','come','cosa','vedere','guida','articolo','scrivi','crea','migliori','itinerario','visitare'));
-        $terms = array();
+        $stop_terms = self::stop_terms();
+        $raw = array();
+        $strong = array();
+        $weak = array();
         foreach ((array)($m[0] ?? array()) as $term) {
-            if (isset($stop[$term])) { continue; }
-            $terms[$term] = $term;
-            if (count($terms) >= 12) { break; }
+            if ($term === '') { continue; }
+            $raw[$term] = $term;
+            if (isset($stop_terms[$term])) { $weak[$term] = $term; continue; }
+            $strong[$term] = $term;
         }
-        return array_values($terms);
+        foreach (self::weak_phrases() as $phrase) {
+            if ($phrase !== '' && strpos(' ' . $text . ' ', ' ' . $phrase . ' ') !== false) { $weak[$phrase] = $phrase; }
+        }
+        $raw = array_slice(array_values($raw), 0, 24);
+        $strong = array_slice(array_values($strong), 0, 12);
+        $weak = array_slice(array_values($weak), 0, 18);
+        $related = self::related_terms($strong);
+        return array('raw_terms'=>$raw,'strong_terms'=>$strong,'weak_terms'=>$weak,'related_terms'=>$related);
     }
 
-    private static function score_row($row, $args, $terms) {
-        $title = self::norm($row['post_title'] ?? '');
-        $slug = self::norm($row['post_slug'] ?? '');
-        $excerpt = self::norm($row['post_excerpt'] ?? '');
-        $cats = self::norm(implode(' ', self::decode_string_list($row['categories_json'] ?? '[]')));
-        $tags = self::norm(implode(' ', self::decode_string_list($row['tags_json'] ?? '[]')));
-        $destination = self::norm($args['destination'] ?? '');
-        $keyword = self::norm($args['keyword'] ?? ($args['idea_title'] ?? ''));
-        $score = 0; $reasons = array();
-        if ($destination !== '' && strpos($title, $destination) !== false) { $score += 35; $reasons[] = 'Match destinazione nel titolo'; }
-        if ($keyword !== '' && strpos($title, $keyword) !== false) { $score += 30; $reasons[] = 'Match keyword nel titolo'; }
-        foreach ((array)$terms as $term) {
-            if ($term !== '' && strpos($title, $term) !== false) { $score += 18; $reasons[] = 'Match nel titolo'; }
-            if ($term !== '' && strpos($slug, $term) !== false) { $score += 10; $reasons[] = 'Match nello slug'; }
-            if ($term !== '' && (strpos($cats, $term) !== false || strpos($tags, $term) !== false)) { $score += 14; $reasons[] = 'Match categorie/tag'; }
-            if ($term !== '' && strpos($excerpt, $term) !== false) { $score += 7; $reasons[] = 'Match nell’excerpt'; }
+    private static function stop_terms() {
+        $terms = array('con','per','una','uno','del','della','delle','degli','dei','nel','nella','sul','sulla','tra','fra','che','questo','questa','questi','queste','come','cosa','fare','vedere','visitare','guida','guide','articolo','scrivi','crea','migliori','migliore','viaggio','viaggi','mete','meta','itinerario','itinerari','tour','esperienza','esperienze','destinazione','destinazioni','mese','periodo','estate','primavera','autunno','inverno','consigli','pratici','pratico','non','perdere','imperdibili','luglio','agosto','settembre','ottobre','novembre','dicembre','gennaio','febbraio','marzo','aprile','maggio','giugno');
+        $terms = (array) apply_filters('alma_ai_internal_link_stop_terms', $terms);
+        $normalized = array();
+        foreach ($terms as $term) {
+            $term = self::norm($term);
+            if ($term !== '') { $normalized[$term] = true; }
+        }
+        return $normalized;
+    }
+
+    private static function weak_phrases() {
+        return array('da non perdere','cosa vedere','cosa fare','consigli pratici');
+    }
+
+    private static function related_terms($strong_terms) {
+        $map = array('lecce'=>array('salento','puglia','otranto','gallipoli','galatina','leuca'));
+        $related = array();
+        foreach ((array)$strong_terms as $term) {
+            if (isset($map[$term])) {
+                foreach ($map[$term] as $rel) { $related[$rel] = $rel; }
+            }
+        }
+        $filtered = apply_filters('alma_ai_internal_link_related_terms', array_values($related), array_values((array)$strong_terms));
+        $out = array();
+        foreach ((array)$filtered as $term) {
+            $term = self::norm($term);
+            if ($term !== '' && !in_array($term, (array)$strong_terms, true)) { $out[$term] = $term; }
+        }
+        return array_slice(array_values($out), 0, 16);
+    }
+
+    private static function min_score() {
+        return max(1, absint(apply_filters('alma_ai_internal_link_min_score', 30)));
+    }
+
+    private static function score_row($row, $analysis) {
+        $fields = array(
+            'title' => self::norm($row['post_title'] ?? ''),
+            'slug' => self::norm($row['post_slug'] ?? ''),
+            'excerpt' => self::norm($row['post_excerpt'] ?? ''),
+            'tax' => self::norm(implode(' ', array_merge(self::decode_string_list($row['categories_json'] ?? '[]'), self::decode_string_list($row['tags_json'] ?? '[]')))),
+        );
+        $score = 0; $reasons = array(); $matched = array(); $has_required_match = false; $weak_matches = 0;
+        foreach ((array)($analysis['strong_terms'] ?? array()) as $term) {
+            $hit = false;
+            if (self::contains_term($fields['title'], $term)) { $score += 45; $reasons[] = 'Match forte nel titolo'; $hit = true; }
+            if (self::contains_term($fields['slug'], $term)) { $score += 35; $reasons[] = 'Match forte nello slug'; $hit = true; }
+            if (self::contains_term($fields['tax'], $term)) { $score += 35; $reasons[] = 'Match forte in categorie/tag'; $hit = true; }
+            if (self::contains_term($fields['excerpt'], $term)) { $score += 20; $reasons[] = 'Match forte nell’excerpt'; $hit = true; }
+            if ($hit) { $matched[$term] = $term; $has_required_match = true; }
+        }
+        foreach ((array)($analysis['related_terms'] ?? array()) as $term) {
+            $hit = false;
+            if (self::contains_term($fields['title'], $term)) { $score += 34; $reasons[] = 'Match correlato geografico nel titolo'; $hit = true; }
+            if (self::contains_term($fields['slug'], $term)) { $score += 28; $reasons[] = 'Match correlato geografico nello slug'; $hit = true; }
+            if (self::contains_term($fields['tax'], $term)) { $score += 30; $reasons[] = 'Match correlato geografico in categorie/tag'; $hit = true; }
+            if (self::contains_term($fields['excerpt'], $term)) { $score += 18; $reasons[] = 'Match correlato geografico nell’excerpt'; $hit = true; }
+            if ($hit) { $matched[$term] = $term; $has_required_match = true; }
+        }
+        foreach ((array)($analysis['weak_terms'] ?? array()) as $term) {
+            foreach ($fields as $field_text) {
+                if (self::contains_term($field_text, $term)) { $weak_matches++; break; }
+            }
+        }
+        if (empty($analysis['strong_terms']) && $weak_matches >= 2) {
+            $score += min(12, $weak_matches * 3);
+            $reasons[] = 'Match multipli su termini generici';
         }
         $modified = strtotime((string)($row['modified_at'] ?? ''));
-        if ($modified && $modified > strtotime('-18 months')) { $score += 3; $reasons[] = 'Post recente/modificato'; }
+        if ($modified && $modified > strtotime('-18 months') && $score > 0) { $score += 2; $reasons[] = 'Post recente/modificato'; }
+        $passes = !empty($analysis['strong_terms']) ? $has_required_match : ($score >= self::min_score());
         $reasons = array_values(array_unique($reasons));
-        return array('score'=>min(100, $score), 'reason'=>implode(' e ', array_slice($reasons, 0, 3)) ?: 'Post pubblicato recente');
+        return array('score'=>min(100, $score), 'passes'=>$passes, 'matched_terms'=>array_values($matched), 'reason'=>implode(' e ', array_slice($reasons, 0, 3)) ?: 'Nessun match pertinente');
+    }
+
+    private static function contains_term($haystack, $term) {
+        $haystack = ' ' . self::norm($haystack) . ' ';
+        $term = self::norm($term);
+        if ($term === '') { return false; }
+        return strpos($haystack, ' ' . $term . ' ') !== false;
     }
 
     private static function decode_string_list($json) {

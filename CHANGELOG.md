@@ -1,3 +1,13 @@
+## 2.25.40 — AI Content Agent internal link relevance
+- La selezione dei link interni ora combina i tre campi delle Idee contenuto: `content_search_query` / Cerca contenuti, Titolo idea e `openai_prompt` / Prompt per OpenAI.
+- Aggiunta distinzione tra termini forti e termini deboli/generici, con stoplist travel filtrabile tramite `alma_ai_internal_link_stop_terms`.
+- Aggiunta soglia minima di pertinenza filtrabile tramite `alma_ai_internal_link_min_score`: i candidati sotto soglia non entrano in `internal_links` e non viene più forzato il riempimento fino a 8 risultati.
+- Aggiunti termini correlati geografici filtrabili tramite `alma_ai_internal_link_related_terms`, con piccola mappa iniziale `lecce => salento, puglia, otranto, gallipoli, galatina, leuca`.
+- Rafforzato lo scoring: match forti in titolo/slug/categorie/tag/excerpt pesano più della recenza, i termini deboli non bastano da soli e i candidati includono `score`, `matched_terms` e `reason`.
+- Migliorata la diagnostica debug con `internal_link_debug`/`internal_link_diagnostics` contenente `raw_terms`, `strong_terms`, `weak_terms`, `related_terms`, candidati trovati/passati e soglia minima.
+- Ridotto il rischio di link interni fuori contesto, preferendo `internal_links: []` quando non esistono candidati pertinenti alla destinazione richiesta.
+- Versione plugin aggiornata a `2.25.40`.
+
 ## 2.25.39 — AI Content Agent internal linking MVP
 - Aggiunto MVP internal linking per AI Content Agent: indice leggero `alma_ai_internal_link_index` dei post pubblicati con titolo, permalink assoluto, slug, excerpt, categorie, tag e date, senza indicizzare il contenuto completo e senza embeddings.
 - Aggiunto selettore deterministico di candidati link interni (massimo 8) basato su match in titolo, destinazione/keyword, slug, categorie/tag, excerpt e recenza, senza chiamate OpenAI.
@@ -112,7 +122,7 @@
 ## 2.25.25 — PR 8.25 Separate OpenAI Payload Download from Full Debug JSON
 - Corretto il download **Scarica JSON payload OpenAI**: ora esporta il payload compatto prodotto da `normalize_payload_for_openai()`, non il payload diagnostico completo.
 - Aggiunto il download separato **Scarica JSON debug completo**, con wrapper esplicito `debug_payload_full` + `openai_payload_normalized` per confrontare diagnostica interna e payload realmente inviato al modello.
-- Confermata esclusione dal payload OpenAI normalizzato di `content_search_query`, `theme`, `destination`, `selected_results_count`, `selection_context`, score/reason/provider/source/provenance, Source prompt, snapshot istruzioni, `internal_notes`, autori e timestamp amministrativi.
+- Confermata esclusione dal payload OpenAI normalizzato di `content_search_query`, `theme`, `destination`, `selected_results_count`, `selection_context`, score/reason/provider/source/provenance dei risultati sorgente, Source prompt, snapshot istruzioni, `internal_notes`, autori e timestamp amministrativi.
 - Rafforzata la sintesi del contesto Viator escludendo anche righe tecniche provider/source dal contesto breve dei link affiliati.
 - Versione plugin aggiornata a `2.25.25`.
 
