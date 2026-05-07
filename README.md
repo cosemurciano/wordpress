@@ -1,3 +1,13 @@
+## 2.25.40 — AI Content Agent internal link relevance
+- La selezione dei link interni ora combina i tre campi delle Idee contenuto: `content_search_query` / Cerca contenuti, Titolo idea e `openai_prompt` / Prompt per OpenAI.
+- Aggiunta distinzione tra termini forti e termini deboli/generici, con stoplist travel filtrabile tramite `alma_ai_internal_link_stop_terms`.
+- Aggiunta soglia minima di pertinenza filtrabile tramite `alma_ai_internal_link_min_score`: i candidati sotto soglia non entrano in `internal_links` e non viene più forzato il riempimento fino a 8 risultati.
+- Aggiunti termini correlati geografici filtrabili tramite `alma_ai_internal_link_related_terms`, con piccola mappa iniziale `lecce => salento, puglia, otranto, gallipoli, galatina, leuca`.
+- Rafforzato lo scoring: match forti in titolo/slug/categorie/tag/excerpt pesano più della recenza, i termini deboli non bastano da soli e i candidati includono `score`, `matched_terms` e `reason`.
+- Migliorata la diagnostica debug con `internal_link_debug`/`internal_link_diagnostics` contenente `raw_terms`, `strong_terms`, `weak_terms`, `related_terms`, candidati trovati/passati e soglia minima.
+- Ridotto il rischio di link interni fuori contesto, preferendo `internal_links: []` quando non esistono candidati pertinenti alla destinazione richiesta.
+- Versione plugin aggiornata a `2.25.40`.
+
 ## 2.25.39 — AI Content Agent internal linking MVP
 - Aggiunto MVP internal linking per AI Content Agent: indice leggero `alma_ai_internal_link_index` dei post pubblicati con titolo, permalink assoluto, slug, excerpt, categorie, tag e date, senza indicizzare il contenuto completo e senza embeddings.
 - Aggiunto selettore deterministico di candidati link interni (massimo 8) basato su match in titolo, destinazione/keyword, slug, categorie/tag, excerpt e recenza, senza chiamate OpenAI.
@@ -263,14 +273,14 @@ Versione 2.25.31
 
 - Il pulsante **Scarica JSON payload OpenAI** genera ora il JSON normalizzato compatto prodotto da `normalize_payload_for_openai()`, cioè la struttura usata nel contesto inviato a OpenAI.
 - Aggiunto il pulsante separato **Scarica JSON debug completo**: il file contiene `payload_type`, `debug_payload_full` e `openai_payload_normalized`, così è esplicito quali dati restano solo diagnostici e quali dati entrano nel prompt OpenAI.
-- Il payload OpenAI esportabile resta privo di campi diagnostici/amministrativi (`content_search_query`, `theme`, `destination`, `selected_results_count`, `selection_context`, score/reason/provider/source/provenance, Source prompt, snapshot istruzioni, `internal_notes`, audit timestamps/autori) e mantiene `slug_required: true`.
+- Il payload OpenAI esportabile resta privo di campi diagnostici/amministrativi (`content_search_query`, `theme`, `destination`, `selected_results_count`, `selection_context`, score/reason/provider/source/provenance dei risultati sorgente, Source prompt, snapshot istruzioni, `internal_notes`, audit timestamps/autori) e mantiene `slug_required: true`.
 - Le regole duplicate restano deduplicate nelle sezioni finali `affiliate_rules`, `seo_rules`, `source_policies` ed `editorial_instructions.operational_rules`; il prompt personalizzato del profilo è disponibile in alto in `editorial_instructions.custom_prompt`.
 - Il contesto Viator nei link affiliati viene ulteriormente sintetizzato escludendo righe tecniche su provider/source oltre a product code, rating/recensioni e note operative.
 
 ## Novità 2.25.24 — PR 8.24 Compact OpenAI Draft Payload and JSON Diagnostics
 
 - Payload OpenAI della bozza da risultati selezionati normalizzato in sezioni compatte (`task`, `site`, `article_request`, `editorial_instructions`, `output_requirements`, `affiliate_links`, regole e warning).
-- Rimossi dal payload inviato al modello campi diagnostici/deduplicati come `theme`, `destination`, `selected_results_count`, score/reason/provider/source/provenance, prompt Source completi, snapshot istruzioni ridondanti e `internal_notes`.
+- Rimossi dal payload inviato al modello campi diagnostici/deduplicati come `theme`, `destination`, `selected_results_count`, score/reason/provider/source/provenance dei risultati sorgente, prompt Source completi, snapshot istruzioni ridondanti e `internal_notes`.
 - Separati payload completo di debug/download e payload effettivamente inviato a OpenAI.
 - `slug` ora obbligatorio nel contract JSON, con fallback locale sanificato dal titolo e warning non bloccante.
 - Diagnostica JSON più specifica per risposta vuota, probabile troncamento, JSON non parsabile/testo fuori oggetto, campi obbligatori mancanti e contenuto troppo corto.
@@ -540,7 +550,7 @@ Nel flusso **Crea Bozza con OpenAI** da risultati selezionati, il payload effett
 - **Scarica JSON payload OpenAI** esporta il payload normalizzato realmente usato nel contesto OpenAI (`alma-ai-openai-payload-idea-*.json`).
 - **Scarica JSON debug completo** esporta un wrapper diagnostico (`alma-ai-debug-payload-idea-*.json`) con `debug_payload_full` per troubleshooting e `openai_payload_normalized` per confronto diretto.
 - I dati diagnostici o amministrativi restano disponibili solo in `debug_payload_full`, ma non vengono inviati a OpenAI.
-- Sono esclusi dal payload AI campi come `content_search_query`, `theme`, `destination`, `selected_results_count`, `selection_context`, score/reason/provider/source/provenance, prompt Source completi, snapshot istruzioni ridondanti, `internal_notes`, autori e timestamp amministrativi.
+- Sono esclusi dal payload AI campi come `content_search_query`, `theme`, `destination`, `selected_results_count`, `selection_context`, score/reason/provider/source/provenance dei risultati sorgente, prompt Source completi, snapshot istruzioni ridondanti, `internal_notes`, autori e timestamp amministrativi.
 - Il prompt personalizzato del profilo istruzioni viene esposto in alto dentro le istruzioni editoriali, insieme a tono, pubblico e stile.
 - Il contesto Viator viene sintetizzato in modo prudente, senza blocchi provider tecnici, rating/recensioni aggregate, product code o note operative lunghe.
 - Il contract JSON richiede sempre `title`, `slug`, `excerpt`, `content`, `seo_title`, `seo_description`, `affiliate_shortcodes_used`, `affiliate_urls_used`, `media_used` e `warnings`. Se lo slug manca o non è valido, viene generato/sanificato localmente senza bloccare la bozza.

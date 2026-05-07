@@ -381,6 +381,8 @@ class ALMA_AI_Content_Agent_Draft_Builder {
                 'excerpt' => self::compact_text((string)($link['excerpt'] ?? ''), 28),
                 'categories' => array_values(array_unique(array_filter(array_map('sanitize_text_field', (array)($link['categories'] ?? array()))))),
                 'tags' => array_values(array_unique(array_filter(array_map('sanitize_text_field', (array)($link['tags'] ?? array()))))),
+                'score' => absint($link['score'] ?? 0),
+                'matched_terms' => array_values(array_unique(array_filter(array_map('sanitize_text_field', (array)($link['matched_terms'] ?? array()))))),
                 'reason' => sanitize_text_field((string)($link['reason'] ?? '')),
             );
             if (count($internal_links) >= 8) { break; }
@@ -642,13 +644,26 @@ class ALMA_AI_Content_Agent_Draft_Builder {
         if (empty($affiliate_links)) { $warnings[] = 'Nessun affiliate link selezionato.'; }
         if (empty($session['openai_prompt']) && empty($session['last_query']['temporary_instructions'])) { $warnings[] = 'Prompt OpenAI assente nella idea/sessione.'; }
 
+        $active_idea_title = '';
+        $active_idea_id = absint(get_user_meta(get_current_user_id(), '_alma_active_idea_id', true));
+        if ($active_idea_id > 0 && class_exists('ALMA_AI_Content_Agent_Ideas')) {
+            $active_idea = ALMA_AI_Content_Agent_Ideas::get($active_idea_id);
+            $active_idea_title = sanitize_text_field((string)($active_idea['title'] ?? ''));
+        }
+        $content_search_query = sanitize_text_field($session['last_query']['content_search_query'] ?? ($session['last_query']['search_terms'] ?? ''));
+        $idea_title = $active_idea_title !== '' ? $active_idea_title : $content_search_query;
+        $openai_prompt = sanitize_textarea_field($session['openai_prompt'] ?? ($session['last_query']['openai_prompt'] ?? ($session['last_query']['temporary_instructions'] ?? '')));
+
         $internal_link_selection = ALMA_AI_Content_Agent_Internal_Link_Selector::select_candidates(array(
-            'idea' => $session['last_query']['content_search_query'] ?? '',
-            'keyword' => $session['last_query']['search_terms'] ?? ($session['last_query']['content_search_query'] ?? ''),
+            'content_search_query' => $content_search_query,
+            'search_query' => $content_search_query,
+            'idea' => $content_search_query,
+            'keyword' => $session['last_query']['search_terms'] ?? $content_search_query,
             'destination' => $session['last_query']['destination'] ?? '',
-            'prompt' => $session['openai_prompt'] ?? '',
-            'idea_title' => $session['last_query']['content_search_query'] ?? '',
-            'context' => wp_json_encode($selection_context),
+            'openai_prompt' => $openai_prompt,
+            'idea_prompt' => $openai_prompt,
+            'prompt' => $openai_prompt,
+            'idea_title' => $idea_title,
         ));
 
         $profile_payload = self::build_instruction_profile_payload($session, $warnings);
@@ -694,9 +709,9 @@ class ALMA_AI_Content_Agent_Draft_Builder {
         return array_merge(array(
             'task'=>'create_article_draft_from_selected_sources',
             'site_context'=>array('site_name'=>get_bloginfo('name'),'language'=>get_bloginfo('language'),'generated_at'=>current_time('mysql')),
-            'user_inputs'=>array('content_search_query'=>sanitize_text_field($session['last_query']['content_search_query'] ?? ($session['last_query']['search_terms'] ?? '')),'theme'=>sanitize_text_field($session['last_query']['theme'] ?? ''),'destination'=>sanitize_text_field($session['last_query']['destination'] ?? ''),'openai_prompt'=>sanitize_textarea_field($session['openai_prompt'] ?? ($session['last_query']['temporary_instructions'] ?? ''))),
-            'idea_context'=>array('idea_title'=>sanitize_text_field($session['last_query']['content_search_query'] ?? ''),'idea_prompt'=>sanitize_textarea_field($session['openai_prompt'] ?? ''),'search_query'=>sanitize_text_field($session['last_query']['search_terms'] ?? ($session['last_query']['content_search_query'] ?? '')),'selected_results_count'=>count($selection_context)),
-            'openai_prompt'=>sanitize_textarea_field($session['openai_prompt'] ?? ($session['last_query']['temporary_instructions'] ?? '')),
+            'user_inputs'=>array('content_search_query'=>$content_search_query,'theme'=>sanitize_text_field($session['last_query']['theme'] ?? ''),'destination'=>sanitize_text_field($session['last_query']['destination'] ?? ''),'openai_prompt'=>$openai_prompt),
+            'idea_context'=>array('idea_title'=>$idea_title,'idea_prompt'=>$openai_prompt,'search_query'=>sanitize_text_field($session['last_query']['search_terms'] ?? $content_search_query),'selected_results_count'=>count($selection_context)),
+            'openai_prompt'=>$openai_prompt,
             'temporary_instructions'=>sanitize_textarea_field($session['last_query']['temporary_instructions'] ?? ''),
             'rules'=>array(
                 'output_json'=>true,
@@ -716,6 +731,7 @@ class ALMA_AI_Content_Agent_Draft_Builder {
             'internal_links'=>(array)($internal_link_selection['items'] ?? array()),
             'internal_link_rules'=>self::default_internal_link_rules(),
             'internal_link_diagnostics'=>(array)($internal_link_selection['diagnostics'] ?? array()),
+            'internal_link_debug'=>(array)($internal_link_selection['diagnostics'] ?? array()),
             'source_agent_prompts'=>$source_agent_prompts,
             'posts'=>array(),'documents'=>array(),'sources_online'=>array(),'pages'=>array(),'media'=>array(),
             'affiliate_rules'=>$affiliate_rules,
