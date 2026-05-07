@@ -88,7 +88,8 @@ class ALMA_AI_Content_Agent_Internal_Link_Selector {
             $args['keyword'] ?? '',
             $args['destination'] ?? '',
         );
-        $text = self::norm(implode(' ', $sources));
+        $source_text = implode(' ', $sources);
+        $text = self::norm($source_text);
         preg_match_all('/[a-z0-9]{3,}/u', $text, $m);
         $stop_terms = self::stop_terms();
         $raw = array();
@@ -107,7 +108,52 @@ class ALMA_AI_Content_Agent_Internal_Link_Selector {
         $strong = array_slice(array_values($strong), 0, 12);
         $weak = array_slice(array_values($weak), 0, 18);
         $related = self::related_terms($strong);
-        return array('raw_terms'=>$raw,'strong_terms'=>$strong,'weak_terms'=>$weak,'related_terms'=>$related);
+        return array_merge(array('raw_terms'=>$raw,'strong_terms'=>$strong,'weak_terms'=>$weak,'related_terms'=>$related), self::analyze_time_sensitivity($source_text));
+    }
+
+
+    private static function time_sensitive_terms() {
+        $terms = array(
+            'gennaio','febbraio','marzo','aprile','maggio','giugno','luglio','agosto','settembre','ottobre','novembre','dicembre',
+            'lunedi','lunedì','martedi','martedì','mercoledi','mercoledì','giovedi','giovedì','venerdi','venerdì','sabato','domenica'
+        );
+        $terms = (array) apply_filters('alma_ai_internal_link_time_sensitive_terms', $terms);
+        $out = array();
+        foreach ($terms as $term) {
+            $term = self::norm($term);
+            if ($term !== '') { $out[$term] = $term; }
+        }
+        return array_values($out);
+    }
+
+    private static function analyze_time_sensitivity($text) {
+        $normalized = self::norm($text);
+        $terms = self::time_sensitive_terms();
+        $found = array();
+        foreach ($terms as $term) {
+            if (self::contains_term($normalized, $term)) { $found[$term] = $term; }
+        }
+        if (preg_match_all('/\b(?:dal\s+)?\d{1,2}(?:\s+(?:al|-)\s+\d{1,2})?\s+(?:gennaio|febbraio|marzo|aprile|maggio|giugno|luglio|agosto|settembre|ottobre|novembre|dicembre)\b|\b20\d{2}\b/iu', (string)$text, $m)) {
+            foreach ((array)($m[0] ?? array()) as $match) {
+                $key = self::norm($match);
+                if ($key !== '') { $found[$key] = $key; }
+            }
+        }
+        return array('time_sensitive_query'=>!empty($found), 'time_terms'=>array_values($found));
+    }
+
+    private static function row_time_terms($row) {
+        $text = implode(' ', array($row['post_title'] ?? '', $row['post_slug'] ?? ''));
+        return self::analyze_time_sensitivity($text);
+    }
+
+    private static function has_compatible_time_terms($row_terms, $query_terms) {
+        foreach ((array)$row_terms as $row_term) {
+            foreach ((array)$query_terms as $query_term) {
+                if ($row_term === $query_term || strpos($row_term, $query_term) !== false || strpos($query_term, $row_term) !== false) { return true; }
+            }
+        }
+        return false;
     }
 
     private static function stop_terms() {
@@ -179,6 +225,17 @@ class ALMA_AI_Content_Agent_Internal_Link_Selector {
             $score += min(12, $weak_matches * 3);
             $reasons[] = 'Match multipli su termini generici';
         }
+        $row_time = self::row_time_terms($row);
+        if (!empty($row_time['time_sensitive_query']) && empty($analysis['time_sensitive_query']) && $score > 0) {
+            $penalty = max(0, absint(apply_filters('alma_ai_internal_link_time_sensitive_penalty', 38, $row, $analysis)));
+            $score -= $penalty;
+            $reasons[] = 'Penalità contenuto stagionale/datato per query evergreen';
+        } elseif (!empty($row_time['time_sensitive_query']) && !self::has_compatible_time_terms((array)$row_time['time_terms'], (array)($analysis['time_terms'] ?? array())) && $score > 0) {
+            $penalty = max(0, absint(apply_filters('alma_ai_internal_link_time_sensitive_penalty', 20, $row, $analysis)));
+            $score -= $penalty;
+            $reasons[] = 'Penalità data non coerente con il prompt';
+        }
+        $score = max(0, $score);
         $modified = strtotime((string)($row['modified_at'] ?? ''));
         if ($modified && $modified > strtotime('-18 months') && $score > 0) { $score += 2; $reasons[] = 'Post recente/modificato'; }
         $passes = !empty($analysis['strong_terms']) ? $has_required_match : ($score >= self::min_score());

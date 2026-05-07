@@ -57,13 +57,13 @@ class ALMA_AI_Content_Agent_Draft_Builder {
 
     private static function validate_output_contract($parsed) {
         if (!is_array($parsed)) { return new WP_Error('json_not_object', 'La risposta JSON non contiene un oggetto valido.'); }
-        $required = array('title','slug','content','excerpt','seo_title','seo_description','affiliate_shortcodes_used','affiliate_urls_used','internal_urls_used','media_used','warnings');
+        $required = array('title','slug','content','excerpt','seo_title','seo_description','affiliate_shortcodes_used','affiliate_urls_used','internal_urls_used','media_used','category_ids','tag_ids','new_tags','warnings');
         $missing = array();
         foreach ($required as $key) { if (!array_key_exists($key, $parsed)) { $missing[] = $key; } }
 
         $out = $parsed;
         foreach (array('excerpt','seo_title','seo_description','slug') as $k) { if (!isset($out[$k]) || !is_string($out[$k])) { $out[$k] = ''; } }
-        foreach (array('affiliate_shortcodes_used','affiliate_urls_used','internal_urls_used','media_used','warnings') as $k) { if (!isset($out[$k]) || !is_array($out[$k])) { $out[$k] = array(); } }
+        foreach (array('affiliate_shortcodes_used','affiliate_urls_used','internal_urls_used','media_used','category_ids','tag_ids','new_tags','warnings') as $k) { if (!isset($out[$k]) || !is_array($out[$k])) { $out[$k] = array(); } }
         foreach ((array)($out['_alma_parse_warnings'] ?? array()) as $parse_warning) {
             if ($parse_warning === 'text_outside_json_object') { $out['warnings'][] = 'Risposta OpenAI con testo fuori dall’oggetto JSON: oggetto JSON estratto automaticamente.'; }
             if ($parse_warning === 'json_wrapped_in_markdown') { $out['warnings'][] = 'Risposta OpenAI con wrapper Markdown: JSON ripulito automaticamente.'; }
@@ -90,11 +90,11 @@ class ALMA_AI_Content_Agent_Draft_Builder {
     }
 
     private static function build_draft_generation_prompt() {
-        return 'Rispondi esclusivamente con un singolo oggetto JSON valido. Non usare Markdown. Non usare blocchi ```json. Non aggiungere spiegazioni o testo prima/dopo il JSON. Includi sempre: title, slug, excerpt, content, seo_title, seo_description, affiliate_shortcodes_used, affiliate_urls_used, internal_urls_used, media_used, warnings. content deve essere stringa JSON valida. Non generare disclosure affiliate generiche e non inserire frasi tipo “Questo articolo può contenere link affiliati...”. Non creare tag <a> senza href. Non usare shortcode come href. Se usi shortcode, inseriscili sia in content sia in affiliate_shortcodes_used. Se usi URL affiliati diretti, ogni href deve coincidere esattamente con affiliate_links[].affiliate_url e devi inserirlo in affiliate_urls_used; se non usi URL diretti, affiliate_urls_used deve essere vuoto. Usa immagini affiliate solo se pertinenti alla sezione: non inventare URL immagini, usa solo image_url presenti in affiliate_links[].image con can_use_in_content=true, non duplicare la stessa immagine e non forzare immagini dove non servono. Ogni immagine affiliata deve essere cliccabile con href uguale al relativo affiliate_url. Esempio immagine: <a href="{affiliate_url}" target="_blank" rel="nofollow sponsored noopener"><img class="aligncenter size-full" src="{image.image_url}" alt="{image.image_alt}" /></a>. Fallback alt: <a href="{affiliate_url}" target="_blank" rel="nofollow sponsored noopener"><img class="aligncenter size-full" src="{image.image_url}" alt="{title}" /></a>. Compila internal_urls_used con gli URL interni realmente usati nel contenuto finale. Registra in media_used solo immagini affiliate effettivamente presenti nel contenuto finale con image_url, affiliate_link_id o id, affiliate_url, alt e source se disponibile. Se non usi shortcode/URL/media/link interni usa array vuoti. Non inventare campi.';
+        return 'Rispondi esclusivamente con un singolo oggetto JSON valido. Non usare Markdown. Non usare blocchi ```json. Non aggiungere spiegazioni o testo prima/dopo il JSON. Includi sempre: title, slug, excerpt, content, seo_title, seo_description, affiliate_shortcodes_used, affiliate_urls_used, internal_urls_used, media_used, category_ids, tag_ids, new_tags, warnings. content deve essere stringa JSON valida. Non generare disclosure affiliate generiche e non inserire frasi tipo “Questo articolo può contenere link affiliati...”. Non creare tag <a> senza href. Non usare shortcode come href. Se usi shortcode, inseriscili sia in content sia in affiliate_shortcodes_used. Se usi URL affiliati diretti, ogni href deve coincidere esattamente con affiliate_links[].affiliate_url e devi inserirlo in affiliate_urls_used; se non usi URL diretti, affiliate_urls_used deve essere vuoto. Usa immagini affiliate solo se pertinenti alla sezione: non inventare URL immagini, usa solo image_url presenti in affiliate_links[].image con can_use_in_content=true, non duplicare la stessa immagine e non forzare immagini dove non servono. Ogni immagine affiliata deve essere cliccabile con href uguale al relativo affiliate_url. Esempio immagine: <a href="{affiliate_url}" target="_blank" rel="nofollow sponsored noopener"><img class="aligncenter size-full" src="{image.image_url}" alt="{image.image_alt}" /></a>. Fallback alt: <a href="{affiliate_url}" target="_blank" rel="nofollow sponsored noopener"><img class="aligncenter size-full" src="{image.image_url}" alt="{title}" /></a>. Compila internal_urls_used con gli URL interni realmente usati nel contenuto finale. Registra in media_used solo immagini affiliate effettivamente presenti nel contenuto finale con image_url, affiliate_link_id o id, affiliate_url, alt e source se disponibile. Se non usi shortcode/URL/media/link interni/tassonomie usa array vuoti. Usa category_ids solo da category_candidates, tag_ids preferibilmente da tag_candidates e massimo 3 new_tags specifici. Non inventare campi.';
     }
 
     private static function build_draft_response_format() {
-        return array('type'=>'json_schema','name'=>'content_draft_generation','schema'=>array('type'=>'object','additionalProperties'=>false,'required'=>array('title','slug','excerpt','content','seo_title','seo_description','affiliate_shortcodes_used','affiliate_urls_used','internal_urls_used','media_used','warnings'),'properties'=>array('title'=>array('type'=>'string'),'slug'=>array('type'=>'string'),'excerpt'=>array('type'=>'string'),'content'=>array('type'=>'string'),'seo_title'=>array('type'=>'string'),'seo_description'=>array('type'=>'string'),'affiliate_shortcodes_used'=>array('type'=>'array','items'=>array('type'=>'string')),'affiliate_urls_used'=>array('type'=>'array','items'=>array('type'=>'string')),'internal_urls_used'=>array('type'=>'array','items'=>array('type'=>'string')),'media_used'=>array('type'=>'array','items'=>array('type'=>'object','additionalProperties'=>false,'required'=>array('image_url','affiliate_url'),'properties'=>array('image_url'=>array('type'=>'string'),'affiliate_link_id'=>array('type'=>'integer'),'id'=>array('type'=>'integer'),'affiliate_url'=>array('type'=>'string'),'alt'=>array('type'=>'string'),'source'=>array('type'=>'string')))),'warnings'=>array('type'=>'array','items'=>array('type'=>'string')))));
+        return array('type'=>'json_schema','name'=>'content_draft_generation','schema'=>array('type'=>'object','additionalProperties'=>false,'required'=>array('title','slug','excerpt','content','seo_title','seo_description','affiliate_shortcodes_used','affiliate_urls_used','internal_urls_used','media_used','category_ids','tag_ids','new_tags','warnings'),'properties'=>array('title'=>array('type'=>'string'),'slug'=>array('type'=>'string'),'excerpt'=>array('type'=>'string'),'content'=>array('type'=>'string'),'seo_title'=>array('type'=>'string'),'seo_description'=>array('type'=>'string'),'affiliate_shortcodes_used'=>array('type'=>'array','items'=>array('type'=>'string')),'affiliate_urls_used'=>array('type'=>'array','items'=>array('type'=>'string')),'internal_urls_used'=>array('type'=>'array','items'=>array('type'=>'string')),'media_used'=>array('type'=>'array','items'=>array('type'=>'object','additionalProperties'=>false,'required'=>array('image_url','affiliate_url'),'properties'=>array('image_url'=>array('type'=>'string'),'affiliate_link_id'=>array('type'=>'integer'),'id'=>array('type'=>'integer'),'affiliate_url'=>array('type'=>'string'),'alt'=>array('type'=>'string'),'source'=>array('type'=>'string')))),'category_ids'=>array('type'=>'array','items'=>array('type'=>'integer')),'tag_ids'=>array('type'=>'array','items'=>array('type'=>'integer')),'new_tags'=>array('type'=>'array','items'=>array('type'=>'string')),'warnings'=>array('type'=>'array','items'=>array('type'=>'string')))));
     }
 
     private static function map_openai_error_to_admin_message($res, $fallback='Risposta OpenAI fallita.') {
@@ -388,6 +388,9 @@ class ALMA_AI_Content_Agent_Draft_Builder {
             if (count($internal_links) >= 8) { break; }
         }
         $internal_link_rules = self::compact_rule_list((array)($payload['internal_link_rules'] ?? self::default_internal_link_rules()));
+        $category_candidates = array_slice((array)($payload['category_candidates'] ?? array()), 0, 8);
+        $tag_candidates = array_slice((array)($payload['tag_candidates'] ?? array()), 0, 15);
+        $taxonomy_rules = self::compact_rule_list((array)($payload['taxonomy_rules'] ?? self::taxonomy_rules()));
 
         $core_rules = array(
             'Rispondi solo con JSON valido conforme al contratto.',
@@ -404,6 +407,7 @@ class ALMA_AI_Content_Agent_Draft_Builder {
             'Esempio HTML esatto per immagini affiliate: <a href="{affiliate_url}" target="_blank" rel="nofollow sponsored noopener"><img class="aligncenter size-full" src="{image.image_url}" alt="{image.image_alt}" /></a>',
             'Fallback HTML esatto per immagini affiliate: <a href="{affiliate_url}" target="_blank" rel="nofollow sponsored noopener"><img class="aligncenter size-full" src="{image.image_url}" alt="{title}" /></a>',
             'Usa solo link interni presenti in internal_links e compila internal_urls_used.',
+            'Usa category_ids, tag_ids e new_tags secondo taxonomy_rules.',
         );
         $affiliate_rules = self::compact_rule_list(array_merge((array)($payload['affiliate_rules'] ?? array()), array($profile_rules['affiliate_rules'] ?? '')));
         $seo_rules = self::compact_rule_list(array_merge((array)($payload['seo_rules'] ?? array()), array($profile_rules['seo_rules'] ?? '')));
@@ -421,7 +425,10 @@ class ALMA_AI_Content_Agent_Draft_Builder {
                 'editorial_style' => ALMA_AI_Content_Agent_Instructions_Manager::sanitize_profile_textarea((string)($profile['editorial_style'] ?? '')),
                 'operational_rules' => self::compact_rule_list($core_rules),
             ),
-            'output_requirements' => array('required_fields'=>array('title','slug','excerpt','content','seo_title','seo_description','affiliate_shortcodes_used','affiliate_urls_used','internal_urls_used','media_used','warnings'), 'slug_required'=>true, 'content_format'=>'HTML string in JSON'),
+            'output_requirements' => array('required_fields'=>array('title','slug','excerpt','content','seo_title','seo_description','affiliate_shortcodes_used','affiliate_urls_used','internal_urls_used','media_used','category_ids','tag_ids','new_tags','warnings'), 'slug_required'=>true, 'content_format'=>'HTML string in JSON'),
+            'category_candidates' => $category_candidates,
+            'tag_candidates' => $tag_candidates,
+            'taxonomy_rules' => $taxonomy_rules,
             'affiliate_links' => $affiliate_links,
             'internal_links' => $internal_links,
             'internal_link_rules' => $internal_link_rules,
@@ -508,6 +515,183 @@ class ALMA_AI_Content_Agent_Draft_Builder {
         if (!$col) { return array(); }
         return (array)$wpdb->get_col($wpdb->prepare("SELECT normalized_text FROM $table WHERE knowledge_item_id=%d ORDER BY id ASC LIMIT %d", absint($knowledge_item_id), $limit));
     }
+
+    private static function taxonomy_rules() {
+        return array(
+            'Scegli da 1 a 3 category_ids usando solo category_candidates.',
+            'Non inventare categorie.',
+            'Scegli tag_ids usando tag_candidates quando pertinenti.',
+            'Puoi proporre massimo 3 new_tags solo se specifici e utili.',
+            'Non proporre tag generici come viaggio, tour, esperienza, consigli o cosa vedere.',
+            'Non superare 8 tag totali.',
+        );
+    }
+
+    private static function taxonomy_match_text($payload) {
+        $parts = array(
+            $payload['openai_prompt'] ?? '',
+            $payload['idea_context']['idea_title'] ?? '',
+            $payload['idea_context']['search_query'] ?? '',
+            $payload['user_inputs']['destination'] ?? '',
+            $payload['user_inputs']['theme'] ?? '',
+        );
+        foreach ((array)($payload['internal_links'] ?? array()) as $link) {
+            if (!is_array($link)) { continue; }
+            $parts[] = $link['title'] ?? '';
+            $parts[] = implode(' ', (array)($link['categories'] ?? array()));
+            $parts[] = implode(' ', (array)($link['tags'] ?? array()));
+        }
+        foreach ((array)($payload['affiliate_links'] ?? array()) as $link) {
+            if (!is_array($link)) { continue; }
+            $parts[] = $link['title'] ?? '';
+            $parts[] = $link['description'] ?? ($link['excerpt'] ?? '');
+        }
+        return self::normalize_taxonomy_text(implode(' ', $parts));
+    }
+
+    private static function normalize_taxonomy_text($text) {
+        $text = remove_accents(strtolower(wp_strip_all_tags((string)$text)));
+        $text = preg_replace('/[^a-z0-9]+/u', ' ', $text);
+        return trim(preg_replace('/\s+/', ' ', (string)$text));
+    }
+
+    private static function taxonomy_term_score($term, $match_text, $taxonomy, $payload) {
+        $name = self::normalize_taxonomy_text($term->name ?? '');
+        $slug = self::normalize_taxonomy_text($term->slug ?? '');
+        if ($name === '' && $slug === '') { return array(0, array()); }
+        $score = 0; $reasons = array();
+        if ($name !== '' && strpos(' '.$match_text.' ', ' '.$name.' ') !== false) { $score += 60; $reasons[] = 'Match nome termine'; }
+        if ($slug !== '' && strpos(' '.$match_text.' ', ' '.$slug.' ') !== false) { $score += 45; $reasons[] = 'Match slug termine'; }
+        foreach ((array)($payload['internal_links'] ?? array()) as $link) {
+            $items = $taxonomy === 'category' ? (array)($link['categories'] ?? array()) : (array)($link['tags'] ?? array());
+            foreach ($items as $item) {
+                if (self::normalize_taxonomy_text($item) === $name && $name !== '') { $score += 25; $reasons[] = 'Ricorrente nei link interni candidati'; }
+            }
+        }
+        if ((int)($term->parent ?? 0) > 0) { $score += 6; $reasons[] = 'Categoria specifica'; }
+        if ((int)($term->count ?? 0) > 0) { $score += min(12, (int)$term->count); }
+        return array($score, array_values(array_unique($reasons)));
+    }
+
+    private static function build_taxonomy_candidates($payload, $taxonomy, $max) {
+        if ($taxonomy === 'category') {
+            $terms = get_categories(array('hide_empty'=>false, 'number'=>200));
+        } else {
+            $terms = get_terms(array('taxonomy'=>$taxonomy, 'hide_empty'=>false, 'number'=>200));
+        }
+        if (is_wp_error($terms) || !is_array($terms)) { return array(); }
+        $match_text = self::taxonomy_match_text($payload);
+        $scored = array();
+        foreach ($terms as $term) {
+            list($score, $reasons) = self::taxonomy_term_score($term, $match_text, $taxonomy, $payload);
+            if ($score < 45) { continue; }
+            $parent = '';
+            if ($taxonomy === 'category' && !empty($term->parent)) {
+                $parent_term = get_term((int)$term->parent, 'category');
+                if ($parent_term && !is_wp_error($parent_term)) { $parent = sanitize_text_field($parent_term->name); }
+            }
+            $item = array('id'=>(int)$term->term_id, 'name'=>sanitize_text_field($term->name), 'slug'=>sanitize_title($term->slug));
+            if ($taxonomy === 'category') { $item['parent'] = $parent; }
+            $item['reason'] = !empty($reasons) ? implode('; ', array_slice($reasons, 0, 2)) : 'Match editoriale';
+            $item['_score'] = (int)$score;
+            $scored[] = $item;
+        }
+        usort($scored, function($a, $b) { return ((int)$b['_score']) <=> ((int)$a['_score']); });
+        $out = array();
+        foreach (array_slice($scored, 0, max(1, (int)$max)) as $item) {
+            unset($item['_score']);
+            $out[] = $item;
+        }
+        return $out;
+    }
+
+    private static function validate_taxonomies($parsed, $category_candidates, $tag_candidates) {
+        $warnings = array();
+        $candidate_category_ids = array_map('absint', wp_list_pluck((array)$category_candidates, 'id'));
+        $candidate_tag_ids = array_map('absint', wp_list_pluck((array)$tag_candidates, 'id'));
+        $category_ids = array();
+        foreach ((array)($parsed['category_ids'] ?? array()) as $id) {
+            $id = absint($id);
+            if (!$id || !in_array($id, $candidate_category_ids, true)) { $warnings[] = 'Categoria AI scartata perché non candidata.'; continue; }
+            $term = get_term($id, 'category');
+            if (!$term || is_wp_error($term)) { $warnings[] = 'Categoria AI scartata perché inesistente.'; continue; }
+            $category_ids[$id] = $id;
+            if (count($category_ids) >= 3) { break; }
+        }
+        if (empty($category_ids) && !empty($candidate_category_ids)) {
+            $category_ids[$candidate_category_ids[0]] = $candidate_category_ids[0];
+            $warnings[] = 'Categoria fallback applicata dal primo candidato coerente.';
+        }
+
+        $tag_ids = array();
+        foreach ((array)($parsed['tag_ids'] ?? array()) as $id) {
+            $id = absint($id);
+            if (!$id) { continue; }
+            if (!in_array($id, $candidate_tag_ids, true)) { $warnings[] = 'Tag esistente scartato perché non candidato.'; continue; }
+            $term = get_term($id, 'post_tag');
+            if (!$term || is_wp_error($term)) { $warnings[] = 'Tag esistente scartato perché inesistente.'; continue; }
+            $tag_ids[$id] = $id;
+            if (count($tag_ids) >= 8) { break; }
+        }
+
+        $blocked = array('viaggio','tour','esperienza','consigli','cosa vedere','da non perdere','italia','vacanze');
+        $blocked = array_merge($blocked, (array)apply_filters('alma_ai_blocked_new_tag_terms', array()));
+        $allowed = (array)apply_filters('alma_ai_allowed_new_tag_terms', array());
+        $max_new = max(0, absint(apply_filters('alma_ai_max_new_tags', 3)));
+        $max_total = max(1, absint(apply_filters('alma_ai_max_total_tags', 8)));
+        $new_tags = array();
+        foreach ((array)($parsed['new_tags'] ?? array()) as $tag) {
+            if (count($new_tags) >= $max_new || (count($tag_ids) + count($new_tags)) >= $max_total) { break; }
+            $tag = sanitize_text_field(wp_strip_all_tags((string)$tag));
+            $tag = trim(preg_replace('/\s+/', ' ', $tag));
+            if ($tag === '' || mb_strlen($tag) > 40) { $warnings[] = 'Nuovo tag scartato perché vuoto o troppo lungo.'; continue; }
+            $norm = self::normalize_taxonomy_text($tag);
+            $is_allowed = in_array($norm, array_map(array(__CLASS__, 'normalize_taxonomy_text'), $allowed), true);
+            if (!$is_allowed && in_array($norm, array_map(array(__CLASS__, 'normalize_taxonomy_text'), $blocked), true)) { $warnings[] = 'Nuovo tag generico scartato: '.$tag.'.'; continue; }
+            if (!$is_allowed && strpos($norm, ' ') === false && in_array($norm, array('viaggio','tour','esperienza','consigli','vacanze','italia'), true)) { $warnings[] = 'Nuovo tag mon parola generico scartato: '.$tag.'.'; continue; }
+            $existing = term_exists($tag, 'post_tag');
+            if (is_array($existing) && !empty($existing['term_id'])) { $tag_ids[absint($existing['term_id'])] = absint($existing['term_id']); continue; }
+            if ($existing && is_numeric($existing)) { $tag_ids[absint($existing)] = absint($existing); continue; }
+            $key = self::normalize_taxonomy_text($tag);
+            $new_tags[$key] = $tag;
+        }
+        $tag_ids = array_slice(array_values($tag_ids), 0, $max_total);
+        if (count($tag_ids) + count($new_tags) > $max_total) { $new_tags = array_slice($new_tags, 0, max(0, $max_total - count($tag_ids)), true); }
+        return array('category_ids'=>array_values($category_ids), 'tag_ids'=>$tag_ids, 'new_tags'=>array_values($new_tags), 'warnings'=>array_values(array_unique($warnings)));
+    }
+
+    private static function apply_taxonomies_to_post($post_id, $validated) {
+        $warnings = array();
+        $category_ids = array_values(array_filter(array_map('absint', (array)($validated['category_ids'] ?? array()))));
+        $tag_ids = array_values(array_filter(array_map('absint', (array)($validated['tag_ids'] ?? array()))));
+        $new_tags = (array)($validated['new_tags'] ?? array());
+        if (!empty($category_ids)) {
+            $res = wp_set_post_terms($post_id, $category_ids, 'category', false);
+            if (is_wp_error($res)) { $warnings[] = 'Errore applicazione categorie: '.$res->get_error_message(); $category_ids = array(); }
+        }
+        $tag_terms = $tag_ids;
+        $created = array();
+        if (!empty($new_tags) && current_user_can('manage_categories')) {
+            foreach ($new_tags as $tag) {
+                $tag = sanitize_text_field(wp_strip_all_tags((string)$tag));
+                if ($tag === '') { continue; }
+                $exists = term_exists($tag, 'post_tag');
+                if (!$exists) { $exists = wp_insert_term($tag, 'post_tag'); }
+                if (is_wp_error($exists)) { $warnings[] = 'Errore creazione tag '.$tag.': '.$exists->get_error_message(); continue; }
+                $term_id = is_array($exists) ? absint($exists['term_id'] ?? 0) : absint($exists);
+                if ($term_id) { $tag_terms[] = $term_id; $created[] = $tag; }
+            }
+        } elseif (!empty($new_tags)) {
+            $warnings[] = 'Nuovi tag non creati: capability manage_categories mancante.';
+        }
+        $tag_terms = array_values(array_unique(array_filter(array_map('absint', $tag_terms))));
+        if (!empty($tag_terms)) {
+            $res = wp_set_post_terms($post_id, $tag_terms, 'post_tag', false);
+            if (is_wp_error($res)) { $warnings[] = 'Errore applicazione tag: '.$res->get_error_message(); $tag_terms = array(); }
+        }
+        return array('category_ids'=>$category_ids, 'tag_ids'=>$tag_terms, 'new_tags'=>$created, 'warnings'=>$warnings);
+    }
+
     private static function build_payload_from_selection_session($user_id = 0) {
         global $wpdb;
         $user_id = absint($user_id ?: get_current_user_id());
@@ -666,6 +850,10 @@ class ALMA_AI_Content_Agent_Draft_Builder {
             'idea_title' => $idea_title,
         ));
 
+        $taxonomy_seed_payload = array('openai_prompt'=>$openai_prompt,'idea_context'=>array('idea_title'=>$idea_title,'search_query'=>sanitize_text_field($session['last_query']['search_terms'] ?? $content_search_query)),'user_inputs'=>array('destination'=>sanitize_text_field($session['last_query']['destination'] ?? ''),'theme'=>sanitize_text_field($session['last_query']['theme'] ?? '')),'internal_links'=>(array)($internal_link_selection['items'] ?? array()),'affiliate_links'=>$affiliate_links);
+        $category_candidates = self::build_taxonomy_candidates($taxonomy_seed_payload, 'category', 8);
+        $tag_candidates = self::build_taxonomy_candidates($taxonomy_seed_payload, 'post_tag', 15);
+
         $profile_payload = self::build_instruction_profile_payload($session, $warnings);
         $affiliate_rules = array(
             'Usare solo i link affiliati selezionati nel payload.',
@@ -730,6 +918,9 @@ class ALMA_AI_Content_Agent_Draft_Builder {
             'affiliate_links'=>$affiliate_links,
             'internal_links'=>(array)($internal_link_selection['items'] ?? array()),
             'internal_link_rules'=>self::default_internal_link_rules(),
+            'category_candidates'=>$category_candidates,
+            'tag_candidates'=>$tag_candidates,
+            'taxonomy_rules'=>self::taxonomy_rules(),
             'internal_link_diagnostics'=>(array)($internal_link_selection['diagnostics'] ?? array()),
             'internal_link_debug'=>(array)($internal_link_selection['diagnostics'] ?? array()),
             'source_agent_prompts'=>$source_agent_prompts,
@@ -737,7 +928,7 @@ class ALMA_AI_Content_Agent_Draft_Builder {
             'affiliate_rules'=>$affiliate_rules,
             'seo_rules'=>$seo_rules,
             'media_rules'=>array_filter(array('Usare immagini affiliate solo se pertinenti alla sezione.','Non inventare URL immagini.','Usare solo immagini presenti nei link affiliati selezionati.','Non duplicare troppe volte la stessa immagine.','Non scaricare immagini durante la generazione bozza.', $profile_payload['instruction_profile_rules']['image_rules'] ?? '')),
-            'output_contract'=>array('title','slug','excerpt','content','seo_title','seo_description','affiliate_shortcodes_used','affiliate_urls_used','internal_urls_used','media_used','warnings'),
+            'output_contract'=>array('title','slug','excerpt','content','seo_title','seo_description','affiliate_shortcodes_used','affiliate_urls_used','internal_urls_used','media_used','category_ids','tag_ids','new_tags','warnings'),
             'warnings'=>array_values(array_unique($warnings)),
             'agent_behavior'=>$agent_behavior,
         ), $profile_payload);
@@ -920,9 +1111,14 @@ class ALMA_AI_Content_Agent_Draft_Builder {
         $candidate_image_ids = array_values(array_map('absint', wp_list_pluck((array)$ctx['media'], 'attachment_id')));
         $candidate_affiliate_images = self::candidate_affiliate_images($ctx['affiliate_links']);
         $clean = ALMA_AI_Content_Agent_Draft_Quality_Checker::validate_payload($parsed, $candidate_affiliate_ids, $candidate_image_ids, $candidate_affiliate_images, (array)($payload['internal_links'] ?? array()));
+        $taxonomy_clean = self::validate_taxonomies($parsed, (array)($payload['category_candidates'] ?? array()), (array)($payload['tag_candidates'] ?? array()));
+        $clean['warnings'] = array_values(array_unique(array_merge((array)$clean['warnings'], (array)$taxonomy_clean['warnings'])));
         if ($clean['title'] === '' || trim(wp_strip_all_tags($clean['content'])) === '') { return self::fail('Titolo o contenuto non validi dopo QA.', $res['model'] ?? '', 'session:user:'.$user_id); }
         $post_id = wp_insert_post(array('post_type'=>'post','post_status'=>'draft','post_author'=>$user_id,'post_title'=>$clean['title'],'post_name'=>$clean['slug'],'post_excerpt'=>$clean['excerpt'],'post_content'=>$clean['content']), true);
         if (is_wp_error($post_id) || !$post_id) { return self::fail('Errore creazione bozza.', $res['model'] ?? '', 'session:user:'.$user_id); }
+        $taxonomy_applied = self::apply_taxonomies_to_post($post_id, $taxonomy_clean);
+        $taxonomy_warnings = array_values(array_unique(array_merge((array)$taxonomy_clean['warnings'], (array)$taxonomy_applied['warnings'])));
+
         update_post_meta($post_id, '_alma_ai_agent_generated', 1);
         update_post_meta($post_id, '_alma_ai_agent_task', self::TASK_SELECTION);
         update_post_meta($post_id, '_alma_ai_agent_model', sanitize_text_field($res['model'] ?? ''));
@@ -938,10 +1134,14 @@ class ALMA_AI_Content_Agent_Draft_Builder {
         update_post_meta($post_id, '_alma_ai_agent_affiliate_urls_used', wp_json_encode((array)($clean['affiliate_urls_used'] ?? array())));
         update_post_meta($post_id, '_alma_ai_agent_internal_urls_used', wp_json_encode((array)($clean['internal_urls_used'] ?? array())));
         update_post_meta($post_id, '_alma_ai_agent_media_used', wp_json_encode((array)($clean['media_used'] ?? array())));
+        update_post_meta($post_id, '_alma_ai_category_ids', wp_json_encode((array)($taxonomy_applied['category_ids'] ?? array())));
+        update_post_meta($post_id, '_alma_ai_tag_ids', wp_json_encode((array)($taxonomy_applied['tag_ids'] ?? array())));
+        update_post_meta($post_id, '_alma_ai_new_tags', wp_json_encode((array)($taxonomy_applied['new_tags'] ?? array())));
+        update_post_meta($post_id, '_alma_ai_taxonomy_warnings', wp_json_encode($taxonomy_warnings));
         update_post_meta($post_id, '_alma_ai_agent_instruction_profile_id', absint($session['instruction_profile_id'] ?? ($profile['id'] ?? 0)));
         update_post_meta($post_id, '_alma_ai_agent_instruction_profile_name', sanitize_text_field($profile['profile_name'] ?? ($session['instruction_profile_name'] ?? '')));
         update_post_meta($post_id, '_alma_ai_agent_instruction_snapshot_hash', sanitize_text_field($session['instruction_snapshot_hash'] ?? ALMA_AI_Content_Agent_Instructions_Manager::snapshot_hash(wp_json_encode($profile))));
-        update_post_meta($post_id, '_alma_ai_agent_qa_warnings', wp_json_encode(array_values(array_unique(array_merge($warnings, (array)$clean['warnings'], (array)($parsed['warnings'] ?? array()))))));
+        update_post_meta($post_id, '_alma_ai_agent_qa_warnings', wp_json_encode(array_values(array_unique(array_merge($warnings, (array)$clean['warnings'], $taxonomy_warnings, (array)($parsed['warnings'] ?? array()))))));
         update_post_meta($post_id, '_alma_ai_generated_at', current_time('mysql'));
         $active_idea_id = absint(get_user_meta($user_id, '_alma_active_idea_id', true));
         if ($active_idea_id > 0) {
@@ -957,7 +1157,7 @@ class ALMA_AI_Content_Agent_Draft_Builder {
             'title'=>$clean['title'],
             'edit_url'=>get_edit_post_link($post_id, 'raw'),
             'preview_url'=>get_preview_post_link($post_id),
-            'warnings'=>array_values(array_unique(array_merge($warnings, (array)$clean['warnings'], (array)($parsed['warnings'] ?? array())))),
+            'warnings'=>array_values(array_unique(array_merge($warnings, (array)$clean['warnings'], $taxonomy_warnings, (array)($parsed['warnings'] ?? array())))),
             'model'=>$res['model'] ?? '',
             'usage'=>$res['usage'] ?? array(),
             'summary'=>array(
@@ -971,6 +1171,14 @@ class ALMA_AI_Content_Agent_Draft_Builder {
                     'source_online'=>count((array)$ctx['sources_online']),
                     'media'=>count((array)$ctx['media']),
                     'internal_link'=>count((array)($payload['internal_links'] ?? array())),
+                    'category_candidate'=>count((array)($payload['category_candidates'] ?? array())),
+                    'tag_candidate'=>count((array)($payload['tag_candidates'] ?? array())),
+                ),
+                'taxonomies'=>array(
+                    'category_ids'=>(array)($taxonomy_applied['category_ids'] ?? array()),
+                    'tag_ids'=>(array)($taxonomy_applied['tag_ids'] ?? array()),
+                    'new_tags'=>(array)($taxonomy_applied['new_tags'] ?? array()),
+                    'warnings'=>$taxonomy_warnings,
                 ),
                 'affiliate_images'=>array(
                     'candidates'=>count($candidate_affiliate_images),

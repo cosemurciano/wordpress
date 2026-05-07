@@ -1,3 +1,16 @@
+## 2.25.41 — AI taxonomy assignment and internal link QA fixes
+- Allineata la versione plugin tra header WordPress `Version:` e costante `ALMA_VERSION`, aggiornando la documentazione alla stessa release.
+- Corretto il QA dei link interni relativi: gli URL same-site che iniziano con `/` vengono normalizzati con `home_url()`, confrontati con `internal_links`, convertiti all’URL assoluto autorizzato e registrati in `internal_urls_used`; i relativi non autorizzati vengono de-linkati lasciando il testo.
+- Esclusi dal riconoscimento interno gli URL protocol-relative, `mailto:`, `tel:`, `javascript:` e ancore pure.
+- Aggiunta separazione HTML sicura dopo immagini affiliate cliccabili quando il testo prosegue immediatamente dopo `</a>`, preservando link, immagini e markup valido.
+- Aggiunta penalizzazione filtrabile dei link interni stagionali/datati per contenuti evergreen, con filtri `alma_ai_internal_link_time_sensitive_terms` e `alma_ai_internal_link_time_sensitive_penalty`.
+- Aggiunti `category_candidates` e `tag_candidates` compatti al payload OpenAI, derivati solo da tassonomie WordPress esistenti e da match coerenti con prompt, destinazione, link interni e affiliati.
+- Aggiunte `taxonomy_rules` e i campi obbligatori `category_ids`, `tag_ids`, `new_tags` al contratto/output requirements.
+- Aggiunto QA locale per accettare solo categorie candidate esistenti, validare tag esistenti candidati, bloccare tag generici, limitare i nuovi tag e riusare tag esistenti quando coincidono.
+- Salvate categorie e tag validati sulla bozza con meta diagnostici `_alma_ai_category_ids`, `_alma_ai_tag_ids`, `_alma_ai_new_tags` e `_alma_ai_taxonomy_warnings`; le categorie restano solo esistenti e i nuovi tag vengono creati solo dopo QA e capability adeguata.
+- Aggiornato il riepilogo admin con candidati/applicazioni tassonomie e warning sintetici.
+- Versione plugin aggiornata a `2.25.41`.
+
 ## 2.25.40 — AI Content Agent internal link relevance
 - La selezione dei link interni ora combina i tre campi delle Idee contenuto: `content_search_query` / Cerca contenuti, Titolo idea e `openai_prompt` / Prompt per OpenAI.
 - Aggiunta distinzione tra termini forti e termini deboli/generici, con stoplist travel filtrabile tramite `alma_ai_internal_link_stop_terms`.
