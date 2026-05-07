@@ -22,7 +22,72 @@ class ALMA_AI_Content_Agent_Internal_Link_Index {
         global $wpdb;
         require_once ABSPATH . 'wp-admin/includes/upgrade.php';
         $c = $wpdb->get_charset_collate();
-        dbDelta("CREATE TABLE " . self::table_name() . " (id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,post_id BIGINT UNSIGNED NOT NULL,post_type VARCHAR(40) NOT NULL DEFAULT 'post',post_status VARCHAR(20) NOT NULL DEFAULT 'publish',post_title TEXT NOT NULL,post_slug VARCHAR(200) NOT NULL DEFAULT '',permalink TEXT NOT NULL,post_excerpt TEXT NULL,categories_json LONGTEXT NULL,tags_json LONGTEXT NULL,search_text LONGTEXT NULL,published_at DATETIME NULL,modified_at DATETIME NULL,indexed_at DATETIME NULL,PRIMARY KEY (id),UNIQUE KEY post_id (post_id),KEY post_type_status (post_type, post_status),KEY post_slug (post_slug),KEY published_at (published_at),KEY modified_at (modified_at),KEY indexed_at (indexed_at)) $c;");
+        dbDelta("CREATE TABLE " . self::table_name() . " (id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,post_id BIGINT UNSIGNED NOT NULL,post_type VARCHAR(40) NOT NULL DEFAULT 'post',post_status VARCHAR(20) NOT NULL DEFAULT 'publish',post_title TEXT NOT NULL,post_slug VARCHAR(200) NOT NULL DEFAULT '',permalink TEXT NOT NULL,post_excerpt TEXT NULL,categories_json LONGTEXT NULL,tags_json LONGTEXT NULL,search_text LONGTEXT NULL,published_at DATETIME NULL,modified_at DATETIME NULL,indexed_at DATETIME NULL,indexed_at_gmt DATETIME NULL,PRIMARY KEY (id),UNIQUE KEY post_id (post_id),KEY post_type_status (post_type, post_status),KEY post_slug (post_slug),KEY published_at (published_at),KEY modified_at (modified_at),KEY indexed_at (indexed_at),KEY indexed_at_gmt (indexed_at_gmt)) $c;");
+        return self::ensure_schema();
+    }
+
+    public static function expected_columns() {
+        return array(
+            'post_id' => 'BIGINT UNSIGNED NOT NULL DEFAULT 0',
+            'post_type' => "VARCHAR(40) NOT NULL DEFAULT 'post'",
+            'post_status' => "VARCHAR(20) NOT NULL DEFAULT 'publish'",
+            'post_title' => 'TEXT NOT NULL',
+            'post_slug' => "VARCHAR(200) NOT NULL DEFAULT ''",
+            'permalink' => 'TEXT NOT NULL',
+            'post_excerpt' => 'TEXT NULL',
+            'categories_json' => 'LONGTEXT NULL',
+            'tags_json' => 'LONGTEXT NULL',
+            'search_text' => 'LONGTEXT NULL',
+            'published_at' => 'DATETIME NULL',
+            'modified_at' => 'DATETIME NULL',
+            'indexed_at' => 'DATETIME NULL',
+            'indexed_at_gmt' => 'DATETIME NULL',
+        );
+    }
+
+    public static function ensure_schema() {
+        global $wpdb;
+        $table = self::table_name();
+        $table_exists = $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $table));
+        if ($table_exists !== $table) {
+            return array('success'=>false,'added_columns'=>array(),'missing_columns'=>array_keys(self::expected_columns()),'checked_columns'=>array_keys(self::expected_columns()),'error'=>'Tabella internal_link_index non disponibile.');
+        }
+
+        $wpdb->last_error = '';
+        $existing = $wpdb->get_results('SHOW COLUMNS FROM `' . str_replace('`', '``', $table) . '`', ARRAY_A);
+        if (!is_array($existing)) {
+            return array('success'=>false,'added_columns'=>array(),'missing_columns'=>array_keys(self::expected_columns()),'checked_columns'=>array_keys(self::expected_columns()),'error'=>sanitize_text_field($wpdb->last_error ?: 'SHOW COLUMNS non riuscito.'));
+        }
+
+        $existing_columns = array();
+        foreach ($existing as $column) {
+            if (!empty($column['Field'])) { $existing_columns[(string)$column['Field']] = true; }
+        }
+
+        $added = array();
+        $errors = array();
+        foreach (self::expected_columns() as $column => $definition) {
+            if (isset($existing_columns[$column])) { continue; }
+            $wpdb->last_error = '';
+            $ok = $wpdb->query('ALTER TABLE `' . str_replace('`', '``', $table) . '` ADD COLUMN `' . str_replace('`', '``', $column) . '` ' . $definition);
+            if ($ok === false) {
+                $errors[] = $column . ': ' . sanitize_text_field($wpdb->last_error ?: 'ALTER TABLE non riuscito.');
+                continue;
+            }
+            $added[] = $column;
+            $existing_columns[$column] = true;
+        }
+
+        $missing = array();
+        foreach (array_keys(self::expected_columns()) as $column) {
+            if (!isset($existing_columns[$column])) { $missing[] = $column; }
+        }
+
+        $success = empty($missing) && empty($errors);
+        $error = '';
+        if (!$success) { $error = implode(' | ', array_merge($errors, array_map('sanitize_text_field', $missing))); }
+        if (!empty($added)) { error_log('ALMA internal link index schema updated: added missing columns ' . implode(', ', array_map('sanitize_key', $added))); }
+        return array('success'=>$success,'added_columns'=>$added,'missing_columns'=>$missing,'checked_columns'=>array_keys(self::expected_columns()),'error'=>$error);
     }
 
     public static function get_stats() {
@@ -67,6 +132,8 @@ class ALMA_AI_Content_Agent_Internal_Link_Index {
         $state = get_option(self::OPTION_STATE, array());
         $exists = $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $table));
         if ($exists !== $table) { return self::empty_pending_counts(false, sanitize_text_field($state['last_rebuild_at'] ?? '')); }
+        $schema = self::ensure_schema();
+        if (empty($schema['success'])) { return self::empty_pending_counts(true, sanitize_text_field($state['last_rebuild_at'] ?? '')); }
         $post_types = self::supported_post_types();
         if (empty($post_types)) { return self::empty_pending_counts(true, sanitize_text_field($state['last_rebuild_at'] ?? '')); }
         $type_placeholders = self::post_type_sql_placeholders($post_types);
@@ -74,7 +141,7 @@ class ALMA_AI_Content_Agent_Internal_Link_Index {
         $indexed = (int) $wpdb->get_var("SELECT COUNT(*) FROM $table WHERE post_status='publish'");
         $last_indexed_at = (string) $wpdb->get_var("SELECT MAX(indexed_at) FROM $table");
         $new_sql = "SELECT COUNT(1) FROM {$wpdb->posts} p LEFT JOIN $table i ON i.post_id = p.ID WHERE p.post_type IN ($type_placeholders) AND p.post_status='publish' AND i.post_id IS NULL";
-        $modified_sql = "SELECT COUNT(1) FROM {$wpdb->posts} p INNER JOIN $table i ON i.post_id = p.ID WHERE p.post_type IN ($type_placeholders) AND p.post_status='publish' AND (i.indexed_at IS NULL OR p.post_modified_gmt > i.indexed_at)";
+        $modified_sql = "SELECT COUNT(1) FROM {$wpdb->posts} p INNER JOIN $table i ON i.post_id = p.ID WHERE p.post_type IN ($type_placeholders) AND p.post_status='publish' AND (i.indexed_at_gmt IS NULL OR i.indexed_at_gmt = '0000-00-00 00:00:00' OR p.post_modified_gmt > i.indexed_at_gmt)";
         $stale_sql = "SELECT COUNT(1) FROM $table i LEFT JOIN {$wpdb->posts} p ON p.ID = i.post_id WHERE p.ID IS NULL OR p.post_type NOT IN ($type_placeholders) OR p.post_status <> 'publish'";
 
         return array(
@@ -90,11 +157,12 @@ class ALMA_AI_Content_Agent_Internal_Link_Index {
 
     public static function sync_pending($limit = 300) {
         global $wpdb;
-        self::install_table();
+        $schema = self::install_table();
         $table = self::table_name();
         $post_types = self::supported_post_types();
         $limit = max(1, min(500, absint($limit)));
-        $result = array('new'=>0,'modified'=>0,'stale'=>0,'errors'=>0);
+        $result = array('new'=>0,'modified'=>0,'stale'=>0,'errors'=>0,'schema'=>$schema);
+        if (empty($schema['success'])) { $result['errors'] = 1; return $result; }
         if (empty($post_types)) { return $result; }
         $type_placeholders = self::post_type_sql_placeholders($post_types);
 
@@ -105,7 +173,7 @@ class ALMA_AI_Content_Agent_Internal_Link_Index {
         }
 
         $remaining = max(1, $limit - count((array) $new_ids));
-        $modified_sql = "SELECT p.ID FROM {$wpdb->posts} p INNER JOIN $table i ON i.post_id = p.ID WHERE p.post_type IN ($type_placeholders) AND p.post_status='publish' AND (i.indexed_at IS NULL OR p.post_modified_gmt > i.indexed_at) ORDER BY p.ID ASC LIMIT %d";
+        $modified_sql = "SELECT p.ID FROM {$wpdb->posts} p INNER JOIN $table i ON i.post_id = p.ID WHERE p.post_type IN ($type_placeholders) AND p.post_status='publish' AND (i.indexed_at_gmt IS NULL OR i.indexed_at_gmt = '0000-00-00 00:00:00' OR p.post_modified_gmt > i.indexed_at_gmt) ORDER BY p.ID ASC LIMIT %d";
         $modified_ids = $wpdb->get_col($wpdb->prepare($modified_sql, array_merge($post_types, array($remaining))));
         foreach ((array) $modified_ids as $post_id) {
             if (self::index_post((int) $post_id)) { $result['modified']++; } else { $result['errors']++; }
@@ -201,6 +269,7 @@ class ALMA_AI_Content_Agent_Internal_Link_Index {
             'published_at' => sanitize_text_field($post->post_date),
             'modified_at' => sanitize_text_field($post->post_modified),
             'indexed_at' => current_time('mysql'),
+            'indexed_at_gmt' => current_time('mysql', true),
         );
         $existing = (int) $wpdb->get_var($wpdb->prepare('SELECT id FROM ' . self::table_name() . ' WHERE post_id=%d', $post_id));
         if ($existing > 0) { return false !== $wpdb->update(self::table_name(), $data, array('post_id'=>$post_id)); }

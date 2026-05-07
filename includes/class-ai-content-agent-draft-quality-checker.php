@@ -455,6 +455,44 @@ class ALMA_AI_Content_Agent_Draft_Quality_Checker {
         return array(self::dom_inner_html_from_root($dom, $root), $retained);
     }
 
+
+    private static function collect_editorial_media_from_content($content, $editorial_index, $affiliate_index) {
+        $retained = array();
+        $seen = array();
+        $remember = function($src) use ($editorial_index, $affiliate_index, &$retained, &$seen) {
+            if (self::affiliate_record_by_src($src, $affiliate_index)) { return; }
+            $record = self::editorial_record_by_src($src, $editorial_index);
+            if (!$record) { return; }
+            $key = (string)$record['attachment_id'];
+            if (isset($seen[$key])) { return; }
+            $seen[$key] = true;
+            $retained[] = $record;
+        };
+
+        if (!class_exists('DOMDocument')) {
+            if (preg_match_all('/<img\b[^>]*>/i', (string)$content, $matches)) {
+                foreach ($matches[0] as $tag) {
+                    if (preg_match('/\ssrc=["\']([^"\']+)["\']/i', $tag, $m)) { $remember($m[1]); }
+                }
+            }
+            return $retained;
+        }
+
+        $dom = new DOMDocument('1.0', 'UTF-8');
+        $previous = libxml_use_internal_errors(true);
+        $flags = 0;
+        if (defined('LIBXML_HTML_NOIMPLIED')) { $flags |= LIBXML_HTML_NOIMPLIED; }
+        if (defined('LIBXML_HTML_NODEFDTD')) { $flags |= LIBXML_HTML_NODEFDTD; }
+        $loaded = $dom->loadHTML('<div id="alma-media-final-root">' . mb_convert_encoding((string)$content, 'HTML-ENTITIES', 'UTF-8') . '</div>', $flags);
+        libxml_clear_errors();
+        libxml_use_internal_errors($previous);
+        if (!$loaded) { return $retained; }
+        $root = $dom->getElementById('alma-media-final-root');
+        if (!$root) { return $retained; }
+        foreach ($root->getElementsByTagName('img') as $img) { $remember($img->getAttribute('src')); }
+        return $retained;
+    }
+
     private static function normalize_editorial_media_used_for_content($payload_media_used, $editorial_index, $retained_editorial_media, $max_editorial_media_used, &$warnings) {
         $max = max(0, min(5, absint($max_editorial_media_used)));
         $retained_ids = array();
@@ -684,7 +722,11 @@ class ALMA_AI_Content_Agent_Draft_Quality_Checker {
         $content = self::sanitize_content_html($content);
         list($content, $retained_editorial_media) = self::enforce_editorial_media_limit_in_content($content, $editorial_index, $index, $max_editorial_media_used, $warnings);
         $content = self::sanitize_content_html($content);
-        $editorial_media_used = self::normalize_editorial_media_used_for_content((array)($payload['media_used'] ?? array()), $editorial_index, $retained_editorial_media, $max_editorial_media_used, $warnings);
+        $final_editorial_media = self::collect_editorial_media_from_content($content, $editorial_index, $index);
+        if (count($final_editorial_media) < count($retained_editorial_media)) {
+            $warnings[] = 'media_used riallineato all’HTML finale dopo la rimozione di contenuti media oltre limite.';
+        }
+        $editorial_media_used = self::normalize_editorial_media_used_for_content((array)($payload['media_used'] ?? array()), $editorial_index, $final_editorial_media, $max_editorial_media_used, $warnings);
         list($affiliate_urls_used, $affiliate_media_used, $affiliate_images_used) = self::collect_final_affiliate_usage($content, $index);
         $media_used = $editorial_media_used;
         $affiliate_urls_used = self::dedupe_strings($affiliate_urls_used);

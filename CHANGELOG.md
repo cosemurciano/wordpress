@@ -1,3 +1,12 @@
+## 2.25.49 — Fix dashboard pending counts and media QA consistency
+- Corretto il conteggio pending della Dashboard per i Link affiliati: `non_active_candidate_records` contribuisce agli aggiornamenti disponibili, abilita la CTA di sync incrementale ed è mostrato come link candidabili da sincronizzare.
+- Corretto il confronto timezone dei pending Link interni: `post_modified_gmt` viene confrontato con il nuovo `indexed_at_gmt`, salvato in GMT, mantenendo `indexed_at` locale per compatibilità/UI.
+- Corretto il confronto timezone dei pending Media Library: `post_modified_gmt` viene confrontato con il nuovo `indexed_at_gmt`, salvato in GMT, mantenendo `indexed_at` locale per compatibilità/UI.
+- Aggiunta migrazione schema difensiva per `indexed_at_gmt` sugli indici Link interni e Media, con `SHOW COLUMNS` e `ALTER TABLE` idempotente se la colonna manca.
+- Riallineato `media_used` all’HTML finale dopo la rimozione di immagini editoriali oltre limite, così un `<figure>` condiviso rimosso non lascia immagini non più presenti nei metadati.
+- Nessuna modifica al payload OpenAI, alla generazione contenuti, allo scoring media/link interni, agli import Viator/GetYourGuide o all’applicazione automatica featured image.
+- Versione plugin aggiornata a `2.25.49`.
+
 ## 2.25.48 — Fix AI media payload QA regressions
 - Corretta la validazione legacy di `featured_image_id`: quando `featured_image_candidates` è assente o vuoto resta valido il fallback su `candidate_image_ids` attachment.
 - Salvata nei meta della bozza selection-session la featured image scelta e validata da OpenAI con ID, URL risolto e source quando disponibili, senza applicare automaticamente `set_post_thumbnail`.

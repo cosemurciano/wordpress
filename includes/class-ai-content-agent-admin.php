@@ -387,6 +387,7 @@ class ALMA_AI_Content_Agent_Admin {
             'table_exists' => !empty($affiliate['table_exists']),
             'new' => (int)($affiliate['missing_index'] ?? 0),
             'modified' => (int)($affiliate['stale_index_records'] ?? 0),
+            'candidate_sync' => (int)($affiliate['non_active_candidate_records'] ?? 0),
             'stale' => (int)($affiliate['orphan_index_records'] ?? 0) + (int)($affiliate['active_invalid_records'] ?? 0),
             'indexed' => (int)($affiliate['indexed_active'] ?? 0),
             'description' => 'Riuso della sync incrementale esistente per aggiornare link mancanti, modificati o non più validi.',
@@ -428,13 +429,21 @@ class ALMA_AI_Content_Agent_Admin {
         $new = (int)($args['new'] ?? 0);
         $modified = (int)($args['modified'] ?? 0);
         $stale = (int)($args['stale'] ?? 0);
+        $candidate_sync = (int)($args['candidate_sync'] ?? 0);
         $indexed = (int)($args['indexed'] ?? 0);
-        $has_pending = ($new + $modified + $stale) > 0;
+        $has_pending = ($new + $modified + $stale + $candidate_sync) > 0;
         $table_exists = !empty($args['table_exists']);
         $state_class = !$table_exists ? 'alma-dashboard-alert--error' : ($has_pending ? 'alma-dashboard-alert--warning' : 'alma-dashboard-alert--ok');
         $icon = !$table_exists ? '✕' : ($has_pending ? '⚠' : '✓');
         $status = !$table_exists ? 'Errore: tabella indice non disponibile' : ($has_pending ? 'Aggiornamenti disponibili' : 'Indice aggiornato');
-        $counts = sprintf('%d nuovi · %d modificati · %d obsoleti · %d indicizzati', $new, $modified, $stale, $indexed);
+        $counts_parts = array(
+            sprintf('%d nuovi', $new),
+            sprintf('%d modificati', $modified),
+        );
+        if ($candidate_sync > 0) { $counts_parts[] = sprintf('%d link candidabili da sincronizzare', $candidate_sync); }
+        $counts_parts[] = sprintf('%d obsoleti', $stale);
+        $counts_parts[] = sprintf('%d indicizzati', $indexed);
+        $counts = implode(' · ', $counts_parts);
 
         echo '<article class="alma-dashboard-alert '.esc_attr($state_class).'">';
         echo '<div class="alma-dashboard-alert-icon" aria-hidden="true">'.esc_html($icon).'</div><div class="alma-dashboard-alert-body">';
@@ -573,7 +582,7 @@ class ALMA_AI_Content_Agent_Admin {
     private static function render_dashboard_maintenance_section($affiliate, $internal, $internal_state, $media) {
         echo '<details id="alma-dashboard-maintenance-advanced" class="alma-maintenance-advanced"><summary>Manutenzione avanzata</summary><p class="description">Strumenti tecnici per ricostruire indici o azzerare stati batch. Usali solo per manutenzione: non eliminano contenuti editoriali o Link affiliati reali.</p>';
         echo '<div class="alma-maintenance-grid">';
-        echo '<section class="alma-maintenance-card"><h3>Indice Link affiliati</h3><ul><li>Record orfani: '.(int)$affiliate['orphan_index_records'].'</li><li>Record attivi non validi: '.(int)$affiliate['active_invalid_records'].'</li><li>Record indice inattivi: '.(int)$affiliate['inactive_index_records'].'</li><li>Mancanti dall’indice: '.(int)$affiliate['missing_index'].'</li><li>Da aggiornare: '.(int)$affiliate['stale_index_records'].'</li><li>Stato batch: '.esc_html($affiliate['batch_status']).'</li><li>Last processed ID: '.(int)($affiliate['batch']['last_processed_id'] ?? 0).'</li></ul>';
+        echo '<section class="alma-maintenance-card"><h3>Indice Link affiliati</h3><ul><li>Record orfani: '.(int)$affiliate['orphan_index_records'].'</li><li>Record attivi non validi: '.(int)$affiliate['active_invalid_records'].'</li><li>Record indice inattivi: '.(int)$affiliate['inactive_index_records'].'</li><li>Mancanti dall’indice: '.(int)$affiliate['missing_index'].'</li><li>Da aggiornare: '.(int)$affiliate['stale_index_records'].'</li><li>Link candidabili da sincronizzare: '.(int)$affiliate['non_active_candidate_records'].'</li><li>Stato batch: '.esc_html($affiliate['batch_status']).'</li><li>Last processed ID: '.(int)($affiliate['batch']['last_processed_id'] ?? 0).'</li></ul>';
         if (!empty($affiliate['batch']['last_error'])) { echo '<p class="description"><strong>Ultimo errore batch:</strong> '.esc_html($affiliate['batch']['last_error']).'</p>'; }
         echo '<div class="alma-actions-inline">';
         self::action_form('index_affiliate_links','Indicizza prossimo batch');
