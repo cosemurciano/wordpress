@@ -217,6 +217,17 @@ class ALMA_AI_Content_Agent_Draft_Quality_Checker {
         return $content;
     }
 
+
+    private static function separate_affiliate_image_anchors($content, &$warnings) {
+        $changed = false;
+        $content = preg_replace_callback('#(<a\b[^>]*>\s*(?:<figure\b[^>]*>\s*)?<img\b[^>]*>\s*(?:</figure>\s*)?</a>)(?=[\p{L}\p{N}])#iu', function($matches) use (&$changed) {
+            $changed = true;
+            return $matches[1] . "\n\n";
+        }, (string)$content);
+        if ($changed) { $warnings[] = 'Separazione HTML aggiunta dopo immagine affiliata cliccabile.'; }
+        return $content;
+    }
+
     private static function remove_bare_external_text_urls($content, $candidate_image_urls, $affiliate_url_index, &$warnings) {
         $parts = preg_split('/(<[^>]+>)/', (string)$content, -1, PREG_SPLIT_DELIM_CAPTURE);
         foreach ($parts as $i => $part) {
@@ -302,11 +313,21 @@ class ALMA_AI_Content_Agent_Draft_Quality_Checker {
         return $index;
     }
 
-    private static function is_internal_url($url, $internal_index) {
+    private static function canonical_internal_url($url, $internal_index) {
+        $url = trim(html_entity_decode((string)$url, ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+        if ($url === '' || $url[0] === '#') { return ''; }
+        if (preg_match('#^(?:mailto|tel|javascript):#i', $url)) { return ''; }
+        if (strpos($url, '//') === 0) { return ''; }
+        if (strpos($url, '/') === 0) { return esc_url_raw(home_url($url)); }
         $parts = wp_parse_url($url);
-        if (!is_array($parts) || empty($parts['host'])) { return false; }
+        if (!is_array($parts) || empty($parts['host'])) { return ''; }
         $home_host = strtolower((string)($internal_index['home_host'] ?? ''));
-        return $home_host !== '' && strtolower((string)$parts['host']) === $home_host;
+        if ($home_host === '' || strtolower((string)$parts['host']) !== $home_host) { return ''; }
+        return esc_url_raw($url);
+    }
+
+    private static function is_internal_url($url, $internal_index) {
+        return self::canonical_internal_url($url, $internal_index) !== '';
     }
 
     private static function enforce_internal_links_with_dom($content, $internal_index, &$warnings) {
@@ -324,9 +345,10 @@ class ALMA_AI_Content_Agent_Draft_Quality_Checker {
         $anchors = array();
         foreach ($dom->getElementsByTagName('a') as $anchor) { $anchors[] = $anchor; }
         foreach ($anchors as $anchor) {
-            $href = esc_url_raw(html_entity_decode((string)$anchor->getAttribute('href'), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
-            if ($href === '' || !self::is_internal_url($href, $internal_index)) { continue; }
-            $key = self::normalize_url_key($href);
+            $href = (string)$anchor->getAttribute('href');
+            $canonical_href = self::canonical_internal_url($href, $internal_index);
+            if ($canonical_href === '') { continue; }
+            $key = self::normalize_url_key($canonical_href);
             if ($key !== '' && isset($internal_index['by_url_key'][$key])) {
                 $url = $internal_index['by_url_key'][$key]['url'];
                 $used[$url] = $url;
@@ -341,10 +363,15 @@ class ALMA_AI_Content_Agent_Draft_Quality_Checker {
 
     private static function enforce_internal_links_with_regex($content, $internal_index, &$warnings, &$used) {
         return preg_replace_callback('#<a\b([^>]*\shref=["\']([^"\']+)["\'][^>]*)>(.*?)</a>#isu', function($m) use ($internal_index, &$warnings, &$used) {
-            $href = esc_url_raw(html_entity_decode((string)$m[2], ENT_QUOTES | ENT_HTML5, 'UTF-8'));
-            if ($href === '' || !self::is_internal_url($href, $internal_index)) { return $m[0]; }
-            $key = self::normalize_url_key($href);
-            if ($key !== '' && isset($internal_index['by_url_key'][$key])) { $used[$internal_index['by_url_key'][$key]['url']] = $internal_index['by_url_key'][$key]['url']; return $m[0]; }
+            $href = html_entity_decode((string)$m[2], ENT_QUOTES | ENT_HTML5, 'UTF-8');
+            $canonical_href = self::canonical_internal_url($href, $internal_index);
+            if ($canonical_href === '') { return $m[0]; }
+            $key = self::normalize_url_key($canonical_href);
+            if ($key !== '' && isset($internal_index['by_url_key'][$key])) {
+                $url = $internal_index['by_url_key'][$key]['url'];
+                $used[$url] = $url;
+                return preg_replace('/href=(["\']).*?\1/i', 'href="' . esc_url($url) . '"', $m[0], 1);
+            }
             $warnings[] = 'Link interno non autorizzato rimosso: URL non presente in internal_links.';
             return $m[3];
         }, (string)$content);
@@ -397,6 +424,7 @@ class ALMA_AI_Content_Agent_Draft_Quality_Checker {
         $added_urls = array();
         $content = self::repair_affiliate_anchors_with_dom($content, $index, $warnings, $added_urls);
         $content = self::sanitize_content_html($content);
+        $content = self::separate_affiliate_image_anchors($content, $warnings);
 
         $content = preg_replace_callback('/<img\b[^>]*>/i', function($matches) use (&$warnings, $candidate_image_urls){
             $tag = $matches[0];

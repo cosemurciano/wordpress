@@ -228,6 +228,7 @@ class ALMA_AI_Content_Agent_Admin {
             $summary = (array)($r['summary'] ?? array());
             $counts = (array)($summary['source_counts'] ?? array());
             $affiliate_images = (array)($summary['affiliate_images'] ?? array());
+            $taxonomies = (array)($summary['taxonomies'] ?? array());
             echo '<div class="notice notice-success"><h3 style="margin-top:0;">Bozza articolo creata</h3>';
             echo '<p><strong>Titolo:</strong> '.esc_html($r['title'] ?? '').'<br><strong>Stato:</strong> Bozza</p><p>';
             if (!empty($r['edit_url'])) { echo '<a class="button button-primary" href="'.esc_url($r['edit_url']).'">Modifica articolo</a> '; }
@@ -242,6 +243,14 @@ class ALMA_AI_Content_Agent_Admin {
             echo '<li><strong>Fonti online AI:</strong> '.(int)($counts['source_online'] ?? 0).'</li>';
             echo '<li><strong>Media:</strong> '.(int)($counts['media'] ?? 0).'</li>';
             echo '<li><strong>Link interni candidati:</strong> '.(int)($counts['internal_link'] ?? 0).'</li>';
+            echo '<li><strong>Categorie candidate:</strong> '.(int)($counts['category_candidate'] ?? 0).'</li>';
+            echo '<li><strong>Tag candidati:</strong> '.(int)($counts['tag_candidate'] ?? 0).'</li>';
+            if (!empty($taxonomies)) {
+                echo '<li><strong>Categorie applicate:</strong> '.esc_html(implode(', ', array_map('absint', (array)($taxonomies['category_ids'] ?? array())))).'</li>';
+                echo '<li><strong>Tag applicati:</strong> '.esc_html(implode(', ', array_map('absint', (array)($taxonomies['tag_ids'] ?? array())))).'</li>';
+                echo '<li><strong>Nuovi tag creati:</strong> '.esc_html(implode(', ', array_map('sanitize_text_field', (array)($taxonomies['new_tags'] ?? array())))).'</li>';
+                if (!empty($taxonomies['warnings'])) { echo '<li><strong>Warning tassonomie:</strong> '.esc_html(implode(' | ', array_map('sanitize_text_field', (array)$taxonomies['warnings']))).'</li>'; }
+            }
             if (!empty($affiliate_images)) {
                 echo '<li><strong>Immagini affiliate candidate:</strong> '.(int)($affiliate_images['candidates'] ?? 0).'</li>';
                 echo '<li><strong>Immagini affiliate usate:</strong> '.(int)($affiliate_images['used'] ?? 0).'</li>';
