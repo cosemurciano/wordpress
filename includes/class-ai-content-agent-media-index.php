@@ -25,7 +25,7 @@ class ALMA_AI_Content_Agent_Media_Index {
         global $wpdb;
         require_once ABSPATH . 'wp-admin/includes/upgrade.php';
         $c = $wpdb->get_charset_collate();
-        dbDelta("CREATE TABLE " . self::table_name() . " (id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,attachment_id BIGINT UNSIGNED NOT NULL,post_status VARCHAR(20) NOT NULL DEFAULT '',mime_type VARCHAR(120) NOT NULL DEFAULT '',title TEXT NULL,alt_text TEXT NULL,caption TEXT NULL,description LONGTEXT NULL,file_name VARCHAR(255) NOT NULL DEFAULT '',url_full TEXT NULL,url_large TEXT NULL,url_medium TEXT NULL,width INT UNSIGNED NOT NULL DEFAULT 0,height INT UNSIGNED NOT NULL DEFAULT 0,post_parent BIGINT UNSIGNED NOT NULL DEFAULT 0,attached_post_title TEXT NULL,media_origin VARCHAR(60) NOT NULL DEFAULT 'editorial',media_role VARCHAR(80) NOT NULL DEFAULT 'editorial_image',provider VARCHAR(80) NOT NULL DEFAULT '',source_id VARCHAR(190) NOT NULL DEFAULT '',external_id VARCHAR(190) NOT NULL DEFAULT '',related_post_id BIGINT UNSIGNED NOT NULL DEFAULT 0,related_post_type VARCHAR(60) NOT NULL DEFAULT '',is_affiliate_media TINYINT(1) NOT NULL DEFAULT 0,is_editorial_candidate TINYINT(1) NOT NULL DEFAULT 1,search_text LONGTEXT NULL,created_at DATETIME NULL,modified_at DATETIME NULL,indexed_at DATETIME NULL,PRIMARY KEY (id),UNIQUE KEY attachment_id (attachment_id),KEY post_status (post_status),KEY mime_type (mime_type),KEY post_parent (post_parent),KEY media_origin (media_origin),KEY media_role (media_role),KEY is_affiliate_media (is_affiliate_media),KEY is_editorial_candidate (is_editorial_candidate),KEY related_post (related_post_id, related_post_type),KEY indexed_at (indexed_at)) $c;");
+        dbDelta("CREATE TABLE " . self::table_name() . " (id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,attachment_id BIGINT UNSIGNED NOT NULL,post_status VARCHAR(20) NOT NULL DEFAULT '',mime_type VARCHAR(120) NOT NULL DEFAULT '',title TEXT NULL,alt_text TEXT NULL,caption TEXT NULL,description LONGTEXT NULL,file_name VARCHAR(255) NOT NULL DEFAULT '',url_full TEXT NULL,url_large TEXT NULL,url_medium TEXT NULL,width INT UNSIGNED NOT NULL DEFAULT 0,height INT UNSIGNED NOT NULL DEFAULT 0,post_parent BIGINT UNSIGNED NOT NULL DEFAULT 0,attached_post_title TEXT NULL,media_origin VARCHAR(60) NOT NULL DEFAULT 'editorial',media_role VARCHAR(80) NOT NULL DEFAULT 'editorial_image',provider VARCHAR(80) NOT NULL DEFAULT '',source_id VARCHAR(190) NOT NULL DEFAULT '',external_id VARCHAR(190) NOT NULL DEFAULT '',related_post_id BIGINT UNSIGNED NOT NULL DEFAULT 0,related_post_type VARCHAR(60) NOT NULL DEFAULT '',is_affiliate_media TINYINT(1) NOT NULL DEFAULT 0,is_editorial_candidate TINYINT(1) NOT NULL DEFAULT 1,search_text LONGTEXT NULL,created_at DATETIME NULL,modified_at DATETIME NULL,indexed_at DATETIME NULL,indexed_at_gmt DATETIME NULL,PRIMARY KEY (id),UNIQUE KEY attachment_id (attachment_id),KEY post_status (post_status),KEY mime_type (mime_type),KEY post_parent (post_parent),KEY media_origin (media_origin),KEY media_role (media_role),KEY is_affiliate_media (is_affiliate_media),KEY is_editorial_candidate (is_editorial_candidate),KEY related_post (related_post_id, related_post_type),KEY indexed_at (indexed_at),KEY indexed_at_gmt (indexed_at_gmt)) $c;");
         return self::ensure_schema();
     }
 
@@ -63,6 +63,7 @@ class ALMA_AI_Content_Agent_Media_Index {
             'created_at' => 'DATETIME NULL',
             'modified_at' => 'DATETIME NULL',
             'indexed_at' => 'DATETIME NULL',
+            'indexed_at_gmt' => 'DATETIME NULL',
         );
     }
 
@@ -233,6 +234,7 @@ class ALMA_AI_Content_Agent_Media_Index {
             'created_at'=>$post->post_date,
             'modified_at'=>$post->post_modified,
             'indexed_at'=>current_time('mysql'),
+            'indexed_at_gmt'=>current_time('mysql', true),
         );
         $exists = $wpdb->get_var($wpdb->prepare("SELECT id FROM " . self::table_name() . " WHERE attachment_id=%d", $attachment_id));
         $ok = $exists ? (false !== $wpdb->update(self::table_name(), $row, array('attachment_id'=>$attachment_id))) : (false !== $wpdb->insert(self::table_name(), $row));
@@ -280,10 +282,12 @@ class ALMA_AI_Content_Agent_Media_Index {
         $last_rebuild = get_option(self::OPTION_LAST_REBUILD_AT, '');
         $empty = array('table_exists'=>false,'new'=>0,'modified'=>0,'stale'=>0,'indexed_total'=>0,'indexed_editorial'=>0,'indexed_affiliate'=>0,'last_rebuild'=>$last_rebuild,'last_rebuild_at'=>$last_rebuild,'last_indexed_at'=>'');
         if ($exists !== $table) { return $empty; }
+        $schema = self::ensure_schema();
+        if (empty($schema['success'])) { return $empty; }
         $statuses = self::valid_attachment_statuses();
         $status_placeholders = self::status_placeholders($statuses);
         $new_sql = "SELECT COUNT(1) FROM {$wpdb->posts} p LEFT JOIN $table i ON i.attachment_id = p.ID WHERE p.post_type='attachment' AND p.post_status IN ($status_placeholders) AND p.post_mime_type LIKE 'image/%' AND i.attachment_id IS NULL";
-        $modified_sql = "SELECT COUNT(1) FROM {$wpdb->posts} p INNER JOIN $table i ON i.attachment_id = p.ID WHERE p.post_type='attachment' AND p.post_status IN ($status_placeholders) AND p.post_mime_type LIKE 'image/%' AND (i.indexed_at IS NULL OR p.post_modified_gmt > i.indexed_at)";
+        $modified_sql = "SELECT COUNT(1) FROM {$wpdb->posts} p INNER JOIN $table i ON i.attachment_id = p.ID WHERE p.post_type='attachment' AND p.post_status IN ($status_placeholders) AND p.post_mime_type LIKE 'image/%' AND (i.indexed_at_gmt IS NULL OR i.indexed_at_gmt = '0000-00-00 00:00:00' OR p.post_modified_gmt > i.indexed_at_gmt)";
         $stale_sql = "SELECT COUNT(1) FROM $table i LEFT JOIN {$wpdb->posts} p ON p.ID = i.attachment_id WHERE p.ID IS NULL OR p.post_type <> 'attachment' OR p.post_status NOT IN ($status_placeholders) OR p.post_mime_type NOT LIKE 'image/%'";
         return array(
             'table_exists'=>true,
@@ -316,7 +320,7 @@ class ALMA_AI_Content_Agent_Media_Index {
         }
 
         $remaining = max(1, $limit - count((array) $new_ids));
-        $modified_sql = "SELECT p.ID FROM {$wpdb->posts} p INNER JOIN $table i ON i.attachment_id = p.ID WHERE p.post_type='attachment' AND p.post_status IN ($status_placeholders) AND p.post_mime_type LIKE 'image/%' AND (i.indexed_at IS NULL OR p.post_modified_gmt > i.indexed_at) ORDER BY p.ID ASC LIMIT %d";
+        $modified_sql = "SELECT p.ID FROM {$wpdb->posts} p INNER JOIN $table i ON i.attachment_id = p.ID WHERE p.post_type='attachment' AND p.post_status IN ($status_placeholders) AND p.post_mime_type LIKE 'image/%' AND (i.indexed_at_gmt IS NULL OR i.indexed_at_gmt = '0000-00-00 00:00:00' OR p.post_modified_gmt > i.indexed_at_gmt) ORDER BY p.ID ASC LIMIT %d";
         $modified_ids = $wpdb->get_col($wpdb->prepare($modified_sql, array_merge($statuses, array($remaining))));
         foreach ((array) $modified_ids as $attachment_id) {
             if (self::index_attachment((int) $attachment_id)) { $result['modified']++; } else { $result['errors']++; }
