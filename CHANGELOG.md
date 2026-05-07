@@ -1,3 +1,11 @@
+## 2.25.48 — Fix AI media payload QA regressions
+- Corretta la validazione legacy di `featured_image_id`: quando `featured_image_candidates` è assente o vuoto resta valido il fallback su `candidate_image_ids` attachment.
+- Salvata nei meta della bozza selection-session la featured image scelta e validata da OpenAI con ID, URL risolto e source quando disponibili, senza applicare automaticamente `set_post_thumbnail`.
+- Applicato il limite massimo di immagini editoriali anche al contenuto HTML finale, rimuovendo le immagini editoriali eccedenti e mantenendo il default `max_editorial_media_used=5`.
+- Preservate le immagini affiliate valide provenienti da `affiliate_links[].image`: non contano nel limite editoriale e non vengono rimosse perché assenti da `media_candidates`.
+- Allineato `media_used` al contenuto finale: contiene solo immagini editoriali candidate rimaste nel contenuto, senza duplicati, senza immagini rimosse e senza immagini affiliate.
+- Versione plugin aggiornata a `2.25.48`.
+
 ## 2.25.47 — Dashboard index update alerts
 - Aggiunti alert operativi in alto nella Dashboard AI Content Agent per Link affiliati, Link interni e Media Library.
 - Gli alert mostrano stato, conteggi nuovi/modificati/obsoleti e totale indicizzato, con CTA per aggiornare solo i pendenti.
