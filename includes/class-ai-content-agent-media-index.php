@@ -1,0 +1,179 @@
+<?php
+if (!defined('ABSPATH')) { exit; }
+
+class ALMA_AI_Content_Agent_Media_Index {
+    const OPTION_LAST_REBUILD_AT = 'alma_ai_media_index_last_rebuild_at';
+    const META_ORIGIN = '_alma_media_origin';
+    const META_ROLE = '_alma_media_role';
+    const META_RELATED_POST_ID = '_alma_related_post_id';
+    const META_RELATED_POST_TYPE = '_alma_related_post_type';
+
+    public static function init() {
+        add_action('add_attachment', array(__CLASS__, 'handle_attachment_change'));
+        add_action('edit_attachment', array(__CLASS__, 'handle_attachment_change'));
+        add_action('save_post_attachment', array(__CLASS__, 'handle_save_post_attachment'), 10, 3);
+        add_action('delete_attachment', array(__CLASS__, 'delete_attachment'));
+        add_action('wp_trash_post', array(__CLASS__, 'handle_trash_post'));
+        add_action('updated_post_meta', array(__CLASS__, 'handle_attachment_meta_change'), 10, 4);
+        add_action('added_post_meta', array(__CLASS__, 'handle_attachment_meta_change'), 10, 4);
+        add_action('deleted_post_meta', array(__CLASS__, 'handle_attachment_meta_change'), 10, 4);
+    }
+
+    public static function table_name() { return ALMA_AI_Content_Agent_Store::table('media_index'); }
+
+    public static function install_table() {
+        global $wpdb;
+        require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+        $c = $wpdb->get_charset_collate();
+        dbDelta("CREATE TABLE " . self::table_name() . " (id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,attachment_id BIGINT UNSIGNED NOT NULL,post_status VARCHAR(20) NOT NULL DEFAULT 'inherit',mime_type VARCHAR(120) NOT NULL DEFAULT '',title TEXT NULL,alt_text TEXT NULL,caption TEXT NULL,description LONGTEXT NULL,file_name VARCHAR(255) NOT NULL DEFAULT '',url_full TEXT NULL,url_large TEXT NULL,url_medium TEXT NULL,width INT UNSIGNED NOT NULL DEFAULT 0,height INT UNSIGNED NOT NULL DEFAULT 0,post_parent BIGINT UNSIGNED NOT NULL DEFAULT 0,attached_post_title TEXT NULL,media_origin VARCHAR(60) NOT NULL DEFAULT 'editorial',media_role VARCHAR(80) NOT NULL DEFAULT 'editorial_image',provider VARCHAR(80) NOT NULL DEFAULT '',source_id VARCHAR(190) NOT NULL DEFAULT '',external_id VARCHAR(190) NOT NULL DEFAULT '',related_post_id BIGINT UNSIGNED NOT NULL DEFAULT 0,related_post_type VARCHAR(60) NOT NULL DEFAULT '',is_affiliate_media TINYINT(1) NOT NULL DEFAULT 0,is_editorial_candidate TINYINT(1) NOT NULL DEFAULT 1,search_text LONGTEXT NULL,created_at DATETIME NULL,modified_at DATETIME NULL,indexed_at DATETIME NULL,PRIMARY KEY (id),UNIQUE KEY attachment_id (attachment_id),KEY post_status (post_status),KEY mime_type (mime_type),KEY post_parent (post_parent),KEY media_origin (media_origin),KEY media_role (media_role),KEY is_affiliate_media (is_affiliate_media),KEY is_editorial_candidate (is_editorial_candidate),KEY related_post (related_post_id, related_post_type),KEY indexed_at (indexed_at)) $c;");
+    }
+
+    public static function handle_attachment_change($attachment_id) { self::index_attachment(absint($attachment_id)); }
+
+    public static function handle_save_post_attachment($post_id, $post, $update) {
+        if (wp_is_post_revision($post_id) || wp_is_post_autosave($post_id)) { return; }
+        self::index_attachment(absint($post_id));
+    }
+
+    public static function handle_trash_post($post_id) {
+        $post = get_post($post_id);
+        if ($post && $post->post_type === 'attachment') { self::delete_attachment($post_id); }
+    }
+
+    public static function handle_attachment_meta_change($meta_id, $object_id, $meta_key, $meta_value) {
+        $watched = array('_wp_attachment_image_alt','_wp_attachment_metadata','_alma_media_origin','_alma_media_role','_alma_media_provider','_alma_source_id','_alma_external_id','_alma_imported_for_post_id','_alma_related_post_id','_alma_related_post_type','_alma_remote_image_hash');
+        if (!in_array((string)$meta_key, $watched, true)) { return; }
+        $post = get_post(absint($object_id));
+        if ($post && $post->post_type === 'attachment') { self::index_attachment((int)$object_id); }
+    }
+
+    public static function rebuild_index($batch_size = 100) {
+        global $wpdb;
+        self::install_table();
+        $batch_size = max(10, min(250, absint($batch_size)));
+        $processed = 0; $indexed = 0; $deleted = 0; $paged = 1; $seen = array();
+        do {
+            $q = new WP_Query(array('post_type'=>'attachment','post_mime_type'=>'image','post_status'=>'inherit','posts_per_page'=>$batch_size,'paged'=>$paged,'fields'=>'ids','orderby'=>'ID','order'=>'ASC','no_found_rows'=>true));
+            $ids = is_array($q->posts) ? array_map('absint', $q->posts) : array();
+            foreach ($ids as $attachment_id) {
+                $processed++; $seen[] = $attachment_id;
+                if (self::index_attachment($attachment_id)) { $indexed++; }
+            }
+            $paged++;
+        } while (count($ids) === $batch_size);
+
+        $table = self::table_name();
+        $rows = $wpdb->get_col("SELECT attachment_id FROM $table");
+        foreach ((array)$rows as $attachment_id) {
+            if (!in_array((int)$attachment_id, $seen, true) && !self::is_valid_image_attachment((int)$attachment_id)) {
+                self::delete_attachment((int)$attachment_id); $deleted++;
+            }
+        }
+        update_option(self::OPTION_LAST_REBUILD_AT, current_time('mysql'), false);
+        return array('processed'=>$processed,'indexed'=>$indexed,'deleted'=>$deleted,'batch_size'=>$batch_size);
+    }
+
+    public static function index_attachment($attachment_id) {
+        global $wpdb;
+        $attachment_id = absint($attachment_id);
+        if (!self::is_valid_image_attachment($attachment_id)) { self::delete_attachment($attachment_id); return false; }
+        $post = get_post($attachment_id);
+        $meta = wp_get_attachment_metadata($attachment_id);
+        $file = get_attached_file($attachment_id);
+        $file_name = sanitize_file_name(wp_basename((string)$file));
+        if ($file_name === '') { $file_name = sanitize_file_name(wp_basename((string)get_post_meta($attachment_id, '_wp_attached_file', true))); }
+        $parent = $post->post_parent ? get_post((int)$post->post_parent) : null;
+        $classification = self::classify($attachment_id);
+        $search_text = self::build_search_text(array($post->post_title, get_post_meta($attachment_id, '_wp_attachment_image_alt', true), $post->post_excerpt, $post->post_content, $file_name, $parent ? $parent->post_title : ''));
+        $row = array(
+            'attachment_id'=>$attachment_id,
+            'post_status'=>sanitize_key($post->post_status),
+            'mime_type'=>sanitize_mime_type($post->post_mime_type),
+            'title'=>sanitize_text_field($post->post_title),
+            'alt_text'=>sanitize_text_field((string)get_post_meta($attachment_id, '_wp_attachment_image_alt', true)),
+            'caption'=>sanitize_text_field($post->post_excerpt),
+            'description'=>wp_kses_post($post->post_content),
+            'file_name'=>$file_name,
+            'url_full'=>esc_url_raw((string)wp_get_attachment_url($attachment_id)),
+            'url_large'=>esc_url_raw((string)wp_get_attachment_image_url($attachment_id, 'large')),
+            'url_medium'=>esc_url_raw((string)wp_get_attachment_image_url($attachment_id, 'medium')),
+            'width'=>absint($meta['width'] ?? 0),
+            'height'=>absint($meta['height'] ?? 0),
+            'post_parent'=>absint($post->post_parent),
+            'attached_post_title'=>$parent ? sanitize_text_field($parent->post_title) : '',
+            'media_origin'=>$classification['media_origin'],
+            'media_role'=>$classification['media_role'],
+            'provider'=>sanitize_key((string)get_post_meta($attachment_id, '_alma_media_provider', true)),
+            'source_id'=>sanitize_text_field((string)get_post_meta($attachment_id, '_alma_source_id', true)),
+            'external_id'=>sanitize_text_field((string)get_post_meta($attachment_id, '_alma_external_id', true)),
+            'related_post_id'=>absint($classification['related_post_id']),
+            'related_post_type'=>sanitize_key($classification['related_post_type']),
+            'is_affiliate_media'=>(int)$classification['is_affiliate_media'],
+            'is_editorial_candidate'=>(int)$classification['is_editorial_candidate'],
+            'search_text'=>$search_text,
+            'created_at'=>$post->post_date,
+            'modified_at'=>$post->post_modified,
+            'indexed_at'=>current_time('mysql'),
+        );
+        $exists = $wpdb->get_var($wpdb->prepare("SELECT id FROM " . self::table_name() . " WHERE attachment_id=%d", $attachment_id));
+        return $exists ? (false !== $wpdb->update(self::table_name(), $row, array('attachment_id'=>$attachment_id))) : (false !== $wpdb->insert(self::table_name(), $row));
+    }
+
+    public static function delete_attachment($attachment_id) {
+        global $wpdb;
+        $attachment_id = absint($attachment_id);
+        if ($attachment_id < 1) { return false; }
+        return false !== $wpdb->delete(self::table_name(), array('attachment_id'=>$attachment_id));
+    }
+
+    public static function count_records($where = '') {
+        global $wpdb; $table = self::table_name();
+        $exists = $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $table));
+        if ($exists !== $table) { return 0; }
+        if ($where === 'affiliate') { return (int)$wpdb->get_var("SELECT COUNT(*) FROM $table WHERE is_affiliate_media=1"); }
+        if ($where === 'editorial') { return (int)$wpdb->get_var("SELECT COUNT(*) FROM $table WHERE is_editorial_candidate=1"); }
+        return (int)$wpdb->get_var("SELECT COUNT(*) FROM $table");
+    }
+
+    public static function get_status() {
+        global $wpdb; $table = self::table_name(); $exists = $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $table));
+        return array('table_exists'=>$exists === $table,'total'=>self::count_records(),'editorial'=>self::count_records('editorial'),'affiliate'=>self::count_records('affiliate'),'last_rebuild_at'=>get_option(self::OPTION_LAST_REBUILD_AT, ''));
+    }
+
+    private static function is_valid_image_attachment($attachment_id) {
+        $post = get_post($attachment_id);
+        return $post && $post->post_type === 'attachment' && $post->post_status !== 'trash' && strpos((string)$post->post_mime_type, 'image/') === 0;
+    }
+
+    private static function classify($attachment_id) {
+        $origin = sanitize_key((string)get_post_meta($attachment_id, self::META_ORIGIN, true));
+        $role = sanitize_key((string)get_post_meta($attachment_id, self::META_ROLE, true));
+        $related_post_id = absint(get_post_meta($attachment_id, self::META_RELATED_POST_ID, true));
+        $related_post_type = sanitize_key((string)get_post_meta($attachment_id, self::META_RELATED_POST_TYPE, true));
+        $imported_for = absint(get_post_meta($attachment_id, '_alma_imported_for_post_id', true));
+        if ($related_post_id < 1 && $imported_for > 0) { $related_post_id = $imported_for; }
+        if ($related_post_type === '' && $related_post_id > 0) { $related_post_type = sanitize_key((string)get_post_type($related_post_id)); }
+        $strong = $origin === 'affiliate_source' || (string)get_post_meta($attachment_id, '_alma_media_provider', true) !== '' || (string)get_post_meta($attachment_id, '_alma_remote_image_hash', true) !== '' || (string)get_post_meta($attachment_id, '_alma_external_id', true) !== '' || ($imported_for > 0 && get_post_type($imported_for) === 'affiliate_link');
+        $is_affiliate = (bool)apply_filters('alma_ai_media_index_is_affiliate_media', $strong, $attachment_id);
+        if ($is_affiliate) {
+            $origin = 'affiliate_source'; $role = 'affiliate_featured_image';
+            if ($related_post_type === '') { $related_post_type = 'affiliate_link'; }
+            if (get_post_meta($attachment_id, self::META_ORIGIN, true) === '') { update_post_meta($attachment_id, self::META_ORIGIN, $origin); }
+            if (get_post_meta($attachment_id, self::META_ROLE, true) === '') { update_post_meta($attachment_id, self::META_ROLE, $role); }
+            if ($related_post_id > 0 && get_post_meta($attachment_id, self::META_RELATED_POST_ID, true) === '') { update_post_meta($attachment_id, self::META_RELATED_POST_ID, $related_post_id); }
+            if ($related_post_type !== '' && get_post_meta($attachment_id, self::META_RELATED_POST_TYPE, true) === '') { update_post_meta($attachment_id, self::META_RELATED_POST_TYPE, $related_post_type); }
+        } else {
+            $origin = $origin !== '' ? $origin : 'editorial'; $role = $role !== '' ? $role : 'editorial_image';
+        }
+        $is_editorial = !$is_affiliate;
+        $is_editorial = (bool)apply_filters('alma_ai_media_index_is_editorial_candidate', $is_editorial, $attachment_id, $is_affiliate);
+        return array('is_affiliate_media'=>$is_affiliate ? 1 : 0,'is_editorial_candidate'=>$is_editorial ? 1 : 0,'media_origin'=>$origin,'media_role'=>$role,'related_post_id'=>$related_post_id,'related_post_type'=>$related_post_type);
+    }
+
+    private static function build_search_text($parts) {
+        $text = trim(preg_replace('/\s+/', ' ', wp_strip_all_tags(implode(' ', array_map('strval', (array)$parts)))));
+        return apply_filters('alma_ai_media_index_search_text', sanitize_textarea_field($text), $parts);
+    }
+}
+
+ALMA_AI_Content_Agent_Media_Index::init();
