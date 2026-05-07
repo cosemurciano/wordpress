@@ -1,3 +1,13 @@
+## 2.25.38 — AI draft QA affiliate hardening
+- Rafforzate le regole operative inviate a OpenAI: vietate disclosure affiliate generiche, tag `<a>` senza `href`, shortcode usati come `href` e richiesto allineamento tra `affiliate_urls_used`, shortcode e URL diretti realmente inseriti.
+- Aggiunta rimozione automatica dal solo campo `content` delle disclosure affiliate generiche generate dall’AI, senza inserire disclosure sostitutive.
+- Aggiunta correzione locale degli `href` mancanti per immagini affiliate quando il `src` corrisponde a un’immagine del payload, preservando `<img>`, classi, URL e parametri di tracking.
+- Aggiunta correzione dei link testuali affiliati senza `href` quando il testo corrisponde in modo affidabile al titolo di un link affiliato del payload; i link non associabili vengono trasformati in testo semplice.
+- Reso coerente `affiliate_urls_used` con gli URL affiliati diretti effettivamente presenti negli `href` finali, mantenendo separati gli shortcode in `affiliate_shortcodes_used`.
+- Reso coerente `media_used` con le immagini affiliate cliccabili realmente presenti nel contenuto finale, includendo `image_url`, ID link affiliato, `affiliate_url`, alt e source quando disponibili.
+- Rafforzata la sanitizzazione HTML finale per preservare in modo sicuro `href`, `target`, `rel`, attributi immagine consentiti e `figure class`, senza consentire attributi pericolosi o URL JavaScript/data non necessari.
+- Versione plugin aggiornata a `2.25.38`.
+
 ## 2.25.37 — AI profile textarea preservation
 - Corretta la preservazione dei contenuti textarea nei profili **Istruzioni AI**, salvando testo libero admin non escaped e normalizzando solo line ending e caratteri di controllo non validi.
 - Preservati nei prompt esempi HTML testuali con `<a>`, `<img>`, placeholder come `{affiliate_url}` e `{image.image_url}`, simboli, virgolette e caratteri accentati.
