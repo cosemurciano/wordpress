@@ -232,7 +232,9 @@ class ALMA_AI_Content_Agent_Admin {
 
         self::set_notice($result);
         $redirect_url = wp_get_referer();
-        if (in_array($do, array('new_content_idea', 'save_content_idea'), true)) {
+        if ($do === 'new_content_idea') {
+            $redirect_url = add_query_arg(array('tab' => 'idee', 'ai_ideas_page' => 1), $redirect_url);
+        } elseif ($do === 'save_content_idea') {
             $redirect_url = add_query_arg('ai_ideas_page', 1, $redirect_url);
         }
         wp_safe_redirect($redirect_url); exit;
@@ -308,19 +310,41 @@ class ALMA_AI_Content_Agent_Admin {
     private static function render_overview_tab() { global $wpdb;
         $missing = ALMA_AI_Content_Agent_Store::missing_tables();
         $openai = empty(get_option('alma_openai_api_key','')) ? 'Non configurata' : 'Configurata';
-        echo '<div class="alma-agent-hero"><h2>Dashboard</h2><p>Panoramica operativa del nuovo workflow AI Content Agent.</p></div>';
+        $base_url = admin_url('edit.php?post_type=affiliate_link&page=alma-ai-content-agent');
+        $ideas_url = add_query_arg('tab', 'idee', $base_url);
+        $instructions_url = add_query_arg('tab', 'istruzioni-ai', $base_url);
+        $log_url = add_query_arg('tab', 'log', $base_url);
+        $ideas_count = wp_count_posts(ALMA_AI_Content_Agent_Ideas::CPT);
+        $total_ideas = is_object($ideas_count) ? (int)($ideas_count->publish ?? 0) : 0;
+        $affiliate = self::get_affiliate_index_view_data();
+        $internal = ALMA_AI_Content_Agent_Internal_Link_Index::get_stats();
+        $internal_state = empty($internal['table_exists']) ? 'Tabella non disponibile' : ((int)($internal['indexed_count'] ?? 0) > 0 ? 'Indice disponibile' : 'Indice vuoto');
+        $media = ALMA_AI_Content_Agent_Media_Index::get_status();
+        $logs = ALMA_AI_Usage_Logger::get_recent_logs(10);
+        $recent_errors = 0;
+        foreach ((array)$logs as $log) { if (empty($log['success'])) { $recent_errors++; } }
+
+        echo '<section class="alma-dashboard-hero" aria-labelledby="alma-dashboard-title"><div><h2 id="alma-dashboard-title">Dashboard operativa</h2><p>Accedi rapidamente alle Idee contenuto e controlla lo stato essenziale degli indici usati dall’AI Content Agent.</p></div><div class="alma-dashboard-actions">';
+        echo '<a class="button button-primary" href="'.esc_url($ideas_url).'">Vai a Idee contenuto</a>';
+        self::action_form('new_content_idea', 'Crea nuova idea', '', 'button');
+        echo '<a class="button" href="'.esc_url($instructions_url).'">Apri Istruzioni AI</a>';
+        echo '<a class="button" href="'.esc_url($log_url).'">Apri Stato/log</a>';
+        echo '</div></section>';
+
         if ($openai !== 'Configurata') { echo '<div class="notice notice-warning inline"><p>OpenAI non è configurata.</p></div>'; }
-        self::render_affiliate_index_status_box();
-        self::render_internal_link_index_status_box();
-        self::render_media_index_status_box();
-        echo '<div class="alma-agent-grid">';
-        echo '<div class="alma-agent-card"><h3>OpenAI</h3><span class="alma-badge '.($openai === 'Configurata' ? 'is-success' : 'is-warning').'">'.esc_html($openai).'</span></div>';
-        echo '<div class="alma-agent-card"><h3>Knowledge Base</h3><strong>'.(self::is_table_missing('knowledge_items') ? 'Non disponibile' : (int)$wpdb->get_var("SELECT COUNT(*) FROM ".ALMA_AI_Content_Agent_Store::table('knowledge_items'))).'</strong></div>';
-        echo '<div class="alma-agent-card"><h3>Documenti TXT</h3><strong>'.(self::is_table_missing('knowledge_items') ? 'Nessun dato' : (int)$wpdb->get_var("SELECT COUNT(*) FROM ".ALMA_AI_Content_Agent_Store::table('knowledge_items')." WHERE source_type='document_txt'")).'</strong></div>';
-        echo '<div class="alma-agent-card"><h3>Fonti online AI</h3><strong>'.(self::is_table_missing('sources') ? '0' : (int)$wpdb->get_var("SELECT COUNT(*) FROM ".ALMA_AI_Content_Agent_Store::table('sources'))).'</strong></div>';
-        echo '<div class="alma-agent-card"><h3>Media indicizzati</h3><strong>'.(self::is_table_missing('media_index') ? '0' : (int)$wpdb->get_var("SELECT COUNT(*) FROM ".ALMA_AI_Content_Agent_Store::table('media_index'))).'</strong></div>';
-        echo '<div class="alma-agent-card"><h3>Ultimi errori</h3><strong>'.esc_html(empty(ALMA_AI_Usage_Logger::get_recent_logs(1)) ? 'Nessun dato' : 'Disponibili in Stato/log').'</strong></div>';
-        echo '</div><p><a class="button button-primary" href="'.esc_url(admin_url('edit.php?post_type=affiliate_link&page=alma-ai-content-agent&tab=idee')).'">Vai a Idee contenuto</a> <a class="button" href="'.esc_url(admin_url('edit.php?post_type=affiliate_link&page=alma-ai-content-agent&tab=reindex')).'">Reindicizza fonti</a> <a class="button" href="'.esc_url(admin_url('edit.php?post_type=affiliate_link&page=alma-ai-content-agent&tab=reindex')).'">Reindicizza media</a> <a class="button" href="'.esc_url(admin_url('edit.php?post_type=affiliate_link&page=alma-ai-content-agent&tab=log')).'">Apri Stato/log</a></p>';
+        if (!empty($missing)) { echo '<div class="notice notice-info inline"><p>Tabelle mancanti: '.esc_html(implode(', ', $missing)).'. Alcuni dati possono risultare non disponibili.</p></div>'; }
+
+        echo '<section class="alma-dashboard-grid" aria-label="Riepilogo dashboard">';
+        echo '<article class="alma-dashboard-card"><h3>OpenAI</h3><p><span class="alma-badge '.($openai === 'Configurata' ? 'is-success' : 'is-warning').'">'.esc_html($openai).'</span></p><p class="description">Stato configurazione API.</p></article>';
+        echo '<article class="alma-dashboard-card"><h3>Idee contenuto</h3><p class="alma-dashboard-card-value">'.(int)$total_ideas.'</p><p><a href="'.esc_url($ideas_url).'">Apri tab Idee contenuto</a></p></article>';
+        echo '<article class="alma-dashboard-card"><h3>Link affiliati</h3><p class="alma-dashboard-card-value">'.(int)$affiliate['indexed_active'].'</p><p class="description">'.esc_html($affiliate['operational_state']).'</p></article>';
+        echo '<article class="alma-dashboard-card"><h3>Link interni</h3><p class="alma-dashboard-card-value">'.(int)($internal['indexed_count'] ?? 0).'</p><p class="description">'.esc_html($internal_state).'</p></article>';
+        echo '<article class="alma-dashboard-card"><h3>Media Library</h3><p class="alma-dashboard-card-value">'.(int)($media['total'] ?? 0).'</p><p class="description">'.(int)($media['editorial'] ?? 0).' editoriali · '.(int)($media['affiliate'] ?? 0).' affiliate</p></article>';
+        echo '<article class="alma-dashboard-card"><h3>Stato/log</h3><p class="alma-dashboard-card-value">'.($recent_errors > 0 ? (int)$recent_errors : '—').'</p><p><a href="'.esc_url($log_url).'">Apri ultimi errori e log</a></p></article>';
+        echo '</section>';
+
+        self::render_index_status_section($affiliate, $internal, $internal_state, $media);
+        self::render_dashboard_maintenance_section($affiliate, $internal, $internal_state, $media);
     }
 
     private static function render_documents_tab() { global $wpdb; echo '<h2>Documenti TXT</h2><form method="post" enctype="multipart/form-data" action="'.esc_url(admin_url('admin-post.php')).'">'; wp_nonce_field('alma_ai_agent_action'); echo '<input type="hidden" name="action" value="alma_ai_agent_action"><input type="hidden" name="do" value="upload_txt_document"><p><input type="text" name="document_name" class="regular-text" placeholder="Nome documento" required> <input type="file" name="document_file" accept=".txt,text/plain" required> <button class="button button-primary">Carica documento TXT</button></p></form>';
@@ -341,34 +365,53 @@ class ALMA_AI_Content_Agent_Admin {
     private static function render_reindex_tab(){ echo '<h2>Reindicizza</h2><div class="alma-agent-card"><p><label><input type="checkbox"> Articoli</label> <label><input type="checkbox"> Pagine</label> <label><input type="checkbox"> Affiliate Links</label> <label><input type="checkbox"> Documenti TXT</label> <label><input type="checkbox"> Fonti online AI</label> <label><input type="checkbox"> Media</label></p><p><button class="button button-primary" disabled>Reindicizza selezionati</button> Disponibile nella prossima fase.</p><ul><li>Elementi analizzati: Nessun dato</li><li>Elementi aggiornati: Nessun dato</li><li>Elementi saltati: Nessun dato</li><li>Errori: Nessun dato</li><li>Durata: Non disponibile</li><li>Link al log: vai a Stato/log</li></ul></div>'; self::action_form('reindex_knowledge','Reindicizza knowledge base'); self::render_media_index_status_box(); }
     private static function render_log_tab(){ global $wpdb; $missing=ALMA_AI_Content_Agent_Store::missing_tables(); $jobs=array(); if (!self::is_table_missing('jobs')) { $jobs=$wpdb->get_results("SELECT id,job_type,status,last_error,updated_at FROM ".ALMA_AI_Content_Agent_Store::table('jobs')." ORDER BY id DESC LIMIT 20",ARRAY_A); } $logs=ALMA_AI_Usage_Logger::get_recent_logs(20); echo '<h2>Stato/log</h2>'; self::render_affiliate_index_status_box(); self::render_media_index_status_box(); echo '<div class="alma-agent-grid"><div class="alma-agent-card"><h3>Job programmati</h3><p>Nessun dato</p></div><div class="alma-agent-card"><h3>Job in corso</h3><p>Nessun dato</p></div><div class="alma-agent-card"><h3>Job completati</h3><p>Nessun dato</p></div><div class="alma-agent-card"><h3>Job falliti</h3><p>Nessun dato</p></div><div class="alma-agent-card"><h3>Ultime chiamate AI</h3><p>'.(empty($logs)?'Nessun dato':'Disponibili sotto').'</p></div><div class="alma-agent-card"><h3>Errori recenti</h3><p>Nessun dato</p></div><div class="alma-agent-card"><h3>Bozze create</h3><p>'.count(ALMA_AI_Content_Agent_Store::get_agent_drafts(50)).'</p></div></div><p><strong>Tabelle mancanti:</strong> '.(empty($missing)?'Nessuna':esc_html(implode(', ',$missing))).'</p>'; if (self::is_table_missing('jobs')) { echo '<p><em>Tabella jobs mancante: sezione job non disponibile.</em></p>'; } echo '<h3>Ultimi job/errori</h3><table class="widefat"><thead><tr><th>ID</th><th>Tipo</th><th>Stato</th><th>Errore</th><th>Aggiornato</th></tr></thead><tbody>'; foreach($jobs as $j){ echo '<tr><td>'.(int)$j['id'].'</td><td>'.esc_html($j['job_type']).'</td><td><span class="alma-badge is-pending">'.esc_html($j['status']).'</span></td><td>'.esc_html($j['last_error']).'</td><td>'.esc_html($j['updated_at']).'</td></tr>'; } echo '</tbody></table>'; echo '<h3>Ultimi log AI</h3><table class="widefat"><thead><tr><th>Data</th><th>Task</th><th>Model</th><th>Successo</th><th>Errore</th></tr></thead><tbody>'; foreach($logs as $l){ echo '<tr><td>'.esc_html($l['created_at']).'</td><td>'.esc_html($l['task']).'</td><td>'.esc_html($l['model']).'</td><td>'.((int)$l['success']?'si':'no').'</td><td>'.esc_html($l['error_message']).'</td></tr>'; } echo '</tbody></table>'; }
 
-    private static function render_affiliate_index_status_box() {
-        if (!class_exists('ALMA_AI_Content_Agent_Affiliate_Index')) { return; }
+    private static function get_affiliate_index_view_data() {
+        $empty = array(
+            'table_exists' => false,
+            'total_published' => 0,
+            'without_affiliate_url' => 0,
+            'indexed_active' => 0,
+            'missing_index' => 0,
+            'stale_index_records' => 0,
+            'non_active_candidate_records' => 0,
+            'inactive_index_records' => 0,
+            'active_invalid_records' => 0,
+            'orphan_index_records' => 0,
+            'last_indexed_at' => '',
+            'batch' => array(),
+            'batch_status' => 'non disponibile',
+            'eligible_total' => 0,
+            'pending_total' => 0,
+            'progress_percent' => 0,
+            'operational_state' => 'Non disponibile',
+            'next_action_text' => 'Statistiche indice non disponibili.',
+            'primary_do' => '',
+            'primary_label' => '',
+        );
+        if (!class_exists('ALMA_AI_Content_Agent_Affiliate_Index')) { return $empty; }
+
         $stats = ALMA_AI_Content_Agent_Affiliate_Index::get_index_stats();
         $batch = (array)($stats['batch_state'] ?? array());
         $batch_status = !empty($batch['done']) ? 'completato' : (!empty($batch['updated_at']) ? 'in corso' : 'mai avviato');
 
-        $total_published = (int)$stats['total_published'];
-        $without_affiliate_url = (int)$stats['without_affiliate_url'];
-        $indexed_active = (int)$stats['indexed_active'];
-        $missing_index = (int)$stats['missing_index'];
+        $total_published = (int)($stats['total_published'] ?? 0);
+        $without_affiliate_url = (int)($stats['without_affiliate_url'] ?? 0);
+        $indexed_active = (int)($stats['indexed_active'] ?? 0);
+        $missing_index = (int)($stats['missing_index'] ?? 0);
         $stale_index_records = (int)($stats['stale_index_records'] ?? 0);
         $non_active_candidate_records = (int)($stats['non_active_candidate_records'] ?? 0);
-        $needs_update = max(0, (int)$stats['needs_update']);
-        $active_invalid_records = (int)$stats['active_invalid_records'];
-        $orphan_index_records = (int)$stats['orphan_index_records'];
+        $active_invalid_records = (int)($stats['active_invalid_records'] ?? 0);
+        $orphan_index_records = (int)($stats['orphan_index_records'] ?? 0);
 
         $eligible_total = max(0, $total_published - $without_affiliate_url);
-        $pending_total = max(0, $missing_index + $stale_index_records + $non_active_candidate_records);
-        if ($needs_update !== $pending_total) { $needs_update = $pending_total; }
-        $pending_total = min($eligible_total, $pending_total);
+        $pending_total = min($eligible_total, max(0, $missing_index + $stale_index_records + $non_active_candidate_records));
         $progress_percent = 0;
         if ($eligible_total > 0) {
             if ($pending_total < 1 && $indexed_active >= $eligible_total) {
                 $progress_percent = 100;
             } else {
                 $completed_estimate = max(0, min($eligible_total, $eligible_total - $pending_total));
-                $progress_percent = (int) round(($completed_estimate / $eligible_total) * 100);
-                $progress_percent = max(0, min(100, $progress_percent));
+                $progress_percent = max(0, min(100, (int)round(($completed_estimate / $eligible_total) * 100)));
             }
         }
 
@@ -393,9 +436,7 @@ class ALMA_AI_Content_Agent_Admin {
             $primary_do = 'index_affiliate_links';
             $primary_label = !empty($batch['updated_at']) && empty($batch['done']) ? 'Continua indicizzazione' : 'Avvia primo batch';
         } elseif ($stale_index_records > 0 || $non_active_candidate_records > 0) {
-            $next_action_text = $stale_index_records > 0
-                ? 'Esegui sync incrementale per aggiornare record obsoleti, riattivare candidabili non attivi e recuperare eventuali mancanti residui.'
-                : 'Esegui sync incrementale per riattivare candidabili non attivi e recuperare eventuali mancanti residui.';
+            $next_action_text = $stale_index_records > 0 ? 'Esegui sync incrementale per aggiornare record obsoleti e mancanti.' : 'Esegui sync incrementale per riattivare candidabili non attivi.';
             $primary_do = 'sync_affiliate_links_incremental';
             $primary_label = 'Esegui sync incrementale';
         } elseif ($active_invalid_records > 0 || $orphan_index_records > 0) {
@@ -406,37 +447,92 @@ class ALMA_AI_Content_Agent_Admin {
             $next_action_text = 'Nessuna azione necessaria.';
         }
 
-        echo '<div class="alma-agent-card alma-affiliate-index-card"><h3>Indice Link affiliati</h3>';
-        if (empty($stats['table_exists'])) { echo '<p class="description"><em>Tabella indice non disponibile. La ricerca userà fallback WordPress per i Link affiliati.</em></p>'; }
-        echo '<p class="alma-affiliate-index-warning"><strong>Questa operazione non elimina i Link affiliati. Cancella solo l’indice tecnico rigenerabile.</strong></p>';
-        echo '<div class="alma-affiliate-operational-state"><strong>Stato operativo:</strong> '.esc_html($operational_state).'</div>';
-        echo '<div class="alma-affiliate-progress" role="status" aria-live="polite"><div class="alma-affiliate-progress-head"><strong>Progresso indicizzazione</strong> <span>'.(int)$progress_percent.'%</span></div><div class="alma-affiliate-progress-bar" aria-hidden="true"><span style="width: '.(int)$progress_percent.'%;"></span></div><p class="description">Candidabili: '.(int)$eligible_total.' · Da lavorare totale: '.(int)$pending_total.'</p></div>';
-        echo '<div class="alma-affiliate-next-action"><strong>Prossima azione consigliata</strong><p>'.esc_html($next_action_text).'</p></div>';
-        echo '<ul><li>Totale Link affiliati pubblicati: '.$total_published.'</li><li>Indicizzati attivi: '.$indexed_active.'</li><li>Mancanti dall’indice: '.$missing_index.'</li><li>Da aggiornare: '.$stale_index_records.'</li><li>Candidabili non attivi: '.$non_active_candidate_records.'</li><li>Da lavorare totale: '.$pending_total.'</li><li>Link affiliati senza URL affiliato: '.$without_affiliate_url.'</li><li>Record indice inattivi: '.(int)$stats['inactive_index_records'].'</li><li>Record indice orfani: '.$orphan_index_records.'</li><li>Record attivi non validi: '.$active_invalid_records.'</li><li>Ultimo aggiornamento indice: '.esc_html($stats['last_indexed_at'] ?: 'N/D').'</li><li>Stato batch: '.esc_html($batch_status).'</li><li>Last processed ID: '.(int)($batch['last_processed_id'] ?? 0).'</li>'.(!empty($batch['last_error'])?'<li>Ultimo errore: '.esc_html($batch['last_error']).'</li>':'').'</ul>';
-
-        echo '<div class="alma-affiliate-actions-group"><h4>Azioni principali</h4><div class="alma-actions-inline alma-affiliate-primary-actions">';
-        if ($primary_do !== '' && $primary_label !== '') {
-            self::action_form($primary_do, $primary_label);
-            echo '<p class="description alma-affiliate-action-description">Azione consigliata in base allo stato attuale dell’indice tecnico.</p>';
-        } else {
-            echo '<button class="button" type="button" disabled>Indice aggiornato</button><p class="description alma-affiliate-action-description">Nessuna azione operativa necessaria in questo momento.</p>';
-        }
-        self::action_form('index_affiliate_links','Indicizza prossimo batch','<p class="description alma-affiliate-action-description">Indicizza un blocco di Link affiliati alla volta. Usalo per costruire progressivamente l’indice senza sovraccaricare il sito.</p>');
-        self::action_form('sync_affiliate_links_incremental','Sync incrementale','<p class="description alma-affiliate-action-description">Aggiorna solo i Link affiliati mancanti, modificati, obsoleti o non attivi nell’indice.</p>');
-        echo '</div></div>';
-
-        echo '<div class="alma-affiliate-advanced-maintenance"><h4>Manutenzione avanzata</h4><p class="description">Usa queste azioni solo per manutenzione tecnica dell’indice.</p><div class="alma-actions-inline">';
-        self::action_form('reset_affiliate_index_state','Reset stato batch','<p class="description alma-affiliate-action-description">Azzera solo il punto di avanzamento del batch. Non elimina l’indice e non elimina i Link affiliati.</p>');
-        self::action_form('clear_affiliate_index','Svuota indice e ricomincia','<p class="description alma-affiliate-action-description">Cancella solo l’indice tecnico rigenerabile. Non elimina i Link affiliati reali.</p>');
-        echo '</div></div></div>';
+        $stats['batch'] = $batch;
+        $stats['batch_status'] = $batch_status;
+        $stats['eligible_total'] = $eligible_total;
+        $stats['pending_total'] = $pending_total;
+        $stats['progress_percent'] = $progress_percent;
+        $stats['operational_state'] = $operational_state;
+        $stats['next_action_text'] = $next_action_text;
+        $stats['primary_do'] = $primary_do;
+        $stats['primary_label'] = $primary_label;
+        $stats['total_published'] = $total_published;
+        $stats['without_affiliate_url'] = $without_affiliate_url;
+        $stats['indexed_active'] = $indexed_active;
+        $stats['missing_index'] = $missing_index;
+        $stats['stale_index_records'] = $stale_index_records;
+        $stats['non_active_candidate_records'] = $non_active_candidate_records;
+        $stats['active_invalid_records'] = $active_invalid_records;
+        $stats['orphan_index_records'] = $orphan_index_records;
+        $stats['inactive_index_records'] = (int)($stats['inactive_index_records'] ?? 0);
+        $stats['last_indexed_at'] = (string)($stats['last_indexed_at'] ?? '');
+        return array_merge($empty, $stats);
     }
 
+    private static function render_index_status_section($affiliate, $internal, $internal_state, $media) {
+        echo '<section class="alma-index-status-section" aria-labelledby="alma-index-status-title"><h2 id="alma-index-status-title">Stato degli indici</h2><div class="alma-index-status-list">';
+
+        echo '<article class="alma-index-status-item"><div><h3>Link affiliati</h3><p><strong>'.esc_html($affiliate['operational_state']).'</strong></p><p>'.(int)$affiliate['indexed_active'].' indicizzati attivi · '.(int)$affiliate['eligible_total'].' candidabili · aggiornato '.esc_html($affiliate['last_indexed_at'] ?: 'N/D').'</p><div class="alma-affiliate-progress" role="status" aria-label="Progresso indicizzazione Link affiliati '.(int)$affiliate['progress_percent'].' percento"><div class="alma-affiliate-progress-head"><strong>Progresso</strong> <span>'.(int)$affiliate['progress_percent'].'%</span></div><div class="alma-affiliate-progress-bar" aria-hidden="true"><span style="width: '.(int)$affiliate['progress_percent'].'%;"></span></div></div></div><div class="alma-index-status-action">';
+        if ($affiliate['primary_do'] !== '' && $affiliate['primary_label'] !== '') { self::action_form($affiliate['primary_do'], $affiliate['primary_label']); }
+        else { echo '<button class="button" type="button" disabled>Indice aggiornato</button>'; }
+        echo '</div></article>';
+
+        echo '<article class="alma-index-status-item"><div><h3>Link interni</h3><p><strong>'.esc_html($internal_state).'</strong></p><p>'.(int)($internal['indexed_count'] ?? 0).' post indicizzati · ricostruzione '.esc_html(!empty($internal['last_rebuild_at']) ? $internal['last_rebuild_at'] : 'N/D').' · ultimo record '.esc_html(!empty($internal['last_indexed_at']) ? $internal['last_indexed_at'] : 'N/D').'</p><p class="description">Indicizza titolo, permalink, excerpt, categorie e tag dei post pubblicati. Non indicizza il contenuto completo.</p></div><div class="alma-index-status-action">';
+        self::action_form('rebuild_internal_link_index', 'Ricostruisci indice link interni');
+        echo '</div></article>';
+
+        echo '<article class="alma-index-status-item"><div><h3>Media Library</h3><p><strong>'.((int)($media['total'] ?? 0) > 0 ? 'Indice disponibile' : 'Indice vuoto').'</strong></p><p>'.(int)($media['total'] ?? 0).' immagini indicizzate · '.(int)($media['editorial'] ?? 0).' editoriali · '.(int)($media['affiliate'] ?? 0).' affiliate · ricostruzione '.esc_html(!empty($media['last_rebuild_at']) ? $media['last_rebuild_at'] : 'N/D').'</p><p class="description">Indicizza solo metadati della Media Library. Non legge file binari, non scarica immagini e non invia immagini a OpenAI.</p></div><div class="alma-index-status-action">';
+        self::action_form('reindex_media', 'Ricostruisci indice media');
+        echo '</div></article>';
+
+        echo '</div></section>';
+    }
+
+    private static function render_dashboard_maintenance_section($affiliate, $internal, $internal_state, $media) {
+        echo '<details class="alma-maintenance-advanced"><summary>Manutenzione avanzata</summary><p class="description">Strumenti tecnici per ricostruire indici o azzerare stati batch. Usali solo per manutenzione: non eliminano contenuti editoriali o Link affiliati reali.</p>';
+        echo '<div class="alma-maintenance-grid">';
+        echo '<section class="alma-maintenance-card"><h3>Indice Link affiliati</h3><ul><li>Record orfani: '.(int)$affiliate['orphan_index_records'].'</li><li>Record attivi non validi: '.(int)$affiliate['active_invalid_records'].'</li><li>Record indice inattivi: '.(int)$affiliate['inactive_index_records'].'</li><li>Mancanti dall’indice: '.(int)$affiliate['missing_index'].'</li><li>Da aggiornare: '.(int)$affiliate['stale_index_records'].'</li><li>Stato batch: '.esc_html($affiliate['batch_status']).'</li><li>Last processed ID: '.(int)($affiliate['batch']['last_processed_id'] ?? 0).'</li></ul>';
+        if (!empty($affiliate['batch']['last_error'])) { echo '<p class="description"><strong>Ultimo errore batch:</strong> '.esc_html($affiliate['batch']['last_error']).'</p>'; }
+        echo '<div class="alma-actions-inline">';
+        self::action_form('index_affiliate_links','Indicizza prossimo batch');
+        self::action_form('sync_affiliate_links_incremental','Sync incrementale');
+        self::action_form('reset_affiliate_index_state','Reset stato batch');
+        self::action_form('clear_affiliate_index','Svuota indice e ricomincia');
+        echo '</div></section>';
+
+        echo '<section class="alma-maintenance-card"><h3>Link interni</h3><ul><li>Stato: '.esc_html($internal_state).'</li><li>Post indicizzati: '.(int)($internal['indexed_count'] ?? 0).'</li><li>Ultima ricostruzione: '.esc_html(!empty($internal['last_rebuild_at']) ? $internal['last_rebuild_at'] : 'N/D').'</li><li>Ultimo aggiornamento record: '.esc_html(!empty($internal['last_indexed_at']) ? $internal['last_indexed_at'] : 'N/D').'</li></ul><div class="alma-actions-inline">';
+        self::action_form('rebuild_internal_link_index', 'Ricostruisci indice link interni');
+        echo '</div></section>';
+
+        echo '<section class="alma-maintenance-card"><h3>Media Library</h3><ul><li>Totale immagini indicizzate: '.(int)($media['total'] ?? 0).'</li><li>Editoriali candidate: '.(int)($media['editorial'] ?? 0).'</li><li>Affiliate riconosciute: '.(int)($media['affiliate'] ?? 0).'</li><li>Ultima ricostruzione: '.esc_html(!empty($media['last_rebuild_at']) ? $media['last_rebuild_at'] : 'N/D').'</li></ul><div class="alma-actions-inline">';
+        self::action_form('reindex_media', 'Ricostruisci indice media');
+        self::action_form('reindex_knowledge', 'Reindicizza knowledge base');
+        echo '</div></section>';
+        echo '</div></details>';
+    }
+
+    private static function render_affiliate_index_status_box() {
+        $affiliate = self::get_affiliate_index_view_data();
+        echo '<div class="alma-agent-card alma-affiliate-index-card"><h3>Indice Link affiliati</h3>';
+        if (empty($affiliate['table_exists'])) { echo '<p class="description"><em>Tabella indice non disponibile. La ricerca userà fallback WordPress per i Link affiliati.</em></p>'; }
+        echo '<div class="alma-affiliate-operational-state"><strong>Stato operativo:</strong> '.esc_html($affiliate['operational_state']).'</div>';
+        echo '<div class="alma-affiliate-progress" role="status" aria-label="Progresso indicizzazione Link affiliati '.(int)$affiliate['progress_percent'].' percento"><div class="alma-affiliate-progress-head"><strong>Progresso indicizzazione</strong> <span>'.(int)$affiliate['progress_percent'].'%</span></div><div class="alma-affiliate-progress-bar" aria-hidden="true"><span style="width: '.(int)$affiliate['progress_percent'].'%;"></span></div><p class="description">Candidabili: '.(int)$affiliate['eligible_total'].' · Da lavorare totale: '.(int)$affiliate['pending_total'].'</p></div>';
+        echo '<ul><li>Totale Link affiliati pubblicati: '.(int)$affiliate['total_published'].'</li><li>Indicizzati attivi: '.(int)$affiliate['indexed_active'].'</li><li>Candidabili: '.(int)$affiliate['eligible_total'].'</li><li>Ultimo aggiornamento indice: '.esc_html($affiliate['last_indexed_at'] ?: 'N/D').'</li></ul>';
+        echo '<div class="alma-affiliate-actions-group"><h4>Azione principale</h4><div class="alma-actions-inline alma-affiliate-primary-actions">';
+        if ($affiliate['primary_do'] !== '' && $affiliate['primary_label'] !== '') { self::action_form($affiliate['primary_do'], $affiliate['primary_label']); }
+        else { echo '<button class="button" type="button" disabled>Indice aggiornato</button>'; }
+        echo '<p class="description alma-affiliate-action-description">'.esc_html($affiliate['next_action_text']).'</p></div></div>';
+        echo '<details class="alma-affiliate-advanced-maintenance"><summary>Dettagli avanzati indice</summary><ul><li>Mancanti dall’indice: '.(int)$affiliate['missing_index'].'</li><li>Da aggiornare: '.(int)$affiliate['stale_index_records'].'</li><li>Candidabili non attivi: '.(int)$affiliate['non_active_candidate_records'].'</li><li>Link affiliati senza URL affiliato: '.(int)$affiliate['without_affiliate_url'].'</li><li>Record indice inattivi: '.(int)$affiliate['inactive_index_records'].'</li><li>Record indice orfani: '.(int)$affiliate['orphan_index_records'].'</li><li>Record attivi non validi: '.(int)$affiliate['active_invalid_records'].'</li><li>Stato batch: '.esc_html($affiliate['batch_status']).'</li><li>Last processed ID: '.(int)($affiliate['batch']['last_processed_id'] ?? 0).'</li></ul><div class="alma-actions-inline">';
+        self::action_form('reset_affiliate_index_state','Reset stato batch');
+        self::action_form('clear_affiliate_index','Svuota indice e ricomincia');
+        echo '</div></details></div>';
+    }
 
     private static function render_media_index_status_box() {
         $stats = ALMA_AI_Content_Agent_Media_Index::get_status();
         echo '<div class="alma-agent-card alma-media-index-card"><h3>Indice Media</h3>';
         echo '<ul><li>Totale immagini indicizzate: '.(int)$stats['total'].'</li><li>Immagini editoriali candidate: '.(int)$stats['editorial'].'</li><li>Immagini affiliate riconosciute: '.(int)$stats['affiliate'].'</li><li>Ultima ricostruzione: '.esc_html($stats['last_rebuild_at'] ?: 'N/D').'</li></ul>';
-        self::action_form('reindex_media', 'Ricostruisci indice media', '<p class="description">Ricostruisce in modo sincrono e paginato l’indice leggero degli attachment immagine. Non legge file binari, non scarica immagini e non invia immagini a OpenAI.</p>');
+        self::action_form('reindex_media', 'Ricostruisci indice media', '<p class="description">Indicizza solo metadati della Media Library. Non legge file binari, non scarica immagini e non invia immagini a OpenAI.</p>');
         echo '</div>';
     }
 
@@ -445,9 +541,10 @@ class ALMA_AI_Content_Agent_Admin {
         $state = empty($stats['table_exists']) ? 'Tabella non disponibile' : ((int)$stats['indexed_count'] > 0 ? 'Indice disponibile' : 'Indice vuoto');
         echo '<div class="alma-agent-card alma-internal-link-index-card"><h3>Link interni</h3>';
         echo '<ul><li>Stato indice: '.esc_html($state).'</li><li>Post indicizzati: '.(int)($stats['indexed_count'] ?? 0).'</li><li>Ultima ricostruzione: '.esc_html($stats['last_rebuild_at'] ?: 'N/D').'</li><li>Ultimo aggiornamento record: '.esc_html($stats['last_indexed_at'] ?: 'N/D').'</li></ul>';
-        self::action_form('rebuild_internal_link_index', 'Ricostruisci indice link interni', '<p class="description">Ricostruisce sincronicamente l’indice leggero dei post pubblicati: titolo, permalink, excerpt, categorie e tag. Non indicizza il contenuto completo.</p>');
+        self::action_form('rebuild_internal_link_index', 'Ricostruisci indice link interni', '<p class="description">Indicizza titolo, permalink, excerpt, categorie e tag dei post pubblicati. Non indicizza il contenuto completo.</p>');
         echo '</div>';
     }
+
 
     private static function render_instructions_tab() {
         $profiles = ALMA_AI_Content_Agent_Instructions_Manager::get_profiles(50,0);

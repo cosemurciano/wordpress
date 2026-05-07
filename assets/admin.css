@@ -931,3 +931,127 @@ button:disabled {
 .alma-image-badge-missing { background: #f8f9fa; color: #50575e; border: 1px solid #dcdcde; }
 .alma-image-badge-error { background: #f8d7da; color: #842029; }
 .alma-affiliate-image-preview img { max-width: 100%; height: auto; border-radius: 3px; }
+
+/* ===== AI Content Agent: Operational Dashboard ===== */
+.alma-ai-agent-admin .alma-dashboard-hero {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 18px;
+    margin: 18px 0;
+    padding: 18px 20px;
+    border: 1px solid #c3c4c7;
+    border-left: 4px solid #2271b1;
+    background: #fff;
+}
+.alma-ai-agent-admin .alma-dashboard-hero h2 { margin: 0 0 6px; }
+.alma-ai-agent-admin .alma-dashboard-hero p { margin: 0; max-width: 760px; color: #50575e; }
+.alma-ai-agent-admin .alma-dashboard-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    flex-wrap: wrap;
+    min-width: 320px;
+}
+.alma-ai-agent-admin .alma-dashboard-actions form,
+.alma-ai-agent-admin .alma-dashboard-actions form p { margin: 0; }
+.alma-ai-agent-admin .alma-dashboard-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 14px;
+    margin: 18px 0 22px;
+}
+.alma-ai-agent-admin .alma-dashboard-card,
+.alma-ai-agent-admin .alma-index-status-item,
+.alma-ai-agent-admin .alma-maintenance-card {
+    box-sizing: border-box;
+    border: 1px solid #dcdcde;
+    background: #fff;
+    border-radius: 4px;
+}
+.alma-ai-agent-admin .alma-dashboard-card { padding: 15px; }
+.alma-ai-agent-admin .alma-dashboard-card h3 { margin: 0 0 10px; }
+.alma-ai-agent-admin .alma-dashboard-card p { margin: 0 0 8px; }
+.alma-ai-agent-admin .alma-dashboard-card-value {
+    font-size: 24px;
+    line-height: 1.2;
+    font-weight: 700;
+    color: #1d2327;
+}
+.alma-ai-agent-admin .alma-index-status-section { margin: 22px 0; }
+.alma-ai-agent-admin .alma-index-status-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+.alma-ai-agent-admin .alma-index-status-item {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 18px;
+    padding: 16px;
+}
+.alma-ai-agent-admin .alma-index-status-item h3 { margin: 0 0 8px; }
+.alma-ai-agent-admin .alma-index-status-item p { margin: 0 0 8px; }
+.alma-ai-agent-admin .alma-index-status-action {
+    flex: 0 0 230px;
+    display: flex;
+    justify-content: flex-end;
+}
+.alma-ai-agent-admin .alma-index-status-action form,
+.alma-ai-agent-admin .alma-index-status-action form p { margin: 0; }
+.alma-ai-agent-admin .alma-maintenance-advanced {
+    margin: 22px 0;
+    padding: 14px 16px;
+    border: 1px solid #dcdcde;
+    border-left: 4px solid #8c8f94;
+    background: #f6f7f7;
+}
+.alma-ai-agent-admin .alma-maintenance-advanced summary,
+.alma-ai-agent-admin .alma-affiliate-advanced-maintenance summary {
+    cursor: pointer;
+    font-weight: 600;
+    color: #1d2327;
+}
+.alma-ai-agent-admin .alma-maintenance-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 14px;
+    margin-top: 14px;
+}
+.alma-ai-agent-admin .alma-maintenance-card {
+    padding: 14px;
+}
+.alma-ai-agent-admin .alma-maintenance-card h3 { margin: 0 0 10px; }
+.alma-ai-agent-admin .alma-maintenance-card ul { margin-top: 0; }
+.alma-ai-agent-admin .alma-maintenance-card .alma-actions-inline form {
+    padding: 8px;
+    border: 1px solid #e2e4e7;
+    border-radius: 4px;
+    background: #fff;
+}
+.alma-ai-agent-admin .alma-affiliate-index-card ul { margin-top: 12px; }
+.alma-ai-agent-admin .alma-affiliate-advanced-maintenance {
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px dashed #c3c4c7;
+}
+
+@media (max-width: 1100px) {
+    .alma-ai-agent-admin .alma-dashboard-grid,
+    .alma-ai-agent-admin .alma-maintenance-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .alma-ai-agent-admin .alma-dashboard-hero { flex-direction: column; }
+    .alma-ai-agent-admin .alma-dashboard-actions { justify-content: flex-start; min-width: 0; }
+}
+@media (max-width: 782px) {
+    .alma-ai-agent-admin .alma-dashboard-grid,
+    .alma-ai-agent-admin .alma-maintenance-grid { grid-template-columns: 1fr; }
+    .alma-ai-agent-admin .alma-index-status-item { flex-direction: column; }
+    .alma-ai-agent-admin .alma-index-status-action { flex-basis: auto; width: 100%; justify-content: flex-start; }
+    .alma-ai-agent-admin .alma-index-status-action form,
+    .alma-ai-agent-admin .alma-index-status-action .button,
+    .alma-ai-agent-admin .alma-dashboard-actions .button,
+    .alma-ai-agent-admin .alma-dashboard-actions form { width: 100%; }
+    .alma-ai-agent-admin .alma-dashboard-actions .button { text-align: center; }
+}

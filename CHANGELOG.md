@@ -1,3 +1,12 @@
+## 2.25.46 — AI Content Agent dashboard UI operativa
+- Riorganizzata la dashboard **AI Content Agent** con quick actions in alto per Idee contenuto, creazione idea, Istruzioni AI e Stato/log.
+- Aggiunte card riepilogative per OpenAI, Idee contenuto, Link affiliati, Link interni, Media Library e Stato/log.
+- Raggruppati gli indici nella sezione **Stato degli indici** con dati essenziali, progress bar accessibile e testi operativi più chiari.
+- Spostati dettagli tecnici e azioni di reset/sync/ricostruzione nella sezione collassabile **Manutenzione avanzata**.
+- Rimossi dalla vista principale i pulsanti vecchi/duplicati “Reindicizza fonti” e “Reindicizza media”, mantenendo handler, nonce e capability esistenti.
+- Nessuna modifica ai flussi AI, ai payload OpenAI, agli indexer o alle tabelle DB.
+- Versione plugin aggiornata a `2.25.46`.
+
 ## 2.25.45
 - Aggiunti `featured_image_candidates` e `media_candidates` editoriali nel payload OpenAI, alimentati dall’indice Media Library senza inviare file, base64 o dati binari.
 - Escluse le immagini affiliate dai candidati media editoriali (`is_editorial_candidate=1` e `is_affiliate_media=0`); le immagini affiliate restano gestite separatamente tramite `affiliate_links[].image`.
