@@ -356,6 +356,161 @@ class ALMA_AI_Content_Agent_Draft_Quality_Checker {
     }
 
 
+
+    private static function editorial_record_by_src($src, $editorial_index) {
+        $url = esc_url_raw(html_entity_decode((string)$src, ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+        if ($url === '') { return null; }
+        if (isset($editorial_index['by_url'][$url])) { return $editorial_index['by_url'][$url]; }
+        $key = self::normalize_url_key($url);
+        if ($key !== '' && isset($editorial_index['by_key'][$key])) { return $editorial_index['by_key'][$key]; }
+        return null;
+    }
+
+    private static function affiliate_record_by_src($src, $affiliate_index) {
+        return self::find_record_by_image_src($src, $affiliate_index);
+    }
+
+    private static function dom_inner_html_from_root($dom, $root) {
+        $html = '';
+        foreach ($root->childNodes as $child) {
+            $html .= $dom->saveHTML($child);
+        }
+        return $html;
+    }
+
+    private static function remove_node_safely($node) {
+        if (!$node || !$node->parentNode) { return; }
+        $target = $node;
+        $parent = $node->parentNode;
+        while ($parent && strtolower((string)$parent->nodeName) !== 'div') {
+            if (strtolower((string)$parent->nodeName) === 'figure') { $target = $parent; break; }
+            $parent = $parent->parentNode;
+        }
+        $container = $target->parentNode;
+        if ($container) { $container->removeChild($target); }
+        foreach (array('p', 'div', 'span') as $tag) {
+            if (!$container || strtolower((string)$container->nodeName) === 'div') { break; }
+            $text = trim((string)$container->textContent);
+            if ($text !== '' || $container->getElementsByTagName('img')->length > 0) { break; }
+            $empty = $container;
+            $container = $empty->parentNode;
+            if ($container) { $container->removeChild($empty); }
+        }
+    }
+
+    private static function enforce_editorial_media_limit_in_content($content, $editorial_index, $affiliate_index, $max_editorial_media_used, &$warnings) {
+        $max = max(0, min(5, absint($max_editorial_media_used)));
+        $retained = array();
+        $seen = array();
+        $removed = 0;
+
+        if (!class_exists('DOMDocument')) {
+            $editorial_seen = 0;
+            $content = preg_replace_callback('/<img\b[^>]*>/i', function($matches) use ($editorial_index, $affiliate_index, $max, &$retained, &$seen, &$removed, &$editorial_seen) {
+                $tag = $matches[0];
+                if (!preg_match('/\ssrc=["\']([^"\']+)["\']/i', $tag, $m)) { return $tag; }
+                if (self::affiliate_record_by_src($m[1], $affiliate_index)) { return $tag; }
+                $record = self::editorial_record_by_src($m[1], $editorial_index);
+                if (!$record) { return $tag; }
+                $editorial_seen++;
+                if ($editorial_seen > $max) { $removed++; return ''; }
+                $key = (string)$record['attachment_id'];
+                if (!isset($seen[$key])) { $seen[$key] = true; $retained[] = $record; }
+                return $tag;
+            }, (string)$content);
+            if ($removed > 0) { $warnings[] = 'Rimosse ' . $removed . ' immagini editoriali oltre il limite massimo di ' . $max . '.'; }
+            return array($content, $retained);
+        }
+
+        $dom = new DOMDocument('1.0', 'UTF-8');
+        $previous = libxml_use_internal_errors(true);
+        $flags = 0;
+        if (defined('LIBXML_HTML_NOIMPLIED')) { $flags |= LIBXML_HTML_NOIMPLIED; }
+        if (defined('LIBXML_HTML_NODEFDTD')) { $flags |= LIBXML_HTML_NODEFDTD; }
+        $loaded = $dom->loadHTML('<div id="alma-media-root">' . mb_convert_encoding((string)$content, 'HTML-ENTITIES', 'UTF-8') . '</div>', $flags);
+        libxml_clear_errors();
+        libxml_use_internal_errors($previous);
+        if (!$loaded) { return array($content, $retained); }
+        $root = $dom->getElementById('alma-media-root');
+        if (!$root) { return array($content, $retained); }
+
+        $images = array();
+        foreach ($root->getElementsByTagName('img') as $img) { $images[] = $img; }
+        $editorial_seen = 0;
+        foreach ($images as $img) {
+            $src = $img->getAttribute('src');
+            if (self::affiliate_record_by_src($src, $affiliate_index)) { continue; }
+            $record = self::editorial_record_by_src($src, $editorial_index);
+            if (!$record) { continue; }
+            $editorial_seen++;
+            if ($editorial_seen > $max) {
+                $removed++;
+                self::remove_node_safely($img);
+                continue;
+            }
+            $key = (string)$record['attachment_id'];
+            if (!isset($seen[$key])) { $seen[$key] = true; $retained[] = $record; }
+        }
+        if ($removed > 0) { $warnings[] = 'Rimosse ' . $removed . ' immagini editoriali oltre il limite massimo di ' . $max . '.'; }
+        return array(self::dom_inner_html_from_root($dom, $root), $retained);
+    }
+
+    private static function normalize_editorial_media_used_for_content($payload_media_used, $editorial_index, $retained_editorial_media, $max_editorial_media_used, &$warnings) {
+        $max = max(0, min(5, absint($max_editorial_media_used)));
+        $retained_ids = array();
+        foreach ((array)$retained_editorial_media as $record) {
+            if (is_array($record) && !empty($record['attachment_id'])) { $retained_ids[absint($record['attachment_id'])] = true; }
+        }
+        $placements = array();
+        $declared_ids = array();
+        foreach ((array)$payload_media_used as $media_item) {
+            if (!is_array($media_item)) { continue; }
+            if (!empty($media_item['affiliate_url']) || !empty($media_item['affiliate_link_id'])) { continue; }
+            $id = absint($media_item['attachment_id'] ?? 0);
+            $url = esc_url_raw((string)($media_item['url'] ?? ($media_item['image_url'] ?? '')));
+            $record = null;
+            if ($id > 0 && isset($editorial_index['media_ids'][$id])) { $record = $editorial_index['media_ids'][$id]; }
+            if (!$record && $url !== '') { $record = self::editorial_record_by_src($url, $editorial_index); }
+            if (!$record) { $warnings[] = 'Media editoriale non candidato rimosso da media_used.'; continue; }
+            $declared_id = absint($record['attachment_id']);
+            $declared_ids[$declared_id] = true;
+            if (!isset($retained_ids[$declared_id])) { $warnings[] = 'Media editoriale non presente nel contenuto finale rimosso da media_used.'; continue; }
+            if (!isset($placements[$declared_id])) { $placements[$declared_id] = sanitize_text_field((string)($media_item['placement'] ?? '')); }
+        }
+
+        $items = array();
+        $seen = array();
+        foreach ((array)$retained_editorial_media as $record) {
+            if (!is_array($record)) { continue; }
+            $id = absint($record['attachment_id'] ?? 0);
+            if ($id < 1 || isset($seen[$id])) { continue; }
+            $seen[$id] = true;
+            if (!isset($declared_ids[$id])) { $warnings[] = 'Immagine editoriale candidata presente nel contenuto finale aggiunta a media_used.'; }
+            $items[] = array(
+                'attachment_id' => $id,
+                'url' => esc_url_raw((string)($record['url'] ?? '')),
+                'placement' => sanitize_text_field((string)($placements[$id] ?? '')),
+            );
+            if (count($items) >= $max) { break; }
+        }
+        return $items;
+    }
+
+    private static function validate_featured_image_id($featured, $candidate_image_ids, $editorial_index, &$warnings) {
+        $featured = absint($featured);
+        if ($featured < 1) { return 0; }
+        $has_featured_candidates = !empty($editorial_index['featured_ids']);
+        if ($has_featured_candidates) {
+            if (!empty($editorial_index['featured_ids'][$featured]) && get_post_type($featured) === 'attachment') { return $featured; }
+            $warnings[] = 'featured_image_id non presente in featured_image_candidates: azzerato.';
+            return 0;
+        }
+        $legacy_ids = array_values(array_unique(array_filter(array_map('absint', (array)$candidate_image_ids))));
+        if (in_array($featured, $legacy_ids, true) && get_post_type($featured) === 'attachment') { return $featured; }
+        $warnings[] = 'featured_image_id non presente nei candidati legacy: azzerato.';
+        return 0;
+    }
+
     private static function build_internal_link_index($candidate_internal_links) {
         $index = array('by_url_key'=>array(), 'urls'=>array(), 'home_host'=>'');
         $home = wp_parse_url(home_url('/'));
@@ -479,7 +634,7 @@ class ALMA_AI_Content_Agent_Draft_Quality_Checker {
         $index = self::build_affiliate_link_index($candidate_affiliate_ids, $candidate_affiliate_images);
         $editorial_index = self::build_editorial_media_index($featured_image_candidates, $media_candidates);
         $candidate_image_urls = array_merge($index['image_urls'], $editorial_index['urls']);
-        foreach ((array)$payload['media_used'] as $media_item) {
+        foreach ((array)($payload['media_used'] ?? array()) as $media_item) {
             $url = is_array($media_item) ? ($media_item['image_url'] ?? ($media_item['url'] ?? '')) : $media_item;
             $url = esc_url_raw((string)$url);
             if ($url !== '' && isset($candidate_image_urls[$url])) { $candidate_image_urls[$url] = $url; }
@@ -517,8 +672,7 @@ class ALMA_AI_Content_Agent_Draft_Quality_Checker {
             $shortcodes_used[] = $matches[0];
             return $matches[0];
         }, $content);
-        $featured = absint($payload['featured_image_id'] ?? 0);
-        if ($featured && (empty($editorial_index['featured_ids'][$featured]) || get_post_type($featured) !== 'attachment')) { $warnings[]='featured_image_id non presente in featured_image_candidates: azzerato.'; $featured=0; }
+        $featured = self::validate_featured_image_id($payload['featured_image_id'] ?? 0, $candidate_image_ids, $editorial_index, $warnings);
         $inline = array_values(array_filter(array_map('absint', (array)($payload['inline_image_ids'] ?? array()))));
         $inline = array_values(array_filter($inline, function($id) use($candidate_image_ids){ return $id > 0 && in_array($id, $candidate_image_ids, true) && get_post_type($id)==='attachment'; }));
 
@@ -528,9 +682,11 @@ class ALMA_AI_Content_Agent_Draft_Quality_Checker {
         }
 
         $content = self::sanitize_content_html($content);
-        $editorial_media_used = self::normalize_editorial_media_used((array)($payload['media_used'] ?? array()), $editorial_index, $max_editorial_media_used, $warnings);
+        list($content, $retained_editorial_media) = self::enforce_editorial_media_limit_in_content($content, $editorial_index, $index, $max_editorial_media_used, $warnings);
+        $content = self::sanitize_content_html($content);
+        $editorial_media_used = self::normalize_editorial_media_used_for_content((array)($payload['media_used'] ?? array()), $editorial_index, $retained_editorial_media, $max_editorial_media_used, $warnings);
         list($affiliate_urls_used, $affiliate_media_used, $affiliate_images_used) = self::collect_final_affiliate_usage($content, $index);
-        $media_used = array_merge($editorial_media_used, (array)$affiliate_media_used);
+        $media_used = $editorial_media_used;
         $affiliate_urls_used = self::dedupe_strings($affiliate_urls_used);
         $shortcodes_used = self::dedupe_strings(array_merge((array)($payload['affiliate_shortcodes_used'] ?? array()), $shortcodes_used));
 

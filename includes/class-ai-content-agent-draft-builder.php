@@ -1218,12 +1218,32 @@ class ALMA_AI_Content_Agent_Draft_Builder {
         update_post_meta($post_id, '_alma_ai_agent_selected_media_ids', wp_json_encode($candidate_image_ids));
         update_post_meta($post_id, '_alma_ai_agent_featured_image_candidates', wp_json_encode($featured_candidates));
         update_post_meta($post_id, '_alma_ai_agent_media_candidates', wp_json_encode($editorial_media_candidates));
+        $selected_featured_id = absint($clean['featured_image_id'] ?? 0);
+        update_post_meta($post_id, '_alma_ai_agent_selected_featured_image_id', $selected_featured_id);
+        if ($selected_featured_id > 0) {
+            $selected_featured_url = function_exists('wp_get_attachment_image_url') ? wp_get_attachment_image_url($selected_featured_id, 'full') : '';
+            if (!$selected_featured_url && function_exists('wp_get_attachment_url')) { $selected_featured_url = wp_get_attachment_url($selected_featured_id); }
+            $selected_featured_source = '';
+            foreach (array_merge($featured_candidates, $editorial_media_candidates) as $featured_candidate) {
+                if (!is_array($featured_candidate) || absint($featured_candidate['attachment_id'] ?? 0) !== $selected_featured_id) { continue; }
+                $selected_featured_source = sanitize_text_field((string)($featured_candidate['source'] ?? ($featured_candidate['filename'] ?? '')));
+                break;
+            }
+            if ($selected_featured_url) { update_post_meta($post_id, '_alma_ai_agent_selected_featured_image_url', esc_url_raw($selected_featured_url)); }
+            else { delete_post_meta($post_id, '_alma_ai_agent_selected_featured_image_url'); }
+            if ($selected_featured_source !== '') { update_post_meta($post_id, '_alma_ai_agent_selected_featured_image_source', $selected_featured_source); }
+            else { delete_post_meta($post_id, '_alma_ai_agent_selected_featured_image_source'); }
+        } else {
+            delete_post_meta($post_id, '_alma_ai_agent_selected_featured_image_url');
+            delete_post_meta($post_id, '_alma_ai_agent_selected_featured_image_source');
+        }
         update_post_meta($post_id, '_alma_ai_agent_affiliate_images_available', wp_json_encode($candidate_affiliate_images));
         update_post_meta($post_id, '_alma_ai_agent_affiliate_images_used', wp_json_encode((array)($clean['affiliate_images_used'] ?? array())));
         update_post_meta($post_id, '_alma_ai_agent_affiliate_shortcodes_used', wp_json_encode((array)($clean['affiliate_shortcodes_used'] ?? array())));
         update_post_meta($post_id, '_alma_ai_agent_affiliate_urls_used', wp_json_encode((array)($clean['affiliate_urls_used'] ?? array())));
         update_post_meta($post_id, '_alma_ai_agent_internal_urls_used', wp_json_encode((array)($clean['internal_urls_used'] ?? array())));
         update_post_meta($post_id, '_alma_ai_agent_media_used', wp_json_encode((array)($clean['media_used'] ?? array())));
+        update_post_meta($post_id, '_alma_ai_agent_media_warnings', wp_json_encode((array)($clean['warnings'] ?? array())));
         update_post_meta($post_id, '_alma_ai_category_ids', wp_json_encode((array)($taxonomy_applied['category_ids'] ?? array())));
         update_post_meta($post_id, '_alma_ai_tag_ids', wp_json_encode((array)($taxonomy_applied['tag_ids'] ?? array())));
         update_post_meta($post_id, '_alma_ai_new_tags', wp_json_encode((array)($taxonomy_applied['new_tags'] ?? array())));
