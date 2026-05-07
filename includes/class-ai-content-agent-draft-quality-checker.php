@@ -281,6 +281,90 @@ class ALMA_AI_Content_Agent_Draft_Quality_Checker {
         return array(array_values($urls), array_values($media), array_values($images_used));
     }
 
+
+    private static function build_internal_link_index($candidate_internal_links) {
+        $index = array('by_url_key'=>array(), 'urls'=>array(), 'home_host'=>'');
+        $home = wp_parse_url(home_url('/'));
+        $index['home_host'] = is_array($home) ? strtolower((string)($home['host'] ?? '')) : '';
+        foreach ((array)$candidate_internal_links as $link) {
+            if (!is_array($link)) { continue; }
+            $url = esc_url_raw((string)($link['url'] ?? ''));
+            if ($url === '') { continue; }
+            $key = self::normalize_url_key($url);
+            if ($key === '') { continue; }
+            $index['by_url_key'][$key] = array(
+                'id' => absint($link['id'] ?? 0),
+                'url' => $url,
+                'title' => sanitize_text_field((string)($link['title'] ?? '')),
+            );
+            $index['urls'][$url] = $url;
+        }
+        return $index;
+    }
+
+    private static function is_internal_url($url, $internal_index) {
+        $parts = wp_parse_url($url);
+        if (!is_array($parts) || empty($parts['host'])) { return false; }
+        $home_host = strtolower((string)($internal_index['home_host'] ?? ''));
+        return $home_host !== '' && strtolower((string)$parts['host']) === $home_host;
+    }
+
+    private static function enforce_internal_links_with_dom($content, $internal_index, &$warnings) {
+        $used = array();
+        if (!class_exists('DOMDocument')) { return array(self::enforce_internal_links_with_regex($content, $internal_index, $warnings, $used), array_values($used)); }
+        $dom = new DOMDocument('1.0', 'UTF-8');
+        $previous = libxml_use_internal_errors(true);
+        $flags = 0;
+        if (defined('LIBXML_HTML_NOIMPLIED')) { $flags |= LIBXML_HTML_NOIMPLIED; }
+        if (defined('LIBXML_HTML_NODEFDTD')) { $flags |= LIBXML_HTML_NODEFDTD; }
+        $loaded = $dom->loadHTML('<div>' . mb_convert_encoding((string)$content, 'HTML-ENTITIES', 'UTF-8') . '</div>', $flags);
+        libxml_clear_errors();
+        libxml_use_internal_errors($previous);
+        if (!$loaded) { return array($content, $used); }
+        $anchors = array();
+        foreach ($dom->getElementsByTagName('a') as $anchor) { $anchors[] = $anchor; }
+        foreach ($anchors as $anchor) {
+            $href = esc_url_raw(html_entity_decode((string)$anchor->getAttribute('href'), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+            if ($href === '' || !self::is_internal_url($href, $internal_index)) { continue; }
+            $key = self::normalize_url_key($href);
+            if ($key !== '' && isset($internal_index['by_url_key'][$key])) {
+                $url = $internal_index['by_url_key'][$key]['url'];
+                $used[$url] = $url;
+                $anchor->setAttribute('href', $url);
+                continue;
+            }
+            self::unwrap_node($anchor);
+            $warnings[] = 'Link interno non autorizzato rimosso: URL non presente in internal_links.';
+        }
+        return array(self::dom_inner_html($dom), array_values($used));
+    }
+
+    private static function enforce_internal_links_with_regex($content, $internal_index, &$warnings, &$used) {
+        return preg_replace_callback('#<a\b([^>]*\shref=["\']([^"\']+)["\'][^>]*)>(.*?)</a>#isu', function($m) use ($internal_index, &$warnings, &$used) {
+            $href = esc_url_raw(html_entity_decode((string)$m[2], ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+            if ($href === '' || !self::is_internal_url($href, $internal_index)) { return $m[0]; }
+            $key = self::normalize_url_key($href);
+            if ($key !== '' && isset($internal_index['by_url_key'][$key])) { $used[$internal_index['by_url_key'][$key]['url']] = $internal_index['by_url_key'][$key]['url']; return $m[0]; }
+            $warnings[] = 'Link interno non autorizzato rimosso: URL non presente in internal_links.';
+            return $m[3];
+        }, (string)$content);
+    }
+
+    private static function remove_bare_internal_text_urls($content, $internal_index, &$warnings) {
+        $changed = false;
+        $parts = preg_split('/(<[^>]+>)/', (string)$content, -1, PREG_SPLIT_DELIM_CAPTURE);
+        foreach ($parts as $i => $part) {
+            if ($part === '' || $part[0] === '<') { continue; }
+            $parts[$i] = preg_replace_callback('/https?:\/\/[^\s<>"\']+/i', function($m) use ($internal_index, &$changed) {
+                $url = esc_url_raw($m[0]);
+                if (self::is_internal_url($url, $internal_index)) { $changed = true; return ''; }
+                return $m[0];
+            }, $part);
+        }
+        if ($changed) { $warnings[] = 'URL interno visibile nel testo rimosso.'; }
+        return implode('', $parts);
+    }
+
     private static function dedupe_strings($items) {
         $out = array();
         foreach ((array)$items as $item) {
@@ -290,7 +374,7 @@ class ALMA_AI_Content_Agent_Draft_Quality_Checker {
         return array_values($out);
     }
 
-    public static function validate_payload($payload, $candidate_affiliate_ids = array(), $candidate_image_ids = array(), $candidate_affiliate_images = array()) {
+    public static function validate_payload($payload, $candidate_affiliate_ids = array(), $candidate_image_ids = array(), $candidate_affiliate_images = array(), $candidate_internal_links = array()) {
         $warnings = array();
         $title = sanitize_text_field($payload['title'] ?? '');
         $excerpt = sanitize_textarea_field($payload['excerpt'] ?? '');
@@ -323,6 +407,9 @@ class ALMA_AI_Content_Agent_Draft_Quality_Checker {
             return preg_replace('/<img\b/i', '<img alt=""', $tag, 1);
         }, $content);
 
+        $internal_index = self::build_internal_link_index($candidate_internal_links);
+        list($content, $internal_urls_used) = self::enforce_internal_links_with_dom($content, $internal_index, $warnings);
+        $content = self::remove_bare_internal_text_urls($content, $internal_index, $warnings);
         $content = self::remove_bare_external_text_urls($content, $candidate_image_urls, $index['by_affiliate_url'], $warnings);
 
         $used = array();
@@ -363,6 +450,7 @@ class ALMA_AI_Content_Agent_Draft_Quality_Checker {
             'affiliate_links_used'=>array_values(array_unique($used)),
             'affiliate_shortcodes_used'=>$shortcodes_used,
             'affiliate_urls_used'=>$affiliate_urls_used,
+            'internal_urls_used'=>self::dedupe_strings($internal_urls_used),
             'media_used'=>array_values($media_used),
             'affiliate_images_used'=>array_values($affiliate_images_used),
             'warnings'=>array_values(array_unique($warnings)),

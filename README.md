@@ -1,3 +1,10 @@
+## 2.25.39 — AI Content Agent internal linking MVP
+- Aggiunto MVP internal linking per AI Content Agent: indice leggero `alma_ai_internal_link_index` dei post pubblicati con titolo, permalink assoluto, slug, excerpt, categorie, tag e date, senza indicizzare il contenuto completo e senza embeddings.
+- Aggiunto selettore deterministico di candidati link interni (massimo 8) basato su match in titolo, destinazione/keyword, slug, categorie/tag, excerpt e recenza, senza chiamate OpenAI.
+- Aggiunti `internal_links` e `internal_link_rules` al payload OpenAI compatto, più il campo obbligatorio `internal_urls_used` separato da `affiliate_urls_used` e `affiliate_shortcodes_used`.
+- Aggiunto QA locale per consentire solo URL interni presenti in `internal_links`, de-linkare wrapper `<a>` inventati lasciando il testo, rimuovere URL interni visibili e aggiornare `internal_urls_used` con warning diagnostici.
+- Aggiunta card admin “Link interni” con stato indice, conteggio post indicizzati, ultima ricostruzione e pulsante con nonce/capability per ricostruzione manuale sincrona; aggiunti hook leggeri `save_post`/trash/delete per aggiornamento singolo.
+- Aggiornati JSON payload/debug per includere candidati interni, regole, campo richiesto `internal_urls_used` e diagnostica selector nel debug completo.
 ## 2.25.38 — AI draft QA affiliate hardening
 - Rafforzate le regole operative inviate a OpenAI: vietate disclosure affiliate generiche, tag `<a>` senza `href`, shortcode usati come `href` e richiesto allineamento tra `affiliate_urls_used`, shortcode e URL diretti realmente inseriti.
 - Aggiunta rimozione automatica dal solo campo `content` delle disclosure affiliate generiche generate dall’AI, senza inserire disclosure sostitutive.
