@@ -4,6 +4,7 @@ if (!defined('ABSPATH')) { exit; }
 class ALMA_Affiliate_Source_Provider_Client_Factory {
     const PROVIDER_CUSTOM_API = 'custom_api';
     const PROVIDER_VIATOR = 'viator';
+    const PROVIDER_GETYOURGUIDE = 'getyourguide';
 
     public static function make($source) {
         $provider = self::resolve_provider_key($source);
@@ -14,6 +15,10 @@ class ALMA_Affiliate_Source_Provider_Client_Factory {
 
         if ($provider === self::PROVIDER_VIATOR) {
             return new ALMA_Affiliate_Source_Provider_Client_Viator();
+        }
+
+        if ($provider === self::PROVIDER_GETYOURGUIDE) {
+            return new ALMA_Affiliate_Source_Provider_Client_GetYourGuide();
         }
 
         return new ALMA_Affiliate_Source_Provider_Client_Fallback();

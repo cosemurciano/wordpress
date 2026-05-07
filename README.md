@@ -1,3 +1,13 @@
+## 2.25.50 — Add GetYourGuide affiliate source provider
+- Aggiunto provider ufficiale GetYourGuide nel modulo Affiliate Source Manager, con configurazione guidata per Access token GetYourGuide, lingua contenuti, valuta, query predefinita, limite risultati e ordinamento opzionale.
+- Aggiunto client Partner API GetYourGuide per `GET /1/tours` con header `X-ACCESS-TOKEN`, `Accept: application/json`, parametri `cnt_language`, `currency`, `q`, `limit` e `offset`, gestione errori HTTP/WP_Error/JSON non valido e nessun logging del token.
+- Integrata anteprima import GetYourGuide con checkbox selettiva, miniatura quando disponibile, titolo, URL prodotto/affiliato diretto, prezzo, valuta, rating, external ID, stato duplicato e warning per URL o immagini mancanti.
+- Aggiunti normalizzazione item, mapping metadati `_alma_gyg_*`, deduplicazione provider/source external ID, sincronizzazione `_affiliate_url` e `_alma_affiliate_url` e import selettivo nel CPT `affiliate_link`.
+- Aggiunto resolver media GetYourGuide per estrarre una immagine candidata dal payload senza download in preview; durante l’import viene riusato il servizio esistente di sideload, con featured image e meta media affiliato.
+- Aggiunto catalogo campi GetYourGuide e contesto AI prudente per AI Content Agent, includendo provider, descrizione sintetica, prezzo/rating/durata e immagine quando disponibili, con nota di non copiare testo provider e di non inventare disponibilità.
+- Confermati limiti: nessun booking, cart, checkout, scraping, ingest catalogo completo, availability o price-breakdown GetYourGuide in questa release.
+- Versione plugin aggiornata a `2.25.50`.
+
 ## 2.25.49 — Fix dashboard pending counts and media QA consistency
 - Corretto il conteggio pending della Dashboard per i Link affiliati: `non_active_candidate_records` contribuisce agli aggiornamenti disponibili, abilita la CTA di sync incrementale ed è mostrato come link candidabili da sincronizzare.
 - Corretto il confronto timezone dei pending Link interni: `post_modified_gmt` viene confrontato con il nuovo `indexed_at_gmt`, salvato in GMT, mantenendo `indexed_at` locale per compatibilità/UI.
