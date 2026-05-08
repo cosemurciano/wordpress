@@ -7,6 +7,129 @@ class ALMA_Affiliate_Source_GYG_CSV_Importer {
     const PREVIEW_LIMIT = 10;
     const TRANSIENT_PREFIX = 'alma_gyg_csv_';
 
+
+    public static function activity_type_hash($activity_type) {
+        return hash('sha256', (string)$activity_type);
+    }
+
+    private function sessions_table() {
+        global $wpdb;
+        return $wpdb->prefix . 'alma_gyg_csv_import_sessions';
+    }
+
+    private function progress_table() {
+        global $wpdb;
+        return $wpdb->prefix . 'alma_gyg_csv_import_progress';
+    }
+
+    private function persistent_upload_dir() {
+        $uploads = wp_upload_dir();
+        if (!empty($uploads['error'])) {
+            return new WP_Error('upload_dir', $uploads['error']);
+        }
+        $dir = trailingslashit($uploads['basedir']) . 'alma-imports/gyg-csv';
+        if (!wp_mkdir_p($dir)) {
+            return new WP_Error('upload_dir_create', __('Impossibile creare la cartella persistente CSV.', 'affiliate-link-manager-ai'));
+        }
+        $htaccess = trailingslashit($dir) . '.htaccess';
+        if (!file_exists($htaccess)) {
+            @file_put_contents($htaccess, "Options -Indexes\n<FilesMatch \"\\.(php|phtml|php[0-9]|phar|cgi|pl|py|sh)$\">\nRequire all denied\n</FilesMatch>\n<IfModule mod_php.c>\nphp_flag engine off\n</IfModule>\n");
+        }
+        $index = trailingslashit($dir) . 'index.html';
+        if (!file_exists($index)) {
+            @file_put_contents($index, '');
+        }
+        return $dir;
+    }
+
+    private function table_exists($table) {
+        global $wpdb;
+        return $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $table)) === $table;
+    }
+
+    public function get_recent_sessions($source_id, $limit = 10) {
+        global $wpdb;
+        $table = $this->sessions_table();
+        if (!$this->table_exists($table)) return array();
+        $limit = max(1, min(50, absint($limit)));
+        return $wpdb->get_results($wpdb->prepare("SELECT * FROM {$table} WHERE source_id=%d ORDER BY updated_at DESC LIMIT %d", absint($source_id), $limit), ARRAY_A);
+    }
+
+    public function get_progress_for_session($session_id) {
+        global $wpdb;
+        $table = $this->progress_table();
+        if (!$this->table_exists($table)) return array();
+        $rows = $wpdb->get_results($wpdb->prepare("SELECT * FROM {$table} WHERE session_id=%d", absint($session_id)), ARRAY_A);
+        $out = array();
+        foreach ((array)$rows as $row) {
+            $out[(string)$row['activity_type_hash']] = $row;
+        }
+        return $out;
+    }
+
+    public function get_progress($session_id, $source_id, $activity_type) {
+        global $wpdb;
+        $table = $this->progress_table();
+        if (!$this->table_exists($table)) return array();
+        $hash = self::activity_type_hash($activity_type);
+        $row = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$table} WHERE session_id=%d AND source_id=%d AND activity_type_hash=%s", absint($session_id), absint($source_id), $hash), ARRAY_A);
+        return is_array($row) ? $row : array();
+    }
+
+    public function upsert_progress($session_id, $source_id, $activity_type, $term_ids, $result) {
+        global $wpdb;
+        $table = $this->progress_table();
+        if (!$this->table_exists($table)) return false;
+        $session_id = absint($session_id);
+        $source_id = absint($source_id);
+        $activity_type = sanitize_text_field((string)$activity_type);
+        $hash = self::activity_type_hash($activity_type);
+        $existing = $this->get_progress($session_id, $source_id, $activity_type);
+        $now = current_time('mysql');
+        $data = array(
+            'session_id' => $session_id,
+            'source_id' => $source_id,
+            'activity_type' => $activity_type,
+            'activity_type_hash' => $hash,
+            'mapped_term_ids_json' => wp_json_encode(self::normalize_mapping_term_ids($term_ids)),
+            'imported_count' => absint($existing['imported_count'] ?? 0) + absint($result['imported'] ?? 0),
+            'updated_count' => absint($existing['updated_count'] ?? 0) + absint($result['updated'] ?? 0),
+            'existing_count' => absint($existing['existing_count'] ?? 0) + absint($result['existing'] ?? 0),
+            'skipped_count' => absint($existing['skipped_count'] ?? 0) + absint($result['skipped'] ?? 0),
+            'error_count' => absint($existing['error_count'] ?? 0) + absint($result['errors'] ?? 0),
+            'last_cursor' => absint($result['next_cursor'] ?? ($existing['last_cursor'] ?? 0)),
+            'last_report_json' => wp_json_encode(is_array($result) ? $result : array()),
+            'updated_at' => $now,
+        );
+        $session_table = $this->sessions_table();
+        if ($this->table_exists($session_table) && $session_id > 0) {
+            $wpdb->update($session_table, array('status'=>!empty($result['done'])?'ready':'importing','updated_at'=>$now,'last_error'=>''), array('id'=>$session_id));
+        }
+        if (!empty($existing['id'])) {
+            return $wpdb->update($table, $data, array('id'=>absint($existing['id'])));
+        }
+        return $wpdb->insert($table, $data);
+    }
+
+    public function delete_session($token, $source_id) {
+        global $wpdb;
+        $session = $this->get_session($token, $source_id);
+        if (is_wp_error($session)) return $session;
+        $session_table = $this->sessions_table();
+        $progress_table = $this->progress_table();
+        if ($this->table_exists($progress_table)) {
+            $wpdb->delete($progress_table, array('session_id'=>absint($session['id']), 'source_id'=>absint($source_id)));
+        }
+        if (!empty($session['path']) && file_exists($session['path'])) {
+            @unlink($session['path']);
+        }
+        if ($this->table_exists($session_table)) {
+            $wpdb->delete($session_table, array('id'=>absint($session['id']), 'source_id'=>absint($source_id)));
+        }
+        delete_transient($this->transient_key($token));
+        return true;
+    }
+
     public static function build_affiliate_url($original_url, $partner_id, $utm_medium = 'online_publisher') {
         $url = esc_url_raw(trim((string)$original_url));
         if ($url === '' || !wp_http_validate_url($url)) {
@@ -76,11 +199,21 @@ class ALMA_Affiliate_Source_GYG_CSV_Importer {
                 }
                 return;
             }
-            if (is_string($item) && strpos($item, ',') !== false) {
-                foreach (explode(',', $item) as $part) {
-                    $collect($part);
+            if (is_string($item)) {
+                $trimmed = trim($item);
+                if ($trimmed !== '' && ($trimmed[0] === '[' || $trimmed[0] === '{')) {
+                    $decoded = json_decode($trimmed, true);
+                    if (is_array($decoded)) {
+                        $collect($decoded);
+                        return;
+                    }
                 }
-                return;
+                if (strpos($item, ',') !== false) {
+                    foreach (explode(',', $item) as $part) {
+                        $collect($part);
+                    }
+                    return;
+                }
             }
             if (is_numeric($item)) {
                 $id = (int)$item;
@@ -133,26 +266,51 @@ class ALMA_Affiliate_Source_GYG_CSV_Importer {
         if ($ext !== 'csv') {
             return new WP_Error('invalid_extension', __('Il file deve avere estensione .csv.', 'affiliate-link-manager-ai'));
         }
-        $check = wp_check_filetype_and_ext($file['tmp_name'], $name, array('csv' => 'text/csv'));
+        $allowed_mimes = array('csv' => 'text/csv');
+        $check = wp_check_filetype_and_ext($file['tmp_name'], $name, $allowed_mimes);
         if (empty($check['ext']) && empty($check['type'])) {
-            return new WP_Error('invalid_filetype', __('Tipo file CSV non riconosciuto.', 'affiliate-link-manager-ai'));
+            $mime = function_exists('mime_content_type') ? (string)@mime_content_type($file['tmp_name']) : '';
+            if ($mime !== '' && !in_array($mime, array('text/plain','text/csv','application/csv','application/vnd.ms-excel'), true)) {
+                return new WP_Error('invalid_filetype', __('Tipo file CSV non riconosciuto.', 'affiliate-link-manager-ai'));
+            }
         }
-        $uploads = wp_upload_dir();
-        if (!empty($uploads['error'])) {
-            return new WP_Error('upload_dir', $uploads['error']);
-        }
-        $dir = trailingslashit($uploads['basedir']) . 'alma-gyg-csv';
-        if (!wp_mkdir_p($dir)) {
-            return new WP_Error('upload_dir_create', __('Impossibile creare la cartella temporanea CSV.', 'affiliate-link-manager-ai'));
-        }
-        $token = wp_generate_password(32, false, false);
-        $path = trailingslashit($dir) . 'source-' . absint($source_id) . '-' . get_current_user_id() . '-' . $token . '.csv';
+        $dir = $this->persistent_upload_dir();
+        if (is_wp_error($dir)) return $dir;
+        $token = strtolower(wp_generate_password(48, false, false));
+        $stored = 'source-' . absint($source_id) . '-' . wp_generate_password(20, false, false) . '.csv';
+        $path = trailingslashit($dir) . $stored;
         if (!move_uploaded_file($file['tmp_name'], $path)) {
-            return new WP_Error('upload_move', __('Impossibile salvare temporaneamente il CSV.', 'affiliate-link-manager-ai'));
+            return new WP_Error('upload_move', __('Impossibile salvare il CSV in modo persistente.', 'affiliate-link-manager-ai'));
         }
-        @chmod($path, 0600);
+        @chmod($path, 0640);
+
+        $headers = $this->get_headers($path);
+        $det = is_wp_error($headers) ? array('valid'=>false,'columns'=>array(),'headers'=>array(),'missing'=>array()) : $this->detect_columns($headers);
+        $summary = !empty($det['valid']) ? $this->summarize($path, $det['columns']) : array('types'=>array(), 'total'=>0, 'invalid_urls'=>0, 'without_city'=>0, 'without_region'=>0);
+        $now = current_time('mysql');
+        $session = array(
+            'source_id' => absint($source_id),
+            'token' => $token,
+            'original_filename' => $name,
+            'stored_filename' => $stored,
+            'file_path' => $path,
+            'file_hash' => hash_file('sha256', $path),
+            'total_rows' => absint($summary['total'] ?? 0),
+            'columns_json' => wp_json_encode($det),
+            'summary_json' => wp_json_encode($summary),
+            'status' => !empty($det['valid']) ? 'ready' : 'invalid',
+            'created_at' => $now,
+            'updated_at' => $now,
+            'last_error' => empty($det['valid']) ? sprintf(__('Colonne obbligatorie mancanti: %s', 'affiliate-link-manager-ai'), implode(', ', (array)($det['missing'] ?? array()))) : '',
+        );
+        global $wpdb;
+        $table = $this->sessions_table();
+        if ($this->table_exists($table)) {
+            $wpdb->insert($table, $session);
+            $session['id'] = (int)$wpdb->insert_id;
+        }
         set_transient($this->transient_key($token), array('path'=>$path, 'source_id'=>absint($source_id), 'user_id'=>get_current_user_id(), 'name'=>$name, 'created_at'=>time()), 12 * HOUR_IN_SECONDS);
-        return array('token'=>$token, 'path'=>$path, 'name'=>$name);
+        return array('token'=>$token, 'path'=>$path, 'name'=>$name, 'session_id'=>absint($session['id'] ?? 0));
     }
 
     public function transient_key($token) {
@@ -160,8 +318,39 @@ class ALMA_Affiliate_Source_GYG_CSV_Importer {
     }
 
     public function get_session($token, $source_id) {
+        global $wpdb;
+        $token = sanitize_key($token);
+        $source_id = absint($source_id);
+        if ($token === '' || $source_id <= 0) {
+            return new WP_Error('csv_session_expired', __('Sessione CSV non valida.', 'affiliate-link-manager-ai'));
+        }
+        $table = $this->sessions_table();
+        if ($this->table_exists($table)) {
+            $row = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$table} WHERE token=%s AND source_id=%d", $token, $source_id), ARRAY_A);
+            if (is_array($row) && !empty($row['file_path']) && file_exists($row['file_path'])) {
+                return array(
+                    'id' => absint($row['id']),
+                    'path' => (string)$row['file_path'],
+                    'source_id' => absint($row['source_id']),
+                    'name' => (string)$row['original_filename'],
+                    'token' => (string)$row['token'],
+                    'stored_filename' => (string)$row['stored_filename'],
+                    'file_hash' => (string)$row['file_hash'],
+                    'total_rows' => absint($row['total_rows']),
+                    'columns' => json_decode((string)($row['columns_json'] ?? ''), true),
+                    'summary' => json_decode((string)($row['summary_json'] ?? ''), true),
+                    'status' => (string)$row['status'],
+                    'created_at' => (string)$row['created_at'],
+                    'updated_at' => (string)$row['updated_at'],
+                );
+            }
+            if (is_array($row)) {
+                $wpdb->update($table, array('status'=>'missing_file','last_error'=>__('File CSV persistente non trovato.', 'affiliate-link-manager-ai'),'updated_at'=>current_time('mysql')), array('id'=>absint($row['id'])));
+                return new WP_Error('csv_file_missing', __('File CSV persistente non trovato. Elimina la sessione e ricarica il CSV.', 'affiliate-link-manager-ai'));
+            }
+        }
         $session = get_transient($this->transient_key($token));
-        if (!is_array($session) || empty($session['path']) || !file_exists($session['path']) || (int)$session['source_id'] !== (int)$source_id || (int)$session['user_id'] !== get_current_user_id()) {
+        if (!is_array($session) || empty($session['path']) || !file_exists($session['path']) || (int)$session['source_id'] !== $source_id || (int)$session['user_id'] !== get_current_user_id()) {
             return new WP_Error('csv_session_expired', __('Sessione CSV scaduta o non valida. Carica nuovamente il file.', 'affiliate-link-manager-ai'));
         }
         return $session;
