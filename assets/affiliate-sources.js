@@ -1,6 +1,6 @@
 jQuery(function($){
   function parseJson(id){ try { return JSON.parse($(id).val() || '{}'); } catch(e){ return {}; } }
-  function updateSelected(){ $('.alma-selected-counter').text($('.alma-select-item:checked').length+' selezionati'); }
+  function updateSelected(){ $('.alma-selected-counter').text($('.alma-select-item:checked').length+' selezionati (max 500)'); }
   function toggleSearchHints(){
     var m = $('#import_search_model').val();
     $('.alma-search-term-wrap').toggle(m === 'freetext_search');
@@ -19,12 +19,19 @@ jQuery(function($){
     var $creds = $('#alma-guided-credentials');
     var isViator = preset === 'viator';
     var isGetYourGuide = preset === 'getyourguide';
-    $('#alma-advanced-credentials').toggle(!isViator && !isGetYourGuide);
+    var isGygCsv = preset === 'gyg_csv';
+    $('#alma-advanced-credentials').toggle(!isViator && !isGetYourGuide && !isGygCsv);
     $('#alma-viator-credentials-note').toggle(isViator);
     $settings.html(''); $creds.html('');
     if(isViator){
       $settings.append('<p><label>Modalità <select name="settings_fields[mode]"><option value="create_update">create_update</option><option value="create_only">create_only</option></select></label></p>');
       $creds.append('<p><label><strong>Viator API key *</strong><br/><input type="password" name="credentials_fields[api_key]" class="regular-text" '+(existingCredFlags.api_key ? '' : 'required')+' placeholder="'+(existingCredFlags.api_key ? 'già salvata' : '')+'" autocomplete="off"></label></p>');
+    }
+    if(isGygCsv){
+      $settings.append('<p class="description">Import CSV locale: nessuna chiamata esterna. Il dominio originale (.com/.it) viene preservato.</p>');
+      $settings.append('<p><label><strong>Partner ID *</strong><br/><input type="text" name="settings_fields[partner_id]" class="regular-text" required></label></p>');
+      $settings.append('<p><label><strong>UTM medium</strong><br/><input type="text" name="settings_fields[utm_medium]" value="online_publisher" class="regular-text"></label></p>');
+      $settings.append('<p><label><strong>Batch size massimo</strong><br/><input type="number" name="settings_fields[batch_size]" value="500" min="1" max="500"></label></p>');
     }
     if(isGetYourGuide){
       $settings.append('<p class="description">Richiede accesso GetYourGuide Partner API e token X-ACCESS-TOKEN. Il livello API disponibile può influire sui campi restituiti.</p>');
@@ -36,7 +43,7 @@ jQuery(function($){
       $creds.append('<p><label><strong>Access token GetYourGuide *</strong><br/><input type="password" name="credentials_fields[access_token]" class="regular-text" '+(existingCredFlags.access_token ? '' : 'required')+' placeholder="'+(existingCredFlags.access_token ? 'già salvato' : '')+'" autocomplete="off"></label></p><p class="description">Token configurato/non configurato: il valore salvato non viene mostrato in chiaro.</p>');
     }
     if(existingSettings.mode){ $settings.find('select[name="settings_fields[mode]"]').val(existingSettings.mode); }
-    ['cnt_language','currency','default_query','limit','timeout'].forEach(function(k){ if(existingSettings[k] !== undefined){ $settings.find('[name="settings_fields['+k+']"]').val(existingSettings[k]); } });
+    ['cnt_language','currency','default_query','limit','timeout','partner_id','utm_medium','batch_size'].forEach(function(k){ if(existingSettings[k] !== undefined){ $settings.find('[name="settings_fields['+k+']"]').val(existingSettings[k]); } });
   }
 
   $(document).on('click','.alma-toggle-source-form',function(){
@@ -55,9 +62,9 @@ jQuery(function($){
       .fail(function(){ $res.addClass('err').text('Errore di rete'); });
   });
 
-  $(document).on('click','.alma-select-all',function(){ $('.alma-select-item:visible').prop('checked',true); updateSelected();});
+  $(document).on('click','.alma-select-all',function(){ $('.alma-select-item:visible:not(:disabled)').slice(0,500).prop('checked',true); updateSelected();});
   $(document).on('click','.alma-deselect-all',function(){ $('.alma-select-item').prop('checked',false); updateSelected();});
-  $(document).on('change','.alma-select-item',updateSelected);
+  $(document).on('change','.alma-select-item',function(){ var checked=$('.alma-select-item:checked'); if(checked.length>500){ $(this).prop('checked',false); alert('Puoi selezionare massimo 500 record per batch.'); } updateSelected(); });
   $(document).on('change','#import_search_model',toggleSearchHints);
   $(document).on('change','input[name="import_availability_range"]',function(){ $('.alma-date-custom-wrap').toggle($(this).val()==='custom'); });
   $(document).on('change','input[name="hide_existing"], input[name="show_existing"]',syncResultFilters);

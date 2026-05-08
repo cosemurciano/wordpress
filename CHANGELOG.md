@@ -1,3 +1,15 @@
+## 2.26.0 — GetYourGuide CSV / Deep Link importer
+- Aggiunta source preset `gyg_csv` visualizzata come **GetYourGuide CSV / Deep Link**, separata dalla Partner API ufficiale e senza chiamate esterne, scraping, OpenAI, booking o checkout.
+- Nuova configurazione source: Nome source, Partner ID, UTM medium (default `online_publisher`), batch size con limite assoluto 500 e mapping riusabile Tipologia attività CSV → Tipologia Link Sothra.
+- Nuovo wizard admin in **Affiliate Sources → Importa contenuti** per upload CSV, rilevamento colonne, riepilogo tipologie, mapping, anteprima filtrata e import selettivo batch.
+- Formato CSV riconosciuto: colonne obbligatorie `URL`, `Tipologia attività`, `Descrizione attività`; opzionali `Città` e `Regione di appartenenza`. Sono supportate varianti senza accento e con maiuscole/minuscole diverse, ad esempio `url`, `Citta`, `Regione`, `Tipologia attivita`, `Descrizione attivita`.
+- Generazione deep link: aggiunge `partner_id` dalla source e `utm_medium` solo se assenti, conserva query string esistenti, slug, lingua e dominio originale. Un URL `.com` resta `.com` e un URL `.it` resta `.it`; il link originale è salvato separatamente come meta tecnico.
+- Import nel CPT esistente `affiliate_link` con deduplica `source_id + external_id`, dove `external_id` è hash stabile della URL originale normalizzata. I reimport aggiornano URL affiliato e meta tecnici senza creare duplicati.
+- Meta tecnici salvati: URL originale, URL affiliato, città, regione, tipologia CSV originale, descrizione, provider/source `gyg_csv`, source ID, external ID e seed contesto AI; nessuna pubblicazione frontend automatica oltre al CPT già esistente.
+- Report batch con importati, aggiornati, già presenti, saltati, errori, URL non validi, record senza città/regione e durata.
+- Test manuali consigliati: caricare CSV valido; verificare errori per assenza di URL/Tipologia/Descrizione; rilevare Città/Regione; mappare una tipologia; filtrare anteprima; importare meno di 500 record; provare selezione oltre 500; verificare URL con/senza query, mancata duplicazione di `partner_id`/`utm_medium`, dominio `.com`/`.it` preservato, deduplica, tassonomia, meta e report finale.
+- Versione plugin aggiornata a `2.26.0`.
+
 ## 2.25.51 — Harden GetYourGuide API provider configuration
 - Rifinito il provider ufficiale `getyourguide` come sola source API `GetYourGuide API`, con descrizione allineata alla Partner API ufficiale e senza modalità manual, deeplink, CSV, scraping o fallback Travelpayouts.
 - Aggiunto il campo guidato `timeout` per GetYourGuide e rafforzato il clamp server-side di `limit` e `timeout`; il token `access_token` resta preservato se lasciato vuoto e mostrato solo come stato configurato/non configurato.
