@@ -572,8 +572,8 @@ class ALMA_Affiliate_Source_GYG_CSV_Importer {
         $settings = self::default_settings(json_decode((string)($source['settings'] ?? '{}'), true));
         $partner_id = (string)($settings['partner_id'] ?? '');
         $utm = (string)($settings['utm_medium'] ?? 'online_publisher');
-        $quantity = max(1, min(self::MAX_IMPORT_QUANTITY, absint($quantity)));
         $cursor = max(0, absint($cursor));
+        $quantity = max($cursor + 1, min($cursor + self::MAX_IMPORT_QUANTITY, absint($quantity)));
         $batch_size = max(1, min(self::AJAX_BATCH_SIZE, absint($batch_size)));
         $term_ids = self::normalize_mapping_term_ids($term_ids);
         $result = array('processed'=>0,'imported'=>0,'updated'=>0,'existing'=>0,'skipped'=>0,'errors'=>0,'invalid_urls'=>0,'without_city'=>0,'without_region'=>0,'duration'=>0,'logs'=>array(),'next_cursor'=>$cursor,'done'=>false);

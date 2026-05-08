@@ -1,3 +1,10 @@
+## 2.29.0 — GetYourGuide CSV import server-rendered
+- Sostituito il flusso operativo `gyg_csv` basato su modale AJAX con la vista admin server-rendered `alma_view=gyg_csv_import_type`: lo Step 3 ora usa un link normale “Importa / continua” e non richiede JavaScript per caricare mapping, anteprima o import.
+- Aggiunta pagina PHP con validazione capability/source/preset/token/file/hash, riepilogo sessione persistente, dettagli tipologia CSV, checklist multipla delle Tipologie Link Sothra da `link_type`, quantità clampata a massimo 1000 e modalità deduplica.
+- Implementata importazione tramite form POST con nonce e PRG redirect, salvataggio mapping/progressi/ultimo report e report server-side con importati, aggiornati, già presenti, saltati, errori, URL non validi, record senza città/regione e quantità processata.
+- Mantenute deduplica `source_id + external_id`, sessioni CSV persistenti, generazione URL affiliato esistente e preservazione dominio `.com`/`.it`; nessuna modifica a provider diversi da `gyg_csv`, CPT o tassonomie.
+- Versione plugin aggiornata a `2.29.0`.
+
 ## 2.28.1 — Hotfix GYG CSV modal AJAX diagnostics and fallback
 - Corretto il loading infinito del modale `gyg_csv` con stati progressivi, timeout AJAX e gestione esplicita di risposte non valide.
 - Aggiunta diagnostica AJAX sicura nel modale, console error admin limitato e health check `alma_gyg_csv_modal_healthcheck`.
