@@ -63,6 +63,36 @@ class ALMA_Affiliate_Source_GYG_CSV_Importer {
         return $settings;
     }
 
+
+    public static function normalize_mapping_term_ids($value) {
+        $ids = array();
+        $collect = function($item) use (&$collect, &$ids) {
+            if ($item === null || $item === false || $item === '') {
+                return;
+            }
+            if (is_array($item)) {
+                foreach ($item as $child) {
+                    $collect($child);
+                }
+                return;
+            }
+            if (is_string($item) && strpos($item, ',') !== false) {
+                foreach (explode(',', $item) as $part) {
+                    $collect($part);
+                }
+                return;
+            }
+            if (is_numeric($item)) {
+                $id = (int)$item;
+                if ($id > 0) {
+                    $ids[] = $id;
+                }
+            }
+        };
+        $collect($value);
+        return array_values(array_unique($ids));
+    }
+
     public static function normalize_header($header) {
         $header = strtolower(trim((string)$header));
         $header = strtr($header, array('à'=>'a','á'=>'a','è'=>'e','é'=>'e','ì'=>'i','í'=>'i','ò'=>'o','ó'=>'o','ù'=>'u','ú'=>'u'));
@@ -244,6 +274,108 @@ class ALMA_Affiliate_Source_GYG_CSV_Importer {
             '_alma_ai_visibility' => 'available',
         );
         return array('post_title'=>sanitize_text_field($title !== '' ? $title : __('GetYourGuide attività', 'affiliate-link-manager-ai')), 'post_content'=>wp_kses_post($item['description']), 'featured_image_url'=>'', 'affiliate_url'=>esc_url_raw($item['affiliate_url']), 'original_url'=>esc_url_raw($item['original_url']), 'meta'=>$meta, 'raw_item'=>$item);
+    }
+
+
+    private function is_empty_csv_row($row) {
+        if (!is_array($row)) {
+            return true;
+        }
+        foreach ($row as $value) {
+            if (trim((string)$value) !== '') {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    public function count_existing_for_type($path, $columns, $activity_type, $source) {
+        $counts = array(
+            'total' => 0,
+            'existing' => 0,
+            'remaining' => 0,
+            'new' => 0,
+            'invalid' => 0,
+            'invalid_urls' => 0,
+            'missing_description' => 0,
+            'error_code' => '',
+            'message' => '',
+        );
+
+        $source_id = absint($source['id'] ?? 0);
+        if ($source_id <= 0) {
+            $counts['error_code'] = 'invalid_source';
+            $counts['message'] = __('Source gyg_csv non valida.', 'affiliate-link-manager-ai');
+            return $counts;
+        }
+
+        $columns = is_array($columns) ? $columns : array();
+        foreach (array('url', 'activity_type', 'description') as $required_column) {
+            if (!isset($columns[$required_column])) {
+                $counts['error_code'] = 'missing_columns';
+                $counts['message'] = __('Colonne obbligatorie mancanti nel CSV.', 'affiliate-link-manager-ai');
+                return $counts;
+            }
+        }
+
+        $path = (string)$path;
+        if ($path === '' || !is_readable($path)) {
+            $counts['error_code'] = 'csv_open';
+            $counts['message'] = __('Impossibile leggere il CSV.', 'affiliate-link-manager-ai');
+            return $counts;
+        }
+
+        $settings = self::default_settings(json_decode((string)($source['settings'] ?? '{}'), true));
+        $partner_id = (string)($settings['partner_id'] ?? '');
+        $utm = (string)($settings['utm_medium'] ?? 'online_publisher');
+        $source_for_count = $source;
+        $source_for_count['provider_preset'] = 'gyg_csv';
+        $source_for_count['provider'] = 'gyg_csv';
+        $dedupe = new ALMA_Affiliate_Source_Import_Dedupe_Service();
+
+        $handle = fopen($path, 'r');
+        if (!$handle) {
+            $counts['error_code'] = 'csv_open';
+            $counts['message'] = __('Impossibile leggere il CSV.', 'affiliate-link-manager-ai');
+            return $counts;
+        }
+
+        $activity_type = sanitize_text_field((string)$activity_type);
+        $delimiter = $this->delimiter($path);
+        fgetcsv($handle, 0, $delimiter);
+        while (($row = fgetcsv($handle, 0, $delimiter)) !== false) {
+            if ($this->is_empty_csv_row($row)) {
+                continue;
+            }
+            $item = $this->row_to_item($row, $columns, $source_for_count, $partner_id, $utm);
+            if ($activity_type !== '' && $item['activity_type'] !== $activity_type) {
+                continue;
+            }
+
+            $counts['total']++;
+            if ($item['original_url'] === '' || !wp_http_validate_url($item['original_url']) || $item['affiliate_url'] === '') {
+                $counts['invalid']++;
+                $counts['invalid_urls']++;
+                continue;
+            }
+            if ($item['description'] === '') {
+                $counts['invalid']++;
+                $counts['missing_description']++;
+                continue;
+            }
+
+            $normalized = $this->normalize_item($item, $source_for_count);
+            $match = $dedupe->find_match($normalized, 'skip_existing');
+            if (!empty($match['post_id'])) {
+                $counts['existing']++;
+            } else {
+                $counts['remaining']++;
+                $counts['new']++;
+            }
+        }
+        fclose($handle);
+
+        return $counts;
     }
 
     public function import_batch($path, $columns, $activity_type, $source, $term_ids, $quantity, $cursor = 0, $update_existing = false, $batch_size = self::AJAX_BATCH_SIZE) {

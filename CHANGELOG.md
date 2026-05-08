@@ -1,3 +1,8 @@
+## 2.27.1 — Hotfix GetYourGuide CSV modal fatal
+- Corretto il fatal nello Step 3 `gyg_csv` causato dal metodo mancante di normalizzazione mapping Tipologia attività CSV → Tipologie Link Sothra.
+- Corretto il fatal in apertura del modale “Importa questa tipologia” causato dall’helper mancante per il conteggio record già importati.
+- Versione plugin aggiornata a `2.27.1`.
+
 ## 2.27.0 — GetYourGuide CSV modal import progressivo
 - Migliorato il flusso `gyg_csv` con modale admin sul pulsante “Importa questa tipologia”: riepilogo source, Partner ID, UTM medium, record totali/già importati/ancora da importare e anteprima sintetica limitata.
 - Aggiunta selezione multipla obbligatoria delle Tipologie Link Sothra, con mapping persistente per Tipologia attività CSV e colonna “Mapping Sothra” aggiornata con tutti i nomi salvati.
