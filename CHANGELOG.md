@@ -1,3 +1,10 @@
+## 2.27.2 — Hotfix GetYourGuide CSV modal loading
+- Corretto il blocco del modale `gyg_csv` su “Caricamento tipologie…” quando il caricamento AJAX prepare fallisce o restituisce payload incompleto.
+- Migliorata la gestione errori AJAX del modale con messaggi leggibili, disattivazione sicura del pulsante import e log admin-side minimo.
+- Allineato il payload prepare import tra PHP e JavaScript includendo `terms`, `mapped_term_ids`, `counts`, `preview`, `activity_type`, `source_id`, `token` e `max_quantity`.
+- Verificata la tassonomia reale delle Tipologie Link: il flusso `gyg_csv` usa la tassonomia esistente `link_type` del CPT `affiliate_link`.
+- Versione plugin aggiornata a `2.27.2`.
+
 ## 2.27.1 — Hotfix GetYourGuide CSV modal fatal
 - Corretto il fatal nello Step 3 `gyg_csv` causato dal metodo mancante di normalizzazione mapping Tipologia attività CSV → Tipologie Link Sothra.
 - Corretto il fatal in apertura del modale “Importa questa tipologia” causato dall’helper mancante per il conteggio record già importati.

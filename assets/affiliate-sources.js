@@ -74,6 +74,7 @@ jQuery(function($){
 
   var gygState = null;
   function gygNonce(){ return (window.almaSourcePresets && almaSourcePresets.gygNonce) || ''; }
+  function gygAjaxUrl(){ return (window.almaSourcePresets && almaSourcePresets.ajax_url) || (typeof ajaxurl !== 'undefined' ? ajaxurl : ''); }
   function gygEsc(v){ return $('<div/>').text(v == null ? '' : String(v)).html(); }
   function gygClampQuantity(){
     var $q = $('#alma-gyg-quantity'), value = parseInt($q.val(), 10) || 100;
@@ -82,6 +83,25 @@ jQuery(function($){
     return value;
   }
   function gygShowError(message){ $('.alma-gyg-modal-error').show().find('p').text(message || 'Errore importazione.'); }
+  function gygDisableImport(disabled){ $('.alma-gyg-start-import').prop('disabled', !!disabled); }
+  function gygAjaxErrorMessage(xhr, fallback){
+    if(xhr && xhr.responseJSON && xhr.responseJSON.data && xhr.responseJSON.data.message){ return xhr.responseJSON.data.message; }
+    if(xhr && xhr.responseText){
+      try { var parsed = JSON.parse(xhr.responseText); if(parsed && parsed.data && parsed.data.message){ return parsed.data.message; } } catch(e) {}
+    }
+    if(xhr && xhr.status === 403){ return 'Verifica di sicurezza non riuscita. Ricarica la pagina e riprova.'; }
+    if(xhr && xhr.status === 400){ return fallback || 'Richiesta non valida. Ricarica la pagina e riprova.'; }
+    if(xhr && xhr.status >= 500){ return 'Errore server durante il caricamento del modale. Riprova tra poco.'; }
+    return fallback || 'Errore di rete. Ricarica la pagina e riprova.';
+  }
+  function gygPrepareFailed(message, xhr){
+    $('.alma-gyg-summary').html('<p class="description">Impossibile caricare i dati del modale.</p>');
+    $('.alma-gyg-terms').html('<p class="description">Impossibile caricare le Tipologie Link Sothra. Controlla che la tassonomia delle tipologie esista e ricarica la pagina.</p>');
+    $('.alma-gyg-preview').html('<p class="description">Anteprima non disponibile.</p>');
+    gygDisableImport(true);
+    gygShowError(message);
+    if(window.console && console.error){ console.error('ALMA gyg_csv prepare import failed', {status: xhr && xhr.status, message: message}); }
+  }
   function gygClearError(){ $('.alma-gyg-modal-error').hide().find('p').text(''); }
   function gygOpen(){ $('#alma-gyg-import-modal').addClass('is-open').attr('aria-hidden','false'); $('body').addClass('alma-modal-open'); }
   function gygClose(){ if(gygState && gygState.running){ return; } $('#alma-gyg-import-modal').removeClass('is-open').attr('aria-hidden','true'); $('body').removeClass('alma-modal-open'); }
@@ -93,7 +113,7 @@ jQuery(function($){
   }
   function gygRenderTerms(terms, mapped){
     mapped = mapped || [];
-    if(!terms || !terms.length){ $('.alma-gyg-terms').html('<p class="description">Nessuna Tipologia Link Sothra disponibile.</p>'); return; }
+    if(!terms || !terms.length){ $('.alma-gyg-terms').html('<p class="description">Nessuna Tipologia Link Sothra disponibile. Creane almeno una prima di importare.</p>'); gygDisableImport(true); return; }
     var html = '<div class="alma-gyg-term-list">';
     terms.forEach(function(t){ var checked = mapped.indexOf(parseInt(t.id,10)) !== -1 ? ' checked' : ''; html += '<label><input type="checkbox" name="alma_gyg_terms[]" value="'+parseInt(t.id,10)+'"'+checked+'> '+gygEsc(t.name)+'</label>'; });
     $('.alma-gyg-terms').html(html+'</div>');
@@ -116,7 +136,7 @@ jQuery(function($){
     $('.alma-gyg-import-more').show();
   }
   function gygImportNext(){
-    $.post(ajaxurl, {action:'alma_gyg_csv_import_batch', nonce:gygNonce(), source_id:gygState.sourceId, token:gygState.token, activity_type:gygState.activityType, term_ids:gygState.termIds, quantity:gygState.quantity, cursor:gygState.cursor, update_existing:gygState.updateExisting ? 1 : 0})
+    $.post(gygAjaxUrl(), {action:'alma_gyg_csv_import_batch', nonce:gygNonce(), source_id:gygState.sourceId, token:gygState.token, activity_type:gygState.activityType, term_ids:gygState.termIds, quantity:gygState.quantity, cursor:gygState.cursor, update_existing:gygState.updateExisting ? 1 : 0})
       .done(function(res){
         if(!res || !res.success){ gygShowError((res && res.data && res.data.message) || 'Errore importazione.'); gygState.running=false; $('.alma-gyg-start-import').prop('disabled',false); return; }
         var d=res.data, a=gygState.aggregate;
@@ -127,7 +147,7 @@ jQuery(function($){
         if(d.done){ gygState.running=false; $('.alma-gyg-start-import').prop('disabled',false).text('Avvia importazione'); gygRenderReport(); }
         else { gygImportNext(); }
       })
-      .fail(function(xhr){ var msg = xhr.responseJSON && xhr.responseJSON.data && xhr.responseJSON.data.message ? xhr.responseJSON.data.message : 'Errore di rete durante l’importazione.'; gygShowError(msg); gygState.running=false; $('.alma-gyg-start-import').prop('disabled',false).text('Avvia importazione'); });
+      .fail(function(xhr){ var msg = gygAjaxErrorMessage(xhr, 'Errore di rete durante l’importazione.'); gygShowError(msg); if(window.console && console.error){ console.error('ALMA gyg_csv import batch failed', {status: xhr && xhr.status, message: msg}); } gygState.running=false; $('.alma-gyg-start-import').prop('disabled',false).text('Avvia importazione'); });
   }
   $(document).on('input change','#alma-gyg-quantity',gygClampQuantity);
   $(document).on('click','.alma-modal-close',function(e){ e.preventDefault(); gygClose(); });
@@ -136,10 +156,16 @@ jQuery(function($){
     var $btn=$(this), activityType=String($btn.data('activity-type')||''), sourceId=$btn.data('source-id'), token=$btn.data('token');
     gygState = {sourceId:sourceId, token:token, activityType:activityType, running:false};
     $('.alma-gyg-report').hide().empty(); $('.alma-gyg-log').html('<p class="description">Nessun errore o warning.</p>'); $('.alma-gyg-import-more').hide(); $('.alma-progress-bar').css('width','0%'); $('.alma-gyg-progress-wrap').hide();
-    $('.alma-gyg-summary').html('<p>Caricamento dati modale…</p>'); gygOpen();
-    $.post(ajaxurl,{action:'alma_gyg_csv_prepare_import', nonce:gygNonce(), source_id:sourceId, token:token, activity_type:activityType})
-      .done(function(res){ if(!res || !res.success){ gygShowError((res && res.data && res.data.message)||'Impossibile preparare il modale.'); return; } var d=res.data, c=d.counts||{}; $('.alma-gyg-summary').html('<dl class="alma-gyg-summary-grid"><dt>Tipologia CSV</dt><dd>'+gygEsc(d.activity_type)+'</dd><dt>Record totali</dt><dd>'+parseInt(c.total||0,10)+'</dd><dt>Record già importati</dt><dd>'+parseInt(c.existing||0,10)+'</dd><dt>Record ancora da importare</dt><dd>'+parseInt(c.remaining||0,10)+'</dd><dt>Source attiva</dt><dd>'+(d.source_active?'Sì':'No')+'</dd><dt>Partner ID</dt><dd>'+gygEsc(d.partner_id||'—')+'</dd><dt>UTM medium</dt><dd>'+gygEsc(d.utm_medium||'—')+'</dd></dl>'); gygRenderTerms(d.terms,d.mapped_term_ids); gygRenderPreview(d.preview); })
-      .fail(function(xhr){ gygShowError((xhr.responseJSON && xhr.responseJSON.data && xhr.responseJSON.data.message) || 'Errore di rete.'); });
+    $('.alma-gyg-summary').html('<p>Caricamento dati modale…</p>'); $('.alma-gyg-terms').html('<p class="description">Caricamento tipologie…</p>'); $('.alma-gyg-preview').html('<p class="description">Caricamento anteprima…</p>'); gygDisableImport(true); gygOpen();
+    $.ajax({url:gygAjaxUrl(), method:'POST', dataType:'json', data:{action:'alma_gyg_csv_prepare_import', nonce:gygNonce(), source_id:sourceId, token:token, activity_type:activityType}})
+      .done(function(res){
+        if(!res || !res.success){ gygPrepareFailed((res && res.data && res.data.message)||'Impossibile preparare il modale.', {status:0}); return; }
+        var d=res.data || {}, c=d.counts||{}, terms=$.isArray(d.terms) ? d.terms : null;
+        if(!terms){ gygPrepareFailed('Risposta AJAX non valida: Tipologie Link Sothra mancanti.', {status:0}); return; }
+        $('.alma-gyg-summary').html('<dl class="alma-gyg-summary-grid"><dt>Tipologia CSV</dt><dd>'+gygEsc(d.activity_type)+'</dd><dt>Record totali</dt><dd>'+parseInt(c.total||0,10)+'</dd><dt>Record già importati</dt><dd>'+parseInt(c.existing||0,10)+'</dd><dt>Record ancora da importare</dt><dd>'+parseInt(c.remaining||0,10)+'</dd><dt>Source attiva</dt><dd>'+(d.source_active?'Sì':'No')+'</dd><dt>Partner ID</dt><dd>'+gygEsc(d.partner_id||'—')+'</dd><dt>UTM medium</dt><dd>'+gygEsc(d.utm_medium||'—')+'</dd></dl>');
+        gygRenderTerms(terms,d.mapped_term_ids||[]); gygRenderPreview($.isArray(d.preview) ? d.preview : []); gygDisableImport(!terms.length);
+      })
+      .fail(function(xhr){ var msg = gygAjaxErrorMessage(xhr, 'Impossibile caricare le Tipologie Link Sothra. Controlla che la tassonomia delle tipologie esista e ricarica la pagina.'); gygPrepareFailed(msg, xhr); });
   });
   $(document).on('click','.alma-gyg-start-import',function(e){
     e.preventDefault(); gygClearError();
