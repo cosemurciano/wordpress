@@ -1,3 +1,11 @@
+## 2.28.0 — Persistent GetYourGuide CSV import sessions
+- Aggiunte sessioni CSV `gyg_csv` persistenti in `wp-content/uploads/alma-imports/gyg-csv/` con file CSV a nome non prevedibile, validazione estensione/MIME e protezioni `.htaccess`/`index.html` contro listing o esecuzione.
+- Aggiunte le tabelle `alma_gyg_csv_import_sessions` e `alma_gyg_csv_import_progress` via `dbDelta` per salvare token sicuri, colonne/summary CSV, mapping per tipologia, conteggi importati/aggiornati/già presenti/saltati/errori e cursore ultimo batch.
+- Aggiunta la sezione “Sessioni CSV recenti” nella pagina Importa contenuti `gyg_csv`, con ripresa importazione senza nuovo upload ed eliminazione sicura della sessione/file/progressi senza eliminare Link affiliati importati.
+- Persistito il mapping Tipologia attività CSV → Tipologie Link Sothra per sessione/tipologia e mantenuta compatibilità con i mapping già salvati nella configurazione source.
+- Allineati AJAX prepare/import batch alle sessioni persistenti e all’hash stabile `activity_type_hash`, preservando la deduplica `source_id + external_id`, il limite massimo 1000 e la generazione link affiliato esistente senza conversione dominio.
+- Rafforzato il modale admin: la chiamata prepare parte all’apertura, mostra “Richiesta in corso…”, gestisce risposte `0`, `-1`, HTML/non JSON, `success:false` e termini mancanti, espone diagnostica sicura e registra dettagli tecnici in `console.error`.
+
 ## 2.27.2 — Hotfix GetYourGuide CSV modal loading
 - Corretto il blocco del modale `gyg_csv` su “Caricamento tipologie…” quando il caricamento AJAX prepare fallisce o restituisce payload incompleto.
 - Migliorata la gestione errori AJAX del modale con messaggi leggibili, disattivazione sicura del pulsante import e log admin-side minimo.

@@ -1,3 +1,11 @@
+## 2.28.0 — GetYourGuide CSV persistente e riprendibile
+- Il provider `gyg_csv` salva ogni CSV caricato in modo persistente sotto `wp-content/uploads/alma-imports/gyg-csv/` con nome non prevedibile, validazione `.csv`/MIME e protezioni anti-listing/anti-esecuzione. La UI non mostra path server completi.
+- Le sessioni vengono registrate in database e sono visibili nella sezione **Sessioni CSV recenti** della pagina “Importa contenuti”: da lì è possibile riprendere Step 2/Step 3 senza ricaricare il file oppure eliminare la sessione. L’eliminazione rimuove sessione, progressi e file CSV, ma non elimina i Link affiliati già importati.
+- I mapping Tipologia attività CSV → Tipologie Link Sothra sono persistenti per sessione/tipologia e vengono riproposti preselezionati alla riapertura del modale; resta il fallback ai mapping già presenti nella configurazione source.
+- I progressi per tipologia salvano importati, aggiornati, già presenti, saltati, errori, cursore e ultimo report; Step 3 e il modale mostrano conteggi utili per continuare batch successivi.
+- Il modale “Importa questa tipologia” non deve restare appeso: all’apertura invia subito la chiamata AJAX prepare, mostra lo stato richiesta, popola le Tipologie Link Sothra da `link_type` oppure mostra errori leggibili e una sezione **Diagnostica caricamento** sicura.
+- Il limite massimo server-side resta 1000 record per importazione, la deduplica resta `source_id + external_id`, la generazione del link affiliato resta invariata e non viene eseguita alcuna conversione dominio `.com`/`.it`.
+
 ## 2.27.1 — Hotfix GetYourGuide CSV modal fatal
 - Corretto il fatal nello Step 3 `gyg_csv` causato dal metodo mancante di normalizzazione mapping Tipologia attività CSV → Tipologie Link Sothra.
 - Corretto il fatal in apertura del modale “Importa questa tipologia” causato dall’helper mancante per il conteggio record già importati.
