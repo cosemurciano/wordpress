@@ -14,6 +14,7 @@ class ALMA_Affiliate_Source_Manager {
         add_action('wp_ajax_alma_test_source_connection', array($this, 'ajax_test_source_connection'));
         add_action('wp_ajax_alma_gyg_csv_prepare_import', array($this, 'ajax_gyg_csv_prepare_import'));
         add_action('wp_ajax_alma_gyg_csv_import_batch', array($this, 'ajax_gyg_csv_import_batch'));
+        add_action('wp_ajax_alma_gyg_csv_modal_healthcheck', array($this, 'ajax_gyg_csv_modal_healthcheck'));
         add_action('admin_post_alma_retry_affiliate_image', array($this, 'handle_single_image_retry'));
         add_action('admin_notices', array($this, 'render_image_retry_notice'));
     }
@@ -34,6 +35,7 @@ class ALMA_Affiliate_Source_Manager {
         if($view==='delete_confirmation'){ $this->render_delete_confirmation(); return; }
         if($view==='import_contents'){ $this->render_import_contents_page(); return; }
         if($view==='import_result'){ $this->render_import_result_page(); return; }
+        if($view==='gyg_csv_simple_import'){ $this->render_gyg_csv_simple_import_page(); return; }
         if($view==='ai_behavior'){ $this->render_ai_behavior_page(); return; }
         $editing_id=absint($_GET['edit_source']??0); $editing=$editing_id?$wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}alma_affiliate_sources WHERE id=%d",$editing_id),ARRAY_A):array(); if(!is_array($editing))$editing=array(); $sources_view=sanitize_key($_GET['alma_sources_view']??'active'); $where=($sources_view==='deleted')?' WHERE deleted_at IS NOT NULL':(($sources_view==='all')?'':' WHERE deleted_at IS NULL'); $rows=$this->sources_table_exists()?$wpdb->get_results("SELECT * FROM {$wpdb->prefix}alma_affiliate_sources{$where} ORDER BY id DESC LIMIT 100",ARRAY_A):array();
         $es=$this->decode_db_json($editing['settings']??''); $ec=$this->decode_db_json($editing['credentials']??''); $sel=json_decode($editing['destination_term_ids']??'',true); if(!is_array($sel))$sel=array(); if(empty($sel)&&!empty($editing['destination_term_id']))$sel=array((int)$editing['destination_term_id']);
@@ -128,6 +130,7 @@ class ALMA_Affiliate_Source_Manager {
         if($action==='gyg_csv_upload'){ $this->handle_gyg_csv_upload(); return; }
         if($action==='gyg_csv_save_mapping'){ $this->handle_gyg_csv_save_mapping(); return; }
         if($action==='gyg_csv_import_selected'){ $this->handle_gyg_csv_import_selected(); return; }
+        if($action==='gyg_csv_simple_import'){ $this->handle_gyg_csv_simple_import(); return; }
         if($action==='gyg_csv_delete_session'){ $this->handle_gyg_csv_delete_session(); return; }
         if($action==='import_selected_items'){ $this->handle_import_selected_items(); return; }
         if($action==='save_ai_behavior'){ $this->handle_save_ai_behavior(); return; }
@@ -209,7 +212,7 @@ class ALMA_Affiliate_Source_Manager {
         echo '</tbody></table>'; if(!$det['valid']){ echo '<div class="notice notice-error inline"><p>Mancano colonne obbligatorie: '.esc_html(implode(', ',$det['missing'])).'. Correggi il CSV e ricaricalo.</p></div></div></div>'; return; } echo '</div></div>';
         $summary=is_array($session['summary']??null)?$session['summary']:$svc->summarize($session['path'],$det['columns']); $mappings=is_array($settings['type_mappings']??null)?$settings['type_mappings']:array(); $progress_rows=$svc->get_progress_for_session(absint($session['id']??0));
         echo '<div class="postbox"><h2 class="hndle"><span>Step 3 — Riepilogo Tipologie attività</span></h2><div class="inside"><table class="widefat striped"><thead><tr><th>Tipologia attività CSV</th><th>Record</th><th>Mapping Sothra</th><th>Azione</th></tr></thead><tbody>';
-        foreach($summary['types'] as $type=>$count){ $hash=ALMA_Affiliate_Source_GYG_CSV_Importer::activity_type_hash($type); $progress=is_array($progress_rows[$hash]??null)?$progress_rows[$hash]:array(); $saved_terms=ALMA_Affiliate_Source_GYG_CSV_Importer::normalize_mapping_term_ids($progress['mapped_term_ids_json']??array()); $term_ids=!empty($saved_terms)?$saved_terms:ALMA_Affiliate_Source_GYG_CSV_Importer::normalize_mapping_term_ids($mappings[$type]??array()); $names=array(); foreach($term_ids as $tid){ $term=get_term($tid,'link_type'); if($term&&!is_wp_error($term)) $names[]=$term->name; } $done=absint($progress['imported_count']??0)+absint($progress['updated_count']??0)+absint($progress['existing_count']??0)+absint($progress['skipped_count']??0); $progress_label=$done>0?sprintf('Importati %d · aggiornati %d · già presenti %d · saltati %d · errori %d',absint($progress['imported_count']??0),absint($progress['updated_count']??0),absint($progress['existing_count']??0),absint($progress['skipped_count']??0),absint($progress['error_count']??0)):'Non iniziata'; echo '<tr><td>'.esc_html($type).'</td><td>'.(int)$count.'<br/><span class="description">'.esc_html($progress_label).'</span></td><td class="alma-gyg-mapping-cell" data-activity-type="'.esc_attr($type).'" data-activity-hash="'.esc_attr($hash).'">'.esc_html(!empty($names)?implode(', ',$names):'—').'</td><td><button type="button" class="button alma-gyg-open-import" data-source-id="'.(int)$source_id.'" data-token="'.esc_attr($token).'" data-activity-type="'.esc_attr($type).'" data-activity-hash="'.esc_attr($hash).'" data-total="'.(int)$count.'">Importa questa tipologia</button></td></tr>'; }
+        foreach($summary['types'] as $type=>$count){ $hash=ALMA_Affiliate_Source_GYG_CSV_Importer::activity_type_hash($type); $progress=is_array($progress_rows[$hash]??null)?$progress_rows[$hash]:array(); $saved_terms=ALMA_Affiliate_Source_GYG_CSV_Importer::normalize_mapping_term_ids($progress['mapped_term_ids_json']??array()); $term_ids=!empty($saved_terms)?$saved_terms:ALMA_Affiliate_Source_GYG_CSV_Importer::normalize_mapping_term_ids($mappings[$type]??array()); $names=array(); foreach($term_ids as $tid){ $term=get_term($tid,'link_type'); if($term&&!is_wp_error($term)) $names[]=$term->name; } $done=absint($progress['imported_count']??0)+absint($progress['updated_count']??0)+absint($progress['existing_count']??0)+absint($progress['skipped_count']??0); $progress_label=$done>0?sprintf('Importati %d · aggiornati %d · già presenti %d · saltati %d · errori %d',absint($progress['imported_count']??0),absint($progress['updated_count']??0),absint($progress['existing_count']??0),absint($progress['skipped_count']??0),absint($progress['error_count']??0)):'Non iniziata'; $simple_url=add_query_arg(array('post_type'=>'affiliate_link','page'=>'alma-affiliate-sources','alma_view'=>'gyg_csv_simple_import','source_id'=>$source_id,'gyg_csv_token'=>$token,'activity_type_hash'=>$hash),admin_url('edit.php')); echo '<tr><td>'.esc_html($type).'</td><td>'.(int)$count.'<br/><span class="description">'.esc_html($progress_label).'</span></td><td class="alma-gyg-mapping-cell" data-activity-type="'.esc_attr($type).'" data-activity-hash="'.esc_attr($hash).'">'.esc_html(!empty($names)?implode(', ',$names):'—').'</td><td><button type="button" class="button alma-gyg-open-import" data-source-id="'.(int)$source_id.'" data-token="'.esc_attr($token).'" data-activity-type="'.esc_attr($type).'" data-activity-hash="'.esc_attr($hash).'" data-simple-url="'.esc_url($simple_url).'" data-total="'.(int)$count.'">Importa questa tipologia</button> <a class="button" href="'.esc_url($simple_url).'">Apri importazione in modalità semplice</a></td></tr>'; }
         echo '</tbody></table><p class="description">Totale righe: '.(int)$summary['total'].' · URL non validi: '.(int)$summary['invalid_urls'].' · record senza città: '.(int)$summary['without_city'].' · record senza regione: '.(int)$summary['without_region'].'</p></div></div>';
         $this->render_gyg_csv_import_modal($source, $token);
     }
@@ -217,7 +220,7 @@ class ALMA_Affiliate_Source_Manager {
     private function render_gyg_csv_import_modal($source, $token){
         $settings=ALMA_Affiliate_Source_GYG_CSV_Importer::default_settings($this->decode_db_json($source['settings']??'{}'));
         $list_url=add_query_arg(array('post_type'=>'affiliate_link','alma_source_filter'=>(int)$source['id']),admin_url('edit.php'));
-        echo '<div id="alma-gyg-import-modal" class="alma-modal" aria-hidden="true"><div class="alma-modal-backdrop"></div><div class="alma-modal-panel" role="dialog" aria-modal="true" aria-labelledby="alma-gyg-modal-title"><button type="button" class="button-link alma-modal-close" aria-label="Chiudi">×</button><h2 id="alma-gyg-modal-title">Importazione GetYourGuide CSV</h2><div class="alma-gyg-modal-error notice notice-error inline" style="display:none"><p></p></div><div class="alma-gyg-summary"></div><h3>Associa a Tipologie Link Sothra</h3><div class="alma-gyg-terms"><p class="description">Caricamento tipologie…</p></div><p><label><strong>Quantità da importare</strong><br/><input type="number" id="alma-gyg-quantity" min="1" max="1000" value="100"/> <span class="description">Massimo 1000 record per importazione.</span></label></p><fieldset><legend class="screen-reader-text">Modalità deduplica</legend><p><label><input type="radio" name="alma_gyg_update_existing" value="0" checked> Importa solo nuovi record</label><br/><label><input type="radio" name="alma_gyg_update_existing" value="1"> Aggiorna anche record già importati</label></p></fieldset><h3>Anteprima sintetica</h3><div class="alma-gyg-preview"><p class="description">Apri una tipologia per caricare l’anteprima.</p></div><div class="alma-gyg-progress-wrap" style="display:none"><div class="alma-progress"><div class="alma-progress-bar" style="width:0%"></div></div><p class="alma-gyg-progress-status">Preparazione importazione…</p></div><div class="alma-gyg-report" style="display:none"></div><h3>Log errori</h3><div class="alma-gyg-log"><p class="description">Nessun errore o warning.</p></div><p class="submit"><button type="button" class="button button-primary alma-gyg-start-import">Avvia importazione</button> <button type="button" class="button alma-gyg-import-more" style="display:none">Importa altri record di questa tipologia</button> <a class="button" href="'.esc_url($list_url).'">Vai ai Link affiliati gyg_csv</a> <button type="button" class="button alma-modal-close">Chiudi</button></p><input type="hidden" class="alma-gyg-source-id" value="'.(int)$source['id'].'"/><input type="hidden" class="alma-gyg-token" value="'.esc_attr($token).'"/><input type="hidden" class="alma-gyg-partner" value="'.esc_attr($settings['partner_id']??'').'"/><input type="hidden" class="alma-gyg-utm" value="'.esc_attr($settings['utm_medium']??'online_publisher').'"/></div></div>';
+        echo '<div id="alma-gyg-import-modal" class="alma-modal" aria-hidden="true"><div class="alma-modal-backdrop"></div><div class="alma-modal-panel" role="dialog" aria-modal="true" aria-labelledby="alma-gyg-modal-title"><button type="button" class="button-link alma-modal-close" aria-label="Chiudi">×</button><h2 id="alma-gyg-modal-title">Importazione GetYourGuide CSV</h2><div class="alma-gyg-js-version" data-gyg-js-version="2.28.1" style="display:none">GYG CSV modal JS loaded: 2.28.1</div><div class="alma-gyg-modal-error notice notice-error inline" style="display:none"><p></p><p><button type="button" class="button alma-gyg-healthcheck" style="display:none">Test caricamento modale</button> <a class="button alma-gyg-simple-link" href="#" style="display:none">Apri importazione in modalità semplice</a></p></div><div class="alma-gyg-status notice notice-info inline"><p>Modale non ancora aperto.</p></div><div class="alma-gyg-summary"></div><h3>Associa a Tipologie Link Sothra</h3><div class="alma-gyg-terms"><p class="description">Caricamento tipologie…</p></div><p><label><strong>Quantità da importare</strong><br/><input type="number" id="alma-gyg-quantity" min="1" max="1000" value="100"/> <span class="description">Massimo 1000 record per importazione.</span></label></p><fieldset><legend class="screen-reader-text">Modalità deduplica</legend><p><label><input type="radio" name="alma_gyg_update_existing" value="0" checked> Importa solo nuovi record</label><br/><label><input type="radio" name="alma_gyg_update_existing" value="1"> Aggiorna anche record già importati</label></p></fieldset><h3>Anteprima sintetica</h3><div class="alma-gyg-preview"><p class="description">Apri una tipologia per caricare l’anteprima.</p></div><div class="alma-gyg-progress-wrap" style="display:none"><div class="alma-progress"><div class="alma-progress-bar" style="width:0%"></div></div><p class="alma-gyg-progress-status">Preparazione importazione…</p></div><div class="alma-gyg-report" style="display:none"></div><h3>Log errori</h3><div class="alma-gyg-log"><p class="description">Nessun errore o warning.</p></div><p class="submit"><button type="button" class="button button-primary alma-gyg-start-import">Avvia importazione</button> <button type="button" class="button alma-gyg-import-more" style="display:none">Importa altri record di questa tipologia</button> <a class="button" href="'.esc_url($list_url).'">Vai ai Link affiliati gyg_csv</a> <button type="button" class="button alma-modal-close">Chiudi</button></p><input type="hidden" class="alma-gyg-source-id" value="'.(int)$source['id'].'"/><input type="hidden" class="alma-gyg-token" value="'.esc_attr($token).'"/><input type="hidden" class="alma-gyg-partner" value="'.esc_attr($settings['partner_id']??'').'"/><input type="hidden" class="alma-gyg-utm" value="'.esc_attr($settings['utm_medium']??'online_publisher').'"/></div></div>';
     }
 
     private function render_gyg_csv_recent_sessions($source_id, $active_token = ''){
@@ -324,7 +327,7 @@ class ALMA_Affiliate_Source_Manager {
         if(!is_array($data)){ echo '<div class="notice notice-warning"><p>Nessun risultato disponibile.</p></div></div>'; return; }
         $r=$data['result'];
         if(is_wp_error($r)){ $source_id=(int)$data['source_id']; $base=add_query_arg(array('post_type'=>'affiliate_link','page'=>'alma-affiliate-sources'),admin_url('edit.php')); echo '<div class="notice notice-error"><p>'.esc_html($r->get_error_message()).'</p></div>'; echo '<p><a class="button" href="'.esc_url(add_query_arg(array('edit_source'=>$source_id),$base)).'">Torna alla Source</a> <a class="button button-primary" href="'.esc_url(add_query_arg(array('alma_view'=>'import_contents','source_id'=>$source_id,'load_preview'=>'1'),$base)).'">Nuova anteprima import</a> <a class="button" href="'.esc_url($base).'">Torna alla lista Sources</a></p></div>'; return; } $source_id=(int)$data['source_id']; $base=add_query_arg(array('post_type'=>'affiliate_link','page'=>'alma-affiliate-sources'),admin_url('edit.php'));
-        if(isset($r['imported']) || isset($r['already_present']) || isset($r['invalid_urls'])){ echo '<ul><li>Selezionati: '.intval($data['selected']).'</li><li>Importati: '.intval($r['imported']??0).'</li><li>Aggiornati: '.intval($r['updated']??0).'</li><li>Già presenti: '.intval($r['already_present']??0).'</li><li>Saltati: '.intval($r['skipped']??0).'</li><li>Errori: '.intval($r['errors']??0).'</li><li>URL non validi: '.intval($r['invalid_urls']??0).'</li><li>Record senza città: '.intval($r['without_city']??0).'</li><li>Record senza regione: '.intval($r['without_region']??0).'</li><li>Durata batch: '.esc_html((string)($r['duration']??0)).'s</li></ul>'; } else { echo '<ul><li>Selezionati: '.intval($data['selected']).'</li><li>Creati: '.intval($r['created']??0).'</li><li>Aggiornati: '.intval($r['updated']??0).'</li><li>Saltati: '.intval($r['skipped']??0).'</li><li>Errori: '.intval($r['errors']??0).'</li><li>Immagini importate: '.intval($r['image_imported']??0).'</li><li>Immagini riutilizzate: '.intval($r['image_reused']??0).'</li><li>Immagini non importate: '.intval($r['image_skipped']??0).'</li><li>Warning immagini: '.intval($r['image_failed']??0).'</li></ul>'; }
+        if(isset($r['imported']) || isset($r['already_present']) || isset($r['invalid_urls'])){ echo '<ul><li>Selezionati: '.intval($data['selected']).'</li><li>Importati: '.intval($r['imported']??0).'</li><li>Aggiornati: '.intval($r['updated']??0).'</li><li>Già presenti: '.intval($r['already_present']??($r['existing']??0)).'</li><li>Saltati: '.intval($r['skipped']??0).'</li><li>Errori: '.intval($r['errors']??0).'</li><li>URL non validi: '.intval($r['invalid_urls']??0).'</li><li>Record senza città: '.intval($r['without_city']??0).'</li><li>Record senza regione: '.intval($r['without_region']??0).'</li><li>Durata batch: '.esc_html((string)($r['duration']??0)).'s</li></ul>'; } else { echo '<ul><li>Selezionati: '.intval($data['selected']).'</li><li>Creati: '.intval($r['created']??0).'</li><li>Aggiornati: '.intval($r['updated']??0).'</li><li>Saltati: '.intval($r['skipped']??0).'</li><li>Errori: '.intval($r['errors']??0).'</li><li>Immagini importate: '.intval($r['image_imported']??0).'</li><li>Immagini riutilizzate: '.intval($r['image_reused']??0).'</li><li>Immagini non importate: '.intval($r['image_skipped']??0).'</li><li>Warning immagini: '.intval($r['image_failed']??0).'</li></ul>'; }
         echo '<p><a class="button button-primary" href="'.esc_url(add_query_arg(array('alma_view'=>'import_contents','source_id'=>$source_id,'load_preview'=>'1'),$base)).'">Nuova anteprima import</a> <a class="button" href="'.esc_url(add_query_arg('source_id',$source_id,$base)).'">Torna alla lista Sources</a></p></div>';
     }
 
@@ -470,6 +473,85 @@ class ALMA_Affiliate_Source_Manager {
 
     private function sources_table_exists(){ global $wpdb; $t=$wpdb->prefix.'alma_affiliate_sources'; return $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s',$t))===$t; }
 
+
+    private function get_gyg_csv_simple_context_from_request($method = 'GET') {
+        if (!current_user_can('manage_options')) return new WP_Error('forbidden', __('Permessi insufficienti.', 'affiliate-link-manager-ai'));
+        $input = strtoupper($method) === 'POST' ? $_POST : $_GET;
+        global $wpdb;
+        $source_id = absint($input['source_id'] ?? 0);
+        $token = sanitize_key($input['gyg_csv_token'] ?? ($input['token'] ?? ''));
+        $activity_hash = sanitize_text_field(wp_unslash($input['activity_type_hash'] ?? ''));
+        $source = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}alma_affiliate_sources WHERE id=%d", $source_id), ARRAY_A);
+        if (!is_array($source) || sanitize_key($source['provider_preset'] ?? '') !== 'gyg_csv') return new WP_Error('invalid_source', __('Source gyg_csv non valida.', 'affiliate-link-manager-ai'));
+        $svc = new ALMA_Affiliate_Source_GYG_CSV_Importer();
+        $session = $svc->get_session($token, $source_id);
+        if (is_wp_error($session)) return $session;
+        if (empty($session['path']) || !file_exists($session['path'])) return new WP_Error('csv_file_missing', __('File CSV persistente non trovato. Elimina la sessione e ricarica il CSV.', 'affiliate-link-manager-ai'));
+        $headers = $svc->get_headers($session['path']);
+        if (is_wp_error($headers)) return $headers;
+        $det = is_array($session['columns'] ?? null) ? $session['columns'] : $svc->detect_columns($headers);
+        if (empty($det['valid'])) return new WP_Error('missing_columns', __('Colonne obbligatorie mancanti nel CSV.', 'affiliate-link-manager-ai'));
+        $summary = is_array($session['summary'] ?? null) ? $session['summary'] : $svc->summarize($session['path'], $det['columns']);
+        $activity_type = '';
+        foreach ((array)($summary['types'] ?? array()) as $type => $count) {
+            if (hash_equals(ALMA_Affiliate_Source_GYG_CSV_Importer::activity_type_hash($type), $activity_hash)) { $activity_type = (string)$type; break; }
+        }
+        if ($activity_type === '') return new WP_Error('invalid_activity_type', __('Tipologia attività CSV non valida o non presente nella sessione.', 'affiliate-link-manager-ai'));
+        return array('source_id'=>$source_id,'token'=>$token,'activity_type'=>$activity_type,'activity_type_hash'=>$activity_hash,'source'=>$source,'svc'=>$svc,'session'=>$session,'columns'=>$det['columns'],'summary'=>$summary);
+    }
+
+    private function render_gyg_csv_simple_import_page() {
+        $ctx = $this->get_gyg_csv_simple_context_from_request('GET');
+        echo '<div class="wrap"><h1>Importazione gyg_csv in modalità semplice</h1>';
+        $back = add_query_arg(array('post_type'=>'affiliate_link','page'=>'alma-affiliate-sources','alma_view'=>'import_contents','source_id'=>absint($_GET['source_id'] ?? 0),'gyg_csv_token'=>sanitize_key($_GET['gyg_csv_token'] ?? '')), admin_url('edit.php'));
+        echo '<p><a class="button" href="'.esc_url($back).'">Torna allo Step 3</a></p>';
+        if (is_wp_error($ctx)) { echo '<div class="notice notice-error"><p>'.esc_html($ctx->get_error_message()).'</p></div></div>'; return; }
+        $taxonomy = $this->get_gyg_link_type_taxonomy();
+        $terms = taxonomy_exists($taxonomy) ? get_terms(array('taxonomy'=>$taxonomy,'hide_empty'=>false)) : array();
+        if (is_wp_error($terms) || !is_array($terms)) $terms = array();
+        $counts = $ctx['svc']->count_existing_for_type($ctx['session']['path'], $ctx['columns'], $ctx['activity_type'], $ctx['source']);
+        $progress = $ctx['svc']->get_progress(absint($ctx['session']['id'] ?? 0), $ctx['source_id'], $ctx['activity_type']);
+        $mapped = ALMA_Affiliate_Source_GYG_CSV_Importer::normalize_mapping_term_ids($progress['mapped_term_ids_json'] ?? array());
+        echo '<div class="postbox"><h2 class="hndle"><span>Riepilogo</span></h2><div class="inside"><ul><li><strong>Source:</strong> '.esc_html($ctx['source']['name'] ?? '').' (#'.(int)$ctx['source_id'].')</li><li><strong>Sessione:</strong> '.esc_html($ctx['session']['name'] ?? 'CSV').'</li><li><strong>Tipologia attività CSV:</strong> '.esc_html($ctx['activity_type']).'</li><li><strong>Record totali:</strong> '.intval($counts['total'] ?? 0).'</li><li><strong>Record già presenti:</strong> '.intval($counts['existing'] ?? 0).'</li><li><strong>Record ancora da importare:</strong> '.intval($counts['remaining'] ?? 0).'</li><li><strong>Tassonomia:</strong> link_type</li></ul></div></div>';
+        if (empty($terms)) { echo '<div class="notice notice-warning"><p>Nessuna Tipologia Link Sothra disponibile nella tassonomia link_type. Crea almeno una Tipologia Link prima di importare.</p></div></div>'; return; }
+        echo '<form method="post" class="postbox"><h2 class="hndle"><span>Avvia importazione semplice</span></h2><div class="inside">';
+        wp_nonce_field('alma_gyg_csv_simple_import', 'alma_gyg_csv_simple_nonce');
+        echo '<input type="hidden" name="action_type" value="gyg_csv_simple_import"/><input type="hidden" name="source_id" value="'.(int)$ctx['source_id'].'"/><input type="hidden" name="gyg_csv_token" value="'.esc_attr($ctx['token']).'"/><input type="hidden" name="activity_type_hash" value="'.esc_attr($ctx['activity_type_hash']).'"/>';
+        echo '<fieldset><legend><strong>Tipologie Link Sothra</strong></legend>';
+        foreach ($terms as $term) { $checked = in_array((int)$term->term_id, $mapped, true); echo '<label style="display:block;margin:.25em 0"><input type="checkbox" name="link_type_term_ids[]" value="'.(int)$term->term_id.'" '.checked($checked,true,false).'/> '.esc_html($term->name).'</label>'; }
+        echo '</fieldset><p><label><strong>Quantità</strong><br/><input type="number" name="quantity" min="1" max="1000" value="100"/> <span class="description">Massimo 1000.</span></label></p><p><label><input type="radio" name="update_existing" value="0" checked/> Importa solo nuovi record</label><br/><label><input type="radio" name="update_existing" value="1"/> Aggiorna anche record già importati</label></p><p><button class="button button-primary">Avvia importazione</button></p></div></form></div>';
+    }
+
+    private function handle_gyg_csv_simple_import() {
+        if (!current_user_can('manage_options')) wp_die('Unauthorized');
+        if (!wp_verify_nonce($_POST['alma_gyg_csv_simple_nonce'] ?? '', 'alma_gyg_csv_simple_import')) wp_die('Nonce non valido');
+        $ctx = $this->get_gyg_csv_simple_context_from_request('POST');
+        if (is_wp_error($ctx)) { set_transient('alma_import_result_'.get_current_user_id(), array('source_id'=>absint($_POST['source_id'] ?? 0),'selected'=>0,'result'=>$ctx), 5*MINUTE_IN_SECONDS); wp_safe_redirect(add_query_arg(array('post_type'=>'affiliate_link','page'=>'alma-affiliate-sources','alma_view'=>'import_result','source_id'=>absint($_POST['source_id'] ?? 0)), admin_url('edit.php'))); exit; }
+        $taxonomy = $this->get_gyg_link_type_taxonomy();
+        $term_ids = ALMA_Affiliate_Source_GYG_CSV_Importer::normalize_mapping_term_ids($_POST['link_type_term_ids'] ?? array());
+        foreach ($term_ids as $tid) { $term = get_term($tid, $taxonomy); if (!$term || is_wp_error($term)) { $term_ids = array(); break; } }
+        if (empty($term_ids)) { $result = new WP_Error('missing_terms', __('Seleziona almeno una Tipologia Link Sothra valida.', 'affiliate-link-manager-ai')); }
+        else {
+            $quantity = max(1, min(ALMA_Affiliate_Source_GYG_CSV_Importer::MAX_IMPORT_QUANTITY, absint($_POST['quantity'] ?? 100)));
+            $update_existing = !empty($_POST['update_existing']);
+            $aggregate = array('processed'=>0,'imported'=>0,'updated'=>0,'existing'=>0,'skipped'=>0,'errors'=>0,'invalid_urls'=>0,'without_city'=>0,'without_region'=>0,'duration'=>0,'logs'=>array(),'next_cursor'=>0,'done'=>false);
+            $cursor = 0;
+            do {
+                $batch = $ctx['svc']->import_batch($ctx['session']['path'], $ctx['columns'], $ctx['activity_type'], $ctx['source'], $term_ids, $quantity, $cursor, $update_existing);
+                if (is_wp_error($batch)) { $result = $batch; break; }
+                foreach (array('processed','imported','updated','existing','skipped','errors','invalid_urls','without_city','without_region') as $k) $aggregate[$k] += absint($batch[$k] ?? 0);
+                $aggregate['duration'] += (float)($batch['duration'] ?? 0);
+                $aggregate['logs'] = array_merge($aggregate['logs'], (array)($batch['logs'] ?? array()));
+                $cursor = absint($batch['next_cursor'] ?? $cursor);
+                $aggregate['next_cursor'] = $cursor; $aggregate['done'] = !empty($batch['done']);
+                $ctx['svc']->upsert_progress(absint($ctx['session']['id'] ?? 0), $ctx['source_id'], $ctx['activity_type'], $term_ids, $batch);
+            } while (empty($aggregate['done']) && $cursor < $quantity);
+            if (!isset($result)) $result = $aggregate;
+        }
+        set_transient('alma_import_result_'.get_current_user_id(), array('source_id'=>$ctx['source_id'],'selected'=>absint($_POST['quantity'] ?? 100),'result'=>$result), 5*MINUTE_IN_SECONDS);
+        wp_safe_redirect(add_query_arg(array('post_type'=>'affiliate_link','page'=>'alma-affiliate-sources','alma_view'=>'import_result','source_id'=>$ctx['source_id']), admin_url('edit.php'))); exit;
+    }
+
     private function get_gyg_link_type_taxonomy() { return 'link_type'; }
 
     private function send_gyg_ajax_context_error($error) {
@@ -491,6 +573,41 @@ class ALMA_Affiliate_Source_Manager {
         $det=is_array($session['columns']??null)?$session['columns']:$svc->detect_columns($headers); if(empty($det['valid'])) return new WP_Error('missing_columns',__('Colonne obbligatorie mancanti nel CSV.', 'affiliate-link-manager-ai'));
         if($activity_hash!=='' && !hash_equals(ALMA_Affiliate_Source_GYG_CSV_Importer::activity_type_hash($type), $activity_hash)) return new WP_Error('invalid_activity_hash',__('Tipologia attività CSV non valida. Ricarica la pagina e riprova.', 'affiliate-link-manager-ai'));
         return array('source_id'=>$source_id,'token'=>$token,'activity_type'=>$type,'activity_type_hash'=>ALMA_Affiliate_Source_GYG_CSV_Importer::activity_type_hash($type),'source'=>$source,'svc'=>$svc,'session'=>$session,'columns'=>$det['columns']);
+    }
+
+
+    public function ajax_gyg_csv_modal_healthcheck(){
+        $payload = array('plugin_version'=>defined('ALMA_VERSION') ? ALMA_VERSION : '', 'taxonomy'=>'link_type', 'checks'=>array());
+        $fail = function($code, $message, $status = 200) use (&$payload) { $payload['code']=$code; $payload['message']=$message; wp_send_json_error($payload, $status); };
+        if (!check_ajax_referer('alma_gyg_csv_import_nonce', 'nonce', false)) $fail('invalid_nonce', __('Nonce non valido o scaduto.', 'affiliate-link-manager-ai'));
+        if (!current_user_can('manage_options')) $fail('forbidden', __('Permessi insufficienti.', 'affiliate-link-manager-ai'));
+        global $wpdb;
+        $source_id = absint($_POST['source_id'] ?? 0);
+        $token = sanitize_key($_POST['token'] ?? '');
+        $payload['source_id'] = $source_id;
+        $payload['token_present'] = $token !== '';
+        $source = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}alma_affiliate_sources WHERE id=%d", $source_id), ARRAY_A);
+        $payload['checks']['source'] = is_array($source) && sanitize_key($source['provider_preset'] ?? '') === 'gyg_csv';
+        if (!$payload['checks']['source']) $fail('invalid_source', __('Source gyg_csv non valida.', 'affiliate-link-manager-ai'));
+        $svc = new ALMA_Affiliate_Source_GYG_CSV_Importer();
+        $session = $svc->get_session($token, $source_id);
+        $payload['checks']['session_token'] = !is_wp_error($session);
+        if (is_wp_error($session)) $fail($session->get_error_code(), $session->get_error_message());
+        $payload['session_id'] = absint($session['id'] ?? 0);
+        $payload['session_file_exists'] = !empty($session['path']) && file_exists($session['path']);
+        if (!$payload['session_file_exists']) $fail('csv_file_missing', __('File CSV persistente non trovato.', 'affiliate-link-manager-ai'));
+        $taxonomy = $this->get_gyg_link_type_taxonomy();
+        $payload['taxonomy_exists'] = taxonomy_exists($taxonomy);
+        $payload['link_type_terms_count'] = 0;
+        if ($payload['taxonomy_exists']) {
+            $terms = get_terms(array('taxonomy'=>$taxonomy,'hide_empty'=>false,'fields'=>'ids'));
+            $payload['link_type_terms_count'] = is_wp_error($terms) ? 0 : count((array)$terms);
+        }
+        $payload['prepare_action_registered'] = has_action('wp_ajax_alma_gyg_csv_prepare_import') ? true : false;
+        $payload['import_action_registered'] = has_action('wp_ajax_alma_gyg_csv_import_batch') ? true : false;
+        $payload['healthcheck_action_registered'] = has_action('wp_ajax_alma_gyg_csv_modal_healthcheck') ? true : false;
+        $payload['message'] = __('Health check modale gyg_csv completato.', 'affiliate-link-manager-ai');
+        wp_send_json_success($payload);
     }
 
     public function ajax_gyg_csv_prepare_import(){

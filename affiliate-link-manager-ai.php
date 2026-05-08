@@ -3,7 +3,7 @@
  * Plugin Name: Affiliate Link Manager AI
  * Plugin URI: https://your-website.com
  * Description: Gestisce link affiliati con intelligenza artificiale per ottimizzazione e tracking automatico.
- * Version: 2.28.0
+ * Version: 2.28.1
  * Author: Cosè Murciano
  * License: GPL v2 or later
  * Text Domain: affiliate-link-manager-ai
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Definisci costanti del plugin
-define('ALMA_VERSION', '2.28.0');
+define('ALMA_VERSION', '2.28.1');
 define('ALMA_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('ALMA_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('ALMA_PLUGIN_FILE', __FILE__);
@@ -746,7 +746,7 @@ class AffiliateManagerAI {
                 if (file_exists(ALMA_PLUGIN_DIR . 'assets/affiliate-sources.js')) {
                     wp_enqueue_script('alma-affiliate-sources', ALMA_PLUGIN_URL . 'assets/affiliate-sources.js', array('jquery'), ALMA_VERSION, true);
                     if ($this->source_manager && method_exists($this->source_manager, 'get_provider_presets')) {
-                        wp_localize_script('alma-affiliate-sources', 'almaSourcePresets', array('presets' => $this->source_manager->get_provider_presets(),'ajax_url'=>admin_url('admin-ajax.php'),'nonce'=>wp_create_nonce('alma_test_connection_nonce'),'gygNonce'=>wp_create_nonce('alma_gyg_csv_import_nonce')));
+                        wp_localize_script('alma-affiliate-sources', 'almaSourcePresets', array('presets' => $this->source_manager->get_provider_presets(),'ajax_url'=>admin_url('admin-ajax.php'),'nonce'=>wp_create_nonce('alma_test_connection_nonce'),'gygNonce'=>wp_create_nonce('alma_gyg_csv_import_nonce'),'gygJsVersion'=>ALMA_VERSION));
                     }
                 }
             }

@@ -1,3 +1,11 @@
+## 2.28.1 — Hotfix GYG CSV modal AJAX diagnostics and fallback
+- Corretto il loading infinito del modale `gyg_csv` con stati progressivi, timeout AJAX e gestione esplicita di risposte non valide.
+- Aggiunta diagnostica AJAX sicura nel modale, console error admin limitato e health check `alma_gyg_csv_modal_healthcheck`.
+- Aggiunto fallback server-side “Apri importazione in modalità semplice” per importare una tipologia CSV senza dipendere dal modale AJAX.
+- Migliorato cache busting/enqueue JS admin: `assets/affiliate-sources.js` usa la versione `ALMA_VERSION` aggiornata a `2.28.1`.
+- Se il modale `gyg_csv` non carica le Tipologie Link Sothra, usare “Test caricamento modale” o “Apri importazione in modalità semplice”.
+- Versione plugin aggiornata a `2.28.1`.
+
 ## 2.28.0 — GetYourGuide CSV persistente e riprendibile
 - Il provider `gyg_csv` salva ogni CSV caricato in modo persistente sotto `wp-content/uploads/alma-imports/gyg-csv/` con nome non prevedibile, validazione `.csv`/MIME e protezioni anti-listing/anti-esecuzione. La UI non mostra path server completi.
 - Le sessioni vengono registrate in database e sono visibili nella sezione **Sessioni CSV recenti** della pagina “Importa contenuti”: da lì è possibile riprendere Step 2/Step 3 senza ricaricare il file oppure eliminare la sessione. L’eliminazione rimuove sessione, progressi e file CSV, ma non elimina i Link affiliati già importati.
