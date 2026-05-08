@@ -2,7 +2,9 @@
 if (!defined('ABSPATH')) { exit; }
 
 class ALMA_Affiliate_Source_GYG_CSV_Importer {
-    const MAX_BATCH_SIZE = 500;
+    const MAX_IMPORT_QUANTITY = 1000;
+    const AJAX_BATCH_SIZE = 100;
+    const PREVIEW_LIMIT = 10;
     const TRANSIENT_PREFIX = 'alma_gyg_csv_';
 
     public static function build_affiliate_url($original_url, $partner_id, $utm_medium = 'online_publisher') {
@@ -51,8 +53,13 @@ class ALMA_Affiliate_Source_GYG_CSV_Importer {
     public static function default_settings($settings) {
         $settings = is_array($settings) ? $settings : array();
         if (empty($settings['utm_medium'])) $settings['utm_medium'] = 'online_publisher';
-        $settings['batch_size'] = max(1, min(self::MAX_BATCH_SIZE, (int)($settings['batch_size'] ?? self::MAX_BATCH_SIZE)));
-        if (empty($settings['type_mappings']) || !is_array($settings['type_mappings'])) $settings['type_mappings'] = array();
+        // Backward compatibility: keep any saved batch_size in storage, but the gyg_csv UI and importer ignore it.
+        if (empty($settings['type_mappings']) || !is_array($settings['type_mappings'])) {
+            $settings['type_mappings'] = array();
+        }
+        foreach ($settings['type_mappings'] as $type => $term_ids) {
+            $settings['type_mappings'][$type] = self::normalize_mapping_term_ids($term_ids);
+        }
         return $settings;
     }
 
@@ -176,7 +183,7 @@ class ALMA_Affiliate_Source_GYG_CSV_Importer {
         $settings = self::default_settings(json_decode((string)($source['settings'] ?? '{}'), true));
         $partner_id = (string)($settings['partner_id'] ?? '');
         $utm = (string)($settings['utm_medium'] ?? 'online_publisher');
-        $limit = max(1, min(self::MAX_BATCH_SIZE, (int)($settings['batch_size'] ?? self::MAX_BATCH_SIZE)));
+        $limit = max(1, min(self::PREVIEW_LIMIT, (int)($filters['limit'] ?? self::PREVIEW_LIMIT)));
         $items = array();
         $handle = fopen($path, 'r'); if (!$handle) return $items;
         $delimiter = $this->delimiter($path); fgetcsv($handle, 0, $delimiter);
@@ -209,8 +216,8 @@ class ALMA_Affiliate_Source_GYG_CSV_Importer {
             'external_id' => self::external_id_from_url($url),
             'original_url' => $url,
             'affiliate_url' => self::build_affiliate_url($url, $partner_id, $utm),
-            'city' => sanitize_text_field((string)($row[$columns['city']] ?? '')),
-            'region' => sanitize_text_field((string)($row[$columns['region']] ?? '')),
+            'city' => isset($columns['city']) ? sanitize_text_field((string)($row[$columns['city']] ?? '')) : '',
+            'region' => isset($columns['region']) ? sanitize_text_field((string)($row[$columns['region']] ?? '')) : '',
             'activity_type' => sanitize_text_field((string)($row[$columns['activity_type']] ?? '')),
             'description' => wp_strip_all_tags((string)($row[$columns['description']] ?? '')),
         );
@@ -239,46 +246,78 @@ class ALMA_Affiliate_Source_GYG_CSV_Importer {
         return array('post_title'=>sanitize_text_field($title !== '' ? $title : __('GetYourGuide attività', 'affiliate-link-manager-ai')), 'post_content'=>wp_kses_post($item['description']), 'featured_image_url'=>'', 'affiliate_url'=>esc_url_raw($item['affiliate_url']), 'original_url'=>esc_url_raw($item['original_url']), 'meta'=>$meta, 'raw_item'=>$item);
     }
 
-    public function import_selected($path, $columns, $activity_type, $source, $external_ids, $term_id) {
+    public function import_batch($path, $columns, $activity_type, $source, $term_ids, $quantity, $cursor = 0, $update_existing = false, $batch_size = self::AJAX_BATCH_SIZE) {
         $start = microtime(true);
         $settings = self::default_settings(json_decode((string)($source['settings'] ?? '{}'), true));
         $partner_id = (string)($settings['partner_id'] ?? '');
         $utm = (string)($settings['utm_medium'] ?? 'online_publisher');
-        $selected = array_slice(array_values(array_unique(array_map('sanitize_text_field', (array)$external_ids))), 0, self::MAX_BATCH_SIZE);
-        $selected_map = array_fill_keys($selected, true);
-        $result = array('imported'=>0,'updated'=>0,'already_present'=>0,'skipped'=>0,'errors'=>0,'invalid_urls'=>0,'without_city'=>0,'without_region'=>0,'processed'=>array(),'duration'=>0);
-        if (count($external_ids) > self::MAX_BATCH_SIZE) $result['skipped'] += count($external_ids) - self::MAX_BATCH_SIZE;
-        if (empty($selected)) return $result;
+        $quantity = max(1, min(self::MAX_IMPORT_QUANTITY, absint($quantity)));
+        $cursor = max(0, absint($cursor));
+        $batch_size = max(1, min(self::AJAX_BATCH_SIZE, absint($batch_size)));
+        $term_ids = self::normalize_mapping_term_ids($term_ids);
+        $result = array('processed'=>0,'imported'=>0,'updated'=>0,'existing'=>0,'skipped'=>0,'errors'=>0,'invalid_urls'=>0,'without_city'=>0,'without_region'=>0,'duration'=>0,'logs'=>array(),'next_cursor'=>$cursor,'done'=>false);
+        if (empty($term_ids)) {
+            return new WP_Error('missing_terms', __('Seleziona almeno una Tipologia Link Sothra.', 'affiliate-link-manager-ai'));
+        }
         $source_for_import = $source;
         $source_for_import['provider_preset'] = 'gyg_csv';
         $source_for_import['provider'] = 'gyg_csv';
-        $source_for_import['settings'] = wp_json_encode(array_merge($settings, array('duplicate_policy'=>'create_update')));
-        $source_for_import['destination_term_id'] = absint($term_id);
-        $source_for_import['destination_term_ids'] = absint($term_id) > 0 ? wp_json_encode(array(absint($term_id))) : null;
+        $source_for_import['settings'] = wp_json_encode(array_merge($settings, array('duplicate_policy'=>$update_existing ? 'create_update' : 'skip_existing')));
+        $source_for_import['destination_term_id'] = (int)($term_ids[0] ?? 0);
+        $source_for_import['destination_term_ids'] = wp_json_encode($term_ids);
         $source_for_import['import_mode'] = 'create_update';
         $importer = new ALMA_Affiliate_Source_Importer();
         $dedupe = new ALMA_Affiliate_Source_Import_Dedupe_Service();
-        $handle = fopen($path, 'r'); if (!$handle) return new WP_Error('csv_open', __('Impossibile leggere il CSV.', 'affiliate-link-manager-ai'));
-        $delimiter = $this->delimiter($path); fgetcsv($handle, 0, $delimiter);
+        $handle = fopen($path, 'r');
+        if (!$handle) return new WP_Error('csv_open', __('Impossibile leggere il CSV.', 'affiliate-link-manager-ai'));
+        $delimiter = $this->delimiter($path);
+        fgetcsv($handle, 0, $delimiter);
+        $matched_index = 0;
         while (($row = fgetcsv($handle, 0, $delimiter)) !== false) {
             $item = $this->row_to_item($row, $columns, $source, $partner_id, $utm);
-            if (!isset($selected_map[$item['external_id']])) continue;
             if ($activity_type !== '' && $item['activity_type'] !== $activity_type) continue;
-            if ($item['original_url'] === '' || !wp_http_validate_url($item['original_url']) || $item['affiliate_url'] === '') { $result['invalid_urls']++; $result['errors']++; continue; }
+            if ($matched_index++ < $cursor) continue;
+            if ($result['processed'] >= $batch_size || ($cursor + $result['processed']) >= $quantity) break;
+            $result['processed']++;
+            $result['next_cursor'] = $cursor + $result['processed'];
+            $label = $item['description'] !== '' ? $item['description'] : $item['original_url'];
+            if ($item['original_url'] === '' || !wp_http_validate_url($item['original_url']) || $item['affiliate_url'] === '') {
+                $result['invalid_urls']++; $result['errors']++;
+                $result['logs'][] = sprintf(__('URL non valido: %s', 'affiliate-link-manager-ai'), $label !== '' ? $label : __('record senza descrizione', 'affiliate-link-manager-ai'));
+                continue;
+            }
+            if ($item['description'] === '') {
+                $result['skipped']++; $result['errors']++;
+                $result['logs'][] = sprintf(__('Descrizione mancante: %s', 'affiliate-link-manager-ai'), $item['original_url']);
+                continue;
+            }
             if ($item['city'] === '') $result['without_city']++;
             if ($item['region'] === '') $result['without_region']++;
             $normalized = $this->normalize_item($item, $source_for_import);
-            $match = $dedupe->find_match($normalized, 'create_update');
-            $was_existing = !empty($match['post_id']);
+            $match = $dedupe->find_match($normalized, $update_existing ? 'create_update' : 'skip_existing');
+            if (!$update_existing && !empty($match['post_id'])) {
+                $result['existing']++;
+                continue;
+            }
             $res = $importer->import_item($normalized, $source_for_import, array('build_ai_context'=>false, 'dry_run_featured_image'=>true));
-            if (is_wp_error($res)) { $result['errors']++; $result['processed'][] = array('external_id'=>$item['external_id'], 'status'=>'error', 'message'=>$res->get_error_message()); continue; }
+            if (is_wp_error($res)) {
+                $result['errors']++;
+                $result['logs'][] = sprintf(__('Errore creazione/aggiornamento Link affiliato: %s', 'affiliate-link-manager-ai'), $res->get_error_message());
+                continue;
+            }
             if (($res['status'] ?? '') === 'updated') $result['updated']++;
-            elseif ($was_existing) $result['already_present']++;
+            elseif (!empty($match['post_id'])) $result['existing']++;
             else $result['imported']++;
-            $result['processed'][] = array('external_id'=>$item['external_id'], 'status'=>(string)($res['status'] ?? ''), 'post_id'=>(int)($res['post_id'] ?? 0));
         }
+        $eof = feof($handle);
         fclose($handle);
+        $result['done'] = $eof || $result['next_cursor'] >= $quantity || $result['processed'] < $batch_size;
         $result['duration'] = round(microtime(true) - $start, 2);
         return $result;
     }
+
+    public function import_selected($path, $columns, $activity_type, $source, $external_ids, $term_id) {
+        return $this->import_batch($path, $columns, $activity_type, $source, array($term_id), count((array)$external_ids), 0, true, self::MAX_IMPORT_QUANTITY);
+    }
+
 }

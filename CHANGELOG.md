@@ -1,3 +1,12 @@
+## 2.27.0 — GetYourGuide CSV modal import progressivo
+- Migliorato il flusso `gyg_csv` con modale admin sul pulsante “Importa questa tipologia”: riepilogo source, Partner ID, UTM medium, record totali/già importati/ancora da importare e anteprima sintetica limitata.
+- Aggiunta selezione multipla obbligatoria delle Tipologie Link Sothra, con mapping persistente per Tipologia attività CSV e colonna “Mapping Sothra” aggiornata con tutti i nomi salvati.
+- Rimossa dalla UI source `gyg_csv` la configurazione batch size: la quantità si sceglie solo nel modale, default 100, minimo 1 e massimo 1000 con clamp JavaScript e limite server-side.
+- Implementato import progressivo via AJAX in sotto-batch da 100 record, progress bar, blocco doppi click, report finale con importati/aggiornati/già presenti/saltati/errori/URL non validi/record senza città o regione/durata e log errori leggibile.
+- Mantenuta la deduplica `source_id + external_id`; default “Importa solo nuovi record” con opzione per aggiornare anche record già importati usando solo i dati importabili dalla source.
+- Aggiornata la documentazione operativa e confermata la compatibilità con provider diversi da `gyg_csv`.
+- Versione plugin aggiornata a `2.27.0`.
+
 ## 2.26.0 — GetYourGuide CSV / Deep Link importer
 - Aggiunta source preset `gyg_csv` visualizzata come **GetYourGuide CSV / Deep Link**, separata dalla Partner API ufficiale e senza chiamate esterne, scraping, OpenAI, booking o checkout.
 - Nuova configurazione source: Nome source, Partner ID, UTM medium (default `online_publisher`), batch size con limite assoluto 500 e mapping riusabile Tipologia attività CSV → Tipologia Link Sothra.
@@ -7,7 +16,7 @@
 - Import nel CPT esistente `affiliate_link` con deduplica `source_id + external_id`, dove `external_id` è hash stabile della URL originale normalizzata. I reimport aggiornano URL affiliato e meta tecnici senza creare duplicati.
 - Meta tecnici salvati: URL originale, URL affiliato, città, regione, tipologia CSV originale, descrizione, provider/source `gyg_csv`, source ID, external ID e seed contesto AI; nessuna pubblicazione frontend automatica oltre al CPT già esistente.
 - Report batch con importati, aggiornati, già presenti, saltati, errori, URL non validi, record senza città/regione e durata.
-- Test manuali consigliati: caricare CSV valido; verificare errori per assenza di URL/Tipologia/Descrizione; rilevare Città/Regione; mappare una tipologia; filtrare anteprima; importare meno di 500 record; provare selezione oltre 500; verificare URL con/senza query, mancata duplicazione di `partner_id`/`utm_medium`, dominio `.com`/`.it` preservato, deduplica, tassonomia, meta e report finale.
+- Test manuali consigliati: caricare CSV valido; verificare errori per assenza di URL/Tipologia/Descrizione; rilevare Città/Regione; mappare una tipologia; filtrare anteprima; importare meno di 1000 record; provare quantità oltre 1000; verificare URL con/senza query, mancata duplicazione di `partner_id`/`utm_medium`, dominio `.com`/`.it` preservato, deduplica, tassonomia, meta e report finale.
 - Versione plugin aggiornata a `2.26.0`.
 
 ## 2.25.51 — Harden GetYourGuide API provider configuration
