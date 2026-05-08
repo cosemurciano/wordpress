@@ -433,9 +433,17 @@ class ALMA_Affiliate_Source_Manager {
 
     private function sources_table_exists(){ global $wpdb; $t=$wpdb->prefix.'alma_affiliate_sources'; return $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s',$t))===$t; }
 
+    private function get_gyg_link_type_taxonomy() { return 'link_type'; }
+
+    private function send_gyg_ajax_context_error($error) {
+        $code = is_wp_error($error) ? $error->get_error_code() : 'unknown_error';
+        $status = $code === 'forbidden' || $code === 'invalid_nonce' ? 403 : 400;
+        wp_send_json_error(array('message'=>is_wp_error($error) ? $error->get_error_message() : __('Errore AJAX gyg_csv.', 'affiliate-link-manager-ai'),'code'=>$code), $status);
+    }
+
     private function get_valid_gyg_ajax_context() {
         if (!current_user_can('manage_options')) return new WP_Error('forbidden', __('Permessi insufficienti.', 'affiliate-link-manager-ai'));
-        if (!check_ajax_referer('alma_gyg_csv_import_nonce', 'nonce', false)) return new WP_Error('invalid_nonce', __('Nonce non valido.', 'affiliate-link-manager-ai'));
+        if (!check_ajax_referer('alma_gyg_csv_import_nonce', 'nonce', false)) return new WP_Error('invalid_nonce', __('Verifica di sicurezza non riuscita. Ricarica la pagina e riprova.', 'affiliate-link-manager-ai'));
         global $wpdb;
         $source_id=absint($_POST['source_id']??0); $token=sanitize_key($_POST['token']??''); $type=sanitize_text_field(wp_unslash($_POST['activity_type']??''));
         $source=$wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}alma_affiliate_sources WHERE id=%d",$source_id),ARRAY_A);
@@ -447,31 +455,34 @@ class ALMA_Affiliate_Source_Manager {
     }
 
     public function ajax_gyg_csv_prepare_import(){
-        $ctx=$this->get_valid_gyg_ajax_context(); if(is_wp_error($ctx)) wp_send_json_error(array('message'=>$ctx->get_error_message(),'code'=>$ctx->get_error_code()),400);
+        $ctx=$this->get_valid_gyg_ajax_context(); if(is_wp_error($ctx)) $this->send_gyg_ajax_context_error($ctx);
         $settings=ALMA_Affiliate_Source_GYG_CSV_Importer::default_settings($this->decode_db_json($ctx['source']['settings']??'{}'));
-        $terms=get_terms(array('taxonomy'=>'link_type','hide_empty'=>false)); if(is_wp_error($terms)||!is_array($terms)) $terms=array();
+        $taxonomy=$this->get_gyg_link_type_taxonomy();
+        if(!taxonomy_exists($taxonomy)) wp_send_json_error(array('message'=>__('Impossibile caricare le Tipologie Link Sothra. Controlla che la tassonomia delle tipologie esista e ricarica la pagina.', 'affiliate-link-manager-ai'),'code'=>'missing_taxonomy'),500);
+        $terms=get_terms(array('taxonomy'=>$taxonomy,'hide_empty'=>false)); if(is_wp_error($terms)) wp_send_json_error(array('message'=>__('Impossibile caricare le Tipologie Link Sothra. Controlla che la tassonomia delle tipologie esista e ricarica la pagina.', 'affiliate-link-manager-ai'),'code'=>$terms->get_error_code()),500); if(!is_array($terms)) $terms=array();
         $term_data=array(); foreach($terms as $t){ $term_data[]=array('id'=>(int)$t->term_id,'name'=>$t->name); }
         $mapped=ALMA_Affiliate_Source_GYG_CSV_Importer::normalize_mapping_term_ids(($settings['type_mappings'][$ctx['activity_type']]??array()));
         $counts=$ctx['svc']->count_existing_for_type($ctx['session']['path'],$ctx['columns'],$ctx['activity_type'],$ctx['source']);
         if (empty($counts['total'])) wp_send_json_error(array('message'=>__('Tipologia attività CSV non valida o non presente nella sessione.', 'affiliate-link-manager-ai'),'code'=>'invalid_activity_type'),400);
         $preview=$ctx['svc']->preview($ctx['session']['path'],$ctx['columns'],$ctx['activity_type'],$ctx['source'],array('show_existing'=>true,'limit'=>10));
         $preview=array_map(function($it){ return array('original_url'=>$it['original_url'],'affiliate_url'=>$it['affiliate_url'],'city'=>$it['city'],'region'=>$it['region'],'description'=>function_exists('mb_substr')?mb_substr($it['description'],0,140):substr($it['description'],0,140),'status'=>$it['post_id']>0?'già importato':'nuovo'); }, $preview);
-        wp_send_json_success(array('activity_type'=>$ctx['activity_type'],'source_name'=>$ctx['source']['name']??'','source_active'=>!empty($ctx['source']['is_active']),'partner_id'=>$settings['partner_id']??'','utm_medium'=>$settings['utm_medium']??'online_publisher','counts'=>$counts,'terms'=>$term_data,'mapped_term_ids'=>$mapped,'preview'=>$preview));
+        wp_send_json_success(array('activity_type'=>$ctx['activity_type'],'source_id'=>$ctx['source_id'],'token'=>$ctx['token'],'source_name'=>$ctx['source']['name']??'','source_active'=>!empty($ctx['source']['is_active']),'partner_id'=>$settings['partner_id']??'','utm_medium'=>$settings['utm_medium']??'online_publisher','counts'=>$counts,'terms'=>$term_data,'mapped_term_ids'=>$mapped,'preview'=>$preview,'max_quantity'=>ALMA_Affiliate_Source_GYG_CSV_Importer::MAX_IMPORT_QUANTITY));
     }
 
     public function ajax_gyg_csv_import_batch(){
-        $ctx=$this->get_valid_gyg_ajax_context(); if(is_wp_error($ctx)) wp_send_json_error(array('message'=>$ctx->get_error_message(),'code'=>$ctx->get_error_code()),400);
+        $ctx=$this->get_valid_gyg_ajax_context(); if(is_wp_error($ctx)) $this->send_gyg_ajax_context_error($ctx);
+        $taxonomy=$this->get_gyg_link_type_taxonomy();
         $quantity=max(1,min(ALMA_Affiliate_Source_GYG_CSV_Importer::MAX_IMPORT_QUANTITY,absint($_POST['quantity']??100)));
         $cursor=max(0,absint($_POST['cursor']??0)); $update_existing=!empty($_POST['update_existing']);
         $term_ids=ALMA_Affiliate_Source_GYG_CSV_Importer::normalize_mapping_term_ids($_POST['term_ids']??array());
         if(empty($term_ids)) wp_send_json_error(array('message'=>__('Seleziona almeno una Tipologia Link Sothra.', 'affiliate-link-manager-ai'),'code'=>'missing_terms'),400);
-        foreach($term_ids as $tid){ $term=get_term($tid,'link_type'); if(!$term||is_wp_error($term)) wp_send_json_error(array('message'=>__('Tipologia Sothra non valida.', 'affiliate-link-manager-ai'),'code'=>'invalid_term'),400); }
+        foreach($term_ids as $tid){ $term=get_term($tid,$taxonomy); if(!$term||is_wp_error($term)) wp_send_json_error(array('message'=>__('Tipologia Sothra non valida.', 'affiliate-link-manager-ai'),'code'=>'invalid_term'),400); }
         $counts=$ctx['svc']->count_existing_for_type($ctx['session']['path'],$ctx['columns'],$ctx['activity_type'],$ctx['source']);
         if (empty($counts['total'])) wp_send_json_error(array('message'=>__('Tipologia attività CSV non valida o non presente nella sessione.', 'affiliate-link-manager-ai'),'code'=>'invalid_activity_type'),400);
         global $wpdb; $settings=ALMA_Affiliate_Source_GYG_CSV_Importer::default_settings($this->decode_db_json($ctx['source']['settings']??'{}')); $settings['type_mappings'][$ctx['activity_type']]=$term_ids; $wpdb->update("{$wpdb->prefix}alma_affiliate_sources",array('settings'=>wp_json_encode($settings),'updated_at'=>current_time('mysql')),array('id'=>$ctx['source_id']));
         $result=$ctx['svc']->import_batch($ctx['session']['path'],$ctx['columns'],$ctx['activity_type'],$ctx['source'],$term_ids,$quantity,$cursor,$update_existing);
         if(is_wp_error($result)) wp_send_json_error(array('message'=>$result->get_error_message(),'code'=>$result->get_error_code()),400);
-        $names=array(); foreach($term_ids as $tid){ $term=get_term($tid,'link_type'); if($term&&!is_wp_error($term)) $names[]=$term->name; }
+        $names=array(); foreach($term_ids as $tid){ $term=get_term($tid,$taxonomy); if($term&&!is_wp_error($term)) $names[]=$term->name; }
         $result['mapping_label']=implode(', ',$names); $result['max_quantity']=ALMA_Affiliate_Source_GYG_CSV_Importer::MAX_IMPORT_QUANTITY;
         wp_send_json_success($result);
     }
