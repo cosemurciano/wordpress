@@ -3,7 +3,7 @@
  * Plugin Name: Affiliate Link Manager AI
  * Plugin URI: https://your-website.com
  * Description: Gestisce link affiliati con intelligenza artificiale per ottimizzazione e tracking automatico.
- * Version: 2.29.0
+ * Version: 2.30.0
  * Author: Cosè Murciano
  * License: GPL v2 or later
  * Text Domain: affiliate-link-manager-ai
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Definisci costanti del plugin
-define('ALMA_VERSION', '2.29.0');
+define('ALMA_VERSION', '2.30.0');
 define('ALMA_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('ALMA_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('ALMA_PLUGIN_FILE', __FILE__);
@@ -51,6 +51,9 @@ require_once ALMA_PLUGIN_DIR . 'includes/class-ai-content-agent-draft-quality-ch
 require_once ALMA_PLUGIN_DIR . 'includes/class-ai-content-agent-draft-builder.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-ai-content-agent-result-usage.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-ai-content-agent-instructions-manager.php';
+require_once ALMA_PLUGIN_DIR . 'includes/class-ai-trend-radar-store.php';
+require_once ALMA_PLUGIN_DIR . 'includes/class-ai-trend-radar-service.php';
+require_once ALMA_PLUGIN_DIR . 'includes/class-ai-trend-radar-admin.php';
 
 require_once ALMA_PLUGIN_DIR . 'includes/class-affiliate-source-provider-interface.php';
 require_once ALMA_PLUGIN_DIR . 'includes/providers/class-affiliate-source-provider-manual.php';
@@ -1293,6 +1296,16 @@ class AffiliateManagerAI {
             self::AI_CONTENT_AGENT_CAPABILITY,
             self::AI_CONTENT_AGENT_MENU_SLUG,
             array('ALMA_AI_Content_Agent_Admin', 'render_page')
+        );
+
+        // AI Trend Radar
+        add_submenu_page(
+            self::AFFILIATE_LINK_PARENT_MENU,
+            __('Trend Radar', 'affiliate-link-manager-ai'),
+            __('Trend Radar', 'affiliate-link-manager-ai'),
+            'manage_options',
+            ALMA_AI_Trend_Radar_Admin::SLUG,
+            array('ALMA_AI_Trend_Radar_Admin', 'render_page')
         );
 
         // Affiliate Chat AI
@@ -3678,6 +3691,7 @@ class AffiliateManagerAI {
      */
     public function activate() {
         ALMA_AI_Content_Agent_Store::install();
+        ALMA_AI_Trend_Radar_Store::install();
         $this->create_analytics_table();
         ALMA_AI_Usage_Logger::create_table();
         ALMA_Affiliate_Source_Manager::create_tables();
@@ -3690,6 +3704,9 @@ class AffiliateManagerAI {
     public function deactivate() {
         // Rimuovi cron jobs
         wp_clear_scheduled_hook('alma_daily_optimization');
+        foreach (ALMA_AI_Trend_Radar_Store::get_profiles() as $profile) {
+            ALMA_AI_Trend_Radar_Service::clear_profile_schedule((int)$profile['id']);
+        }
         flush_rewrite_rules();
     }
 
@@ -3697,6 +3714,7 @@ class AffiliateManagerAI {
         $installed_version = get_option('alma_plugin_version', '0.0.0');
         if (version_compare($installed_version, ALMA_VERSION, '<')) {
             ALMA_AI_Content_Agent_Store::install();
+            ALMA_AI_Trend_Radar_Store::install();
             $this->create_analytics_table();
             ALMA_AI_Usage_Logger::create_table();
             ALMA_Affiliate_Source_Manager::create_tables();
