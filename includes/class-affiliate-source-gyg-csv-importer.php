@@ -236,6 +236,7 @@ class ALMA_Affiliate_Source_GYG_CSV_Importer {
     public function detect_columns($headers) {
         $aliases = array(
             'url' => array('url'),
+            'title' => array('titolo attivita', 'titolo attività', 'titolo_attivita', 'titolo', 'title', 'activity_title', 'activity title'),
             'city' => array('citta', 'city'),
             'region' => array('regione di appartenenza', 'regione', 'region'),
             'activity_type' => array('tipologia attivita', 'tipologia attività', 'activity type'),
@@ -378,6 +379,25 @@ class ALMA_Affiliate_Source_GYG_CSV_Importer {
         return substr_count($line, ';') > substr_count($line, ',') ? ';' : ',';
     }
 
+
+    public function get_column_example($path, $column_index) {
+        $column_index = absint($column_index);
+        $handle = fopen((string)$path, 'r');
+        if (!$handle) return '';
+        $delimiter = $this->delimiter($path);
+        fgetcsv($handle, 0, $delimiter);
+        $example = '';
+        while (($row = fgetcsv($handle, 0, $delimiter)) !== false) {
+            $value = trim((string)($row[$column_index] ?? ''));
+            if ($value !== '') {
+                $example = sanitize_text_field(wp_strip_all_tags($value));
+                break;
+            }
+        }
+        fclose($handle);
+        return $example;
+    }
+
     public function summarize($path, $columns) {
         $summary = array('types'=>array(), 'total'=>0, 'invalid_urls'=>0, 'without_city'=>0, 'without_region'=>0);
         $handle = fopen($path, 'r'); if (!$handle) return $summary;
@@ -435,6 +455,7 @@ class ALMA_Affiliate_Source_GYG_CSV_Importer {
             'external_id' => self::external_id_from_url($url),
             'original_url' => $url,
             'affiliate_url' => self::build_affiliate_url($url, $partner_id, $utm),
+            'title' => isset($columns['title']) ? sanitize_text_field((string)($row[$columns['title']] ?? '')) : '',
             'city' => isset($columns['city']) ? sanitize_text_field((string)($row[$columns['city']] ?? '')) : '',
             'region' => isset($columns['region']) ? sanitize_text_field((string)($row[$columns['region']] ?? '')) : '',
             'activity_type' => sanitize_text_field((string)($row[$columns['activity_type']] ?? '')),
@@ -442,10 +463,57 @@ class ALMA_Affiliate_Source_GYG_CSV_Importer {
         );
     }
 
+    private function choose_item_title($item) {
+        $title = sanitize_text_field((string)($item['title'] ?? ''));
+        if ($title !== '') return $title;
+        $provider_title = sanitize_text_field((string)($item['provider_title'] ?? ''));
+        if ($provider_title !== '') return $provider_title;
+        $description = sanitize_text_field(wp_strip_all_tags((string)($item['description'] ?? '')));
+        if ($description !== '') return function_exists('mb_substr') ? mb_substr($description, 0, 120) : substr($description, 0, 120);
+        $external_id = sanitize_text_field((string)($item['external_id'] ?? ''));
+        if ($external_id !== '') return $external_id;
+        $url = esc_url_raw((string)($item['original_url'] ?? ''));
+        return $url !== '' ? $url : __('GetYourGuide attività', 'affiliate-link-manager-ai');
+    }
+
+    private function build_local_ai_context($item, $term_names = array()) {
+        $parts = array();
+        $map = array(
+            'title' => __('Titolo attività', 'affiliate-link-manager-ai'),
+            'description' => __('Descrizione attività', 'affiliate-link-manager-ai'),
+            'city' => __('Città', 'affiliate-link-manager-ai'),
+            'region' => __('Regione di appartenenza', 'affiliate-link-manager-ai'),
+            'activity_type' => __('Tipologia attività', 'affiliate-link-manager-ai'),
+        );
+        foreach ($map as $key => $label) {
+            $value = sanitize_text_field(wp_strip_all_tags((string)($item[$key] ?? '')));
+            if ($value !== '') $parts[] = $label . ': ' . $value;
+        }
+        $term_names = array_values(array_filter(array_map('sanitize_text_field', (array)$term_names)));
+        if (!empty($term_names)) $parts[] = __('Tipologie Link associate', 'affiliate-link-manager-ai') . ': ' . implode(', ', array_slice($term_names, 0, 20));
+        return implode("\n", $parts);
+    }
+
+    private function maybe_store_local_ai_context($post_id, $normalized, $source, $status) {
+        $item = is_array($normalized['raw_item'] ?? null) ? $normalized['raw_item'] : array();
+        $term_names = is_array($item['link_type_names'] ?? null) ? $item['link_type_names'] : array();
+        $context = $this->build_local_ai_context($item, $term_names);
+        if ($context === '') return false;
+        $settings = self::default_settings(json_decode((string)($source['settings'] ?? '{}'), true));
+        $policy = sanitize_key((string)($settings['ai_context_regeneration_policy'] ?? 'if_hash_changed_or_expired'));
+        $existing = (string)get_post_meta($post_id, '_alma_ai_context', true);
+        if ($status === 'updated' && $policy === 'manual_only' && $existing !== '') return false;
+        $hash = hash('sha256', wp_json_encode(array('provider'=>'gyg_csv','external_id'=>$normalized['meta']['_alma_external_id'] ?? '', 'context'=>$context)));
+        $old_hash = (string)get_post_meta($post_id, '_alma_ai_context_hash', true);
+        if ($status === 'updated' && $policy === 'only_if_hash_changed' && $old_hash === $hash) return false;
+        update_post_meta($post_id, '_alma_ai_context', $context);
+        update_post_meta($post_id, '_alma_ai_context_updated_at', current_time('mysql'));
+        update_post_meta($post_id, '_alma_ai_context_hash', $hash);
+        return true;
+    }
+
     public function normalize_item($item, $source) {
-        $title = $item['description'];
-        if (function_exists('mb_substr')) $title = mb_substr($title, 0, 120);
-        else $title = substr($title, 0, 120);
+        $title = $this->choose_item_title($item);
         $meta = array(
             '_alma_provider' => 'gyg_csv',
             '_alma_provider_preset' => 'gyg_csv',
@@ -458,8 +526,9 @@ class ALMA_Affiliate_Source_GYG_CSV_Importer {
             '_alma_gyg_csv_region' => (string)$item['region'],
             '_alma_region' => (string)$item['region'],
             '_alma_gyg_csv_activity_type' => (string)$item['activity_type'],
+            '_alma_gyg_csv_title' => (string)($item['title'] ?? ''),
             '_alma_gyg_csv_description' => (string)$item['description'],
-            '_alma_ai_context_seed' => (string)$item['description'],
+            '_alma_ai_context_seed' => trim((string)($item['title'] ?? '') . ' ' . (string)$item['description']),
             '_alma_ai_visibility' => 'available',
         );
         return array('post_title'=>sanitize_text_field($title !== '' ? $title : __('GetYourGuide attività', 'affiliate-link-manager-ai')), 'post_content'=>wp_kses_post($item['description']), 'featured_image_url'=>'', 'affiliate_url'=>esc_url_raw($item['affiliate_url']), 'original_url'=>esc_url_raw($item['original_url']), 'meta'=>$meta, 'raw_item'=>$item);
@@ -576,7 +645,7 @@ class ALMA_Affiliate_Source_GYG_CSV_Importer {
         $quantity = max($cursor + 1, min($cursor + self::MAX_IMPORT_QUANTITY, absint($quantity)));
         $batch_size = max(1, min(self::AJAX_BATCH_SIZE, absint($batch_size)));
         $term_ids = self::normalize_mapping_term_ids($term_ids);
-        $result = array('processed'=>0,'imported'=>0,'updated'=>0,'existing'=>0,'skipped'=>0,'errors'=>0,'invalid_urls'=>0,'without_city'=>0,'without_region'=>0,'duration'=>0,'logs'=>array(),'next_cursor'=>$cursor,'done'=>false);
+        $result = array('processed'=>0,'imported'=>0,'updated'=>0,'existing'=>0,'skipped'=>0,'errors'=>0,'invalid_urls'=>0,'without_city'=>0,'without_region'=>0,'titles_populated'=>0,'titles_missing'=>0,'ai_contexts_populated'=>0,'ai_contexts_missing'=>0,'link_types_associated'=>0,'duration'=>0,'logs'=>array(),'next_cursor'=>$cursor,'done'=>false);
         if (empty($term_ids)) {
             return new WP_Error('missing_terms', __('Seleziona almeno una Tipologia Link Sothra.', 'affiliate-link-manager-ai'));
         }
@@ -587,6 +656,11 @@ class ALMA_Affiliate_Source_GYG_CSV_Importer {
         $source_for_import['destination_term_id'] = (int)($term_ids[0] ?? 0);
         $source_for_import['destination_term_ids'] = wp_json_encode($term_ids);
         $source_for_import['import_mode'] = 'create_update';
+        $term_names = array();
+        foreach ($term_ids as $tid) {
+            $term = get_term($tid, 'link_type');
+            if ($term && !is_wp_error($term)) $term_names[] = $term->name;
+        }
         $importer = new ALMA_Affiliate_Source_Importer();
         $dedupe = new ALMA_Affiliate_Source_Import_Dedupe_Service();
         $handle = fopen($path, 'r');
@@ -614,8 +688,14 @@ class ALMA_Affiliate_Source_GYG_CSV_Importer {
             }
             if ($item['city'] === '') $result['without_city']++;
             if ($item['region'] === '') $result['without_region']++;
+            if ($item['title'] !== '') $result['titles_populated']++; else $result['titles_missing']++;
+            $item['link_type_names'] = $term_names;
             $normalized = $this->normalize_item($item, $source_for_import);
             $match = $dedupe->find_match($normalized, $update_existing ? 'create_update' : 'skip_existing');
+            if ($update_existing && !empty($match['post_id']) && $item['title'] === '') {
+                $existing_title = get_the_title((int)$match['post_id']);
+                if ($existing_title !== '') $normalized['post_title'] = sanitize_text_field($existing_title);
+            }
             if (!$update_existing && !empty($match['post_id'])) {
                 $result['existing']++;
                 continue;
@@ -629,11 +709,17 @@ class ALMA_Affiliate_Source_GYG_CSV_Importer {
             if (($res['status'] ?? '') === 'updated') $result['updated']++;
             elseif (!empty($match['post_id'])) $result['existing']++;
             else $result['imported']++;
+            $post_id = (int)($res['post_id'] ?? 0);
+            if ($post_id > 0 && $this->maybe_store_local_ai_context($post_id, $normalized, $source_for_import, (string)($res['status'] ?? ''))) $result['ai_contexts_populated']++;
+            else $result['ai_contexts_missing']++;
+            if (!empty($term_ids)) $result['link_types_associated']++;
         }
         $eof = feof($handle);
         fclose($handle);
         $result['done'] = $eof || $result['next_cursor'] >= $quantity || $result['processed'] < $batch_size;
         $result['duration'] = round(microtime(true) - $start, 2);
+        $result['logs'][] = sprintf(__('Diagnostica: Titolo Attività riconosciuto=%s, campo interno=post_title, contesti AI generati=%d, record con titolo vuoto=%d.', 'affiliate-link-manager-ai'), isset($columns['title']) ? __('sì', 'affiliate-link-manager-ai') : __('no', 'affiliate-link-manager-ai'), absint($result['ai_contexts_populated']), absint($result['titles_missing']));
+        if (defined('WP_DEBUG') && WP_DEBUG) error_log(sprintf('[ALMA gyg_csv] title_column=%s internal=post_title ai_contexts=%d empty_titles=%d', isset($columns['title']) ? 'yes' : 'no', absint($result['ai_contexts_populated']), absint($result['titles_missing'])));
         return $result;
     }
 
