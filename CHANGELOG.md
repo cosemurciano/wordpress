@@ -1,3 +1,12 @@
+## 2.30.2 - 2026-05-09
+### Fixed
+- Fixed GYG CSV selective import to process the exact selected `external_id` values instead of importing only the first compatible rows by count.
+- Hardened GYG CSV dedupe validation so stale post IDs, wrong CPT matches, and trashed posts no longer count as already present.
+- Made create/update/skip counters explicit for new records, existing records with update disabled, and existing records with update enabled.
+- Split activity-title counters into titles read from the CSV and titles actually saved to affiliate links.
+- Honored `manual_only` AI context regeneration policy for both created and updated GYG CSV links without touching existing AI context meta.
+- Expanded final GYG CSV reports and safe diagnostics for selected IDs, found/missing IDs, valid/stale dedupe matches, created, updated, and skipped records.
+
 ## 2.30.1 — Import CSV: Titolo Attività e Contesto AI locale
 - Aggiunto riconoscimento esplicito di `Titolo Attività` e alias tecnici/senza accenti nel flusso `gyg_csv`, mappandolo al titolo del CPT **Link affiliato** con priorità sui fallback.
 - Aggiornata la revisione colonne dello Step 2 per mostrare `Titolo Attività` anche quando riconosciuto automaticamente, insieme a colonna originale, mapping interno, esempio e stato.

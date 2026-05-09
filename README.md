@@ -1,3 +1,12 @@
+## 2.30.2 — Hotfix import CSV GYG selettivo e report coerente
+- Corretto l’import selettivo `gyg_csv`: i record selezionati vengono risolti tramite `external_id` e il backend importa esattamente quegli identificativi, inclusi record non consecutivi nel CSV.
+- Rafforzata la deduplica dei Link affiliati GYG: i match sono validi solo se puntano a post esistenti del CPT `affiliate_link` non cestinati; i riferimenti stale non bloccano più la creazione.
+- Chiarita la policy create/update: i record esistenti sono conteggiati come “Già presenti saltati” con update disattivato, aggiornati con update attivato, oppure creati se non esistono.
+- Separati i contatori “Titoli letti da Titolo Attività” e “Titoli salvati nei Link affiliati”, così il report riflette solo operazioni realmente eseguite.
+- Rispettata la policy `ai_context_regeneration_policy=manual_only`: l’import non scrive automaticamente `_alma_ai_context`, `_alma_ai_context_updated_at` o `_alma_ai_context_hash` su nuovi post o aggiornamenti e mostra i contesti saltati per policy.
+- Ampliato il report finale con contatori operativi e diagnostica sicura su selezione, deduplica valida/stale e azioni create/update/skip, senza loggare payload CSV completi o API key.
+- Versione plugin aggiornata a `2.30.2`.
+
 ## 2.30.1 — Import CSV: Titolo Attività e Contesto AI locale
 - Nel flusso **Importa contenuti** per `gyg_csv`, la colonna `Titolo Attività` e le sue varianti (`Titolo Attivita`, `titolo_attivita`, `titolo`, `title`, `activity_title`, `activity title`) vengono riconosciute e usate come titolo WordPress del CPT **Link affiliato**.
 - Lo Step 2 **Revisione colonne** mostra anche `Titolo Attività`, con nome colonna originale, campo interno associato, esempio valore e stato di riconoscimento automatico.
