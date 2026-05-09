@@ -523,7 +523,19 @@ class ALMA_Affiliate_Source_Manager {
         $progress = $ctx['svc']->get_progress(absint($ctx['session']['id'] ?? 0), $ctx['source_id'], $ctx['activity_type']);
         $progress_terms = ALMA_Affiliate_Source_GYG_CSV_Importer::normalize_mapping_term_ids($progress['mapped_term_ids_json'] ?? array());
         $mapped = !empty($progress_terms) ? $progress_terms : ALMA_Affiliate_Source_GYG_CSV_Importer::normalize_mapping_term_ids(($settings['type_mappings'][$ctx['activity_type']] ?? array()));
-        $preview = $ctx['svc']->preview($ctx['session']['path'], $ctx['columns'], $ctx['activity_type'], $ctx['source'], array('show_existing'=>true,'limit'=>10));
+        $filter_input = array(
+            'keywords' => $_GET['gyg_filter_keywords'] ?? '',
+            'search_in' => $_GET['gyg_filter_search_in'] ?? 'all',
+            'keyword_mode' => $_GET['gyg_filter_keyword_mode'] ?? 'any',
+            'city' => $_GET['gyg_filter_city'] ?? '',
+            'region' => $_GET['gyg_filter_region'] ?? '',
+            'activity_type' => $_GET['gyg_filter_activity_type'] ?? '',
+            'status' => $_GET['gyg_filter_status'] ?? 'new_only',
+            'per_page' => $_GET['gyg_filter_per_page'] ?? 50,
+            'page' => $_GET['gyg_filter_page'] ?? 1,
+        );
+        $selected_from_request = array_values(array_unique(array_filter(array_map('sanitize_text_field', (array)($_GET['selected_external_ids'] ?? array())))));
+        $preview = $ctx['svc']->filtered_preview($ctx['session']['path'], $ctx['columns'], $ctx['source'], $filter_input, $selected_from_request);
         $last_report = json_decode((string)($progress['last_report_json'] ?? ''), true);
         if (!is_array($last_report)) $last_report = array();
 
@@ -551,23 +563,58 @@ class ALMA_Affiliate_Source_Manager {
         echo '<tr><th>Da importare</th><td>'.absint($counts['remaining'] ?? 0).'</td></tr>';
         echo '</tbody></table></div></div>';
 
-        echo '<form method="post" class="postbox"><h2 class="hndle"><span>Importazione</span></h2><div class="inside">';
+        $filter = $preview['filters'];
+        $filter_base = array('post_type'=>'affiliate_link','page'=>'alma-affiliate-sources','alma_view'=>'gyg_csv_import_type','source_id'=>$ctx['source_id'],'gyg_csv_token'=>$ctx['token'],'activity_type_hash'=>$ctx['activity_type_hash']);
+        echo '<div class="postbox alma-gyg-filter-box"><h2 class="hndle"><span>Filtra contenuti prima dell’importazione</span></h2><div class="inside">';
+        echo '<p class="description">Usa questi filtri per cercare nel file e selezionare solo i contenuti da importare.</p>';
+        echo '<form method="get" class="alma-gyg-filter-form">';
+        foreach ($filter_base as $k=>$v) echo '<input type="hidden" name="'.esc_attr($k).'" value="'.esc_attr($v).'"/>';
+        echo '<input type="hidden" name="gyg_filter_page" value="1"/>';
+        echo '<div class="alma-gyg-filter-grid">';
+        echo '<p><label>Parole chiave<br/><input type="text" name="gyg_filter_keywords" value="'.esc_attr($filter['keywords']).'" placeholder="es. Lecce, barca"/></label></p>';
+        echo '<p><label>Cerca in<br/><select name="gyg_filter_search_in">';
+        $search_options=array('all'=>'Tutti i campi','title'=>'Titolo Attività','description'=>'Descrizione attività','city'=>'Città','region'=>'Regione','activity_type'=>'Tipologia attività','affiliate_url'=>'URL affiliato');
+        foreach($search_options as $value=>$label) echo '<option value="'.esc_attr($value).'" '.selected($filter['search_in'],$value,false).'>'.esc_html($label).'</option>';
+        echo '</select></label></p>';
+        echo '<p><label>Modalità ricerca<br/><select name="gyg_filter_keyword_mode">';
+        foreach(array('any'=>'contiene almeno una parola','all'=>'contiene tutte le parole','phrase'=>'frase esatta') as $value=>$label) echo '<option value="'.esc_attr($value).'" '.selected($filter['keyword_mode'],$value,false).'>'.esc_html($label).'</option>';
+        echo '</select></label></p>';
+        echo '<p><label>Città<br/><input type="text" name="gyg_filter_city" value="'.esc_attr($filter['city']).'"/></label></p>';
+        echo '<p><label>Regione<br/><input type="text" name="gyg_filter_region" value="'.esc_attr($filter['region']).'"/></label></p>';
+        echo '<p><label>Tipologia attività<br/><select name="gyg_filter_activity_type"><option value="">Tutte le tipologie</option>';
+        foreach((array)$preview['activity_types'] as $type) echo '<option value="'.esc_attr($type).'" '.selected($filter['activity_type'],$type,false).'>'.esc_html($type).'</option>';
+        echo '</select></label></p>';
+        echo '<p><label>Stato importazione<br/><select name="gyg_filter_status">';
+        foreach(array('new_only'=>'Solo non importati','with_imported'=>'Mostra anche già importati','imported_only'=>'Solo già importati') as $value=>$label) echo '<option value="'.esc_attr($value).'" '.selected($filter['status'],$value,false).'>'.esc_html($label).'</option>';
+        echo '</select></label></p>';
+        echo '<p><label>Risultati per pagina<br/><select name="gyg_filter_per_page"><option value="25" '.selected($filter['per_page'],25,false).'>25</option><option value="50" '.selected($filter['per_page'],50,false).'>50</option></select></label></p>';
+        echo '</div><p><button class="button button-primary">Applica filtro</button> <a class="button" href="'.esc_url($self_url).'">Pulisci filtro</a></p>';
+        echo '</form></div></div>';
+
+        $counter = sprintf('Record totali: %1$s · Trovati: %2$s · Non importati: %3$s · Già importati: %4$s · Selezionati: %5$s · Selezionati non visibili: %6$s · Pagina %7$s di %8$s', number_format_i18n($preview['total_records']), number_format_i18n($preview['found']), number_format_i18n($preview['new_count']), number_format_i18n($preview['imported_count']), number_format_i18n($preview['selected_count']), number_format_i18n($preview['selected_not_visible']), number_format_i18n($preview['page']), number_format_i18n($preview['total_pages']));
+        echo '<form method="post" class="postbox alma-gyg-selective-import-form"><h2 class="hndle"><span>Risultati Anteprima</span></h2><div class="inside">';
         wp_nonce_field('alma_gyg_csv_import_type', 'alma_gyg_csv_import_type_nonce');
         echo '<input type="hidden" name="action_type" value="gyg_csv_import_type"/><input type="hidden" name="source_id" value="'.(int)$ctx['source_id'].'"/><input type="hidden" name="gyg_csv_token" value="'.esc_attr($ctx['token']).'"/><input type="hidden" name="activity_type_hash" value="'.esc_attr($ctx['activity_type_hash']).'"/>';
+        echo '<p><strong>'.esc_html($counter).'</strong></p><div class="alma-gyg-selected-store"></div>';
         echo '<fieldset><legend><strong>Tipologie Link Sothra</strong></legend>';
-        if (empty($terms)) {
-            echo '<p class="description">Nessuna Tipologia Link Sothra disponibile. Creane almeno una prima di importare.</p>';
+        if (empty($terms)) echo '<p class="description">Nessuna Tipologia Link Sothra disponibile. Creane almeno una prima di importare.</p>'; else foreach ($terms as $term) { $checked = in_array((int)$term->term_id, $mapped, true); echo '<label style="display:block;margin:.25em 0"><input type="checkbox" name="link_type_term_ids[]" value="'.(int)$term->term_id.'" '.checked($checked,true,false).'/> '.esc_html($term->name).'</label>'; }
+        echo '</fieldset><fieldset><legend><strong>Modalità deduplica</strong></legend><p><label><input type="radio" name="update_existing" value="0" checked/> Importa solo nuovi record</label><br/><label><input type="radio" name="update_existing" value="1"/> Aggiorna anche record già importati</label></p></fieldset>';
+        echo '<p class="alma-gyg-selection-actions"><button type="button" class="button alma-gyg-select-visible">Seleziona risultati visibili</button> <button type="button" class="button alma-gyg-deselect-visible">Deseleziona risultati visibili</button> <button type="button" class="button alma-gyg-select-filtered" data-count="'.esc_attr($preview['found']).'">Seleziona tutti i risultati filtrati</button></p>';
+        foreach((array)$preview['all_filtered_external_ids'] as $eid) echo '<input type="hidden" class="alma-gyg-filtered-id" value="'.esc_attr($eid).'"/>';
+        if (empty($preview['items'])) {
+            echo '<div class="notice notice-warning inline"><p>Nessun contenuto trovato con i filtri applicati. Prova a rimuovere una parola chiave o cambiare modalità di ricerca.</p></div>';
         } else {
-            foreach ($terms as $term) { $checked = in_array((int)$term->term_id, $mapped, true); echo '<label style="display:block;margin:.25em 0"><input type="checkbox" name="link_type_term_ids[]" value="'.(int)$term->term_id.'" '.checked($checked,true,false).'/> '.esc_html($term->name).'</label>'; }
+            echo '<table class="widefat striped alma-gyg-preview-table"><thead><tr><th>Seleziona</th><th>Titolo Attività</th><th>URL affiliato</th><th>Città</th><th>Regione</th><th>Tipologia attività</th><th>Descrizione breve</th><th>Stato</th></tr></thead><tbody>';
+            foreach ($preview['items'] as $it) { $desc = function_exists('mb_substr') ? mb_substr((string)$it['description'], 0, 140) : substr((string)$it['description'], 0, 140); $eid=(string)$it['external_id']; echo '<tr'.(!empty($it['post_id'])?' class="alma-row-existing"':'').'><td><input class="alma-gyg-row-select" type="checkbox" value="'.esc_attr($eid).'" '.checked(!empty($it['selected']),true,false).'/></td><td>'.esc_html($it['title']!==''?$it['title']:'—').'<br/><code>'.esc_html(substr($eid,0,12)).'</code></td><td><a href="'.esc_url($it['affiliate_url']).'" target="_blank" rel="noopener noreferrer">Apri</a></td><td>'.esc_html($it['city']).'</td><td>'.esc_html($it['region']).'</td><td>'.esc_html($it['activity_type']).'</td><td>'.esc_html($desc).'</td><td>'.esc_html($it['status']).'</td></tr>'; }
+            echo '</tbody></table>';
         }
-        echo '</fieldset><p><label><strong>Quantità da importare</strong><br/><input type="number" name="quantity" min="1" max="1000" value="100"/> <span class="description">Massimo 1000 record per importazione.</span></label></p>';
-        echo '<fieldset><legend><strong>Modalità deduplica</strong></legend><p><label><input type="radio" name="update_existing" value="0" checked/> Importa solo nuovi record</label><br/><label><input type="radio" name="update_existing" value="1"/> Aggiorna anche record già importati</label></p></fieldset>';
-        if (empty($terms)) echo '<p><button class="button button-primary" disabled>Avvia importazione</button></p>'; else echo '<p><button class="button button-primary">Avvia importazione</button></p>';
+        $prev_args = array_merge($filter_base, array('gyg_filter_keywords'=>$filter['keywords'],'gyg_filter_search_in'=>$filter['search_in'],'gyg_filter_keyword_mode'=>$filter['keyword_mode'],'gyg_filter_city'=>$filter['city'],'gyg_filter_region'=>$filter['region'],'gyg_filter_activity_type'=>$filter['activity_type'],'gyg_filter_status'=>$filter['status'],'gyg_filter_per_page'=>$filter['per_page']));
+        $prev_url = add_query_arg(array_merge($prev_args,array('gyg_filter_page'=>max(1,$preview['page']-1))), admin_url('edit.php'));
+        $next_url = add_query_arg(array_merge($prev_args,array('gyg_filter_page'=>min($preview['total_pages'],$preview['page']+1))), admin_url('edit.php'));
+        echo '<p class="alma-gyg-pagination"><a class="button" href="'.esc_url($prev_url).'">precedente</a> <span>Pagina '.esc_html($preview['page']).' di '.esc_html($preview['total_pages']).'</span> <a class="button" href="'.esc_url($next_url).'">successiva</a></p>';
+        if (empty($terms)) echo '<p><button class="button button-primary alma-gyg-import-selected" disabled>Importa selezionati</button></p>'; else echo '<p><button class="button button-primary alma-gyg-import-selected">Importa selezionati</button> <span class="description alma-gyg-no-selection-warning">Se non ci sono record selezionati, seleziona almeno un contenuto prima dell’import.</span></p>';
         echo '</div></form>';
 
-        echo '<div class="postbox"><h2 class="hndle"><span>Anteprima sintetica</span></h2><div class="inside">';
-        if (empty($preview)) echo '<p class="description">Nessun record disponibile per l’anteprima.</p>'; else { echo '<table class="widefat striped"><thead><tr><th>URL originale</th><th>URL affiliato generato</th><th>Città</th><th>Regione</th><th>Descrizione breve</th><th>Stato</th></tr></thead><tbody>'; foreach ($preview as $it) { $desc = function_exists('mb_substr') ? mb_substr((string)$it['description'], 0, 140) : substr((string)$it['description'], 0, 140); echo '<tr><td><code>'.esc_html($it['original_url']).'</code></td><td><code>'.esc_html($it['affiliate_url']).'</code></td><td>'.esc_html($it['city']).'</td><td>'.esc_html($it['region']).'</td><td>'.esc_html($desc).'</td><td>'.esc_html(!empty($it['post_id']) ? 'già importato' : 'nuovo').'</td></tr>'; } echo '</tbody></table>'; }
-        echo '</div></div>';
 
         if (!empty($last_report)) { $this->render_gyg_csv_import_type_report($last_report, $back, $self_url, $list_url); }
         echo '</div>';
@@ -593,26 +640,16 @@ class ALMA_Affiliate_Source_Manager {
         $term_ids = ALMA_Affiliate_Source_GYG_CSV_Importer::normalize_mapping_term_ids($_POST['link_type_term_ids'] ?? array());
         foreach ($term_ids as $tid) { $term = get_term($tid, $taxonomy); if (!$term || is_wp_error($term)) { wp_safe_redirect(add_query_arg(array_merge($redirect_base, array('alma_gyg_error'=>'invalid_term')), admin_url('edit.php'))); exit; } }
         if (empty($term_ids)) { wp_safe_redirect(add_query_arg(array_merge($redirect_base, array('alma_gyg_error'=>'missing_terms')), admin_url('edit.php'))); exit; }
-        $quantity = max(1, min(ALMA_Affiliate_Source_GYG_CSV_Importer::MAX_IMPORT_QUANTITY, absint($_POST['quantity'] ?? 100)));
+        $selected = array_values(array_unique(array_filter(array_map('sanitize_text_field', (array)($_POST['selected_external_ids'] ?? array())))));
+        if (empty($selected)) { wp_safe_redirect(add_query_arg(array_merge($redirect_base, array('alma_gyg_error'=>'missing_selection')), admin_url('edit.php'))); exit; }
+        if (count($selected) > ALMA_Affiliate_Source_GYG_CSV_Importer::MAX_IMPORT_QUANTITY) $selected = array_slice($selected, 0, ALMA_Affiliate_Source_GYG_CSV_Importer::MAX_IMPORT_QUANTITY);
         $update_existing = isset($_POST['update_existing']) && (string)$_POST['update_existing'] === '1';
         global $wpdb;
         $settings = ALMA_Affiliate_Source_GYG_CSV_Importer::default_settings($this->decode_db_json($ctx['source']['settings'] ?? '{}'));
         $settings['type_mappings'][$ctx['activity_type']] = $term_ids;
         $wpdb->update("{$wpdb->prefix}alma_affiliate_sources", array('settings'=>wp_json_encode($settings),'updated_at'=>current_time('mysql')), array('id'=>$ctx['source_id']));
-        $progress = $ctx['svc']->get_progress(absint($ctx['session']['id'] ?? 0), $ctx['source_id'], $ctx['activity_type']);
-        $cursor = absint($progress['last_cursor'] ?? 0);
-        $target = $cursor + $quantity;
-        $aggregate = array('requested'=>$quantity,'selected'=>$quantity,'processed'=>0,'effective_processed'=>0,'imported'=>0,'updated'=>0,'existing'=>0,'skipped'=>0,'errors'=>0,'invalid_urls'=>0,'without_city'=>0,'without_region'=>0,'titles_read'=>0,'titles_saved'=>0,'titles_populated'=>0,'titles_missing'=>0,'ai_contexts_populated'=>0,'ai_contexts_skipped_manual_only'=>0,'ai_contexts_missing'=>0,'link_types_associated'=>0,'dedupe_matches_valid'=>0,'dedupe_matches_stale'=>0,'duration'=>0,'logs'=>array(),'next_cursor'=>$cursor,'done'=>false);
-        do {
-            $batch = $ctx['svc']->import_batch($ctx['session']['path'], $ctx['columns'], $ctx['activity_type'], $ctx['source'], $term_ids, $target, $cursor, $update_existing);
-            if (is_wp_error($batch)) { wp_safe_redirect(add_query_arg(array_merge($redirect_base, array('alma_gyg_error'=>$batch->get_error_code())), admin_url('edit.php'))); exit; }
-            foreach (array('processed','effective_processed','imported','updated','existing','skipped','errors','invalid_urls','without_city','without_region','titles_read','titles_saved','titles_populated','titles_missing','ai_contexts_populated','ai_contexts_skipped_manual_only','ai_contexts_missing','link_types_associated','dedupe_matches_valid','dedupe_matches_stale') as $k) $aggregate[$k] += absint($batch[$k] ?? 0);
-            $aggregate['duration'] += (float)($batch['duration'] ?? 0);
-            $aggregate['logs'] = array_merge($aggregate['logs'], (array)($batch['logs'] ?? array()));
-            $cursor = absint($batch['next_cursor'] ?? $cursor);
-            $aggregate['next_cursor'] = $cursor;
-            $aggregate['done'] = !empty($batch['done']);
-        } while (empty($aggregate['done']) && $aggregate['processed'] < $quantity);
+        $aggregate = $ctx['svc']->import_selected($ctx['session']['path'], $ctx['columns'], '', $ctx['source'], $selected, $term_ids, $update_existing);
+        if (is_wp_error($aggregate)) { wp_safe_redirect(add_query_arg(array_merge($redirect_base, array('alma_gyg_error'=>$aggregate->get_error_code())), admin_url('edit.php'))); exit; }
         $ctx['svc']->upsert_progress(absint($ctx['session']['id'] ?? 0), $ctx['source_id'], $ctx['activity_type'], $term_ids, $aggregate);
         wp_safe_redirect(add_query_arg(array_merge($redirect_base, array('alma_gyg_imported'=>1)), admin_url('edit.php'))); exit;
     }

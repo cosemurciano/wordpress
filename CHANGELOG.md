@@ -1,3 +1,16 @@
+## 2.31.0 — Filtro CSV GYG prima dell’importazione
+- Aggiunto il box **Filtra contenuti prima dell’importazione** nella schermata aperta dopo **Importa / continua**, sopra la tabella **Risultati Anteprima**.
+- La ricerca lavora sull’intero CSV normalizzato della sessione persistente, non solo sulla pagina visibile, e restituisce solo la pagina corrente per evitare rendering di migliaia di righe.
+- Disponibili filtri per parole chiave, campo di ricerca, modalità (almeno una parola, tutte le parole, frase esatta), città, regione, tipologia attività opzionale, stato importazione e risultati per pagina 25/50.
+- La città funziona anche senza tipologia selezionata; la tipologia è solo un filtro aggiuntivo e non limita da sola la ricerca globale nel file.
+- Lo stato importazione è gestito dalla select **Solo non importati / Mostra anche già importati / Solo già importati**, che sostituisce il vecchio comportamento a checkbox nella preview GYG CSV.
+- Aggiunti contatori per record totali, trovati, non importati, già importati, selezionati, selezionati non visibili e pagina corrente.
+- Aggiunte azioni **Seleziona risultati visibili**, **Deseleziona risultati visibili** e **Seleziona tutti i risultati filtrati** con conferma oltre 100 record; filtrare e selezionare non avvia mai l’import automaticamente.
+- La selezione resta basata su `external_id`, persiste al cambio filtro/pagina tramite UI admin, e l’import selettivo continua a passare al backend solo gli `external_id` scelti.
+- Aggiunto helper riusabile `ALMA_Affiliate_Source_Import_Record_Filter` per normalizzazione testo, parole chiave, filtri e paginazione, con log diagnostico sintetico e sicuro.
+- Note performance: la preview fa una scansione server-side della sessione CSV, batch query per lo stato già importato, nessuna chiamata OpenAI/API esterna e nessun payload CSV completo nei log.
+- Versione plugin aggiornata a `2.31.0`.
+
 ## 2.30.2 - 2026-05-09
 ### Fixed
 - Fixed GYG CSV selective import to process the exact selected `external_id` values instead of importing only the first compatible rows by count.

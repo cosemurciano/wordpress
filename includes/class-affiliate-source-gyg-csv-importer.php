@@ -237,8 +237,8 @@ class ALMA_Affiliate_Source_GYG_CSV_Importer {
         $aliases = array(
             'url' => array('url'),
             'title' => array('titolo attivita', 'titolo attività', 'titolo_attivita', 'titolo', 'title', 'activity_title', 'activity title'),
-            'city' => array('citta', 'city'),
-            'region' => array('regione di appartenenza', 'regione', 'region'),
+            'city' => array('citta', 'città', 'city', 'destination', 'destinazione'),
+            'region' => array('regione di appartenenza', 'regione', 'region', 'country area', 'area paese'),
             'activity_type' => array('tipologia attivita', 'tipologia attività', 'activity type'),
             'description' => array('descrizione attivita', 'descrizione attività', 'descrizione', 'description'),
         );
@@ -416,6 +416,102 @@ class ALMA_Affiliate_Source_GYG_CSV_Importer {
         fclose($handle);
         arsort($summary['types']);
         return $summary;
+    }
+
+
+    private function existing_external_id_map($source_id, $external_ids) {
+        global $wpdb;
+        $source_id = (string)absint($source_id);
+        $ids = array_values(array_unique(array_filter(array_map('sanitize_text_field', (array)$external_ids))));
+        $map = array();
+        if ($source_id === '0' || empty($ids)) return $map;
+        foreach (array_chunk($ids, 500) as $chunk) {
+            $placeholders = implode(',', array_fill(0, count($chunk), '%s'));
+            $sql = "SELECT pm2.meta_value AS external_id, MAX(pm1.post_id) AS post_id FROM {$wpdb->postmeta} pm1 INNER JOIN {$wpdb->postmeta} pm2 ON pm1.post_id=pm2.post_id INNER JOIN {$wpdb->posts} p ON p.ID=pm1.post_id WHERE pm1.meta_key='_alma_source_id' AND pm1.meta_value=%s AND pm2.meta_key='_alma_external_id' AND pm2.meta_value IN ($placeholders) AND p.post_type='affiliate_link' AND p.post_status NOT IN ('trash','auto-draft') GROUP BY pm2.meta_value";
+            $rows = $wpdb->get_results($wpdb->prepare($sql, array_merge(array($source_id), $chunk)), ARRAY_A);
+            foreach ((array)$rows as $row) {
+                $eid = sanitize_text_field((string)($row['external_id'] ?? ''));
+                if ($eid !== '') $map[$eid] = absint($row['post_id'] ?? 0);
+            }
+        }
+        return $map;
+    }
+
+    public function filtered_preview($path, $columns, $source, $filters = array(), $selected_external_ids = array()) {
+        $filters = ALMA_Affiliate_Source_Import_Record_Filter::sanitize_filters($filters);
+        $settings = self::default_settings(json_decode((string)($source['settings'] ?? '{}'), true));
+        $partner_id = (string)($settings['partner_id'] ?? '');
+        $utm = (string)($settings['utm_medium'] ?? 'online_publisher');
+        $result = array(
+            'filters' => $filters,
+            'items' => array(),
+            'activity_types' => array(),
+            'total_records' => 0,
+            'filtered_before_status' => 0,
+            'found' => 0,
+            'new_count' => 0,
+            'imported_count' => 0,
+            'selected_count' => 0,
+            'selected_not_visible' => 0,
+            'page' => 1,
+            'per_page' => $filters['per_page'],
+            'total_pages' => 1,
+            'all_filtered_external_ids' => array(),
+        );
+        $selected = array_values(array_unique(array_filter(array_map('sanitize_text_field', (array)$selected_external_ids))));
+        $result['selected_count'] = count($selected);
+        $selected_map = array_fill_keys($selected, true);
+        $handle = fopen((string)$path, 'r');
+        if (!$handle) return $result;
+        $delimiter = $this->delimiter($path);
+        fgetcsv($handle, 0, $delimiter);
+        $candidates = array();
+        $candidate_ids = array();
+        while (($row = fgetcsv($handle, 0, $delimiter)) !== false) {
+            if ($this->is_empty_csv_row($row)) continue;
+            $item = $this->row_to_item($row, $columns, $source, $partner_id, $utm);
+            $result['total_records']++;
+            $type = (string)($item['activity_type'] ?? '');
+            if ($type !== '') $result['activity_types'][$type] = true;
+            if (!ALMA_Affiliate_Source_Import_Record_Filter::record_matches_text($item, $filters)) continue;
+            if (!ALMA_Affiliate_Source_Import_Record_Filter::record_matches_location_and_type($item, $filters)) continue;
+            $candidates[] = $item;
+            if (!empty($item['external_id'])) $candidate_ids[] = (string)$item['external_id'];
+        }
+        fclose($handle);
+        $result['activity_types'] = array_keys($result['activity_types']);
+        natcasesort($result['activity_types']);
+        $result['activity_types'] = array_values($result['activity_types']);
+        $result['filtered_before_status'] = count($candidates);
+        $existing = $this->existing_external_id_map(absint($source['id'] ?? 0), $candidate_ids);
+        $visible = array();
+        foreach ($candidates as $item) {
+            $eid = (string)($item['external_id'] ?? '');
+            $post_id = absint($existing[$eid] ?? 0);
+            $is_imported = $post_id > 0;
+            if ($is_imported) $result['imported_count']++; else $result['new_count']++;
+            if ($filters['status'] === 'new_only' && $is_imported) continue;
+            if ($filters['status'] === 'imported_only' && !$is_imported) continue;
+            $item['post_id'] = $post_id;
+            $item['status'] = $is_imported ? 'già importato' : 'nuovo';
+            $item['selected'] = isset($selected_map[$eid]);
+            $visible[] = $item;
+            if ($eid !== '') $result['all_filtered_external_ids'][] = $eid;
+        }
+        $result['found'] = count($visible);
+        $filtered_map = array_fill_keys($result['all_filtered_external_ids'], true);
+        foreach ($selected as $eid) {
+            if (!isset($filtered_map[$eid])) $result['selected_not_visible']++;
+        }
+        $page = ALMA_Affiliate_Source_Import_Record_Filter::paginate($visible, $filters['page'], $filters['per_page']);
+        $result['items'] = $page['items'];
+        $result['page'] = $page['page'];
+        $result['per_page'] = $page['per_page'];
+        $result['total_pages'] = $page['total_pages'];
+        if (defined('WP_DEBUG') && WP_DEBUG) {
+            error_log(sprintf('[ALMA gyg_csv filter] total=%d found=%d page=%d per_page=%d selected=%d status=%s search_in=%s mode=%s type_set=%s city_set=%s region_set=%s keywords_set=%s', absint($result['total_records']), absint($result['found']), absint($result['page']), absint($result['per_page']), absint($result['selected_count']), sanitize_key($filters['status']), sanitize_key($filters['search_in']), sanitize_key($filters['keyword_mode']), $filters['activity_type'] !== '' ? 'yes' : 'no', $filters['city'] !== '' ? 'yes' : 'no', $filters['region'] !== '' ? 'yes' : 'no', $filters['keywords'] !== '' ? 'yes' : 'no'));
+        }
+        return $result;
     }
 
     public function preview($path, $columns, $activity_type, $source, $filters = array()) {
