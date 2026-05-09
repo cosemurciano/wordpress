@@ -155,6 +155,56 @@ jQuery(function($){
     if(url){ window.location.href=url; }
   });
 
+
+  function gygSelectiveKey(){
+    var $form = $('.alma-gyg-selective-import-form');
+    if(!$form.length){ return ''; }
+    return 'alma_gyg_selected_'+($form.find('input[name="source_id"]').val()||'')+'_'+($form.find('input[name="gyg_csv_token"]').val()||'')+'_'+($form.find('input[name="activity_type_hash"]').val()||'');
+  }
+  function gygSelectedIds(){
+    var key = gygSelectiveKey(), ids = [];
+    if(key && window.sessionStorage){ try { ids = JSON.parse(sessionStorage.getItem(key) || '[]') || []; } catch(e){ ids = []; } }
+    $('.alma-gyg-row-select:checked').each(function(){ var v=String($(this).val()||''); if(v && ids.indexOf(v) === -1){ ids.push(v); } });
+    return ids;
+  }
+  function gygStoreSelected(ids){
+    ids = $.grep(ids || [], function(v, i){ return v && $.inArray(v, ids) === i; });
+    var key = gygSelectiveKey();
+    if(key && window.sessionStorage){ sessionStorage.setItem(key, JSON.stringify(ids)); }
+    $('.alma-gyg-selected-store').empty();
+    $.each(ids, function(_, id){ $('<input/>',{type:'hidden', name:'selected_external_ids[]', value:id}).appendTo('.alma-gyg-selected-store'); });
+    $('.alma-gyg-import-selected').prop('disabled', ids.length < 1);
+    $('.alma-gyg-no-selection-warning').toggle(ids.length < 1);
+    return ids;
+  }
+  function gygRefreshSelected(){
+    var ids = gygSelectedIds();
+    $('.alma-gyg-row-select').each(function(){ $(this).prop('checked', ids.indexOf(String($(this).val()||'')) !== -1); });
+    return gygStoreSelected(ids);
+  }
+  function gygAppendSelectedToContainer($container){
+    $container.find('input.alma-gyg-selected-query').remove();
+    $.each(gygStoreSelected(gygSelectedIds()), function(_, id){ $('<input/>',{type:'hidden', name:'selected_external_ids[]', value:id, 'class':'alma-gyg-selected-query'}).appendTo($container); });
+  }
+  function gygUrlWithSelected(url){
+    var ids = gygStoreSelected(gygSelectedIds()), sep = url.indexOf('?') === -1 ? '?' : '&';
+    $.each(ids, function(_, id){ url += sep + 'selected_external_ids[]=' + encodeURIComponent(id); sep='&'; });
+    return url;
+  }
+  gygRefreshSelected();
+  $(document).on('change', '.alma-gyg-row-select', function(){
+    var id = String($(this).val()||''), ids = gygSelectedIds(), idx = ids.indexOf(id);
+    if(this.checked && idx === -1){ ids.push(id); }
+    if(!this.checked && idx !== -1){ ids.splice(idx, 1); }
+    gygStoreSelected(ids);
+  });
+  $(document).on('click', '.alma-gyg-select-visible', function(e){ e.preventDefault(); var ids=gygSelectedIds(); $('.alma-gyg-row-select').each(function(){ var id=String($(this).val()||''); if(id && ids.indexOf(id)===-1){ ids.push(id); } $(this).prop('checked', true); }); gygStoreSelected(ids); });
+  $(document).on('click', '.alma-gyg-deselect-visible', function(e){ e.preventDefault(); var visible=[]; $('.alma-gyg-row-select').each(function(){ visible.push(String($(this).val()||'')); $(this).prop('checked', false); }); var ids=$.grep(gygSelectedIds(), function(id){ return visible.indexOf(id)===-1; }); gygStoreSelected(ids); });
+  $(document).on('click', '.alma-gyg-select-filtered', function(e){ e.preventDefault(); var ids=gygSelectedIds(), add=[]; $('.alma-gyg-filtered-id').each(function(){ var id=String($(this).val()||''); if(id){ add.push(id); } }); if(add.length > 100 && !window.confirm('Stai per selezionare '+add.length+' record filtrati. Confermi?')){ return; } $.each(add, function(_, id){ if(ids.indexOf(id)===-1){ ids.push(id); } }); $('.alma-gyg-row-select').prop('checked', true); gygStoreSelected(ids); });
+  $(document).on('submit', '.alma-gyg-filter-form', function(){ gygAppendSelectedToContainer($(this)); });
+  $(document).on('click', '.alma-gyg-pagination a, .alma-gyg-filter-box a.button', function(e){ e.preventDefault(); window.location.href = gygUrlWithSelected($(this).attr('href')); });
+  $(document).on('submit', '.alma-gyg-selective-import-form', function(e){ var ids=gygStoreSelected(gygSelectedIds()); if(ids.length < 1){ e.preventDefault(); window.alert('Seleziona almeno un contenuto prima di importare.'); } });
+
   renderProviderFields();
   toggleSearchHints();
   updateSelected();

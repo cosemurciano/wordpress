@@ -53,3 +53,20 @@ body.alma-modal-open{overflow:hidden}
 .alma-gyg-preview{overflow:auto}.alma-gyg-preview code{white-space:normal;word-break:break-word}
 .alma-gyg-report-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;margin:0;padding:0;list-style:none}
 .alma-gyg-report-list li{padding:8px;border:1px solid #dcdcde;background:#f6f7f7}
+
+.alma-gyg-filter-box .inside,
+.alma-gyg-selective-import-form .inside {
+  padding: 12px 16px;
+}
+.alma-gyg-filter-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 10px 14px;
+  align-items: end;
+}
+.alma-gyg-filter-grid p { margin: 0; }
+.alma-gyg-filter-grid input[type="text"],
+.alma-gyg-filter-grid select { width: 100%; max-width: 100%; }
+.alma-gyg-selection-actions,
+.alma-gyg-pagination { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.alma-gyg-preview-table td code { font-size: 11px; }
