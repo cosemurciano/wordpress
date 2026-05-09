@@ -1,3 +1,16 @@
+## 2.30.0 — AI Trend Radar
+- Aggiunto il modulo **AI Trend Radar** in **Affiliate Link Manager AI → Trend Radar** per eseguire ricerche web programmate con OpenAI e proporre trend editoriali travel/turismo per Sothra.
+- La sezione admin mostra report generati, card/azioni rapide, profili di ricerca, impostazioni pianificazione, log esecuzioni e avviso sul funzionamento di WP-Cron.
+- I profili permettono di configurare lingua, mercato target, tema, focus editoriale, query seed, fonti preferite/escluse, frequenza/orario, numero massimo trend, profondità, obiettivo editoriale e riepilogo email.
+- Lo scheduler usa WP-Cron con un evento per ogni profilo attivo, pulsante manuale “Esegui ricerca ora”, nonce/capability check e lock temporaneo anti doppia esecuzione. Per esecuzioni puntuali è consigliato un cron server reale che richiami `wp-cron.php`.
+- Il modulo riusa la configurazione OpenAI esistente, invia richieste Responses API con web search quando disponibile, richiede JSON strutturato, valida l’output e registra errori/log senza API key o dati sensibili.
+- Ogni report salva titolo trend, sintesi, perché ora, destinazioni, stagionalità, audience, punteggi normalizzati 1-10, titoli consigliati, keyword, outline, fonti, note fonte, link affiliati suggeriti, stato e data creazione.
+- Dopo la generazione viene eseguito un matching locale limitato sui Link Affiliati esistenti; all’AI viene passato solo un contesto compatto di candidati, mai l’intero database.
+- Bridge leggero con AI Content Agent: da un trend si può creare un’idea contenuto precompilata; se disponibile, è possibile anche creare una bozza articolo con sintesi, fonti, keyword, outline e link affiliati suggeriti.
+- Se OpenAI non è configurata, la UI mostra un avviso chiaro e disabilita l’esecuzione manuale; se web search/Responses API non è disponibile, l’errore viene salvato nei log e i profili restano gestibili.
+- Costi e limiti API: ogni esecuzione può consumare token e ricerche web OpenAI in base a modello, profondità, numero massimo trend e fonti analizzate; usare frequenze conservative e monitorare il billing OpenAI.
+- Versione plugin aggiornata a `2.30.0`.
+
 ## 2.29.0 — GetYourGuide CSV senza modale AJAX
 - Il flusso principale `gyg_csv` non usa più il modale AJAX: nello Step 3 il link **Importa / continua** apre la pagina admin normale `alma_view=gyg_csv_import_type`, renderizzata lato PHP.
 - L’import avviene con form POST WordPress, nonce, capability check e PRG redirect: ricaricare la pagina dopo il report non ripete il POST.

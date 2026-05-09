@@ -24,6 +24,9 @@ class ALMA_OpenAI_Service {
         $input[] = array('role'=>'user','content'=>array(array('type'=>'input_text','text'=>(string)($args['user_prompt'] ?? ''))));
 
         $body = array('model'=>$model,'input'=>$input,'max_output_tokens'=>$max_output_tokens);
+        if (!empty($args['tools']) && is_array($args['tools'])) {
+            $body['tools'] = $args['tools'];
+        }
         if ($temperature >= 0 && $temperature <= 2) { $body['temperature'] = $temperature; }
 
         $response_format_used = 'none';
