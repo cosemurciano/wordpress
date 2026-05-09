@@ -1,3 +1,11 @@
+## 2.30.1 — Import CSV: Titolo Attività e Contesto AI locale
+- Nel flusso **Importa contenuti** per `gyg_csv`, la colonna `Titolo Attività` e le sue varianti (`Titolo Attivita`, `titolo_attivita`, `titolo`, `title`, `activity_title`, `activity title`) vengono riconosciute e usate come titolo WordPress del CPT **Link affiliato**.
+- Lo Step 2 **Revisione colonne** mostra anche `Titolo Attività`, con nome colonna originale, campo interno associato, esempio valore e stato di riconoscimento automatico.
+- `Descrizione attività` continua a popolare il contenuto del Link affiliato; URL affiliato e associazione delle **Tipologie Link** restano invariati durante import e aggiornamenti.
+- Il campo interno **Contesto AI** viene generato localmente, senza chiamate OpenAI, combinando quando presenti titolo, descrizione, città, regione di appartenenza, tipologia attività e Tipologie Link associate.
+- Il Contesto AI viene salvato nei meta `_alma_ai_context`, `_alma_ai_context_updated_at` e `_alma_ai_context_hash`, rispettando la policy di rigenerazione per i record esistenti e creando sempre il contesto sui nuovi Link affiliati quando i dati sono disponibili.
+- Versione plugin aggiornata a `2.30.1`.
+
 ## 2.30.0 — AI Trend Radar
 - Aggiunto il modulo **AI Trend Radar** in **Affiliate Link Manager AI → Trend Radar** per eseguire ricerche web programmate con OpenAI e proporre trend editoriali travel/turismo per Sothra.
 - La sezione admin mostra report generati, card/azioni rapide, profili di ricerca, impostazioni pianificazione, log esecuzioni e avviso sul funzionamento di WP-Cron.
