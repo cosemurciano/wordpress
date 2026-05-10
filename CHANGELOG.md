@@ -1,3 +1,13 @@
+## 2.32.3 — Migrazione modello legacy e timeout Trend Idee contenuto
+- Aggiunta migrazione idempotente per il valore legacy `alma_trend_content_model = gpt-5.5` seedato dalle versioni precedenti: il valore resta salvato per compatibilità, ma viene ignorato quando non esiste evidenza di configurazione manuale successiva.
+- In caso di legacy ignorato, il modulo **Trend Idee contenuto** usa il modello globale OpenAI se presente oppure il fallback conservativo `gpt-5.4-mini`, registrando il warning leggibile nel report/log.
+- La UI Trend mostra modello Trend salvato, modello globale, modello effettivo, uso del globale/fallback e avviso quando il legacy viene ignorato.
+- Introdotti profili runtime separati `source_test`, `full_test` ed `editorial_plan`: il test fonte usa output compatto e non eredita i 6000 token del piano editoriale; il test completo usa parametri intermedi; il piano editoriale mantiene output strutturato più ampio.
+- Aggiunto retry singolo alleggerito su timeout/errori di connessione OpenAI con `tool_choice: auto`, `max_output_tokens` ridotto e senza `include: ["web_search_call.action.sources"]` quando contribuisce al timeout, mantenendo `web_search` e i filtri dominio dove supportati.
+- Il report espone max token, `tool_choice`, retry timeout, inclusione/omissione fonti Web Search, modello effettivo e dettaglio tecnico raw; i messaggi utente spiegano timeout, retry e modello usato invece di limitarsi a “Errore connessione AI”.
+- Mantenuta compatibilità con `web_search`, `filters.allowed_domains` dove supportato, fallback senza filtri, fallback `tool_choice: required` → `auto`, normalizzazione sampling e omissione `temperature` per modelli GPT-5.x/reasoning.
+- Versione plugin aggiornata a `2.32.3`.
+
 ## 2.32.2 — Fix compatibilità modelli OpenAI Trend Idee contenuto
 - Corretto l’errore OpenAI `Unsupported parameter: temperature` omettendo automaticamente i parametri sampling non compatibili con modelli GPT-5.x/reasoning.
 - Rimosso il default hardcoded `gpt-5.5` durante install/upgrade del modulo **Trend Idee contenuto**: se il modello Trend è vuoto viene usato il modello globale OpenAI.
