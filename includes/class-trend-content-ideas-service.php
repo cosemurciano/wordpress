@@ -6,6 +6,10 @@ class ALMA_Trend_Content_Ideas_Service {
     const LOCK_KEY = 'alma_trend_content_ideas_lock';
     const WEB_SEARCH_TOOL = 'web_search';
     const MAX_ALLOWED_DOMAINS = 20;
+    const FALLBACK_MODEL = 'gpt-5.4-mini';
+    const LEGACY_SEEDED_MODEL = 'gpt-5.5';
+    const LEGACY_MODEL_WARNING = 'Il modello Trend gpt-5.5 salvato da una versione precedente è stato ignorato: viene usato il modello globale OpenAI.';
+    const TIMEOUT_RETRY_WARNING = 'Retry OpenAI alleggerito dopo timeout della ricerca web.';
 
     public static function init() {
         add_action(self::CRON_HOOK, array(__CLASS__, 'run_due_sources'));
@@ -43,29 +47,30 @@ class ALMA_Trend_Content_Ideas_Service {
             $res = $request['response'];
             $attempts = $request['attempts'];
             $warnings = $request['warnings'];
+            $runtime = $request['runtime'];
             if (empty($res['success'])) {
-                $friendly = self::friendly_openai_error($res['error'] ?? 'Errore OpenAI');
-                return self::store_error_report($sources, $run_type, $friendly, $started, wp_json_encode(array('attempts'=>$attempts,'error'=>$res)), $res['model'] ?? '');
+                $friendly = self::friendly_openai_error($res, $attempts, $runtime);
+                return self::store_error_report($sources, $run_type, $friendly, $started, wp_json_encode(array('attempts'=>$attempts,'warnings'=>$warnings,'runtime'=>$runtime,'error'=>$res)), $res['model'] ?? '', $runtime, $warnings);
             }
             $data = json_decode((string)$res['response'], true);
             $valid = self::validate_result($data);
-            if (is_wp_error($valid)) { return self::store_error_report($sources, $run_type, $valid->get_error_message(), $started, wp_json_encode(array('attempts'=>$attempts,'response'=>$res['response'])), $res['model'] ?? ''); }
-            $data = self::augment_result_sources($data, $res, $warnings);
+            if (is_wp_error($valid)) { return self::store_error_report($sources, $run_type, $valid->get_error_message(), $started, wp_json_encode(array('attempts'=>$attempts,'warnings'=>$warnings,'runtime'=>$runtime,'response'=>$res['response'])), $res['model'] ?? '', $runtime, $warnings); }
+            $data = self::augment_result_sources($data, $res, $warnings, $runtime, $attempts);
             $metrics = self::build_metrics($data, $sources);
             $status = self::is_partial($data) ? 'partial' : 'success';
             $report_id = ALMA_Trend_Content_Ideas_Store::insert_report(array(
                 'report_type'=>$run_type,'title'=>self::title_for($run_type, $sources),'period_start'=>gmdate('Y-m-d H:i:s', current_time('timestamp') - 90 * DAY_IN_SECONDS),'period_end'=>current_time('mysql'),'status'=>$status,'summary'=>$data['sintesi_generale'] ?? '',
                 'result'=>$data,'sources'=>self::source_snapshot($sources),'metrics'=>$metrics,'model'=>$res['model'] ?? self::model(),'tokens_used'=>self::tokens_used($res['usage'] ?? null),
             ));
-            $log_raw = wp_json_encode(array('attempts'=>$attempts,'warnings'=>$warnings,'sources_count'=>count($data['fonti_web_search'] ?? array())));
+            $log_raw = wp_json_encode(array('attempts'=>$attempts,'warnings'=>$warnings,'runtime'=>$runtime,'sources_count'=>count($data['fonti_web_search'] ?? array())));
             foreach ($sources as $src) { ALMA_Trend_Content_Ideas_Store::mark_source_ran($src['source_key'], true); ALMA_Trend_Content_Ideas_Store::log($src['source_key'], $run_type, $status, 'Analisi completata in ' . round(microtime(true)-$start_time, 1) . 's. Domini normalizzati: ' . implode(', ', self::allowed_domains(array($src))), $log_raw, $report_id, $started); }
             return array('success'=>true,'status'=>$status,'report_id'=>$report_id,'sources_count'=>count($sources),'duration'=>round(microtime(true)-$start_time,1),'sources'=>wp_list_pluck($sources, 'name'));
         } finally { delete_transient(self::LOCK_KEY); }
     }
 
-    private static function store_error_report($sources, $run_type, $message, $started, $raw='', $model='') {
-        $data = array('sintesi_generale'=>$message,'fonti_analizzate'=>array(),'destinazioni_prioritarie'=>array(),'temi_editoriali'=>array(),'piano_editoriale_settimanale'=>array(),'opportunita_affiliate'=>array(),'bisogni_viaggiatori'=>array(),'rischi_e_limiti'=>array(array('messaggio'=>$message)),'dati_per_grafici'=>array(),'livello_confidenza'=>'basso','alert'=>array($message),'fonti_citate'=>array(),'fonti_web_search'=>array(),'errore_tecnico'=>$raw);
-        $report_id = ALMA_Trend_Content_Ideas_Store::insert_report(array('report_type'=>$run_type,'title'=>self::title_for($run_type, $sources),'period_start'=>$started,'period_end'=>current_time('mysql'),'status'=>'error','summary'=>$message,'result'=>$data,'sources'=>self::source_snapshot($sources),'metrics'=>self::build_metrics($data,$sources),'model'=>$model ?: self::model()));
+    private static function store_error_report($sources, $run_type, $message, $started, $raw='', $model='', $runtime=array(), $warnings=array()) {
+        $data = array('sintesi_generale'=>$message,'fonti_analizzate'=>array(),'destinazioni_prioritarie'=>array(),'temi_editoriali'=>array(),'piano_editoriale_settimanale'=>array(),'opportunita_affiliate'=>array(),'bisogni_viaggiatori'=>array(),'rischi_e_limiti'=>array(array('messaggio'=>$message)),'dati_per_grafici'=>array(),'livello_confidenza'=>'basso','alert'=>array_values(array_unique(array_merge(array($message), (array)$warnings))),'fonti_citate'=>array(),'fonti_web_search'=>array(),'errore_tecnico'=>$raw,'runtime'=>self::runtime_report($runtime, array()));
+        $report_id = ALMA_Trend_Content_Ideas_Store::insert_report(array('report_type'=>$run_type,'title'=>self::title_for($run_type, $sources),'period_start'=>$started,'period_end'=>current_time('mysql'),'status'=>'error','summary'=>$message,'result'=>$data,'sources'=>self::source_snapshot($sources),'metrics'=>self::build_metrics($data,$sources),'model'=>$model ?: ($runtime['effective_model'] ?? self::model())));
         foreach ($sources as $src) { ALMA_Trend_Content_Ideas_Store::mark_source_ran($src['source_key'], false); ALMA_Trend_Content_Ideas_Store::log($src['source_key'], $run_type, 'error', $message, $raw, $report_id, $started); }
         return new WP_Error('trend_run_error', $message, array('report_id'=>$report_id));
     }
@@ -106,60 +111,116 @@ class ALMA_Trend_Content_Ideas_Service {
         return $tool;
     }
 
-    public static function build_openai_request_args($sources, $run_type = 'manual', $with_filters = true, $tool_choice = 'required') {
+    public static function runtime_profile($run_type, $sources = array()) {
+        if ($run_type === 'test' && count((array)$sources) <= 1) {
+            return array('name'=>'source_test','max_output_tokens'=>1800,'retry_max_output_tokens'=>900,'search_context_size'=>'low','include_sources'=>true,'tool_choice'=>'required');
+        }
+        if ($run_type === 'test') {
+            return array('name'=>'full_test','max_output_tokens'=>3500,'retry_max_output_tokens'=>1600,'search_context_size'=>'medium','include_sources'=>true,'tool_choice'=>'required');
+        }
+        return array('name'=>'editorial_plan','max_output_tokens'=>6000,'retry_max_output_tokens'=>3000,'search_context_size'=>'medium','include_sources'=>true,'tool_choice'=>'required');
+    }
+
+    public static function build_openai_request_args($sources, $run_type = 'manual', $with_filters = true, $tool_choice = 'required', $profile = null, $include_sources = null) {
+        $profile = is_array($profile) ? $profile : self::runtime_profile($run_type, $sources);
         $domains = $with_filters ? self::allowed_domains($sources) : array();
-        return array(
+        $include_sources = ($include_sources === null) ? !empty($profile['include_sources']) : (bool)$include_sources;
+        $args = array(
             'model'=>self::model(),
             'system_prompt'=>ALMA_Trend_Content_Ideas_Prompt_Builder::system_prompt(),
             'user_prompt'=>ALMA_Trend_Content_Ideas_Prompt_Builder::build($sources, $run_type),
             'response_format'=>ALMA_Trend_Content_Ideas_Prompt_Builder::response_schema(),
-            'max_output_tokens'=>6000,
+            'max_output_tokens'=>absint($profile['max_output_tokens'] ?? 3500),
             'timeout'=>absint(get_option(ALMA_Trend_Content_Ideas_Store::OPTION_TIMEOUT, 90)),
-            'tools'=>array(self::build_web_search_tool($domains)),
-            'include'=>array('web_search_call.action.sources'),
+            'tools'=>array(self::build_web_search_tool($domains, $profile['search_context_size'] ?? 'medium')),
             'tool_choice'=>$tool_choice,
         );
+        if ($include_sources) { $args['include'] = array('web_search_call.action.sources'); }
+        return $args;
     }
 
     private static function request_openai_with_fallback($sources, $run_type) {
-        $attempts = array(); $warnings = array();
-        $args = self::build_openai_request_args($sources, $run_type, true, 'required');
+        $attempts = array(); $warnings = array(); $timeout_retry_used = false;
+        $profile = self::runtime_profile($run_type, $sources);
+        $model_details = self::effective_model_details();
+        if (!empty($model_details['legacy_ignored'])) { $warnings[] = self::LEGACY_MODEL_WARNING; }
+        $runtime = array_merge($model_details, array('profile'=>$profile['name'],'timeout_retry_used'=>false,'web_search_sources_include_omitted_for_timeout'=>false));
+        $args = self::build_openai_request_args($sources, $run_type, true, $profile['tool_choice'] ?? 'required', $profile);
         $attempts[] = self::attempt_summary('primary', $args);
         $res = ALMA_OpenAI_Service::request($args);
         $warnings = self::merge_openai_warnings($warnings, $res);
-        if (!empty($res['success'])) { return array('response'=>$res,'attempts'=>$attempts,'warnings'=>$warnings); }
+        if (!empty($res['success'])) { return array('response'=>$res,'attempts'=>$attempts,'warnings'=>$warnings,'runtime'=>self::finalize_runtime($runtime, $attempts)); }
+        if (self::is_timeout_or_connection_error($res, $args)) {
+            $retry = self::build_light_timeout_retry_args($args, $profile);
+            $warnings[] = self::TIMEOUT_RETRY_WARNING;
+            $attempts[] = self::attempt_summary('timeout_light_retry', $retry);
+            $timeout_retry_used = true;
+            $runtime['timeout_retry_used'] = true;
+            $runtime['web_search_sources_include_omitted_for_timeout'] = empty($retry['include']);
+            $res = ALMA_OpenAI_Service::request($retry);
+            $warnings = self::merge_openai_warnings($warnings, $res);
+            if (!empty($res['success'])) { return array('response'=>$res,'attempts'=>$attempts,'warnings'=>$warnings,'runtime'=>self::finalize_runtime($runtime, $attempts)); }
+            $args = $retry;
+        }
         if (self::is_tool_choice_unsupported($res)) {
             $warnings[] = 'OpenAI non ha accettato tool_choice required. La ricerca è stata ripetuta con tool_choice auto.';
             $args['tool_choice'] = 'auto';
             $attempts[] = self::attempt_summary('tool_choice_auto', $args);
             $res = ALMA_OpenAI_Service::request($args);
             $warnings = self::merge_openai_warnings($warnings, $res);
-            if (!empty($res['success'])) { return array('response'=>$res,'attempts'=>$attempts,'warnings'=>$warnings); }
+            if (!empty($res['success'])) { return array('response'=>$res,'attempts'=>$attempts,'warnings'=>$warnings,'runtime'=>self::finalize_runtime($runtime, $attempts)); }
         }
         if (self::is_filters_unsupported_error($res) && !empty($args['tools'][0]['filters'])) {
             $warnings[] = 'Il filtro domini non è stato accettato dalla chiamata OpenAI. La ricerca è stata ripetuta senza filtro dominio.';
-            $args = self::build_openai_request_args($sources, $run_type, false, $args['tool_choice'] ?? 'required');
+            $args = self::build_openai_request_args($sources, $run_type, false, $args['tool_choice'] ?? 'required', $profile, !empty($args['include']));
             $attempts[] = self::attempt_summary('fallback_without_filters', $args);
             $res = ALMA_OpenAI_Service::request($args);
             $warnings = self::merge_openai_warnings($warnings, $res);
         }
-        return array('response'=>$res,'attempts'=>$attempts,'warnings'=>$warnings);
+        if (!$timeout_retry_used && self::is_timeout_or_connection_error($res, $args)) {
+            $retry = self::build_light_timeout_retry_args($args, $profile);
+            $warnings[] = self::TIMEOUT_RETRY_WARNING;
+            $attempts[] = self::attempt_summary('timeout_light_retry', $retry);
+            $runtime['timeout_retry_used'] = true;
+            $runtime['web_search_sources_include_omitted_for_timeout'] = empty($retry['include']);
+            $res = ALMA_OpenAI_Service::request($retry);
+            $warnings = self::merge_openai_warnings($warnings, $res);
+        }
+        return array('response'=>$res,'attempts'=>$attempts,'warnings'=>$warnings,'runtime'=>self::finalize_runtime($runtime, $attempts));
     }
 
-    private static function attempt_summary($label, $args) { return array('label'=>$label,'tool'=>$args['tools'][0]['type'] ?? '','tool_choice'=>$args['tool_choice'] ?? '','allowed_domains'=>$args['tools'][0]['filters']['allowed_domains'] ?? array(),'include'=>$args['include'] ?? array()); }
+    private static function build_light_timeout_retry_args($args, $profile) {
+        $args['tool_choice'] = 'auto';
+        $args['max_output_tokens'] = max(600, absint($profile['retry_max_output_tokens'] ?? floor(absint($args['max_output_tokens'] ?? 3000) / 2)));
+        unset($args['include']);
+        return $args;
+    }
+
+    public static function is_timeout_or_connection_error($res, $args = array()) {
+        $code = sanitize_key((string)($res['error_code'] ?? ''));
+        $message = strtolower((string)($res['error'] ?? ''));
+        $response_time = absint($res['response_time'] ?? 0);
+        $timeout_ms = absint($args['timeout'] ?? get_option(ALMA_Trend_Content_Ideas_Store::OPTION_TIMEOUT, 90)) * 1000;
+        if ($code === 'api_connection_error' || $code === 'timeout') { return true; }
+        if (strpos($message, 'timeout') !== false || strpos($message, 'timed out') !== false || strpos($message, 'errore connessione ai') !== false) { return true; }
+        return $timeout_ms > 0 && $response_time >= max(1000, $timeout_ms - 2500);
+    }
+
+    private static function attempt_summary($label, $args) { return array('label'=>$label,'tool'=>$args['tools'][0]['type'] ?? '','tool_choice'=>$args['tool_choice'] ?? '','allowed_domains'=>$args['tools'][0]['filters']['allowed_domains'] ?? array(),'include'=>$args['include'] ?? array(),'max_output_tokens'=>absint($args['max_output_tokens'] ?? 0),'sources_include_enabled'=>!empty($args['include'])); }
     private static function merge_openai_warnings($warnings, $res) { foreach ((array)($res['warnings'] ?? array()) as $warning) { $warnings[] = sanitize_text_field((string)$warning); } return array_values(array_unique(array_filter($warnings))); }
     private static function is_filters_unsupported_error($res) { $m = strtolower((string)($res['error'] ?? '')); return strpos($m, 'filters') !== false && (strpos($m, 'unsupported parameter') !== false || strpos($m, 'not supported') !== false || strpos($m, 'unknown parameter') !== false); }
     private static function is_tool_choice_unsupported($res) { $m = strtolower((string)($res['error'] ?? '')); return strpos($m, 'tool_choice') !== false && (strpos($m, 'unsupported') !== false || strpos($m, 'not supported') !== false); }
-    private static function friendly_openai_error($message) { if (self::is_filters_unsupported_error(array('error'=>$message))) { return __('Errore OpenAI: il parametro filters non è supportato dal tool web search usato. Aggiorna la configurazione o verifica il tool OpenAI.', 'affiliate-link-manager-ai'); } if (self::is_sampling_unsupported_error(array('error'=>$message))) { return __('Errore OpenAI: il modello selezionato non supporta uno o più parametri sampling. Il dettaglio tecnico è disponibile nel report.', 'affiliate-link-manager-ai'); } return sprintf(__('Errore OpenAI: %s', 'affiliate-link-manager-ai'), sanitize_text_field((string)$message)); }
+    private static function friendly_openai_error($res, $attempts=array(), $runtime=array()) { $message = is_array($res) ? ($res['error'] ?? 'Errore OpenAI') : $res; if (self::is_timeout_or_connection_error(is_array($res) ? $res : array('error'=>$message))) { $retry = !empty($runtime['timeout_retry_used']) ? ' È stato tentato un retry alleggerito.' : ''; return sprintf(__('La chiamata OpenAI è andata in timeout o ha avuto un errore di connessione.%s Modello effettivo usato: %s. Dettaglio tecnico disponibile nel report.', 'affiliate-link-manager-ai'), $retry, sanitize_text_field((string)($runtime['effective_model'] ?? self::model()))); } if (self::is_filters_unsupported_error(array('error'=>$message))) { return __('Errore OpenAI: il parametro filters non è supportato dal tool web search usato. Aggiorna la configurazione o verifica il tool OpenAI.', 'affiliate-link-manager-ai'); } if (self::is_sampling_unsupported_error(array('error'=>$message))) { return __('Errore OpenAI: il modello selezionato non supporta uno o più parametri sampling. Il dettaglio tecnico è disponibile nel report.', 'affiliate-link-manager-ai'); } return sprintf(__('Errore OpenAI: %s', 'affiliate-link-manager-ai'), sanitize_text_field((string)$message)); }
     private static function is_sampling_unsupported_error($res) { $m = strtolower((string)($res['error'] ?? '')); if (strpos($m, 'unsupported parameter') === false && strpos($m, 'not supported') === false && strpos($m, 'unknown parameter') === false) { return false; } foreach (array('temperature','top_p','presence_penalty','frequency_penalty') as $key) { if (strpos($m, $key) !== false) { return true; } } return false; }
     private static function source_snapshot($sources) { return array_map(function($s){ return array('source_key'=>$s['source_key'],'name'=>$s['name'],'priority'=>ALMA_Trend_Content_Ideas_Store::normalize_priority($s['priority'] ?? 2),'max_contents_per_run'=>ALMA_Trend_Content_Ideas_Store::normalize_max_contents_per_run($s['max_contents_per_run'] ?? 3),'category'=>$s['category'],'allowed_domains'=>ALMA_Trend_Content_Ideas_Store::decode_json($s['allowed_domains']),'normalized_allowed_domains'=>self::normalize_allowed_domains(ALMA_Trend_Content_Ideas_Store::decode_json($s['allowed_domains']))); }, self::normalize_sources($sources)); }
     private static function title_for($run_type, $sources) { return ($run_type === 'test' ? 'Test Trend Idee contenuto' : 'Report Trend Idee contenuto') . ' - ' . count($sources) . ' fonti'; }
-    public static function effective_model() { $trend_model = trim((string)get_option(ALMA_Trend_Content_Ideas_Store::OPTION_MODEL, '')); if ($trend_model !== '') { return $trend_model; } $global_model = trim((string)get_option('alma_openai_model', '')); return $global_model !== '' ? $global_model : 'gpt-5.4-mini'; }
+    public static function effective_model() { $details = self::effective_model_details(); return $details['effective_model']; }
+    public static function effective_model_details() { $trend_model = trim((string)get_option(ALMA_Trend_Content_Ideas_Store::OPTION_MODEL, '')); $global_model = trim((string)get_option('alma_openai_model', '')); $manual = get_option(ALMA_Trend_Content_Ideas_Store::OPTION_MODEL_MANUAL, '') === '1'; $legacy_ignored = ($trend_model === self::LEGACY_SEEDED_MODEL && !$manual); if ($legacy_ignored) { return array('trend_model_saved'=>$trend_model,'global_model'=>$global_model,'effective_model'=>$global_model !== '' ? $global_model : self::FALLBACK_MODEL,'using_global_model'=>$global_model !== '','using_fallback'=>$global_model === '','legacy_ignored'=>true,'legacy_warning'=>self::LEGACY_MODEL_WARNING); } if ($trend_model !== '') { return array('trend_model_saved'=>$trend_model,'global_model'=>$global_model,'effective_model'=>$trend_model,'using_global_model'=>false,'using_fallback'=>false,'legacy_ignored'=>false,'legacy_warning'=>''); } return array('trend_model_saved'=>$trend_model,'global_model'=>$global_model,'effective_model'=>$global_model !== '' ? $global_model : self::FALLBACK_MODEL,'using_global_model'=>$global_model !== '','using_fallback'=>$global_model === '','legacy_ignored'=>false,'legacy_warning'=>''); }
     private static function model() { return self::effective_model(); }
     private static function tokens_used($usage) { return is_array($usage) && isset($usage['total_tokens']) ? absint($usage['total_tokens']) : null; }
     private static function is_partial($data) { return !empty($data['alert']) || stripos((string)($data['livello_confidenza'] ?? ''), 'basso') !== false; }
 
-    private static function augment_result_sources($data, $res, $warnings) {
+    private static function augment_result_sources($data, $res, $warnings, $runtime=array(), $attempts=array()) {
         $sources = self::extract_web_search_sources($res['raw_response'] ?? array());
         if ($sources) { $data['fonti_web_search'] = $sources; }
         foreach ($sources as $source) {
@@ -169,7 +230,40 @@ class ALMA_Trend_Content_Ideas_Service {
             if (!$exists) { $data['fonti_citate'][] = array('titolo'=>$source['title'] ?? $source['url'],'url'=>$source['url'],'fonte'=>$source['domain'] ?? ''); }
         }
         foreach ($warnings as $warning) { $data['alert'][] = $warning; }
+        $data['runtime'] = self::runtime_report($runtime, $attempts);
         return $data;
+    }
+
+
+    private static function finalize_runtime($runtime, $attempts) {
+        $last = end($attempts);
+        if (is_array($last)) {
+            $runtime['max_output_tokens_used'] = absint($last['max_output_tokens'] ?? 0);
+            $runtime['tool_choice_used'] = sanitize_text_field((string)($last['tool_choice'] ?? ''));
+            $runtime['web_search_sources_include_enabled'] = !empty($last['include']);
+        }
+        reset($attempts);
+        return $runtime;
+    }
+
+    private static function runtime_report($runtime, $attempts) {
+        if (empty($runtime) || !is_array($runtime)) { $runtime = self::effective_model_details(); }
+        if (!empty($attempts)) { $runtime = self::finalize_runtime($runtime, $attempts); }
+        return array(
+            'trend_model_saved'=>$runtime['trend_model_saved'] ?? '',
+            'global_model'=>$runtime['global_model'] ?? '',
+            'effective_model'=>$runtime['effective_model'] ?? self::model(),
+            'using_global_model'=>!empty($runtime['using_global_model']),
+            'using_fallback'=>!empty($runtime['using_fallback']),
+            'legacy_ignored'=>!empty($runtime['legacy_ignored']),
+            'legacy_warning'=>$runtime['legacy_warning'] ?? '',
+            'runtime_profile'=>$runtime['profile'] ?? '',
+            'max_output_tokens_used'=>absint($runtime['max_output_tokens_used'] ?? 0),
+            'tool_choice_used'=>$runtime['tool_choice_used'] ?? '',
+            'timeout_light_retry_executed'=>!empty($runtime['timeout_retry_used']),
+            'web_search_sources_include_enabled'=>!empty($runtime['web_search_sources_include_enabled']),
+            'web_search_sources_include_omitted_for_timeout'=>!empty($runtime['web_search_sources_include_omitted_for_timeout']),
+        );
     }
 
     public static function extract_web_search_sources($payload) {

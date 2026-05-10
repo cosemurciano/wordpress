@@ -5,6 +5,8 @@ class ALMA_Trend_Content_Ideas_Store {
     const OPTION_GLOBAL_PROMPT = 'alma_trend_content_global_prompt';
     const OPTION_MODEL = 'alma_trend_content_model';
     const OPTION_TIMEOUT = 'alma_trend_content_timeout';
+    const OPTION_LEGACY_MODEL_MIGRATION = 'alma_trend_content_legacy_model_migration_2323';
+    const OPTION_MODEL_MANUAL = 'alma_trend_content_model_manual';
 
     public static function table($name) { global $wpdb; return $wpdb->prefix . 'alma_trend_content_' . $name; }
 
@@ -63,6 +65,26 @@ class ALMA_Trend_Content_Ideas_Store {
             update_option(self::OPTION_GLOBAL_PROMPT, ALMA_Trend_Content_Ideas_Prompt_Builder::default_global_prompt());
         }
         if (get_option(self::OPTION_TIMEOUT, null) === null) { update_option(self::OPTION_TIMEOUT, 90); }
+        self::migrate_legacy_model_seed();
+    }
+
+
+    /**
+     * Idempotently records that the historical gpt-5.5 Trend seed has been evaluated.
+     *
+     * The old installer wrote alma_trend_content_model=gpt-5.5 automatically. There is no
+     * reliable marker to distinguish that seed from a pre-existing manual value, so the
+     * migration deliberately does not delete the option. effective_model_details() ignores
+     * this exact value unless a later settings save marks the Trend model as manual.
+     */
+    public static function migrate_legacy_model_seed() {
+        if (get_option(self::OPTION_LEGACY_MODEL_MIGRATION, null) !== null) { return; }
+        $trend_model = trim((string)get_option(self::OPTION_MODEL, ''));
+        update_option(self::OPTION_LEGACY_MODEL_MIGRATION, array(
+            'evaluated_at'=>current_time('mysql'),
+            'legacy_value_present'=>$trend_model === 'gpt-5.5' ? '1' : '0',
+            'action'=>'left_saved_value_in_place_effective_model_ignores_unmarked_legacy_seed',
+        ));
     }
 
     public static function seed_sources() {
@@ -85,7 +107,9 @@ class ALMA_Trend_Content_Ideas_Store {
 
     public static function save_settings($post) {
         update_option(self::OPTION_GLOBAL_PROMPT, sanitize_textarea_field($post['global_prompt'] ?? ''));
-        update_option(self::OPTION_MODEL, sanitize_text_field($post['model'] ?? ''));
+        $model = sanitize_text_field($post['model'] ?? '');
+        update_option(self::OPTION_MODEL, $model);
+        update_option(self::OPTION_MODEL_MANUAL, $model !== '' ? '1' : '0');
         update_option(self::OPTION_TIMEOUT, max(20, min(180, absint($post['timeout'] ?? 90))));
         global $wpdb; $sources = self::get_sources(false); $now=current_time('mysql');
         foreach ($sources as $src) {
