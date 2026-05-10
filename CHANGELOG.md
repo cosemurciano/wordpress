@@ -1,4 +1,15 @@
+## 2.33.2 - 2026-05-10
+- Aggiunto uno schema JSON compatto per il profilo `source_test`, separato dallo schema editoriale completo usato da `full_test`/`editorial_plan`.
+- Documentata e rinforzata la distinzione tra contenuti informativi analizzati dalla fonte, trend restituiti e idee editoriali generate.
+- Il `source_test` produce output diagnostico breve con limiti rigidi: massimo 2 trend, 2 idee contenuto, 3 citazioni, 3 warning, summary fino a 350 caratteri e descrizioni fino a 250 caratteri.
+- Migliorata la gestione `truncated_output` quando OpenAI termina con `status: incomplete` o `finish_reason: max_output_tokens`, distinguendola dagli errori JSON genericamente malformati.
+- Il retry `json_invalid_retry` ora usa prompt e schema compatti, `tool_choice: auto`, nessun `include`, mantiene `web_search` e conserva eventuali domini ammessi senza introdurre retry multipli.
+- I report tecnici includono categoria, modello, response id, status, finish reason, max output tokens, attempt label, tool choice, include, profilo, raw excerpt limitato e warning leggibili sul retry compatto.
+- Valori token consigliati per profilo: `source_test` circa 2200, retry compatto 1400-2200, `full_test` intermedio e `editorial_plan` più alto.
+- Versione plugin aggiornata a `2.33.2`.
+
 ## 2.33.1
+
 - Corretto il flag manuale del modello Trend: il valore legacy automatico `gpt-5.5` non viene più marcato come scelta manuale durante salvataggi ordinari della pagina impostazioni.
 - Il valore legacy `gpt-5.5` viene ignorato in modo idempotente finché l’admin non inserisce intenzionalmente un modello Trend; la UI mostra il campo modello vuoto e una nota dedicata quando il legacy è ignorato.
 - Rafforzato l’output JSON OpenAI del modulo Trend con Structured Outputs su Responses API tramite `text.format` JSON Schema, schema stabile e istruzioni esplicite solo-JSON.

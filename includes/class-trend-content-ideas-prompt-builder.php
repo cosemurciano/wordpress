@@ -7,7 +7,7 @@ class ALMA_Trend_Content_Ideas_Prompt_Builder {
     }
 
     public static function system_prompt() {
-        return 'Sei il modulo Trend Idee contenuto di Sothra. Devi usare OpenAI Web Search solo sulle fonti/domìni ammessi quando indicati. Per contenuti informativi si intendono risultati, pagine, articoli, comunicati, report o documenti informativi consultabili dalla ricerca web; non sono articoli WordPress generati, bozze o idee editoriali finali. Per ogni fonte rispetta max_contents_per_run: non analizzare né sintetizzare più di quel numero di contenuti informativi provenienti dalla fonte indicata durante una singola run. Il limite è per singola fonte e per singola run e non rappresenta il numero di idee editoriali da generare. Non copiare testi dalle fonti. Non inventare dati, numeri, link o citazioni. Se i dati sono parziali devi dichiararlo. Devi indicare livello di confidenza, fonti citate e limiti. Proponi contenuti per viaggiatori italiani e coerenti con Sothra. Proponi opportunità affiliate solo se pertinenti. Non generare bozze WordPress, post, HTML o contenuti da pubblicare automaticamente. Restituisci esclusivamente JSON valido conforme allo schema richiesto: nessun markdown, nessun blocco ```json, nessun testo prima o dopo il JSON. Se una fonte non produce risultati usa array vuoti e aggiungi warning. Non inventare URL, titoli, date o fonti.';
+        return 'Sei il modulo Trend Idee contenuto di Sothra. Devi usare OpenAI Web Search solo sulle fonti/domìni ammessi quando indicati. Per contenuti informativi si intendono risultati, pagine, articoli, comunicati, report o documenti informativi consultabili dalla ricerca web; non sono articoli WordPress generati, bozze o idee editoriali finali. Per ogni fonte rispetta max_contents_per_run: non analizzare né sintetizzare più di quel numero di contenuti informativi provenienti dalla fonte indicata durante una singola run. Il limite è per singola fonte e per singola run e non rappresenta il numero di trend restituiti o di idee editoriali generate. Non copiare testi dalle fonti. Non inventare dati, numeri, link o citazioni. Se i dati sono parziali devi dichiararlo. Devi indicare livello di confidenza, fonti citate e limiti. Proponi contenuti per viaggiatori italiani e coerenti con Sothra. Proponi opportunità affiliate solo se pertinenti. Non generare bozze WordPress, post, HTML o contenuti da pubblicare automaticamente. Restituisci esclusivamente JSON valido conforme allo schema richiesto: nessun markdown, nessun blocco ```json, nessun testo prima o dopo il JSON. Se una fonte non produce risultati usa array vuoti e aggiungi warning. Non inventare URL, titoli, date o fonti.';
     }
 
     public static function build($sources, $run_type = 'manual') {
@@ -19,7 +19,9 @@ class ALMA_Trend_Content_Ideas_Prompt_Builder {
             $priority = ALMA_Trend_Content_Ideas_Store::normalize_priority($src['priority'] ?? 2);
             $source_lines[] = '- ' . $src['name'] . ' [' . $src['source_key'] . '] priorità ' . $priority . ', max_contents_per_run ' . $max_contents . ', categoria ' . $src['category'] . ', domini: ' . $domains . '. Prompt fonte: ' . trim((string)$src['custom_prompt']);
         }
-        return "Prompt globale admin:\n" . $global . "\n\nTipo run: " . sanitize_key($run_type) . "\nPeriodo: ultimi 30-90 giorni, privilegiando segnali recenti e verificabili.\n\nDefinizione operativa: i contenuti informativi sono pagine, articoli, comunicati, report, documenti o risultati che puoi consultare/sintetizzare tramite Web Search; non sono bozze WordPress, articoli WordPress generati o idee editoriali finali. Per ogni fonte rispetta max_contents_per_run: non analizzare né sintetizzare più di quel numero di contenuti informativi della fonte indicata nella singola run.\n\nFonti abilitate da analizzare:\n" . implode("\n", $source_lines) . "\n\nOutput richiesto: restituisci esclusivamente JSON valido con i campi obbligatori dello schema, nessun markdown, nessun blocco ```json e nessun testo fuori dal JSON. Rispetta esattamente lo schema richiesto. Se una fonte non produce risultati usa array vuoti e aggiungi warning. Non inventare URL, titoli, date o fonti. Ogni idea deve essere concreta, utile a viaggiatori italiani e non deve creare bozze WordPress. Ricorda che priority definisce ordine/peso fonte e max_contents_per_run limita i contenuti informativi analizzati per fonte nella singola run, non il numero di articoli WordPress.";
+        $profile = self::profile_name($run_type, $sources);
+        $profile_instructions = self::profile_instructions($profile);
+        return "Prompt globale admin:\n" . $global . "\n\nTipo run: " . sanitize_key($run_type) . "\nProfilo runtime: " . $profile . "\nPeriodo: ultimi 30-90 giorni, privilegiando segnali recenti e verificabili.\n\nDefinizione operativa: i contenuti informativi sono pagine, articoli, comunicati, report, documenti o risultati che puoi consultare/sintetizzare tramite Web Search; non sono bozze WordPress, articoli WordPress generati o idee editoriali finali. Per ogni fonte rispetta max_contents_per_run: non analizzare né sintetizzare più di quel numero di contenuti informativi della fonte indicata nella singola run. Distingui sempre tra contenuti informativi analizzati, trend restituiti e idee editoriali restituite.\n\nFonti abilitate da analizzare:\n" . implode("\n", $source_lines) . "\n\n" . $profile_instructions . "\n\nOutput richiesto: restituisci esclusivamente JSON valido con i campi obbligatori dello schema, nessun markdown, nessun blocco ```json e nessun testo fuori dal JSON. Rispetta esattamente lo schema richiesto. Se una fonte non produce risultati usa array vuoti e aggiungi warning breve. Non inventare URL, titoli, date o fonti. Ogni idea deve essere concreta, utile a viaggiatori italiani e non deve creare bozze WordPress. Ricorda che priority definisce ordine/peso fonte e max_contents_per_run limita i contenuti informativi analizzati per fonte nella singola run, non il numero di articoli WordPress.";
     }
 
     public static function build_json_retry($sources, $run_type = 'manual') {
@@ -27,10 +29,55 @@ class ALMA_Trend_Content_Ideas_Prompt_Builder {
         foreach ($sources as $src) {
             $source_lines[] = '- ' . $src['name'] . ' [' . $src['source_key'] . '] priority ' . ALMA_Trend_Content_Ideas_Store::normalize_priority($src['priority'] ?? 2) . ', max_contents_per_run ' . ALMA_Trend_Content_Ideas_Store::normalize_max_contents_per_run($src['max_contents_per_run'] ?? 3);
         }
-        return "Retry JSON per run " . sanitize_key($run_type) . ". Restituisci SOLO JSON valido, senza markdown, senza blocchi ```json e senza testo prima o dopo. Rispetta esattamente lo schema. Se non hai dati sufficienti usa array vuoti e warnings. Non inventare URL, titoli, date o fonti. Fonti e limiti (max_contents_per_run = contenuti informativi, non articoli WordPress):\n" . implode("\n", $source_lines);
+        return "Retry compatto JSON per run " . sanitize_key($run_type) . ". Restituisci SOLO JSON valido, senza markdown, senza blocchi ```json e senza testo prima o dopo. Usa lo schema compatto source_test: status, summary, source_quality, trends, content_ideas, citations, warnings. summary massimo 350 caratteri; massimo 2 trend; massimo 2 idee; massimo 3 citazioni; massimo 3 warning; ogni descrizione trend massimo 250 caratteri; ogni descrizione idea massimo 250 caratteri. Niente spiegazioni discorsive lunghe, niente paragrafi estesi. Se non hai dati sufficienti usa array vuoti e warning breve. Non inventare URL, titoli, date o fonti. Fonti e limiti (max_contents_per_run = contenuti informativi analizzati, non trend restituiti o idee editoriali):\n" . implode("\n", $source_lines);
     }
 
-    public static function response_schema() {
+    private static function profile_name($run_type, $sources) {
+        if ($run_type === 'test' && count((array)$sources) <= 1) { return 'source_test'; }
+        if ($run_type === 'test') { return 'full_test'; }
+        return 'editorial_plan';
+    }
+
+    private static function profile_instructions($profile) {
+        if ($profile === 'source_test') {
+            return 'Profilo source_test: output diagnostico breve per testare una fonte. Analizza massimo 1 fonte salvo configurazioni già previste dal workflow. Restituisci solo i campi essenziali: status, summary, source_quality, trends, content_ideas, citations, warnings. summary massimo 350 caratteri. massimo 2 trend. massimo 2 idee. massimo 3 citazioni. massimo 3 warning. Ogni descrizione trend massimo 250 caratteri. Ogni descrizione idea massimo 250 caratteri. Niente spiegazioni discorsive lunghe. Niente paragrafi estesi. Niente markdown. Niente testo fuori dal JSON. Restituisci solo JSON valido. Se i dati non bastano, usa array vuoti e warning breve.';
+        }
+        if ($profile === 'full_test') {
+            return 'Profilo full_test: output intermedio per verificare più fonti abilitate. Mantieni sintesi e liste concise, ma includi i campi completi dello schema editoriale. Distingui contenuti informativi analizzati, trend restituiti e idee editoriali restituite.';
+        }
+        return 'Profilo editorial_plan: output editoriale più completo per pianificazione contenuti. Includi analisi, priorità, rischi, bisogni viaggiatori, opportunità affiliate e fonti citate rispettando lo schema editoriale completo.';
+    }
+
+    public static function response_schema($profile = 'editorial_plan') {
+        if ($profile === 'source_test' || $profile === 'json_invalid_retry') { return self::compact_source_test_schema(); }
+        return self::editorial_plan_schema();
+    }
+
+    private static function compact_source_test_schema() {
+        $text = array('type'=>'string');
+        $string_array = array('type'=>'array','maxItems'=>3,'items'=>$text);
+        return array(
+            'type'=>'json_schema',
+            'name'=>'sothra_trend_source_test_compact',
+            'strict'=>false,
+            'schema'=>array(
+                'type'=>'object',
+                'additionalProperties'=>false,
+                'properties'=>array(
+                    'status'=>$text,
+                    'summary'=>array('type'=>'string','maxLength'=>350),
+                    'source_quality'=>array('type'=>'object','additionalProperties'=>true,'properties'=>array('rating'=>$text,'notes'=>array('type'=>'string','maxLength'=>250))),
+                    'trends'=>array('type'=>'array','maxItems'=>2,'items'=>array('type'=>'object','additionalProperties'=>true,'properties'=>array('title'=>$text,'description'=>array('type'=>'string','maxLength'=>250),'confidence'=>$text))),
+                    'content_ideas'=>array('type'=>'array','maxItems'=>2,'items'=>array('type'=>'object','additionalProperties'=>true,'properties'=>array('title'=>$text,'description'=>array('type'=>'string','maxLength'=>250),'intent'=>$text))),
+                    'citations'=>array('type'=>'array','maxItems'=>3,'items'=>array('type'=>'object','additionalProperties'=>true,'properties'=>array('title'=>$text,'url'=>$text,'source'=>$text,'date'=>$text))),
+                    'warnings'=>$string_array,
+                ),
+                'required'=>array('status','summary','source_quality','trends','content_ideas','citations','warnings'),
+            ),
+        );
+    }
+
+    private static function editorial_plan_schema() {
         $text = array('type'=>'string');
         $num = array('type'=>'number');
         $string_array = array('type'=>'array','items'=>$text);
