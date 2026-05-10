@@ -1,3 +1,15 @@
+## 2.34.0 - 2026-05-10
+- Arricchito il modulo **Trend Idee contenuto**: `source_test` resta diagnostico e compatto, `full_test` usa uno schema più ampio per report utili a Sothra, `editorial_plan` diventa il profilo operativo per pianificazione editoriale.
+- `full_test` ora richiede, se i dati lo consentono, almeno 6 trend, 8 idee editoriali, 5 bisogni viaggiatori, 5 opportunità affiliate, 4 rischi/limiti e 6 citazioni, con warning espliciti quando le fonti non bastano.
+- `editorial_plan` richiede 10-20 idee, 7-14 contenuti settimanali, 8-12 opportunità affiliate, 8-12 bisogni viaggiatori e destinazioni reali quando disponibili, includendo priorità, intento di ricerca, categoria editoriale, CTA/link affiliato e fonti collegate.
+- Introdotte metriche fonti distinte: `count_fonti_configurate`, `count_fonti_interrogate`, `count_fonti_citate`, `count_fonti_saltate`, `count_fonti_senza_risultati`; `count_fonti_analizzate` resta per compatibilità come alias coerente di `count_fonti_interrogate`.
+- Chiarita la differenza tra fonti configurate (salvate in WordPress), interrogate/richieste (passate alla run Web Search) e citate (con URL/citazioni nel report), con dettaglio per fonte nella tabella del report.
+- Potenziata la box **Trend Idee contenuto** nella Bacheca WordPress: legge solo l’ultimo report salvato, mostra data/ora report, stato, modello, profilo runtime, metriche, top trend, destinazioni, idee, opportunità affiliate, bisogni, alert e link al report/generazione.
+- Ogni report salvato conserva data creazione, stato, modello, profilo runtime, metriche, JSON tecnico, sintesi, idee, destinazioni, opportunità affiliate, bisogni viaggiatori, citazioni e alert.
+- Migliorata la pagina report completa con sezioni per sintesi, metriche, fonti usate, trend, destinazioni/città, piano editoriale, bisogni, opportunità affiliate, rischi/limiti, fonti citate e JSON tecnico, con messaggi utili per sezioni vuote.
+- Le destinazioni prioritarie non vengono più popolate automaticamente con titoli generici di trend: devono essere città, località, regioni, paesi, aree geografiche o luoghi reali emersi dalle fonti.
+- Versione plugin aggiornata a `2.34.0`.
+
 ## 2.33.2 - 2026-05-10
 - Aggiunto uno schema JSON compatto per il profilo `source_test`, separato dallo schema editoriale completo usato da `full_test`/`editorial_plan`.
 - Documentata e rinforzata la distinzione tra contenuti informativi analizzati dalla fonte, trend restituiti e idee editoriali generate.

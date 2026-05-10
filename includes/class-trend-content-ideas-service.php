@@ -93,11 +93,20 @@ class ALMA_Trend_Content_Ideas_Service {
     }
 
     public static function validate_result($data, $schema_profile = 'editorial_plan') {
+        $schema_profile = sanitize_key((string)$schema_profile);
         $is_compact = in_array($schema_profile, array('source_test','json_invalid_retry'), true);
-        $required = $is_compact ? array('status','summary','source_quality','trends','content_ideas','citations','warnings') : array('status','summary','trends','content_ideas','citations','warnings','sintesi_generale','fonti_analizzate','destinazioni_prioritarie','temi_editoriali','piano_editoriale_settimanale','opportunita_affiliate','bisogni_viaggiatori','rischi_e_limiti','dati_per_grafici','livello_confidenza','alert','fonti_citate');
+        if ($is_compact) {
+            $required = array('status','summary','source_quality','trends','content_ideas','citations','warnings');
+            $array_keys = array('trends','content_ideas','citations','warnings');
+        } elseif ($schema_profile === 'full_test') {
+            $required = array('status','summary','source_quality','fonti_configurate','fonti_interrogate','fonti_citate','fonti_saltate','trends','destinazioni_prioritarie','temi_editoriali','piano_editoriale_settimanale','content_ideas','bisogni_viaggiatori','opportunita_affiliate','rischi_e_limiti','citations','warnings','dati_per_grafici');
+            $array_keys = array('fonti_configurate','fonti_interrogate','fonti_citate','fonti_saltate','trends','destinazioni_prioritarie','temi_editoriali','piano_editoriale_settimanale','content_ideas','bisogni_viaggiatori','opportunita_affiliate','rischi_e_limiti','citations','warnings');
+        } else {
+            $required = array('summary','scenario_editoriale','destinazioni_prioritarie','trend_principali','piano_editoriale_settimanale','idee_editoriali_extra','cluster_tematici','opportunita_affiliate','bisogni_viaggiatori','rischi_e_limiti','fonti_citate','dati_per_grafici','warnings');
+            $array_keys = array('destinazioni_prioritarie','trend_principali','piano_editoriale_settimanale','idee_editoriali_extra','cluster_tematici','opportunita_affiliate','bisogni_viaggiatori','rischi_e_limiti','fonti_citate','warnings');
+        }
         if (!is_array($data)) { return new WP_Error('invalid_json', __('JSON OpenAI non valido.', 'affiliate-link-manager-ai')); }
         foreach ($required as $key) { if (!array_key_exists($key, $data)) { return new WP_Error('incomplete_json', sprintf(__('JSON incompleto: manca %s.', 'affiliate-link-manager-ai'), $key)); } }
-        $array_keys = $is_compact ? array('trends','content_ideas','citations','warnings') : array('trends','content_ideas','citations','warnings','fonti_analizzate','destinazioni_prioritarie','temi_editoriali','piano_editoriale_settimanale','opportunita_affiliate','bisogni_viaggiatori','rischi_e_limiti','alert','fonti_citate');
         foreach ($array_keys as $key) { if (!is_array($data[$key])) { return new WP_Error('incomplete_json', sprintf(__('JSON incompleto: %s deve essere un array.', 'affiliate-link-manager-ai'), $key)); } }
         return true;
     }
@@ -179,35 +188,48 @@ class ALMA_Trend_Content_Ideas_Service {
 
 
     private static function normalize_result_for_storage($data, $schema_profile = 'editorial_plan') {
-        if (!in_array($schema_profile, array('source_test','json_invalid_retry'), true)) { return $data; }
-        $data['sintesi_generale'] = $data['sintesi_generale'] ?? ($data['summary'] ?? '');
-        $data['fonti_analizzate'] = $data['fonti_analizzate'] ?? array();
-        $data['destinazioni_prioritarie'] = $data['destinazioni_prioritarie'] ?? self::compact_trends_to_destinations($data['trends'] ?? array());
-        $data['temi_editoriali'] = $data['temi_editoriali'] ?? array();
-        $data['piano_editoriale_settimanale'] = $data['piano_editoriale_settimanale'] ?? self::compact_ideas_to_plan($data['content_ideas'] ?? array());
-        $data['opportunita_affiliate'] = $data['opportunita_affiliate'] ?? array();
-        $data['bisogni_viaggiatori'] = $data['bisogni_viaggiatori'] ?? array();
-        $data['rischi_e_limiti'] = $data['rischi_e_limiti'] ?? array();
-        $data['dati_per_grafici'] = $data['dati_per_grafici'] ?? array();
-        $data['livello_confidenza'] = $data['livello_confidenza'] ?? '';
-        $data['alert'] = $data['alert'] ?? ($data['warnings'] ?? array());
-        $data['fonti_citate'] = $data['fonti_citate'] ?? self::compact_citations_to_fonti_citate($data['citations'] ?? array());
+        $schema_profile = sanitize_key((string)$schema_profile);
+        if ($schema_profile === 'editorial_plan') {
+            $data['status'] = $data['status'] ?? 'success';
+            $data['trends'] = $data['trends'] ?? ($data['trend_principali'] ?? array());
+            $data['content_ideas'] = $data['content_ideas'] ?? array_values(array_merge((array)($data['piano_editoriale_settimanale'] ?? array()), (array)($data['idee_editoriali_extra'] ?? array())));
+            $data['citations'] = $data['citations'] ?? ($data['fonti_citate'] ?? array());
+            $data['sintesi_generale'] = $data['sintesi_generale'] ?? ($data['summary'] ?? '');
+            $data['temi_editoriali'] = $data['temi_editoriali'] ?? ($data['cluster_tematici'] ?? array());
+            $data['alert'] = $data['alert'] ?? ($data['warnings'] ?? array());
+            $data['livello_confidenza'] = $data['livello_confidenza'] ?? '';
+            $data['fonti_analizzate'] = $data['fonti_analizzate'] ?? ($data['fonti_citate'] ?? array());
+        } elseif ($schema_profile === 'full_test') {
+            $data['sintesi_generale'] = $data['sintesi_generale'] ?? ($data['summary'] ?? '');
+            $data['trend_principali'] = $data['trend_principali'] ?? ($data['trends'] ?? array());
+            $data['fonti_analizzate'] = $data['fonti_analizzate'] ?? ($data['fonti_interrogate'] ?? array());
+            $data['alert'] = $data['alert'] ?? ($data['warnings'] ?? array());
+            $data['livello_confidenza'] = $data['livello_confidenza'] ?? '';
+        } elseif (in_array($schema_profile, array('source_test','json_invalid_retry'), true)) {
+            $data['sintesi_generale'] = $data['sintesi_generale'] ?? ($data['summary'] ?? '');
+            $data['fonti_analizzate'] = $data['fonti_analizzate'] ?? array();
+            $data['destinazioni_prioritarie'] = $data['destinazioni_prioritarie'] ?? array();
+            if (empty($data['destinazioni_prioritarie']) && !empty($data['trends'])) {
+                $data['warnings'][] = __('Le destinazioni prioritarie non sono state derivate automaticamente dai titoli dei trend: servono luoghi reali presenti nelle fonti.', 'affiliate-link-manager-ai');
+            }
+            $data['temi_editoriali'] = $data['temi_editoriali'] ?? array();
+            $data['piano_editoriale_settimanale'] = $data['piano_editoriale_settimanale'] ?? self::compact_ideas_to_plan($data['content_ideas'] ?? array());
+            $data['opportunita_affiliate'] = $data['opportunita_affiliate'] ?? array();
+            $data['bisogni_viaggiatori'] = $data['bisogni_viaggiatori'] ?? array();
+            $data['rischi_e_limiti'] = $data['rischi_e_limiti'] ?? array();
+            $data['dati_per_grafici'] = $data['dati_per_grafici'] ?? array();
+            $data['livello_confidenza'] = $data['livello_confidenza'] ?? '';
+            $data['alert'] = $data['alert'] ?? ($data['warnings'] ?? array());
+            $data['fonti_citate'] = $data['fonti_citate'] ?? self::compact_citations_to_fonti_citate($data['citations'] ?? array());
+        }
+        $data['warnings'] = array_values(array_unique(array_filter((array)($data['warnings'] ?? array()))));
+        $data['alert'] = array_values(array_unique(array_filter((array)($data['alert'] ?? $data['warnings']))));
         return $data;
     }
 
     private static function compact_trends_to_destinations($trends) {
-        $out = array();
-        foreach ((array)$trends as $trend) {
-            if (!is_array($trend)) { continue; }
-            $out[] = array(
-                'nome'=>sanitize_text_field((string)($trend['title'] ?? '')),
-                'paese_o_area'=>'',
-                'trend_score'=>0,
-                'confidence_score'=>0,
-                'motivazione'=>sanitize_text_field((string)($trend['description'] ?? '')),
-            );
-        }
-        return $out;
+        // Deliberately do not convert generic trend titles into destinations: destinations must be real places returned by the model from sources.
+        return array();
     }
 
     private static function compact_ideas_to_plan($ideas) {
@@ -294,9 +316,9 @@ class ALMA_Trend_Content_Ideas_Service {
             return array('name'=>'source_test','max_output_tokens'=>2200,'retry_max_output_tokens'=>1600,'search_context_size'=>'low','include_sources'=>true,'tool_choice'=>'required');
         }
         if ($run_type === 'test') {
-            return array('name'=>'full_test','max_output_tokens'=>3800,'retry_max_output_tokens'=>1800,'search_context_size'=>'medium','include_sources'=>true,'tool_choice'=>'required');
+            return array('name'=>'full_test','max_output_tokens'=>4600,'retry_max_output_tokens'=>2000,'search_context_size'=>'medium','include_sources'=>true,'tool_choice'=>'required');
         }
-        return array('name'=>'editorial_plan','max_output_tokens'=>5200,'retry_max_output_tokens'=>2200,'search_context_size'=>'medium','include_sources'=>true,'tool_choice'=>'required');
+        return array('name'=>'editorial_plan','max_output_tokens'=>6400,'retry_max_output_tokens'=>2400,'search_context_size'=>'medium','include_sources'=>true,'tool_choice'=>'required');
     }
 
     public static function build_openai_request_args($sources, $run_type = 'manual', $with_filters = true, $tool_choice = 'required', $profile = null, $include_sources = null) {
@@ -482,9 +504,13 @@ class ALMA_Trend_Content_Ideas_Service {
     public static function build_metrics($data, $sources) {
         $dest = (array)($data['destinazioni_prioritarie'] ?? array());
         $ideas = (array)($data['piano_editoriale_settimanale'] ?? array());
+        if (!$ideas) { $ideas = (array)($data['content_ideas'] ?? array()); }
         $affiliate = (array)($data['opportunita_affiliate'] ?? array());
-        $alerts = (array)($data['alert'] ?? array());
+        $needs = (array)($data['bisogni_viaggiatori'] ?? array());
+        $alerts = (array)($data['alert'] ?? ($data['warnings'] ?? array()));
         $risks = (array)($data['rischi_e_limiti'] ?? array());
+        $trends = (array)($data['trends'] ?? ($data['trend_principali'] ?? array()));
+        $source_usage = self::build_source_usage($data, $sources);
         $cat = array();
         foreach ($sources as $s) { $cat[$s['category']] = ($cat[$s['category']] ?? 0) + 1; }
         $areas = array(); $trend_scores = array(); $conf_scores = array();
@@ -495,16 +521,98 @@ class ALMA_Trend_Content_Ideas_Service {
             if (isset($d['confidence_score'])) { $conf_scores[] = (float)$d['confidence_score']; }
         }
         return array(
-            'count_fonti_analizzate'=>count($sources),
+            'count_fonti_configurate'=>$source_usage['counts']['configured'],
+            'count_fonti_interrogate'=>$source_usage['counts']['interrogated'],
+            'count_fonti_citate'=>$source_usage['counts']['cited'],
+            'count_fonti_saltate'=>$source_usage['counts']['skipped'],
+            'count_fonti_senza_risultati'=>$source_usage['counts']['without_results'],
+            'count_fonti_analizzate'=>$source_usage['counts']['interrogated'],
+            'count_trend'=>count($trends),
             'count_idee_editoriali'=>count($ideas),
             'count_destinazioni'=>count($dest),
+            'count_bisogni_viaggiatori'=>count($needs),
+            'count_opportunita_affiliate'=>count($affiliate),
+            'count_alert_rischi'=>count($alerts) + count($risks),
+            'fonti_dettaglio'=>$source_usage['sources'],
             'distribuzione_categoria_fonte'=>$cat,
             'distribuzione_area_geografica'=>$areas,
             'media_trend_score'=>$trend_scores ? round(array_sum($trend_scores) / count($trend_scores), 2) : 0,
             'media_confidence_score'=>$conf_scores ? round(array_sum($conf_scores) / count($conf_scores), 2) : 0,
-            'count_opportunita_affiliate'=>count($affiliate),
-            'count_alert_rischi'=>count($alerts) + count($risks),
         );
     }
+
+    private static function build_source_usage($data, $sources) {
+        $sources = self::normalize_sources($sources);
+        $cited_items = array_merge((array)($data['fonti_web_search'] ?? array()), (array)($data['fonti_citate'] ?? array()), (array)($data['citations'] ?? array()));
+        $configured_names = self::strings_lower((array)($data['fonti_configurate'] ?? array()));
+        $interrogated_names = self::strings_lower((array)($data['fonti_interrogate'] ?? $data['fonti_analizzate'] ?? array()));
+        $skipped_names = self::strings_lower((array)($data['fonti_saltate'] ?? array()));
+        $details = array(); $counts = array('configured'=>count($sources),'interrogated'=>0,'cited'=>0,'skipped'=>0,'without_results'=>0);
+        $default_interrogated = sanitize_key((string)($data['status'] ?? 'success')) !== 'error';
+        foreach ($sources as $source) {
+            $domains = self::normalize_allowed_domains($source['normalized_allowed_domains'] ?? ALMA_Trend_Content_Ideas_Store::decode_json($source['allowed_domains'] ?? '[]'));
+            $name = (string)($source['name'] ?? $source['source_key'] ?? '');
+            $source_key = (string)($source['source_key'] ?? '');
+            $is_skipped = self::source_named_in($name, $source_key, $skipped_names);
+            $is_interrogated = !$is_skipped && (($default_interrogated && empty($interrogated_names)) || self::source_named_in($name, $source_key, $interrogated_names) || self::source_named_in($name, $source_key, $configured_names));
+            $matches = self::match_items_to_domains($cited_items, $domains, $name);
+            $is_cited = !empty($matches);
+            if ($is_interrogated) { $counts['interrogated']++; }
+            if ($is_cited) { $counts['cited']++; }
+            if ($is_skipped) { $counts['skipped']++; }
+            if ($is_interrogated && !$is_cited) { $counts['without_results']++; }
+            $details[] = array(
+                'source_key'=>$source_key,
+                'name'=>$name,
+                'configured'=>true,
+                'interrogated'=>$is_interrogated,
+                'cited'=>$is_cited,
+                'without_results'=>$is_interrogated && !$is_cited,
+                'skipped'=>$is_skipped,
+                'matched_citations'=>array_slice($matches, 0, 5),
+            );
+        }
+        return array('counts'=>$counts,'sources'=>$details);
+    }
+
+    private static function strings_lower($items) {
+        $out = array();
+        foreach ($items as $item) {
+            if (is_array($item)) { $item = $item['name'] ?? $item['nome'] ?? $item['fonte'] ?? $item['source'] ?? wp_json_encode($item); }
+            $item = strtolower(trim(wp_strip_all_tags((string)$item)));
+            if ($item !== '') { $out[] = $item; }
+        }
+        return $out;
+    }
+
+    private static function source_named_in($name, $source_key, $haystack) {
+        $name = strtolower((string)$name); $source_key = strtolower((string)$source_key);
+        foreach ((array)$haystack as $item) {
+            if ($item === '') { continue; }
+            if ($item === $name || $item === $source_key || strpos($item, $name) !== false || ($source_key !== '' && strpos($item, $source_key) !== false)) { return true; }
+        }
+        return false;
+    }
+
+    private static function match_items_to_domains($items, $domains, $source_name = '') {
+        $matches = array(); $domains = array_map(function($d){ return preg_replace('/^www\./', '', strtolower((string)$d)); }, (array)$domains);
+        foreach ((array)$items as $item) {
+            if (!is_array($item)) { continue; }
+            $domain = strtolower((string)($item['domain'] ?? $item['fonte'] ?? $item['source'] ?? ''));
+            if (!$domain && !empty($item['url'])) { $domain = strtolower((string)wp_parse_url((string)$item['url'], PHP_URL_HOST)); }
+            $domain = preg_replace('/^www\./', '', $domain);
+            $matched = false;
+            foreach ($domains as $allowed) {
+                if ($allowed !== '' && ($domain === $allowed || substr($domain, -strlen('.' . $allowed)) === '.' . $allowed)) { $matched = true; break; }
+            }
+            if (!$matched && $source_name !== '') {
+                $source = strtolower((string)($item['fonte'] ?? $item['source'] ?? $item['title'] ?? $item['titolo'] ?? ''));
+                $matched = $source !== '' && strpos($source, strtolower($source_name)) !== false;
+            }
+            if ($matched) { $matches[] = $item; }
+        }
+        return $matches;
+    }
+
 }
 ALMA_Trend_Content_Ideas_Service::init();
