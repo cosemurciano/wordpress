@@ -3,7 +3,7 @@
  * Plugin Name: Affiliate Link Manager AI
  * Plugin URI: https://your-website.com
  * Description: Gestisce link affiliati con intelligenza artificiale per ottimizzazione e tracking automatico.
- * Version: 2.31.0
+ * Version: 2.32.0
  * Author: Cosè Murciano
  * License: GPL v2 or later
  * Text Domain: affiliate-link-manager-ai
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Definisci costanti del plugin
-define('ALMA_VERSION', '2.31.0');
+define('ALMA_VERSION', '2.32.0');
 define('ALMA_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('ALMA_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('ALMA_PLUGIN_FILE', __FILE__);
@@ -54,6 +54,11 @@ require_once ALMA_PLUGIN_DIR . 'includes/class-ai-content-agent-instructions-man
 require_once ALMA_PLUGIN_DIR . 'includes/class-ai-trend-radar-store.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-ai-trend-radar-service.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-ai-trend-radar-admin.php';
+require_once ALMA_PLUGIN_DIR . 'includes/class-trend-content-ideas-registry.php';
+require_once ALMA_PLUGIN_DIR . 'includes/class-trend-content-ideas-prompt-builder.php';
+require_once ALMA_PLUGIN_DIR . 'includes/class-trend-content-ideas-store.php';
+require_once ALMA_PLUGIN_DIR . 'includes/class-trend-content-ideas-service.php';
+require_once ALMA_PLUGIN_DIR . 'includes/class-trend-content-ideas-admin.php';
 
 require_once ALMA_PLUGIN_DIR . 'includes/class-affiliate-source-provider-interface.php';
 require_once ALMA_PLUGIN_DIR . 'includes/providers/class-affiliate-source-provider-manual.php';
@@ -1309,6 +1314,17 @@ class AffiliateManagerAI {
             array('ALMA_AI_Trend_Radar_Admin', 'render_page')
         );
 
+
+        // Trend Idee contenuto
+        add_submenu_page(
+            self::AFFILIATE_LINK_PARENT_MENU,
+            __('Trend Idee contenuto', 'affiliate-link-manager-ai'),
+            __('Trend Idee contenuto', 'affiliate-link-manager-ai'),
+            'manage_options',
+            ALMA_Trend_Content_Ideas_Admin::SLUG,
+            array('ALMA_Trend_Content_Ideas_Admin', 'render_page')
+        );
+
         // Affiliate Chat AI
         add_submenu_page(
             'edit.php?post_type=affiliate_link',
@@ -1363,6 +1379,8 @@ class AffiliateManagerAI {
             'affiliate-chat-ai',
             'alma-affiliate-sources',
             self::AI_CONTENT_AGENT_MENU_SLUG,
+            ALMA_AI_Trend_Radar_Admin::SLUG,
+            ALMA_Trend_Content_Ideas_Admin::SLUG,
             'affiliate-link-manager-settings',
             'alma-css-editor',
         );
@@ -1399,6 +1417,12 @@ class AffiliateManagerAI {
                         case 'alma-affiliate-sources':
                             $item[0] = __('Affiliate Sources', 'affiliate-link-manager-ai');
                             break;
+                        case ALMA_AI_Trend_Radar_Admin::SLUG:
+                            $item[0] = __('Trend Radar', 'affiliate-link-manager-ai');
+                            break;
+                        case ALMA_Trend_Content_Ideas_Admin::SLUG:
+                            $item[0] = __('Trend Idee contenuto', 'affiliate-link-manager-ai');
+                            break;
                         case 'affiliate-link-manager-settings':
                             $item[0] = __('Impostazioni', 'affiliate-link-manager-ai');
                             break;
@@ -1409,6 +1433,14 @@ class AffiliateManagerAI {
                     $new[] = $item;
                     break;
                 }
+            }
+        }
+
+        $known = array();
+        foreach ($new as $item) { $known[] = $item[2]; }
+        foreach ($items as $item) {
+            if (!in_array($item[2], $known, true)) {
+                $new[] = $item;
             }
         }
 
@@ -1427,6 +1459,7 @@ class AffiliateManagerAI {
             <h1><?php _e('Dashboard Link - Affiliate Link Manager', 'affiliate-link-manager-ai'); ?></h1>
             <p style="font-size:14px;color:#666;">Versione <?php echo esc_html(ALMA_VERSION); ?></p>
             <div id="alma-dashboard-root"><p><?php _e('Caricamento statistiche dashboard…', 'affiliate-link-manager-ai'); ?></p></div>
+            <?php ALMA_Trend_Content_Ideas_Admin::dashboard_box(); ?>
         </div>
         <script>
         jQuery(function($){
@@ -3693,11 +3726,12 @@ class AffiliateManagerAI {
     public function activate() {
         ALMA_AI_Content_Agent_Store::install();
         ALMA_AI_Trend_Radar_Store::install();
+        ALMA_Trend_Content_Ideas_Store::install();
         $this->create_analytics_table();
         ALMA_AI_Usage_Logger::create_table();
         ALMA_Affiliate_Source_Manager::create_tables();
         $this->create_default_categories();
-        update_option('alma_db_schema_version', '3');
+        update_option('alma_db_schema_version', '4');
         update_option('alma_plugin_version', ALMA_VERSION);
         flush_rewrite_rules();
     }
@@ -3705,6 +3739,7 @@ class AffiliateManagerAI {
     public function deactivate() {
         // Rimuovi cron jobs
         wp_clear_scheduled_hook('alma_daily_optimization');
+        wp_clear_scheduled_hook(ALMA_Trend_Content_Ideas_Service::CRON_HOOK);
         foreach (ALMA_AI_Trend_Radar_Store::get_profiles() as $profile) {
             ALMA_AI_Trend_Radar_Service::clear_profile_schedule((int)$profile['id']);
         }
@@ -3716,10 +3751,11 @@ class AffiliateManagerAI {
         if (version_compare($installed_version, ALMA_VERSION, '<')) {
             ALMA_AI_Content_Agent_Store::install();
             ALMA_AI_Trend_Radar_Store::install();
+            ALMA_Trend_Content_Ideas_Store::install();
             $this->create_analytics_table();
             ALMA_AI_Usage_Logger::create_table();
             ALMA_Affiliate_Source_Manager::create_tables();
-            update_option('alma_db_schema_version', '3');
+            update_option('alma_db_schema_version', '4');
             update_option('alma_plugin_version', ALMA_VERSION);
         }
     }
