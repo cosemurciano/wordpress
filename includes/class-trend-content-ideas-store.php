@@ -108,8 +108,21 @@ class ALMA_Trend_Content_Ideas_Store {
     public static function save_settings($post) {
         update_option(self::OPTION_GLOBAL_PROMPT, sanitize_textarea_field($post['global_prompt'] ?? ''));
         $model = sanitize_text_field($post['model'] ?? '');
+        $current_model = trim((string)get_option(self::OPTION_MODEL, ''));
+        $current_manual = get_option(self::OPTION_MODEL_MANUAL, '') === '1';
+        $legacy_ignored_rendered = !empty($post['legacy_model_ignored']);
+        $legacy_seed_still_unclaimed = ($current_model === ALMA_Trend_Content_Ideas_Service::LEGACY_SEEDED_MODEL && !$current_manual);
+
         update_option(self::OPTION_MODEL, $model);
-        update_option(self::OPTION_MODEL_MANUAL, $model !== '' ? '1' : '0');
+
+        if ($model === '') {
+            update_option(self::OPTION_MODEL_MANUAL, '0');
+        } elseif ($legacy_seed_still_unclaimed && $model === ALMA_Trend_Content_Ideas_Service::LEGACY_SEEDED_MODEL && !$legacy_ignored_rendered) {
+            update_option(self::OPTION_MODEL_MANUAL, '0');
+        } else {
+            update_option(self::OPTION_MODEL_MANUAL, '1');
+        }
+
         update_option(self::OPTION_TIMEOUT, max(20, min(180, absint($post['timeout'] ?? 90))));
         global $wpdb; $sources = self::get_sources(false); $now=current_time('mysql');
         foreach ($sources as $src) {

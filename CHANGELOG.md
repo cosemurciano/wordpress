@@ -1,3 +1,12 @@
+## 2.33.1
+- Corretto il flag manuale del modello Trend: il valore legacy automatico `gpt-5.5` non viene più marcato come scelta manuale durante salvataggi ordinari della pagina impostazioni.
+- Il valore legacy `gpt-5.5` viene ignorato in modo idempotente finché l’admin non inserisce intenzionalmente un modello Trend; la UI mostra il campo modello vuoto e una nota dedicata quando il legacy è ignorato.
+- Rafforzato l’output JSON OpenAI del modulo Trend con Structured Outputs su Responses API tramite `text.format` JSON Schema, schema stabile e istruzioni esplicite solo-JSON.
+- Aggiunto un singolo retry vincolato quando la risposta AI non è JSON valido o ha schema incompleto; il retry mantiene `web_search` e non reintroduce il vecchio tool preview.
+- I report tecnici di errore JSON salvano metadati utili e un excerpt raw sanificato massimo 1500 caratteri, senza esporre chiavi API o dati sensibili.
+- Mantenuti i fallback Web Search esistenti: senza `filters`, `tool_choice` da `required` ad `auto`, normalizzazione sampling, omissione temperature per GPT-5.x/reasoning e retry timeout alleggerito.
+- Versione plugin aggiornata a `2.33.1`.
+
 ## 2.33.0 — Limiti contenuti e priorità fonti Trend Idee contenuto
 - Aggiunto per ogni fonte Trend il campo persistente `max_contents_per_run`, configurabile da 1 a 10, con default 3 e valori iniziali conservativi: 4 per fonti prioritarie e 3 per fonti medie.
 - Chiarito in UI e prompt che per “contenuti” si intendono risultati, pagine, articoli, comunicati, report o documenti informativi consultabili dalla ricerca web durante una singola analisi Trend; non indica articoli WordPress generati, bozze o idee editoriali finali.
@@ -18,7 +27,7 @@
 
 ## 2.32.1 — Fix Trend Idee contenuto Web Search
 - Corretto l’errore OpenAI `Unsupported parameter 'filters'` nel test fonti del modulo **Trend Idee contenuto**.
-- Migrata l’integrazione Responses API del modulo da `web_search_preview` a `web_search`, applicando `filters.allowed_domains` solo al nuovo tool compatibile.
+- Migrata l’integrazione Responses API del modulo da il vecchio tool preview a `web_search`, applicando `filters.allowed_domains` solo al nuovo tool compatibile.
 - Aggiunta normalizzazione dei domini sorgente prima dell’invio a OpenAI, con deduplica, rimozione di protocollo/path/query/fragment e limite massimo dei domini ammessi.
 - Aggiunto `include: ["web_search_call.action.sources"]` per salvare nel report citazioni e fonti Web Search consultate quando disponibili.
 - Aggiunto fallback automatico: se OpenAI rifiuta `filters`, la stessa run viene ripetuta una sola volta senza filtro dominio e registra un warning nel report/log.
