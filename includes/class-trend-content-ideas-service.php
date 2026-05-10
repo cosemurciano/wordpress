@@ -123,12 +123,14 @@ class ALMA_Trend_Content_Ideas_Service {
         $args = self::build_openai_request_args($sources, $run_type, true, 'required');
         $attempts[] = self::attempt_summary('primary', $args);
         $res = ALMA_OpenAI_Service::request($args);
+        $warnings = self::merge_openai_warnings($warnings, $res);
         if (!empty($res['success'])) { return array('response'=>$res,'attempts'=>$attempts,'warnings'=>$warnings); }
         if (self::is_tool_choice_unsupported($res)) {
             $warnings[] = 'OpenAI non ha accettato tool_choice required. La ricerca è stata ripetuta con tool_choice auto.';
             $args['tool_choice'] = 'auto';
             $attempts[] = self::attempt_summary('tool_choice_auto', $args);
             $res = ALMA_OpenAI_Service::request($args);
+            $warnings = self::merge_openai_warnings($warnings, $res);
             if (!empty($res['success'])) { return array('response'=>$res,'attempts'=>$attempts,'warnings'=>$warnings); }
         }
         if (self::is_filters_unsupported_error($res) && !empty($args['tools'][0]['filters'])) {
@@ -136,17 +138,21 @@ class ALMA_Trend_Content_Ideas_Service {
             $args = self::build_openai_request_args($sources, $run_type, false, $args['tool_choice'] ?? 'required');
             $attempts[] = self::attempt_summary('fallback_without_filters', $args);
             $res = ALMA_OpenAI_Service::request($args);
+            $warnings = self::merge_openai_warnings($warnings, $res);
         }
         return array('response'=>$res,'attempts'=>$attempts,'warnings'=>$warnings);
     }
 
     private static function attempt_summary($label, $args) { return array('label'=>$label,'tool'=>$args['tools'][0]['type'] ?? '','tool_choice'=>$args['tool_choice'] ?? '','allowed_domains'=>$args['tools'][0]['filters']['allowed_domains'] ?? array(),'include'=>$args['include'] ?? array()); }
+    private static function merge_openai_warnings($warnings, $res) { foreach ((array)($res['warnings'] ?? array()) as $warning) { $warnings[] = sanitize_text_field((string)$warning); } return array_values(array_unique(array_filter($warnings))); }
     private static function is_filters_unsupported_error($res) { $m = strtolower((string)($res['error'] ?? '')); return strpos($m, 'filters') !== false && (strpos($m, 'unsupported parameter') !== false || strpos($m, 'not supported') !== false || strpos($m, 'unknown parameter') !== false); }
     private static function is_tool_choice_unsupported($res) { $m = strtolower((string)($res['error'] ?? '')); return strpos($m, 'tool_choice') !== false && (strpos($m, 'unsupported') !== false || strpos($m, 'not supported') !== false); }
-    private static function friendly_openai_error($message) { return self::is_filters_unsupported_error(array('error'=>$message)) ? __('Errore OpenAI: il parametro filters non è supportato dal tool web search usato. Aggiorna la configurazione o verifica il tool OpenAI.', 'affiliate-link-manager-ai') : sprintf(__('Errore OpenAI: %s', 'affiliate-link-manager-ai'), sanitize_text_field((string)$message)); }
+    private static function friendly_openai_error($message) { if (self::is_filters_unsupported_error(array('error'=>$message))) { return __('Errore OpenAI: il parametro filters non è supportato dal tool web search usato. Aggiorna la configurazione o verifica il tool OpenAI.', 'affiliate-link-manager-ai'); } if (self::is_sampling_unsupported_error(array('error'=>$message))) { return __('Errore OpenAI: il modello selezionato non supporta uno o più parametri sampling. Il dettaglio tecnico è disponibile nel report.', 'affiliate-link-manager-ai'); } return sprintf(__('Errore OpenAI: %s', 'affiliate-link-manager-ai'), sanitize_text_field((string)$message)); }
+    private static function is_sampling_unsupported_error($res) { $m = strtolower((string)($res['error'] ?? '')); if (strpos($m, 'unsupported parameter') === false && strpos($m, 'not supported') === false && strpos($m, 'unknown parameter') === false) { return false; } foreach (array('temperature','top_p','presence_penalty','frequency_penalty') as $key) { if (strpos($m, $key) !== false) { return true; } } return false; }
     private static function source_snapshot($sources) { return array_map(function($s){ return array('source_key'=>$s['source_key'],'name'=>$s['name'],'priority'=>(int)$s['priority'],'category'=>$s['category'],'allowed_domains'=>ALMA_Trend_Content_Ideas_Store::decode_json($s['allowed_domains']),'normalized_allowed_domains'=>self::normalize_allowed_domains(ALMA_Trend_Content_Ideas_Store::decode_json($s['allowed_domains']))); }, $sources); }
     private static function title_for($run_type, $sources) { return ($run_type === 'test' ? 'Test Trend Idee contenuto' : 'Report Trend Idee contenuto') . ' - ' . count($sources) . ' fonti'; }
-    private static function model() { return trim((string)get_option(ALMA_Trend_Content_Ideas_Store::OPTION_MODEL, '')) ?: get_option('alma_openai_model', 'gpt-5.5'); }
+    public static function effective_model() { $trend_model = trim((string)get_option(ALMA_Trend_Content_Ideas_Store::OPTION_MODEL, '')); if ($trend_model !== '') { return $trend_model; } $global_model = trim((string)get_option('alma_openai_model', '')); return $global_model !== '' ? $global_model : 'gpt-5.4-mini'; }
+    private static function model() { return self::effective_model(); }
     private static function tokens_used($usage) { return is_array($usage) && isset($usage['total_tokens']) ? absint($usage['total_tokens']) : null; }
     private static function is_partial($data) { return !empty($data['alert']) || stripos((string)($data['livello_confidenza'] ?? ''), 'basso') !== false; }
 

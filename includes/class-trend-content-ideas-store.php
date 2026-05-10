@@ -60,7 +60,6 @@ class ALMA_Trend_Content_Ideas_Store {
         if (get_option(self::OPTION_GLOBAL_PROMPT, null) === null) {
             update_option(self::OPTION_GLOBAL_PROMPT, ALMA_Trend_Content_Ideas_Prompt_Builder::default_global_prompt());
         }
-        if (get_option(self::OPTION_MODEL, null) === null) { update_option(self::OPTION_MODEL, 'gpt-5.5'); }
         if (get_option(self::OPTION_TIMEOUT, null) === null) { update_option(self::OPTION_TIMEOUT, 90); }
     }
 
