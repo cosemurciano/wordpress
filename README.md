@@ -1,3 +1,12 @@
+## 2.32.2 — Fix compatibilità modelli OpenAI Trend Idee contenuto
+- Corretto l’errore OpenAI `Unsupported parameter: temperature` omettendo automaticamente i parametri sampling non compatibili con modelli GPT-5.x/reasoning.
+- Rimosso il default hardcoded `gpt-5.5` durante install/upgrade del modulo **Trend Idee contenuto**: se il modello Trend è vuoto viene usato il modello globale OpenAI.
+- Aggiunto fallback conservativo `gpt-5.4-mini` solo quando non esiste alcun modello globale configurato.
+- Centralizzata la normalizzazione del payload OpenAI e preservata l’eventuale configurazione `reasoning` solo sui modelli compatibili.
+- Aggiunto retry singolo tracciato senza parametri sampling incompatibili dopo errori OpenAI di compatibilità modello.
+- Aggiornata la UI Trend per mostrare il modello effettivo e la nota sull’omissione automatica di `temperature` con modelli GPT-5.x/reasoning.
+- Preservato l’uso di `web_search`, i fallback senza `filters` e da `tool_choice: required` ad `auto`, e il salvataggio delle fonti/citazioni Web Search.
+
 ## 2.32.1 — Fix Trend Idee contenuto Web Search
 - Corretto l’errore OpenAI `Unsupported parameter 'filters'` nel test fonti del modulo **Trend Idee contenuto**.
 - Migrata l’integrazione Responses API del modulo da `web_search_preview` a `web_search`, applicando `filters.allowed_domains` solo al nuovo tool compatibile.
@@ -5,7 +14,7 @@
 - Aggiunto `include: ["web_search_call.action.sources"]` per salvare nel report citazioni e fonti Web Search consultate quando disponibili.
 - Aggiunto fallback automatico: se OpenAI rifiuta `filters`, la stessa run viene ripetuta una sola volta senza filtro dominio e registra un warning nel report/log.
 - Migliorati messaggi errore UI e log admin, mantenendo il dettaglio tecnico in una sezione collassabile del report.
-- Aggiornato il modello consigliato di default per nuove configurazioni del modulo a `gpt-5.5`, senza bloccare modelli già salvati come `gpt-5.4`.
+- Aggiornata la lista dei modelli consigliati includendo `gpt-5.5`, senza bloccare modelli già salvati come `gpt-5.4`.
 - Versione plugin aggiornata a `2.32.1`.
 
 ## 2.31.0 — Filtro CSV GYG prima dell’importazione
