@@ -46,8 +46,9 @@ class ALMA_OpenAI_Service {
 
         $response_format_used = 'none';
         if (!empty($args['response_format']) && is_array($args['response_format'])) {
-            $body['text'] = array('format'=>$args['response_format']);
-            $response_format_used = sanitize_key((string)($args['response_format']['type'] ?? 'custom'));
+            $format = self::normalize_responses_text_format($args['response_format']);
+            $body['text'] = array('format'=>$format);
+            $response_format_used = sanitize_key((string)($format['type'] ?? 'custom'));
         } elseif (!empty($args['json_output'])) {
             $body['text'] = array('format'=>array('type'=>'json_object'));
             $response_format_used = 'json_object';
@@ -96,8 +97,25 @@ class ALMA_OpenAI_Service {
                 foreach ((array)($out['content'] ?? array()) as $c) { if (($c['type'] ?? '') === 'output_text' && !empty($c['text'])) { $text .= $c['text']; } }
             }
         }
-        if (trim($text) === '') return array('success'=>false,'error'=>__('Risposta AI vuota', 'affiliate-link-manager-ai'),'error_code'=>'empty_response','error_category'=>'api','response_time'=>$rt,'model'=>$data['model'] ?? $model,'max_output_tokens'=>$max_output_tokens,'response_format_used'=>$response_format_used,'warnings'=>$warnings);
+        if (trim($text) === '') return array('success'=>false,'error'=>__('Risposta AI vuota', 'affiliate-link-manager-ai'),'error_code'=>'empty_response','error_category'=>'api','response_time'=>$rt,'model'=>$data['model'] ?? $model,'max_output_tokens'=>$max_output_tokens,'response_format_used'=>$response_format_used,'warnings'=>$warnings,'raw_response'=>$data);
         return array('success'=>true,'response'=>$text,'model'=>$data['model'] ?? $model,'response_time'=>$rt,'usage'=>$data['usage'] ?? null,'max_output_tokens'=>$max_output_tokens,'response_format_used'=>$response_format_used,'raw_response'=>$data,'warnings'=>$warnings);
+    }
+
+    public static function normalize_responses_text_format($format) {
+        $format = is_array($format) ? $format : array();
+        if (($format['type'] ?? '') === 'json_schema') {
+            return $format;
+        }
+        if (($format['response_format_used'] ?? '') === 'json_schema' || isset($format['schema'])) {
+            return array(
+                'type'=>'json_schema',
+                'name'=>sanitize_key((string)($format['name'] ?? 'alma_json_schema')),
+                'strict'=>!empty($format['strict']),
+                'schema'=>is_array($format['schema'] ?? null) ? $format['schema'] : array('type'=>'object','additionalProperties'=>true),
+            );
+        }
+        if (($format['type'] ?? '') === 'json_object') { return array('type'=>'json_object'); }
+        return $format;
     }
 
     public static function normalize_request_payload($body, &$warnings = array()) {

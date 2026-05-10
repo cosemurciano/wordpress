@@ -10,6 +10,7 @@ class ALMA_Trend_Content_Ideas_Service {
     const LEGACY_SEEDED_MODEL = 'gpt-5.5';
     const LEGACY_MODEL_WARNING = 'Il modello Trend gpt-5.5 salvato da una versione precedente è stato ignorato: viene usato il modello globale OpenAI.';
     const TIMEOUT_RETRY_WARNING = 'Retry OpenAI alleggerito dopo timeout della ricerca web.';
+    const JSON_RETRY_WARNING = 'Retry OpenAI eseguito perché la risposta precedente non era JSON valido.';
 
     public static function init() {
         add_action(self::CRON_HOOK, array(__CLASS__, 'run_due_sources'));
@@ -52,9 +53,22 @@ class ALMA_Trend_Content_Ideas_Service {
                 $friendly = self::friendly_openai_error($res, $attempts, $runtime);
                 return self::store_error_report($sources, $run_type, $friendly, $started, wp_json_encode(array('attempts'=>$attempts,'warnings'=>$warnings,'runtime'=>$runtime,'error'=>$res)), $res['model'] ?? '', $runtime, $warnings);
             }
-            $data = json_decode((string)$res['response'], true);
-            $valid = self::validate_result($data);
-            if (is_wp_error($valid)) { return self::store_error_report($sources, $run_type, $valid->get_error_message(), $started, wp_json_encode(array('attempts'=>$attempts,'warnings'=>$warnings,'runtime'=>$runtime,'response'=>$res['response'])), $res['model'] ?? '', $runtime, $warnings); }
+            $parsed = self::parse_openai_json_response($res, end($attempts));
+            if (is_wp_error($parsed)) {
+                $retry = self::retry_invalid_json_response($sources, $run_type, $request, $parsed);
+                if (!empty($retry['executed'])) {
+                    $res = $retry['response'];
+                    $attempts = $retry['attempts'];
+                    $warnings = array_values(array_unique(array_merge($warnings, $retry['warnings'])));
+                    $runtime = self::finalize_runtime($runtime, $attempts);
+                    $parsed = !empty($res['success']) ? self::parse_openai_json_response($res, end($attempts)) : new WP_Error('openai_retry_error', self::friendly_openai_error($res, $attempts, $runtime), self::json_error_report($res, end($attempts), 'api_error'));
+                }
+                if (is_wp_error($parsed)) {
+                    $report = $parsed->get_error_data();
+                    return self::store_error_report($sources, $run_type, __('La risposta AI non era un JSON valido. Controlla il report tecnico per dettagli.', 'affiliate-link-manager-ai'), $started, wp_json_encode(array('attempts'=>$attempts,'warnings'=>$warnings,'runtime'=>$runtime,'json_error'=>$report)), $res['model'] ?? '', $runtime, $warnings);
+                }
+            }
+            $data = $parsed;
             $data = self::augment_result_sources($data, $res, $warnings, $runtime, $attempts);
             $metrics = self::build_metrics($data, $sources);
             $status = self::is_partial($data) ? 'partial' : 'success';
@@ -69,13 +83,90 @@ class ALMA_Trend_Content_Ideas_Service {
     }
 
     private static function store_error_report($sources, $run_type, $message, $started, $raw='', $model='', $runtime=array(), $warnings=array()) {
-        $data = array('sintesi_generale'=>$message,'fonti_analizzate'=>array(),'destinazioni_prioritarie'=>array(),'temi_editoriali'=>array(),'piano_editoriale_settimanale'=>array(),'opportunita_affiliate'=>array(),'bisogni_viaggiatori'=>array(),'rischi_e_limiti'=>array(array('messaggio'=>$message)),'dati_per_grafici'=>array(),'livello_confidenza'=>'basso','alert'=>array_values(array_unique(array_merge(array($message), (array)$warnings))),'fonti_citate'=>array(),'fonti_web_search'=>array(),'errore_tecnico'=>$raw,'runtime'=>self::runtime_report($runtime, array()));
+        $data = array('status'=>'error','summary'=>$message,'trends'=>array(),'content_ideas'=>array(),'citations'=>array(),'warnings'=>array_values(array_unique(array_merge(array($message), (array)$warnings))),'sintesi_generale'=>$message,'fonti_analizzate'=>array(),'destinazioni_prioritarie'=>array(),'temi_editoriali'=>array(),'piano_editoriale_settimanale'=>array(),'opportunita_affiliate'=>array(),'bisogni_viaggiatori'=>array(),'rischi_e_limiti'=>array(array('messaggio'=>$message)),'dati_per_grafici'=>array(),'livello_confidenza'=>'basso','alert'=>array_values(array_unique(array_merge(array($message), (array)$warnings))),'fonti_citate'=>array(),'fonti_web_search'=>array(),'errore_tecnico'=>$raw,'runtime'=>self::runtime_report($runtime, array()));
         $report_id = ALMA_Trend_Content_Ideas_Store::insert_report(array('report_type'=>$run_type,'title'=>self::title_for($run_type, $sources),'period_start'=>$started,'period_end'=>current_time('mysql'),'status'=>'error','summary'=>$message,'result'=>$data,'sources'=>self::source_snapshot($sources),'metrics'=>self::build_metrics($data,$sources),'model'=>$model ?: ($runtime['effective_model'] ?? self::model())));
         foreach ($sources as $src) { ALMA_Trend_Content_Ideas_Store::mark_source_ran($src['source_key'], false); ALMA_Trend_Content_Ideas_Store::log($src['source_key'], $run_type, 'error', $message, $raw, $report_id, $started); }
         return new WP_Error('trend_run_error', $message, array('report_id'=>$report_id));
     }
 
-    public static function validate_result($data) { $required=array('sintesi_generale','fonti_analizzate','destinazioni_prioritarie','temi_editoriali','piano_editoriale_settimanale','opportunita_affiliate','bisogni_viaggiatori','rischi_e_limiti','dati_per_grafici','livello_confidenza','alert','fonti_citate'); if(!is_array($data)){return new WP_Error('invalid_json', __('JSON OpenAI non valido.', 'affiliate-link-manager-ai'));} foreach($required as $key){ if(!array_key_exists($key,$data)){return new WP_Error('invalid_json', sprintf(__('JSON incompleto: manca %s.', 'affiliate-link-manager-ai'), $key));} } return true; }
+    public static function validate_result($data) {
+        $required = array('status','summary','trends','content_ideas','citations','warnings','sintesi_generale','fonti_analizzate','destinazioni_prioritarie','temi_editoriali','piano_editoriale_settimanale','opportunita_affiliate','bisogni_viaggiatori','rischi_e_limiti','dati_per_grafici','livello_confidenza','alert','fonti_citate');
+        if (!is_array($data)) { return new WP_Error('invalid_json', __('JSON OpenAI non valido.', 'affiliate-link-manager-ai')); }
+        foreach ($required as $key) { if (!array_key_exists($key, $data)) { return new WP_Error('incomplete_json', sprintf(__('JSON incompleto: manca %s.', 'affiliate-link-manager-ai'), $key)); } }
+        foreach (array('trends','content_ideas','citations','warnings','fonti_analizzate','destinazioni_prioritarie','temi_editoriali','piano_editoriale_settimanale','opportunita_affiliate','bisogni_viaggiatori','rischi_e_limiti','alert','fonti_citate') as $key) { if (!is_array($data[$key])) { return new WP_Error('incomplete_json', sprintf(__('JSON incompleto: %s deve essere un array.', 'affiliate-link-manager-ai'), $key)); } }
+        return true;
+    }
+
+    public static function parse_openai_json_response($res, $attempt=array()) {
+        $text = self::extract_response_text($res);
+        if (trim($text) === '') { return new WP_Error('empty_response', __('Risposta OpenAI vuota.', 'affiliate-link-manager-ai'), self::json_error_report($res, $attempt, 'empty_response')); }
+        $decoded = json_decode($text, true);
+        $json_error = json_last_error_msg();
+        if (!is_array($decoded)) {
+            $stripped = self::strip_json_markdown_wrapper($text);
+            if ($stripped !== $text) { $decoded = json_decode($stripped, true); $json_error = json_last_error_msg(); $text = $stripped; }
+        }
+        if (!is_array($decoded)) {
+            $category = self::looks_truncated($res, $text) ? 'truncated_output' : 'malformed_json';
+            return new WP_Error('invalid_json', __('JSON OpenAI non valido.', 'affiliate-link-manager-ai'), self::json_error_report($res, $attempt, $category, $text, $json_error));
+        }
+        $valid = self::validate_result($decoded);
+        if (is_wp_error($valid)) { return new WP_Error($valid->get_error_code(), $valid->get_error_message(), self::json_error_report($res, $attempt, 'incomplete_schema', $text, $valid->get_error_message())); }
+        return $decoded;
+    }
+
+    private static function extract_response_text($res) {
+        if (!empty($res['response'])) { return (string)$res['response']; }
+        $raw = $res['raw_response'] ?? array();
+        if (!is_array($raw)) { return ''; }
+        if (!empty($raw['output_text'])) { return (string)$raw['output_text']; }
+        $text = '';
+        foreach ((array)($raw['output'] ?? array()) as $out) {
+            foreach ((array)($out['content'] ?? array()) as $content) {
+                if (isset($content['text']) && (($content['type'] ?? '') === 'output_text' || is_string($content['text']))) { $text .= (string)$content['text']; }
+            }
+        }
+        return $text;
+    }
+
+    private static function strip_json_markdown_wrapper($text) {
+        $trimmed = trim((string)$text);
+        if (preg_match('/^```(?:json)?\s*(.*?)\s*```$/is', $trimmed, $m)) { return trim($m[1]); }
+        if (preg_match('/(\{.*\})/s', $trimmed, $m)) { return trim($m[1]); }
+        return $trimmed;
+    }
+
+    private static function looks_truncated($res, $text) {
+        $raw = $res['raw_response'] ?? array();
+        $status = strtolower((string)($raw['status'] ?? $res['status'] ?? ''));
+        $reason = strtolower((string)($raw['incomplete_details']['reason'] ?? $raw['finish_reason'] ?? $res['finish_reason'] ?? ''));
+        return strpos($status, 'incomplete') !== false || strpos($reason, 'token') !== false || strpos($reason, 'length') !== false || (trim((string)$text) !== '' && !preg_match('/[}\]]\s*$/', trim((string)$text)));
+    }
+
+    private static function json_error_report($res, $attempt=array(), $category='malformed_json', $text='', $warning='') {
+        $raw = $res['raw_response'] ?? array();
+        return array(
+            'category'=>sanitize_key($category),
+            'warning'=>sanitize_text_field((string)$warning),
+            'raw_excerpt'=>self::safe_raw_excerpt($text !== '' ? $text : self::extract_response_text($res), 1500),
+            'model'=>sanitize_text_field((string)($res['model'] ?? ($raw['model'] ?? ''))),
+            'response_id'=>sanitize_text_field((string)($raw['id'] ?? '')),
+            'status'=>sanitize_text_field((string)($raw['status'] ?? ($res['status'] ?? ''))),
+            'finish_reason'=>sanitize_text_field((string)($raw['incomplete_details']['reason'] ?? $raw['finish_reason'] ?? ($res['finish_reason'] ?? ''))),
+            'attempt_label'=>sanitize_text_field((string)($attempt['label'] ?? '')),
+            'max_output_tokens'=>absint($attempt['max_output_tokens'] ?? ($res['max_output_tokens'] ?? 0)),
+            'tool_choice'=>sanitize_text_field((string)($attempt['tool_choice'] ?? '')),
+            'include'=>array_values(array_map('sanitize_text_field', (array)($attempt['include'] ?? array()))),
+            'response_format_used'=>sanitize_text_field((string)($res['response_format_used'] ?? '')),
+        );
+    }
+
+    private static function safe_raw_excerpt($text, $limit=1500) {
+        $text = preg_replace('/Bearer\s+[A-Za-z0-9._\-]+/i', 'Bearer [redacted]', (string)$text);
+        $text = preg_replace('/sk-[A-Za-z0-9_\-]+/i', 'sk-[redacted]', $text);
+        $text = wp_strip_all_tags($text);
+        return mb_substr($text, 0, max(1, absint($limit)));
+    }
 
     public static function normalize_allowed_domains($domains, $limit = self::MAX_ALLOWED_DOMAINS) {
         $normalized = array();
@@ -149,7 +240,7 @@ class ALMA_Trend_Content_Ideas_Service {
         $attempts[] = self::attempt_summary('primary', $args);
         $res = ALMA_OpenAI_Service::request($args);
         $warnings = self::merge_openai_warnings($warnings, $res);
-        if (!empty($res['success'])) { return array('response'=>$res,'attempts'=>$attempts,'warnings'=>$warnings,'runtime'=>self::finalize_runtime($runtime, $attempts)); }
+        if (!empty($res['success'])) { return array('response'=>$res,'attempts'=>$attempts,'warnings'=>$warnings,'runtime'=>self::finalize_runtime($runtime, $attempts),'last_args'=>$args); }
         if (self::is_timeout_or_connection_error($res, $args)) {
             $retry = self::build_light_timeout_retry_args($args, $profile);
             $warnings[] = self::TIMEOUT_RETRY_WARNING;
@@ -159,7 +250,7 @@ class ALMA_Trend_Content_Ideas_Service {
             $runtime['web_search_sources_include_omitted_for_timeout'] = empty($retry['include']);
             $res = ALMA_OpenAI_Service::request($retry);
             $warnings = self::merge_openai_warnings($warnings, $res);
-            if (!empty($res['success'])) { return array('response'=>$res,'attempts'=>$attempts,'warnings'=>$warnings,'runtime'=>self::finalize_runtime($runtime, $attempts)); }
+            if (!empty($res['success'])) { return array('response'=>$res,'attempts'=>$attempts,'warnings'=>$warnings,'runtime'=>self::finalize_runtime($runtime, $attempts),'last_args'=>$retry); }
             $args = $retry;
         }
         if (self::is_tool_choice_unsupported($res)) {
@@ -168,7 +259,7 @@ class ALMA_Trend_Content_Ideas_Service {
             $attempts[] = self::attempt_summary('tool_choice_auto', $args);
             $res = ALMA_OpenAI_Service::request($args);
             $warnings = self::merge_openai_warnings($warnings, $res);
-            if (!empty($res['success'])) { return array('response'=>$res,'attempts'=>$attempts,'warnings'=>$warnings,'runtime'=>self::finalize_runtime($runtime, $attempts)); }
+            if (!empty($res['success'])) { return array('response'=>$res,'attempts'=>$attempts,'warnings'=>$warnings,'runtime'=>self::finalize_runtime($runtime, $attempts),'last_args'=>$args); }
         }
         if (self::is_filters_unsupported_error($res) && !empty($args['tools'][0]['filters'])) {
             $warnings[] = 'Il filtro domini non è stato accettato dalla chiamata OpenAI. La ricerca è stata ripetuta senza filtro dominio.';
@@ -185,8 +276,24 @@ class ALMA_Trend_Content_Ideas_Service {
             $runtime['web_search_sources_include_omitted_for_timeout'] = empty($retry['include']);
             $res = ALMA_OpenAI_Service::request($retry);
             $warnings = self::merge_openai_warnings($warnings, $res);
+            $args = $retry;
         }
-        return array('response'=>$res,'attempts'=>$attempts,'warnings'=>$warnings,'runtime'=>self::finalize_runtime($runtime, $attempts));
+        return array('response'=>$res,'attempts'=>$attempts,'warnings'=>$warnings,'runtime'=>self::finalize_runtime($runtime, $attempts),'last_args'=>$args);
+    }
+
+    private static function retry_invalid_json_response($sources, $run_type, $request, $parsed_error) {
+        $base = is_array($request['last_args'] ?? null) ? $request['last_args'] : self::build_openai_request_args($sources, $run_type);
+        $retry = $base;
+        $retry['system_prompt'] = ALMA_Trend_Content_Ideas_Prompt_Builder::system_prompt() . ' ' . self::JSON_RETRY_WARNING . ' Rispondi solo con JSON valido conforme allo schema, senza markdown o testo esterno.';
+        $retry['user_prompt'] = ALMA_Trend_Content_Ideas_Prompt_Builder::build_json_retry($sources, $run_type);
+        $retry['max_output_tokens'] = max(900, min(absint($base['max_output_tokens'] ?? 3500), 2200));
+        unset($retry['include']);
+        $attempts = (array)($request['attempts'] ?? array());
+        $attempts[] = self::attempt_summary('json_invalid_retry', $retry);
+        $warnings = array_values(array_unique(array_merge((array)($request['warnings'] ?? array()), array(self::JSON_RETRY_WARNING))));
+        $res = ALMA_OpenAI_Service::request($retry);
+        $warnings = self::merge_openai_warnings($warnings, $res);
+        return array('executed'=>true,'response'=>$res,'attempts'=>$attempts,'warnings'=>$warnings);
     }
 
     private static function build_light_timeout_retry_args($args, $profile) {
