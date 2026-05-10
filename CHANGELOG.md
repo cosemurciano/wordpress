@@ -1,12 +1,12 @@
-## 2.32.0 — Trend Idee contenuto
-- Aggiunto il nuovo modulo admin **Trend Idee contenuto** per analizzare fonti pubbliche sui trend di viaggio con OpenAI Web Search e generare report editoriali strutturati per Sothra.
-- Introdotte tabelle dedicate per configurazione fonti, report storici e log run; le fonti predefinite vengono inizializzate in modo idempotente su attivazione/upgrade.
-- Aggiunto registry iniziale di fonti Priorità 1 e Priorità 2 con domini ammessi, categoria, intervallo default, prompt specifico e stato abilitato.
-- La UI permette salvataggio prompt globale, prompt per fonte, enable/disable, intervallo giorni, test singola fonte, test completo e generazione manuale del piano editoriale.
-- Lo scheduler WP-Cron controlla solo fonti abilitate e scadute, aggiorna last/next run e usa transient lock per evitare run parallele; il caricamento admin/dashboard non avvia chiamate OpenAI.
-- I report salvano JSON validato, fonti, metriche predisposte per grafici, stato, modello e token quando disponibili; la vista report mostra sintesi, destinazioni, piano settimanale, bisogni, opportunità affiliate, rischi, fonti citate e JSON tecnico collassabile.
-- Aggiunto box **Trend Idee contenuto** nella dashboard principale del plugin con ultimo report, conteggi, top destinazioni, top idee, alert e link rapidi.
-- Versione plugin aggiornata a `2.32.0`.
+## 2.32.1 — Fix Trend Idee contenuto Web Search
+- Corretto l’errore OpenAI `Unsupported parameter 'filters'` nel test fonti del modulo **Trend Idee contenuto**.
+- Migrata l’integrazione Responses API del modulo da `web_search_preview` a `web_search`, applicando `filters.allowed_domains` solo al nuovo tool compatibile.
+- Aggiunta normalizzazione dei domini sorgente prima dell’invio a OpenAI, con deduplica, rimozione di protocollo/path/query/fragment e limite massimo dei domini ammessi.
+- Aggiunto `include: ["web_search_call.action.sources"]` per salvare nel report citazioni e fonti Web Search consultate quando disponibili.
+- Aggiunto fallback automatico: se OpenAI rifiuta `filters`, la stessa run viene ripetuta una sola volta senza filtro dominio e registra un warning nel report/log.
+- Migliorati messaggi errore UI e log admin, mantenendo il dettaglio tecnico in una sezione collassabile del report.
+- Aggiornato il modello consigliato di default per nuove configurazioni del modulo a `gpt-5.5`, senza bloccare modelli già salvati come `gpt-5.4`.
+- Versione plugin aggiornata a `2.32.1`.
 
 ## 2.31.0 — Filtro CSV GYG prima dell’importazione
 - Aggiunto il box **Filtra contenuti prima dell’importazione** nella schermata aperta dopo **Importa / continua**, sopra la tabella **Risultati Anteprima**.

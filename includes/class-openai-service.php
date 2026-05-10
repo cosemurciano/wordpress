@@ -27,6 +27,12 @@ class ALMA_OpenAI_Service {
         if (!empty($args['tools']) && is_array($args['tools'])) {
             $body['tools'] = $args['tools'];
         }
+        if (!empty($args['include']) && is_array($args['include'])) {
+            $body['include'] = array_values(array_map('sanitize_text_field', $args['include']));
+        }
+        if (!empty($args['tool_choice'])) {
+            $body['tool_choice'] = is_array($args['tool_choice']) ? $args['tool_choice'] : sanitize_text_field((string)$args['tool_choice']);
+        }
         if ($temperature >= 0 && $temperature <= 2) { $body['temperature'] = $temperature; }
 
         $response_format_used = 'none';
@@ -59,7 +65,7 @@ class ALMA_OpenAI_Service {
             elseif ($code === 408) { $error_code = 'timeout'; }
             elseif (strpos($error_msg_l, 'response_format') !== false) { $error_code = 'response_format_unsupported'; }
             elseif (strpos($error_msg_l, 'model') !== false && strpos($error_msg_l, 'support') !== false) { $error_code = 'model_unsupported'; }
-            return array('success'=>false,'error'=>sanitize_text_field($err),'error_code'=>$error_code,'error_type'=>$error_type,'error_category'=>'api','http_status'=>$code,'response_time'=>$rt,'model'=>$model,'max_output_tokens'=>$max_output_tokens,'response_format_used'=>$response_format_used);
+            return array('success'=>false,'error'=>sanitize_text_field($err),'error_code'=>$error_code,'error_type'=>$error_type,'error_category'=>'api','http_status'=>$code,'response_time'=>$rt,'model'=>$model,'max_output_tokens'=>$max_output_tokens,'response_format_used'=>$response_format_used,'raw_response'=>$data);
         }
         $text = '';
         if (!empty($data['output_text'])) { $text = (string)$data['output_text']; }
@@ -69,6 +75,6 @@ class ALMA_OpenAI_Service {
             }
         }
         if (trim($text) === '') return array('success'=>false,'error'=>__('Risposta AI vuota', 'affiliate-link-manager-ai'),'error_code'=>'empty_response','error_category'=>'api','response_time'=>$rt,'model'=>$data['model'] ?? $model,'max_output_tokens'=>$max_output_tokens,'response_format_used'=>$response_format_used);
-        return array('success'=>true,'response'=>$text,'model'=>$data['model'] ?? $model,'response_time'=>$rt,'usage'=>$data['usage'] ?? null,'max_output_tokens'=>$max_output_tokens,'response_format_used'=>$response_format_used);
+        return array('success'=>true,'response'=>$text,'model'=>$data['model'] ?? $model,'response_time'=>$rt,'usage'=>$data['usage'] ?? null,'max_output_tokens'=>$max_output_tokens,'response_format_used'=>$response_format_used,'raw_response'=>$data);
     }
 }
