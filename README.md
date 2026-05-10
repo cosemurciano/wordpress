@@ -1,3 +1,15 @@
+## 2.35.0 - 2026-05-10
+- Corretto il bug delle metriche fonti Trend: `fonti_analizzate` non deriva più da `fonti_citate`; per `editorial_plan` senza `fonti_interrogate` il report usa lo snapshot runtime delle fonti incluse nella run.
+- Le metriche distinguono fonti configurate, interrogate, citate, saltate, senza risultati, non raggiungibili e da verificare. `count_fonti_analizzate` resta solo per compatibilità come alias di `count_fonti_interrogate`.
+- Il dettaglio report conserva tutte le fonti configurate/incluse nella run anche quando non citate e mostra un messaggio diagnostico per le fonti incluse ma prive di citazioni.
+- Aggiunta la tab **Fonti Trend** con CRUD completo: aggiunta, modifica, duplicazione, attivazione/disattivazione, eliminazione sicura/soft delete, test accessibilità tecnico e test fonte AI esplicito.
+- Esteso lo store fonti con campi diagnostici e gestionali (`enabled`, `status`, `area_geografica`, `notes`, `last_tested_at`, `last_test_status`, `last_test_message`, `last_result_count`, `last_citation_url`, `created_by`, `updated_at`) mantenendo seeding idempotente e senza sovrascrivere modifiche manuali.
+- Stati fonte documentati in UI: Attiva, Disattivata, Da verificare, Funzionante, Nessun risultato recente, Non raggiungibile/bloccata, Dominio troppo generico, Dominio non coerente.
+- Il test accessibilità tecnico usa solo richieste WordPress leggere verso i domini configurati, con timeout breve e senza OpenAI; il test fonte AI aggiorna la diagnostica solo su azione esplicita.
+- Le run complete e i piani editoriali usano solo fonti abilitate e non in revisione; le fonti disattivate/inactive sono escluse, mentre una fonte specifica resta testabile manualmente.
+- Report e dashboard mostrano la diagnostica fonti, incluse fino a 5 “Fonti da verificare” in dashboard leggendo solo dati salvati.
+- Versione plugin aggiornata a `2.35.0`.
+
 ## 2.34.0 - 2026-05-10
 - Arricchito il modulo **Trend Idee contenuto**: `source_test` resta diagnostico e compatto, `full_test` usa uno schema più ampio per report utili a Sothra, `editorial_plan` diventa il profilo operativo per pianificazione editoriale.
 - `full_test` ora richiede, se i dati lo consentono, almeno 6 trend, 8 idee editoriali, 5 bisogni viaggiatori, 5 opportunità affiliate, 4 rischi/limiti e 6 citazioni, con warning espliciti quando le fonti non bastano.
