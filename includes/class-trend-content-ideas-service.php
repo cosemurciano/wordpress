@@ -73,6 +73,10 @@ class ALMA_Trend_Content_Ideas_Service {
             }
             $data = $parsed;
             $data = self::augment_result_sources($data, $res, $warnings, $runtime, $attempts);
+            if (empty($data['fonti_interrogate'])) {
+                $data['fonti_interrogate'] = wp_list_pluck(self::source_snapshot($sources), 'name');
+            }
+            $data['fonti_analizzate'] = $data['fonti_interrogate'];
             $metrics = self::build_metrics($data, $sources);
             $status = self::is_partial($data) ? 'partial' : 'success';
             $report_id = ALMA_Trend_Content_Ideas_Store::insert_report(array(
@@ -80,6 +84,7 @@ class ALMA_Trend_Content_Ideas_Service {
                 'result'=>$data,'sources'=>self::source_snapshot($sources),'metrics'=>$metrics,'model'=>$res['model'] ?? self::model(),'tokens_used'=>self::tokens_used($res['usage'] ?? null),
             ));
             $log_raw = wp_json_encode(array('attempts'=>$attempts,'warnings'=>$warnings,'runtime'=>$runtime,'sources_count'=>count($data['fonti_web_search'] ?? array())));
+            self::update_run_source_diagnostics($sources, $metrics);
             foreach ($sources as $src) { ALMA_Trend_Content_Ideas_Store::mark_source_ran($src['source_key'], true); ALMA_Trend_Content_Ideas_Store::log($src['source_key'], $run_type, $status, 'Analisi completata in ' . round(microtime(true)-$start_time, 1) . 's. Domini normalizzati: ' . implode(', ', self::allowed_domains(array($src))), $log_raw, $report_id, $started); }
             return array('success'=>true,'status'=>$status,'report_id'=>$report_id,'sources_count'=>count($sources),'duration'=>round(microtime(true)-$start_time,1),'sources'=>wp_list_pluck($sources, 'name'));
         } finally { delete_transient(self::LOCK_KEY); }
@@ -198,7 +203,8 @@ class ALMA_Trend_Content_Ideas_Service {
             $data['temi_editoriali'] = $data['temi_editoriali'] ?? ($data['cluster_tematici'] ?? array());
             $data['alert'] = $data['alert'] ?? ($data['warnings'] ?? array());
             $data['livello_confidenza'] = $data['livello_confidenza'] ?? '';
-            $data['fonti_analizzate'] = $data['fonti_analizzate'] ?? ($data['fonti_citate'] ?? array());
+            if (!isset($data['fonti_interrogate'])) { $data['fonti_interrogate'] = array(); }
+            $data['fonti_analizzate'] = $data['fonti_interrogate'];
         } elseif ($schema_profile === 'full_test') {
             $data['sintesi_generale'] = $data['sintesi_generale'] ?? ($data['summary'] ?? '');
             $data['trend_principali'] = $data['trend_principali'] ?? ($data['trends'] ?? array());
@@ -435,7 +441,7 @@ class ALMA_Trend_Content_Ideas_Service {
     private static function is_tool_choice_unsupported($res) { $m = strtolower((string)($res['error'] ?? '')); return strpos($m, 'tool_choice') !== false && (strpos($m, 'unsupported') !== false || strpos($m, 'not supported') !== false); }
     private static function friendly_openai_error($res, $attempts=array(), $runtime=array()) { $message = is_array($res) ? ($res['error'] ?? 'Errore OpenAI') : $res; if (self::is_timeout_or_connection_error(is_array($res) ? $res : array('error'=>$message))) { $retry = !empty($runtime['timeout_retry_used']) ? ' È stato tentato un retry alleggerito.' : ''; return sprintf(__('La chiamata OpenAI è andata in timeout o ha avuto un errore di connessione.%s Modello effettivo usato: %s. Dettaglio tecnico disponibile nel report.', 'affiliate-link-manager-ai'), $retry, sanitize_text_field((string)($runtime['effective_model'] ?? self::model()))); } if (self::is_filters_unsupported_error(array('error'=>$message))) { return __('Errore OpenAI: il parametro filters non è supportato dal tool web search usato. Aggiorna la configurazione o verifica il tool OpenAI.', 'affiliate-link-manager-ai'); } if (self::is_sampling_unsupported_error(array('error'=>$message))) { return __('Errore OpenAI: il modello selezionato non supporta uno o più parametri sampling. Il dettaglio tecnico è disponibile nel report.', 'affiliate-link-manager-ai'); } return sprintf(__('Errore OpenAI: %s', 'affiliate-link-manager-ai'), sanitize_text_field((string)$message)); }
     private static function is_sampling_unsupported_error($res) { $m = strtolower((string)($res['error'] ?? '')); if (strpos($m, 'unsupported parameter') === false && strpos($m, 'not supported') === false && strpos($m, 'unknown parameter') === false) { return false; } foreach (array('temperature','top_p','presence_penalty','frequency_penalty') as $key) { if (strpos($m, $key) !== false) { return true; } } return false; }
-    private static function source_snapshot($sources) { return array_map(function($s){ return array('source_key'=>$s['source_key'],'name'=>$s['name'],'priority'=>ALMA_Trend_Content_Ideas_Store::normalize_priority($s['priority'] ?? 2),'max_contents_per_run'=>ALMA_Trend_Content_Ideas_Store::normalize_max_contents_per_run($s['max_contents_per_run'] ?? 3),'category'=>$s['category'],'allowed_domains'=>ALMA_Trend_Content_Ideas_Store::decode_json($s['allowed_domains']),'normalized_allowed_domains'=>self::normalize_allowed_domains(ALMA_Trend_Content_Ideas_Store::decode_json($s['allowed_domains']))); }, self::normalize_sources($sources)); }
+    private static function source_snapshot($sources) { return array_map(function($s){ return array('source_key'=>$s['source_key'],'name'=>$s['name'],'priority'=>ALMA_Trend_Content_Ideas_Store::normalize_priority($s['priority'] ?? 2),'max_contents_per_run'=>ALMA_Trend_Content_Ideas_Store::normalize_max_contents_per_run($s['max_contents_per_run'] ?? 3),'category'=>$s['category'],'area_geografica'=>$s['area_geografica'] ?? '','enabled'=>(int)($s['enabled'] ?? 1),'status'=>$s['status'] ?? 'active','allowed_domains'=>ALMA_Trend_Content_Ideas_Store::decode_json($s['allowed_domains']),'normalized_allowed_domains'=>self::normalize_allowed_domains(ALMA_Trend_Content_Ideas_Store::decode_json($s['allowed_domains']))); }, self::normalize_sources($sources)); }
     private static function title_for($run_type, $sources) { return ($run_type === 'test' ? 'Test Trend Idee contenuto' : 'Report Trend Idee contenuto') . ' - ' . count($sources) . ' fonti'; }
     public static function effective_model() { $details = self::effective_model_details(); return $details['effective_model']; }
     public static function effective_model_details() { $trend_model = trim((string)get_option(ALMA_Trend_Content_Ideas_Store::OPTION_MODEL, '')); $global_model = trim((string)get_option('alma_openai_model', '')); $manual = get_option(ALMA_Trend_Content_Ideas_Store::OPTION_MODEL_MANUAL, '') === '1'; $legacy_ignored = ($trend_model === self::LEGACY_SEEDED_MODEL && !$manual); if ($legacy_ignored) { return array('trend_model_saved'=>$trend_model,'global_model'=>$global_model,'effective_model'=>$global_model !== '' ? $global_model : self::FALLBACK_MODEL,'using_global_model'=>$global_model !== '','using_fallback'=>$global_model === '','legacy_ignored'=>true,'legacy_warning'=>self::LEGACY_MODEL_WARNING); } if ($trend_model !== '') { return array('trend_model_saved'=>$trend_model,'global_model'=>$global_model,'effective_model'=>$trend_model,'using_global_model'=>false,'using_fallback'=>false,'legacy_ignored'=>false,'legacy_warning'=>''); } return array('trend_model_saved'=>$trend_model,'global_model'=>$global_model,'effective_model'=>$global_model !== '' ? $global_model : self::FALLBACK_MODEL,'using_global_model'=>$global_model !== '','using_fallback'=>$global_model === '','legacy_ignored'=>false,'legacy_warning'=>''); }
@@ -526,6 +532,8 @@ class ALMA_Trend_Content_Ideas_Service {
             'count_fonti_citate'=>$source_usage['counts']['cited'],
             'count_fonti_saltate'=>$source_usage['counts']['skipped'],
             'count_fonti_senza_risultati'=>$source_usage['counts']['without_results'],
+            'count_fonti_non_raggiungibili'=>$source_usage['counts']['unreachable'],
+            'count_fonti_da_verificare'=>$source_usage['counts']['needs_review'],
             'count_fonti_analizzate'=>$source_usage['counts']['interrogated'],
             'count_trend'=>count($trends),
             'count_idee_editoriali'=>count($ideas),
@@ -545,9 +553,9 @@ class ALMA_Trend_Content_Ideas_Service {
         $sources = self::normalize_sources($sources);
         $cited_items = array_merge((array)($data['fonti_web_search'] ?? array()), (array)($data['fonti_citate'] ?? array()), (array)($data['citations'] ?? array()));
         $configured_names = self::strings_lower((array)($data['fonti_configurate'] ?? array()));
-        $interrogated_names = self::strings_lower((array)($data['fonti_interrogate'] ?? $data['fonti_analizzate'] ?? array()));
+        $interrogated_names = self::strings_lower((array)($data['fonti_interrogate'] ?? array()));
         $skipped_names = self::strings_lower((array)($data['fonti_saltate'] ?? array()));
-        $details = array(); $counts = array('configured'=>count($sources),'interrogated'=>0,'cited'=>0,'skipped'=>0,'without_results'=>0);
+        $details = array(); $counts = array('configured'=>count($sources),'interrogated'=>0,'cited'=>0,'skipped'=>0,'without_results'=>0,'unreachable'=>0,'needs_review'=>0);
         $default_interrogated = sanitize_key((string)($data['status'] ?? 'success')) !== 'error';
         foreach ($sources as $source) {
             $domains = self::normalize_allowed_domains($source['normalized_allowed_domains'] ?? ALMA_Trend_Content_Ideas_Store::decode_json($source['allowed_domains'] ?? '[]'));
@@ -561,6 +569,11 @@ class ALMA_Trend_Content_Ideas_Service {
             if ($is_cited) { $counts['cited']++; }
             if ($is_skipped) { $counts['skipped']++; }
             if ($is_interrogated && !$is_cited) { $counts['without_results']++; }
+            $status = sanitize_key((string)($source['status'] ?? 'active'));
+            $is_unreachable = in_array($status, array('blocked_or_unreachable','domain_mismatch'), true);
+            $needs_review = in_array($status, array('needs_review','no_recent_results','domain_too_broad','domain_mismatch','error'), true) || $is_unreachable;
+            if ($is_unreachable) { $counts['unreachable']++; }
+            if ($needs_review) { $counts['needs_review']++; }
             $details[] = array(
                 'source_key'=>$source_key,
                 'name'=>$name,
@@ -569,6 +582,10 @@ class ALMA_Trend_Content_Ideas_Service {
                 'cited'=>$is_cited,
                 'without_results'=>$is_interrogated && !$is_cited,
                 'skipped'=>$is_skipped,
+                'unreachable'=>$is_unreachable,
+                'needs_review'=>$needs_review,
+                'status'=>$status,
+                'message'=>!$is_cited ? __('Fonte inclusa nella run ma senza citazioni associate. Potrebbe non aver prodotto risultati utili o non essere stata selezionata dalla Web Search.', 'affiliate-link-manager-ai') : '',
                 'matched_citations'=>array_slice($matches, 0, 5),
             );
         }
@@ -612,6 +629,59 @@ class ALMA_Trend_Content_Ideas_Service {
             if ($matched) { $matches[] = $item; }
         }
         return $matches;
+    }
+
+
+    public static function test_source_accessibility($source_key) {
+        $src = ALMA_Trend_Content_Ideas_Store::get_source($source_key);
+        if (!$src) { return new WP_Error('missing_source', __('Fonte non trovata.', 'affiliate-link-manager-ai')); }
+        $domains = self::normalize_allowed_domains(ALMA_Trend_Content_Ideas_Store::decode_json($src['allowed_domains'] ?? '[]'));
+        if (!$domains) { return new WP_Error('missing_domains', __('Nessun dominio configurato per la fonte.', 'affiliate-link-manager-ai')); }
+        $messages = array(); $reachable = 0; $blocked = 0; $errors = 0;
+        foreach ($domains as $domain) {
+            $url = 'https://' . $domain . '/';
+            $response = wp_remote_head($url, array('timeout'=>5,'redirection'=>2,'user-agent'=>'WordPress/ALMA Trend Source Diagnostics'));
+            if (is_wp_error($response)) {
+                $response = wp_remote_get($url, array('timeout'=>5,'redirection'=>2,'user-agent'=>'WordPress/ALMA Trend Source Diagnostics','limit_response_size'=>2048));
+            }
+            if (is_wp_error($response)) {
+                $errors++;
+                $messages[] = sprintf('%s: %s', $domain, $response->get_error_message());
+                continue;
+            }
+            $code = (int)wp_remote_retrieve_response_code($response);
+            if ($code >= 200 && $code < 400) { $reachable++; }
+            elseif (in_array($code, array(401,403,429), true)) { $blocked++; }
+            else { $errors++; }
+            $messages[] = sprintf('%s: HTTP %d', $domain, $code);
+        }
+        $status = 'needs_review';
+        if ($reachable > 0) { $status = 'working'; }
+        elseif ($blocked > 0) { $status = 'blocked_or_unreachable'; }
+        elseif ($errors > 0) { $status = 'blocked_or_unreachable'; }
+        $message = implode('; ', $messages);
+        ALMA_Trend_Content_Ideas_Store::update_source_diagnostics($source_key, $status, $message, $reachable, '');
+        return array('status'=>$status,'message'=>$message,'reachable'=>$reachable,'blocked'=>$blocked,'errors'=>$errors);
+    }
+
+    private static function update_run_source_diagnostics($sources, $metrics) {
+        $details = (array)($metrics['fonti_dettaglio'] ?? array());
+        foreach ($sources as $source) {
+            $source_key = (string)($source['source_key'] ?? '');
+            $detail = array();
+            foreach ($details as $item) { if (($item['source_key'] ?? '') === $source_key) { $detail = $item; break; } }
+            if (!$detail) { continue; }
+            $matches = (array)($detail['matched_citations'] ?? array());
+            $citation_url = '';
+            if (!empty($matches[0]['url'])) { $citation_url = $matches[0]['url']; }
+            $current_status = sanitize_key((string)($source['status'] ?? 'active'));
+            if (!empty($detail['cited'])) { $status = 'working'; $message = __('La fonte ha prodotto citazioni nella run AI/Web Search.', 'affiliate-link-manager-ai'); }
+            elseif ($current_status === 'domain_too_broad') { $status = 'domain_too_broad'; $message = __('Fonte interrogata ma senza citazioni; dominio troppo generico o poco selettivo.', 'affiliate-link-manager-ai'); }
+            elseif (!empty($detail['without_results'])) { $status = 'no_recent_results'; $message = __('Fonte interrogata ma senza citazioni recenti utili.', 'affiliate-link-manager-ai'); }
+            elseif (!empty($detail['skipped'])) { $status = 'needs_review'; $message = __('Fonte saltata dalla run: verifica configurazione e stato.', 'affiliate-link-manager-ai'); }
+            else { $status = 'needs_review'; $message = __('Diagnostica AI non conclusiva per questa fonte.', 'affiliate-link-manager-ai'); }
+            ALMA_Trend_Content_Ideas_Store::update_source_diagnostics($source_key, $status, $message, count($matches), $citation_url);
+        }
     }
 
 }
