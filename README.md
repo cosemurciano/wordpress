@@ -1,12 +1,11 @@
-## 2.32.3 — Migrazione modello legacy e timeout Trend Idee contenuto
-- Aggiunta migrazione idempotente per il valore legacy `alma_trend_content_model = gpt-5.5` seedato dalle versioni precedenti: il valore resta salvato per compatibilità, ma viene ignorato quando non esiste evidenza di configurazione manuale successiva.
-- In caso di legacy ignorato, il modulo **Trend Idee contenuto** usa il modello globale OpenAI se presente oppure il fallback conservativo `gpt-5.4-mini`, registrando il warning leggibile nel report/log.
-- La UI Trend mostra modello Trend salvato, modello globale, modello effettivo, uso del globale/fallback e avviso quando il legacy viene ignorato.
-- Introdotti profili runtime separati `source_test`, `full_test` ed `editorial_plan`: il test fonte usa output compatto e non eredita i 6000 token del piano editoriale; il test completo usa parametri intermedi; il piano editoriale mantiene output strutturato più ampio.
-- Aggiunto retry singolo alleggerito su timeout/errori di connessione OpenAI con `tool_choice: auto`, `max_output_tokens` ridotto e senza `include: ["web_search_call.action.sources"]` quando contribuisce al timeout, mantenendo `web_search` e i filtri dominio dove supportati.
-- Il report espone max token, `tool_choice`, retry timeout, inclusione/omissione fonti Web Search, modello effettivo e dettaglio tecnico raw; i messaggi utente spiegano timeout, retry e modello usato invece di limitarsi a “Errore connessione AI”.
-- Mantenuta compatibilità con `web_search`, `filters.allowed_domains` dove supportato, fallback senza filtri, fallback `tool_choice: required` → `auto`, normalizzazione sampling e omissione `temperature` per modelli GPT-5.x/reasoning.
-- Versione plugin aggiornata a `2.32.3`.
+## 2.33.0 — Limiti contenuti e priorità fonti Trend Idee contenuto
+- Aggiunto per ogni fonte Trend il campo persistente `max_contents_per_run`, configurabile da 1 a 10, con default 3 e valori iniziali conservativi: 4 per fonti prioritarie e 3 per fonti medie.
+- Chiarito in UI e prompt che per “contenuti” si intendono risultati, pagine, articoli, comunicati, report o documenti informativi consultabili dalla ricerca web durante una singola analisi Trend; non indica articoli WordPress generati, bozze o idee editoriali finali.
+- Resa editabile la priorità fonte in admin con valori 1 = alta, 2 = media, 3 = bassa e normalizzazione dei valori non validi.
+- Il prompt OpenAI ora include `max_contents_per_run` per ogni fonte e istruisce Web Search a non superare il limite per singola fonte e singola run.
+- I report Trend mostrano per ogni fonte nome, priorità, quantità contenuti configurata, domini consentiti e fonti consultate/citate quando disponibili.
+- Impatto atteso: limiti più bassi riducono token, tempi di risposta e rischio timeout; valori consigliati 2 per fonti secondarie, 3 per fonti standard, 4 per fonti ad alta priorità, evitando valori oltre 5 salvo necessità specifiche.
+- Versione plugin aggiornata a `2.33.0`.
 
 ## 2.32.2 — Fix compatibilità modelli OpenAI Trend Idee contenuto
 - Corretto l’errore OpenAI `Unsupported parameter: temperature` omettendo automaticamente i parametri sampling non compatibili con modelli GPT-5.x/reasoning.

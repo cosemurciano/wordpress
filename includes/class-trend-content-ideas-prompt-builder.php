@@ -7,7 +7,7 @@ class ALMA_Trend_Content_Ideas_Prompt_Builder {
     }
 
     public static function system_prompt() {
-        return 'Sei il modulo Trend Idee contenuto di Sothra. Devi usare OpenAI Web Search solo sulle fonti/domìni ammessi quando indicati. Non copiare testi dalle fonti. Non inventare dati, numeri, link o citazioni. Se i dati sono parziali devi dichiararlo. Devi indicare livello di confidenza, fonti citate e limiti. Proponi contenuti per viaggiatori italiani e coerenti con Sothra. Proponi opportunità affiliate solo se pertinenti. Non generare bozze WordPress, post, HTML o contenuti da pubblicare automaticamente. Rispondi esclusivamente con JSON valido conforme allo schema richiesto.';
+        return 'Sei il modulo Trend Idee contenuto di Sothra. Devi usare OpenAI Web Search solo sulle fonti/domìni ammessi quando indicati. Per contenuti informativi si intendono risultati, pagine, articoli, comunicati, report o documenti informativi consultabili dalla ricerca web; non sono articoli WordPress generati, bozze o idee editoriali finali. Per ogni fonte rispetta max_contents_per_run: non analizzare né sintetizzare più di quel numero di contenuti informativi provenienti dalla fonte indicata durante una singola run. Il limite è per singola fonte e per singola run e non rappresenta il numero di idee editoriali da generare. Non copiare testi dalle fonti. Non inventare dati, numeri, link o citazioni. Se i dati sono parziali devi dichiararlo. Devi indicare livello di confidenza, fonti citate e limiti. Proponi contenuti per viaggiatori italiani e coerenti con Sothra. Proponi opportunità affiliate solo se pertinenti. Non generare bozze WordPress, post, HTML o contenuti da pubblicare automaticamente. Rispondi esclusivamente con JSON valido conforme allo schema richiesto.';
     }
 
     public static function build($sources, $run_type = 'manual') {
@@ -15,9 +15,11 @@ class ALMA_Trend_Content_Ideas_Prompt_Builder {
         $source_lines = array();
         foreach ($sources as $src) {
             $domains = implode(', ', ALMA_Trend_Content_Ideas_Store::decode_json($src['allowed_domains'] ?? '[]'));
-            $source_lines[] = '- ' . $src['name'] . ' [' . $src['source_key'] . '] priorità ' . $src['priority'] . ', categoria ' . $src['category'] . ', domini: ' . $domains . '. Prompt fonte: ' . trim((string)$src['custom_prompt']);
+            $max_contents = ALMA_Trend_Content_Ideas_Store::normalize_max_contents_per_run($src['max_contents_per_run'] ?? 3);
+            $priority = ALMA_Trend_Content_Ideas_Store::normalize_priority($src['priority'] ?? 2);
+            $source_lines[] = '- ' . $src['name'] . ' [' . $src['source_key'] . '] priorità ' . $priority . ', max_contents_per_run ' . $max_contents . ', categoria ' . $src['category'] . ', domini: ' . $domains . '. Prompt fonte: ' . trim((string)$src['custom_prompt']);
         }
-        return "Prompt globale admin:\n" . $global . "\n\nTipo run: " . sanitize_key($run_type) . "\nPeriodo: ultimi 30-90 giorni, privilegiando segnali recenti e verificabili.\n\nFonti abilitate da analizzare:\n" . implode("\n", $source_lines) . "\n\nOutput richiesto: JSON strutturato con i campi obbligatori dello schema. Ogni idea deve essere concreta, utile a viaggiatori italiani e non deve creare bozze WordPress.";
+        return "Prompt globale admin:\n" . $global . "\n\nTipo run: " . sanitize_key($run_type) . "\nPeriodo: ultimi 30-90 giorni, privilegiando segnali recenti e verificabili.\n\nDefinizione operativa: i contenuti informativi sono pagine, articoli, comunicati, report, documenti o risultati che puoi consultare/sintetizzare tramite Web Search; non sono bozze WordPress, articoli WordPress generati o idee editoriali finali. Per ogni fonte rispetta max_contents_per_run: non analizzare né sintetizzare più di quel numero di contenuti informativi della fonte indicata nella singola run.\n\nFonti abilitate da analizzare:\n" . implode("\n", $source_lines) . "\n\nOutput richiesto: JSON strutturato con i campi obbligatori dello schema. Ogni idea deve essere concreta, utile a viaggiatori italiani e non deve creare bozze WordPress.";
     }
 
     public static function response_schema() {
