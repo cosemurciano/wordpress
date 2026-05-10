@@ -16,6 +16,7 @@ class ALMA_Trend_Content_Ideas_Store {
             name VARCHAR(190) NOT NULL,
             enabled TINYINT(1) NOT NULL DEFAULT 1,
             priority TINYINT UNSIGNED NOT NULL DEFAULT 1,
+            max_contents_per_run TINYINT UNSIGNED NOT NULL DEFAULT 3,
             category VARCHAR(120) NOT NULL DEFAULT '',
             allowed_domains LONGTEXT NULL,
             interval_days INT UNSIGNED NOT NULL DEFAULT 7,
@@ -57,6 +58,7 @@ class ALMA_Trend_Content_Ideas_Store {
             PRIMARY KEY (id), KEY source_started (source_key,started_at), KEY report_id (report_id), KEY status_started (status,started_at)
         ) $c;");
         self::seed_sources();
+        self::normalize_existing_sources();
         if (get_option(self::OPTION_GLOBAL_PROMPT, null) === null) {
             update_option(self::OPTION_GLOBAL_PROMPT, ALMA_Trend_Content_Ideas_Prompt_Builder::default_global_prompt());
         }
@@ -70,7 +72,7 @@ class ALMA_Trend_Content_Ideas_Store {
             if ($exists) { continue; }
             $wpdb->insert(self::table('sources'), array(
                 'source_key'=>sanitize_key($src['key']),'name'=>sanitize_text_field($src['name']),'enabled'=>(int)$src['enabled'],
-                'priority'=>absint($src['priority']),'category'=>sanitize_text_field($src['category']),'allowed_domains'=>wp_json_encode(self::domains_to_array($src['domains'])),
+                'priority'=>self::normalize_priority($src['priority']),'max_contents_per_run'=>self::normalize_max_contents_per_run($src['max_contents_per_run'] ?? 3),'category'=>sanitize_text_field($src['category']),'allowed_domains'=>wp_json_encode(self::domains_to_array($src['domains'])),
                 'interval_days'=>absint($src['days']),'next_run_at'=>gmdate('Y-m-d H:i:s', current_time('timestamp') + DAY_IN_SECONDS * absint($src['days'])),
                 'custom_prompt'=>sanitize_textarea_field($src['prompt']),'description'=>sanitize_text_field($src['description']),'status'=>'active','created_at'=>$now,'updated_at'=>$now,
             ));
@@ -89,9 +91,34 @@ class ALMA_Trend_Content_Ideas_Store {
         foreach ($sources as $src) {
             $key = $src['source_key']; $enabled = isset($post['sources'][$key]['enabled']) ? 1 : 0;
             $interval = max(1, min(365, absint($post['sources'][$key]['interval_days'] ?? $src['interval_days'])));
+            $priority = self::normalize_priority($post['sources'][$key]['priority'] ?? null, self::normalize_priority($src['priority'] ?? 2));
+            $max_contents = self::normalize_max_contents_per_run($post['sources'][$key]['max_contents_per_run'] ?? null, self::normalize_max_contents_per_run($src['max_contents_per_run'] ?? 3));
             $prompt = sanitize_textarea_field($post['sources'][$key]['custom_prompt'] ?? $src['custom_prompt']);
-            $wpdb->update(self::table('sources'), array('enabled'=>$enabled,'interval_days'=>$interval,'custom_prompt'=>$prompt,'updated_at'=>$now), array('source_key'=>$key));
+            $wpdb->update(self::table('sources'), array('enabled'=>$enabled,'priority'=>$priority,'max_contents_per_run'=>$max_contents,'interval_days'=>$interval,'custom_prompt'=>$prompt,'updated_at'=>$now), array('source_key'=>$key));
         }
+    }
+
+
+    public static function normalize_priority($value, $fallback = 2) {
+        $priority = absint($value);
+        if ($priority >= 1 && $priority <= 3) { return $priority; }
+        $fallback = absint($fallback);
+        return ($fallback >= 1 && $fallback <= 3) ? $fallback : 2;
+    }
+
+    public static function normalize_max_contents_per_run($value, $fallback = 3) {
+        $max = absint($value);
+        if ($max >= 1 && $max <= 10) { return $max; }
+        if ($max > 10) { return 10; }
+        $fallback = absint($fallback);
+        return ($fallback >= 1 && $fallback <= 10) ? $fallback : 3;
+    }
+
+    private static function normalize_existing_sources() {
+        global $wpdb; $table = self::table('sources'); $now = current_time('mysql');
+        $wpdb->query("UPDATE $table SET priority = 2, updated_at = '$now' WHERE priority IS NULL OR priority < 1 OR priority > 3");
+        $wpdb->query("UPDATE $table SET max_contents_per_run = 3, updated_at = '$now' WHERE max_contents_per_run IS NULL OR max_contents_per_run < 1");
+        $wpdb->query("UPDATE $table SET max_contents_per_run = 10, updated_at = '$now' WHERE max_contents_per_run > 10");
     }
 
     public static function mark_source_ran($key, $ok = true) { global $wpdb; $src=self::get_source($key); if (!$src) { return; } $now=current_time('mysql'); $next=gmdate('Y-m-d H:i:s', current_time('timestamp') + DAY_IN_SECONDS * max(1, absint($src['interval_days']))); $wpdb->update(self::table('sources'), array('last_run_at'=>$now,'next_run_at'=>$next,'status'=>$ok?'active':'error','updated_at'=>$now), array('source_key'=>sanitize_key($key))); }

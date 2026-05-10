@@ -1,3 +1,12 @@
+## 2.33.0 — Limiti contenuti e priorità fonti Trend Idee contenuto
+- Aggiunto per ogni fonte Trend il campo persistente `max_contents_per_run`, configurabile da 1 a 10, con default 3 e valori iniziali conservativi: 4 per fonti prioritarie e 3 per fonti medie.
+- Chiarito in UI e prompt che per “contenuti” si intendono risultati, pagine, articoli, comunicati, report o documenti informativi consultabili dalla ricerca web durante una singola analisi Trend; non indica articoli WordPress generati, bozze o idee editoriali finali.
+- Resa editabile la priorità fonte in admin con valori 1 = alta, 2 = media, 3 = bassa e normalizzazione dei valori non validi.
+- Il prompt OpenAI ora include `max_contents_per_run` per ogni fonte e istruisce Web Search a non superare il limite per singola fonte e singola run.
+- I report Trend mostrano per ogni fonte nome, priorità, quantità contenuti configurata, domini consentiti e fonti consultate/citate quando disponibili.
+- Impatto atteso: limiti più bassi riducono token, tempi di risposta e rischio timeout; valori consigliati 2 per fonti secondarie, 3 per fonti standard, 4 per fonti ad alta priorità, evitando valori oltre 5 salvo necessità specifiche.
+- Versione plugin aggiornata a `2.33.0`.
+
 ## 2.32.2 — Fix compatibilità modelli OpenAI Trend Idee contenuto
 - Corretto l’errore OpenAI `Unsupported parameter: temperature` omettendo automaticamente i parametri sampling non compatibili con modelli GPT-5.x/reasoning.
 - Rimosso il default hardcoded `gpt-5.5` durante install/upgrade del modulo **Trend Idee contenuto**: se il modello Trend è vuoto viene usato il modello globale OpenAI.
