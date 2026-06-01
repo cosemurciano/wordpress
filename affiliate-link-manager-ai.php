@@ -3,7 +3,7 @@
  * Plugin Name: Affiliate Link Manager AI
  * Plugin URI: https://your-website.com
  * Description: Gestisce link affiliati con intelligenza artificiale per ottimizzazione e tracking automatico.
- * Version: 2.36.0
+ * Version: 2.36.1
  * Author: Cosè Murciano
  * License: GPL v2 or later
  * Text Domain: affiliate-link-manager-ai
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Definisci costanti del plugin
-define('ALMA_VERSION', '2.36.0');
+define('ALMA_VERSION', '2.36.1');
 define('ALMA_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('ALMA_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('ALMA_PLUGIN_FILE', __FILE__);
@@ -94,6 +94,10 @@ require_once ALMA_PLUGIN_DIR . 'includes/class-affiliate-source-import-criteria-
 require_once ALMA_PLUGIN_DIR . 'includes/class-affiliate-link-ai-context-builder.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-affiliate-source-manager.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-affiliate-links-source-filter.php';
+require_once ALMA_PLUGIN_DIR . 'includes/class-assets.php';
+require_once ALMA_PLUGIN_DIR . 'includes/class-shortcodes.php';
+require_once ALMA_PLUGIN_DIR . 'includes/class-editor-ajax.php';
+require_once ALMA_PLUGIN_DIR . 'includes/class-ai-content-agent-dashboard-widget.php';
 
 /**
  * Classe principale del plugin
@@ -106,12 +110,20 @@ class AffiliateManagerAI {
     private $dashboard_stats;
     private $source_manager;
     private $affiliate_links_source_filter;
+    private $assets;
+    private $shortcodes;
+    private $editor_ajax;
+    private $ai_content_agent_dashboard_widget;
     
     public function __construct() {
         global $wpdb;
         $this->dashboard_stats = new ALMA_Dashboard_Stats($wpdb);
         $this->source_manager = new ALMA_Affiliate_Source_Manager();
         $this->affiliate_links_source_filter = new ALMA_Affiliate_Links_Source_Filter();
+        $this->assets = new ALMA_Assets($this->source_manager);
+        $this->shortcodes = new ALMA_Shortcodes();
+        $this->editor_ajax = new ALMA_Editor_Ajax($this->dashboard_stats);
+        $this->ai_content_agent_dashboard_widget = new ALMA_AI_Content_Agent_Dashboard_Widget();
         add_action('init', array($this, 'init'));
         register_activation_hook(__FILE__, array($this, 'activate'));
         register_deactivation_hook(__FILE__, array($this, 'deactivate'));
@@ -141,91 +153,27 @@ class AffiliateManagerAI {
             $this->affiliate_links_source_filter->init();
         }
         
-        // Frontend hooks per tracking
-        if (!is_admin()) {
-            add_action('wp_enqueue_scripts', array($this, 'enqueue_frontend_scripts'));
-            add_action('wp_head', array($this, 'output_custom_css'), 100);
-        }
-    }
-    
-    /**
-     * Enqueue scripts frontend per tracking
-     */
-    public function enqueue_frontend_scripts() {
-        // Verifica se il file esiste prima di caricare script e stile
-        $tracking_file = ALMA_PLUGIN_DIR . 'assets/tracking.js';
-        if (file_exists($tracking_file)) {
-            wp_enqueue_script(
-                'alma-tracking',
-                ALMA_PLUGIN_URL . 'assets/tracking.js',
-                array('jquery'),
-                ALMA_VERSION,
-                true
-            );
-
-            // Passa dati al JavaScript
-            wp_localize_script('alma-tracking', 'alma_tracking', array(
-                'ajax_url' => admin_url('admin-ajax.php'),
-                'nonce' => wp_create_nonce('alma_track_click'),
-                'track_logged_out' => get_option('alma_track_logged_out', 'yes') === 'yes'
-            ));
-        }
-
-        $style_file = ALMA_PLUGIN_DIR . 'assets/frontend.css';
-        if (file_exists($style_file)) {
-            wp_enqueue_style(
-                'alma-frontend',
-                ALMA_PLUGIN_URL . 'assets/frontend.css',
-                array(),
-                ALMA_VERSION
-            );
-        }
-    }
-
-    /**
-     * Stampa il CSS personalizzato nel frontend
-     */
-    public function output_custom_css() {
-        $css = get_option('alma_custom_css', '');
-        if (!empty($css)) {
-            echo "<style id='alma-custom-css'>" . wp_strip_all_tags($css) . '</style>';
-        }
+        // Asset loading is routed through the dedicated bootstrap class.
+        $this->assets->init();
     }
     
     /**
      * Inizializza hooks
      */
     private function init_hooks() {
-        // Carica e registra widget
-        require_once ALMA_PLUGIN_DIR . 'includes/class-affiliate-links-widget.php';
-
         // Bot Affiliate per suggerire link tramite AI
         require_once ALMA_PLUGIN_DIR . 'includes/class-bot-affiliate.php';
         new ALMA_Bot_Affiliate();
 
         ALMA_AI_Content_Agent_Internal_Link_Index::init();
 
-        // Shortcode per mostrare link singolo
-        add_shortcode('affiliate_link', array($this, 'display_affiliate_link'));
-
-        // Shortcode per mostrare elenco di link tramite widget
-        add_shortcode('affiliate_links_widget', array('ALMA_Affiliate_Links_Widget', 'shortcode'));
-
-        // Shortcode e AJAX per Affiliate Chat AI
-        add_shortcode('affiliate_chat_ai', array($this, 'render_affiliate_chat_shortcode'));
-        add_action('wp_ajax_alma_affiliate_chat', array($this, 'ajax_affiliate_chat'));
-        add_action('wp_ajax_nopriv_alma_affiliate_chat', array($this, 'ajax_affiliate_chat'));
-
-        // Registra il widget
-        add_action('widgets_init', array($this, 'register_widget'));
+        // Shortcodes and editor AJAX are now routed through dedicated classes.
+        $this->shortcodes->init();
+        $this->editor_ajax->init();
         
         // Hook AJAX per tracking click (modificato per tracking asincrono)
         add_action('wp_ajax_alma_track_click', array($this, 'ajax_track_click'));
         add_action('wp_ajax_nopriv_alma_track_click', array($this, 'ajax_track_click'));
-        
-        // Hook per ricerca link nell'editor
-        add_action('wp_ajax_alma_search_links', array($this, 'ajax_search_links'));
-        add_action('wp_ajax_alma_ai_suggest_links', array($this, 'ajax_ai_suggest_links'));
 
         // Hook per dashboard data
         add_action('wp_ajax_alma_get_dashboard_data', array($this, 'ajax_get_dashboard_data'));
@@ -241,177 +189,7 @@ class AffiliateManagerAI {
         add_action('deleted_post', array($this, 'invalidate_dashboard_cache'));
         add_action('trashed_post', array($this, 'invalidate_dashboard_cache'));
         add_action('untrashed_post', array($this, 'invalidate_dashboard_cache'));
-
-        // Editor integration
-        add_action('admin_footer-post.php', array($this, 'add_editor_integration'));
-        add_action('admin_footer-post-new.php', array($this, 'add_editor_integration'));
-        add_action('admin_footer-page.php', array($this, 'add_editor_integration'));
-        add_action('admin_footer-page-new.php', array($this, 'add_editor_integration'));
     }
-
-    public function register_widget() {
-        register_widget('ALMA_Affiliate_Links_Widget');
-    }
-
-    /**
-     * Display affiliate link - MODIFICATO per link diretti
-     */
-    public function display_affiliate_link($atts) {
-        $atts = shortcode_atts(array(
-            'id' => 0,
-            'text' => '',
-            'class' => 'affiliate-link-btn',
-            'img' => 'no',
-            'img_size' => 'full',
-            'fields' => '',
-            'button' => 'no',
-            'button_text' => '',
-            'button_size' => 'medium',
-            'button_align' => 'left',
-            'source' => 'shortcode'
-        ), $atts);
-        
-        if (!$atts['id']) {
-            return '<span style="color:red;">[Affiliate Link: ID mancante]</span>';
-        }
-        
-        $post = get_post($atts['id']);
-        if (!$post || $post->post_type !== 'affiliate_link') {
-            return '<span style="color:red;">[Affiliate Link: Link non trovato]</span>';
-        }
-        
-        $affiliate_url = get_post_meta($atts['id'], '_affiliate_url', true);
-        if (!$affiliate_url) {
-            return '<span style="color:red;">[Affiliate Link: URL non configurato]</span>';
-        }
-        
-        $link_rel = get_post_meta($atts['id'], '_link_rel', true);
-
-        if ($link_rel === '') {
-            // Link interno: nessun attributo rel
-        } elseif (!$link_rel) {
-            $link_rel = 'sponsored noopener';
-        }
-
-        $link_target = get_post_meta($atts['id'], '_link_target', true) ?: '_blank';
-        $link_title = get_post_meta($atts['id'], '_link_title', true);
-        $source = sanitize_key($atts['source']);
-        if ($source === '') {
-            $source = 'shortcode';
-        }
-
-        if (empty($link_title)) {
-            $link_title = get_the_title($atts['id']);
-        }
-
-        // Campi richiesti
-        $fields = array_filter(array_map('trim', explode(',', $atts['fields'])));
-
-        // Parti del contenuto
-        $image_html = '';
-        $title_html = '';
-        $content_html = '';
-
-        if ($atts['img'] === 'yes') {
-            $size = in_array($atts['img_size'], array('thumbnail','medium','large','full')) ? $atts['img_size'] : 'full';
-            $image_html = get_the_post_thumbnail($atts['id'], $size, array('class' => 'alma-affiliate-img'));
-            if (!$image_html) {
-                $atts['img'] = 'no';
-            }
-        }
-
-        if (in_array('title', $fields)) {
-            $title_text = esc_html(get_the_title($atts['id']));
-            if (in_array('content', $fields)) {
-                $title_html = '<h4 class="alma-link-title">' . $title_text . '</h4>';
-            } else {
-                $title_html = '<span class="alma-link-title">' . $title_text . '</span>';
-            }
-        }
-
-        if (in_array('content', $fields)) {
-            $post_content = apply_filters('the_content', get_post_field('post_content', $atts['id']));
-            $content_html = '<div class="alma-link-content">' . $post_content . '</div>';
-        }
-
-        if ($title_html === '') {
-            if (!empty($atts['text'])) {
-                $title_html = '<span class="alma-link-title">' . esc_html($atts['text']) . '</span>';
-            } elseif ($atts['img'] !== 'yes') {
-                $title_html = esc_html(get_the_title($atts['id']));
-            }
-
-        }
-
-        $link_inner = $image_html . $title_html;
-
-        // NUOVO: Usa link diretto invece di redirect
-        $link_html = '<a href="' . esc_url($affiliate_url) . '"';
-        $link_html .= ' class="' . esc_attr($atts['class']) . ' alma-affiliate-link"';
-        $link_html .= ' data-link-id="' . esc_attr($atts['id']) . '"';
-        $link_html .= ' data-track="1"'; // Flag per tracking JavaScript
-        $link_html .= ' data-source="' . esc_attr($source) . '"';
-        if ($link_rel !== '') {
-            $link_html .= ' rel="' . esc_attr($link_rel) . '"';
-        }
-        $link_html .= ' target="' . esc_attr($link_target) . '"';
-        $link_html .= ' title="' . esc_attr($link_title) . '"';
-        $link_html .= '>' . $link_inner . '</a>';
-
-        if ($content_html) {
-            $link_html .= $content_html;
-        }
-
-        // Pulsante call to action opzionale
-        if ($atts['button'] === 'yes') {
-            $size = in_array($atts['button_size'], array('small','medium','large')) ? $atts['button_size'] : 'medium';
-            $alignment = in_array($atts['button_align'], array('left','center','right')) ? $atts['button_align'] : 'left';
-            $btn_classes = 'alma-affiliate-button alma-btn-' . esc_attr($size) . ' alma-affiliate-link';
-            $btn_text = !empty($atts['button_text']) ? esc_html($atts['button_text']) : __('Scopri di più', 'affiliate-link-manager-ai');
-            $button_html = '<div class="alma-button-wrapper" style="text-align:' . esc_attr($alignment) . ';">';
-            $button_html .= '<a href="' . esc_url($affiliate_url) . '"';
-            $button_html .= ' class="' . $btn_classes . '"';
-            $button_html .= ' data-link-id="' . esc_attr($atts['id']) . '"';
-            $button_html .= ' data-track="1"';
-            $button_html .= ' data-source="' . esc_attr($source) . '"';
-            if ($link_rel !== '') {
-                $button_html .= ' rel="' . esc_attr($link_rel) . '"';
-            }
-            $button_html .= ' target="' . esc_attr($link_target) . '"';
-            $button_html .= ' title="' . esc_attr($link_title) . '"';
-            $button_html .= '>' . $btn_text . '</a></div>';
-            $link_html .= $button_html;
-        }
-
-        return $link_html;
-    }
-
-    public function render_affiliate_chat_shortcode() {
-        wp_enqueue_script(
-            'alma-chat-ai',
-            ALMA_PLUGIN_URL . 'assets/chat-ai.js',
-            array('jquery'),
-            ALMA_VERSION,
-            true
-        );
-        wp_localize_script('alma-chat-ai', 'alma_chat_ai', array(
-            'ajax_url' => admin_url('admin-ajax.php'),
-            'nonce'    => wp_create_nonce('alma_affiliate_chat'),
-        ));
-
-        ob_start();
-        ?>
-        <div id="alma-chat-container">
-            <iframe id="alma-chat-frame"></iframe>
-            <form id="alma-chat-form">
-                <input type="text" id="alma-chat-query" placeholder="<?php esc_attr_e('Cerca link affiliati...', 'affiliate-link-manager-ai'); ?>" required />
-                <button type="submit" id="alma-chat-submit"><?php esc_html_e('Chiedi', 'affiliate-link-manager-ai'); ?></button>
-            </form>
-        </div>
-        <?php
-        return ob_get_clean();
-    }
-
 
     private function ajax_require_nonce($action, $field = 'nonce') {
         $nonce = isset($_POST[$field]) ? sanitize_text_field(wp_unslash($_POST[$field])) : '';
@@ -425,141 +203,6 @@ class AffiliateManagerAI {
         if (!$allowed) {
             wp_send_json_error(array('message' => __('Permessi insufficienti.', 'affiliate-link-manager-ai')), 403);
         }
-    }
-
-    private function get_affiliate_chat_rate_limit_key() {
-        $ip = $this->get_user_ip();
-        if (!filter_var($ip, FILTER_VALIDATE_IP)) {
-            $ip = 'unknown';
-        }
-        $ua = isset($_SERVER['HTTP_USER_AGENT']) ? sanitize_text_field(wp_unslash($_SERVER['HTTP_USER_AGENT'])) : '';
-        $ua = function_exists('mb_substr') ? mb_substr($ua, 0, 120) : substr($ua, 0, 120);
-        return 'alma_chat_rl_' . hash('sha256', $ip . '|' . $ua);
-    }
-
-    private function check_affiliate_chat_rate_limit() {
-        if (is_user_logged_in() && current_user_can('edit_posts')) {
-            return true;
-        }
-
-        $defaults = array('limit' => 10, 'window' => 10 * MINUTE_IN_SECONDS);
-        $config = apply_filters('alma_affiliate_chat_rate_limit', $defaults);
-        $limit = max(1, absint($config['limit'] ?? $defaults['limit']));
-        $window = max(MINUTE_IN_SECONDS, absint($config['window'] ?? $defaults['window']));
-        $key = $this->get_affiliate_chat_rate_limit_key();
-        $bucket = get_transient($key);
-        if (!is_array($bucket)) {
-            $bucket = array('count' => 0, 'reset' => time() + $window);
-        }
-
-        if ((int) ($bucket['count'] ?? 0) >= $limit) {
-            ALMA_AI_Usage_Logger::log(array(
-                'task' => 'affiliate_chat_rate_limited',
-                'success' => false,
-                'error' => 'rate_limit_exceeded',
-                'reference_id' => 'public_chat:' . substr($key, -12),
-            ));
-            wp_send_json_error(array(
-                'code' => 'rate_limit_exceeded',
-                'message' => __('Hai raggiunto il limite temporaneo di richieste. Attendi qualche minuto e riprova.', 'affiliate-link-manager-ai'),
-                'retry_after' => max(1, (int) ($bucket['reset'] ?? (time() + $window)) - time()),
-            ), 429);
-        }
-
-        $bucket['count'] = (int) ($bucket['count'] ?? 0) + 1;
-        $bucket['reset'] = (int) ($bucket['reset'] ?? (time() + $window));
-        set_transient($key, $bucket, max(1, $bucket['reset'] - time()));
-        return true;
-    }
-
-    public function ajax_affiliate_chat() {
-        $this->ajax_require_nonce('alma_affiliate_chat');
-        $this->check_affiliate_chat_rate_limit();
-
-        $query = isset($_POST['query']) ? sanitize_text_field(wp_unslash($_POST['query'])) : '';
-        $query = function_exists('mb_substr') ? mb_substr($query, 0, 500) : substr($query, 0, 500);
-        if (empty($query)) {
-            wp_send_json_error(array('message' => __('Richiesta mancante', 'affiliate-link-manager-ai')), 400);
-        }
-
-        // Recupera contenuti pertinenti dalla cache
-        $cached       = ALMA_Content_Analysis_AI::search_cache($query);
-        $content_text = '';
-        foreach ($cached as $item) {
-            $snippet = function_exists('mb_substr') ? mb_substr(wp_strip_all_tags((string) ($item['content'] ?? '')), 0, 200) : substr(wp_strip_all_tags((string) ($item['content'] ?? '')), 0, 200);
-            $content_text .= '- ' . sanitize_text_field($item['title'] ?? '') . ': ' . sanitize_text_field($snippet) . "\n";
-        }
-
-        $conversation = array();
-        if (!empty($_POST['conversation'])) {
-            $decoded = json_decode(wp_unslash($_POST['conversation']), true);
-            if (is_array($decoded)) {
-                foreach (array_slice($decoded, -10) as $msg) {
-                    if (empty($msg['content'])) {
-                        continue;
-                    }
-                    $conversation[] = array(
-                        'role'    => isset($msg['role']) && $msg['role'] === 'assistant' ? 'assistant' : 'user',
-                        'content' => function_exists('mb_substr') ? mb_substr(sanitize_textarea_field($msg['content']), 0, 1000) : substr(sanitize_textarea_field($msg['content']), 0, 1000)
-                    );
-                }
-            }
-        }
-
-        $posts = get_posts(array(
-            'post_type'      => 'affiliate_link',
-            'numberposts'    => -1,
-            'post_status'    => 'publish',
-        ));
-
-        $links = array();
-        foreach ($posts as $p) {
-            $types = wp_get_post_terms($p->ID, 'link_type', array('fields' => 'names'));
-            if (empty($types)) {
-                $types = array(__('Generale', 'affiliate-link-manager-ai'));
-            }
-            $url = get_post_meta($p->ID, '_affiliate_url', true);
-            foreach ($types as $type) {
-                $links[$type][] = array(
-                    'title' => get_the_title($p->ID),
-                    'url'   => esc_url_raw($url),
-                );
-            }
-        }
-
-        $links_text = '';
-        foreach ($links as $type => $items) {
-            $links_text .= sanitize_text_field($type) . ":\n";
-            foreach ($items as $item) {
-                $links_text .= '- ' . sanitize_text_field($item['title']) . ': ' . esc_url_raw($item['url']) . "\n";
-            }
-        }
-
-        $settings      = get_option('alma_prompt_ai_settings', array());
-        $system_prompt  = $settings['base_prompt'] ?? '';
-        if (!empty($settings['personality'])) {
-            $system_prompt .= '\nTono: ' . $settings['personality'];
-            if ($settings['personality'] === 'personalizzato' && !empty($settings['personality_custom'])) {
-                $system_prompt .= ' (' . $settings['personality_custom'] . ')';
-            }
-        }
-
-        $user_prompt = "Richiesta utente: $query\n";
-        if ($content_text !== '') {
-            $user_prompt .= "Contenuti disponibili:\n$content_text\n";
-        }
-        $user_prompt .= "Link disponibili:\n$links_text\n" .
-            "Sulla base esclusiva dei link forniti, suggerisci quelli più pertinenti organizzati per tipologia. " .
-            "Non menzionare o generare link esterni alla lista. Se nessun link è adatto, segnala che non sono disponibili suggerimenti. " .
-            "Spiega brevemente le tue scelte prima della lista.";
-
-        $result = ALMA_AI_Utils::call_openai_api($user_prompt, $system_prompt, $conversation);
-
-        if (!$result['success']) {
-            wp_send_json_error(array('message' => __('Non riesco a generare una risposta in questo momento. Riprova più tardi.', 'affiliate-link-manager-ai')), 502);
-        }
-
-        wp_send_json_success(array('reply' => wp_kses_post($result['response'])));
     }
 
     /**
@@ -740,9 +383,6 @@ class AffiliateManagerAI {
         // Cleanup shortcodes when widget instances change
         add_action('update_option_widget_affiliate_links_widget', array($this, 'on_widget_option_update'), 10, 3);
         
-        // Stili e script admin
-        add_action('admin_enqueue_scripts', array($this, 'admin_enqueue_scripts'));
-        
         // AJAX handlers
         add_action('wp_ajax_alma_get_ai_suggestions', array($this, 'ajax_get_ai_suggestions'));
         add_action('wp_ajax_alma_ai_suggest_text', array($this, 'ajax_ai_suggest_text'));
@@ -753,123 +393,8 @@ class AffiliateManagerAI {
 
         // Dashboard widget
         add_action('wp_dashboard_setup', array($this, 'add_dashboard_widget'));
-        add_action('wp_dashboard_setup', array($this, 'add_ai_content_agent_dashboard_widget'));
+        $this->ai_content_agent_dashboard_widget->init();
         add_action('pre_get_posts', array($this, 'filter_posts_without_affiliates'));
-    }
-    
-    /**
-     * Enqueue admin scripts e stili
-     */
-    public function admin_enqueue_scripts($hook) {
-        // Solo nelle pagine del plugin
-        $screen = function_exists('get_current_screen') ? get_current_screen() : null;
-        $allowed_types = get_option('alma_link_post_types', array('post', 'page'));
-        
-        if ($screen && ($screen->post_type === 'affiliate_link' || 
-            strpos($hook, 'affiliate-link-manager') !== false ||
-            $hook === 'affiliate_link_page_alma-ai-content-agent' ||
-            $hook === 'index.php')) {
-            
-            // Stili - verifica che il file esista
-            if (file_exists(ALMA_PLUGIN_DIR . 'assets/admin.css')) {
-                wp_enqueue_style(
-                    'alma-admin-style',
-                    ALMA_PLUGIN_URL . 'assets/admin.css',
-                    array(),
-                    ALMA_VERSION
-                );
-            }
-            
-            // Script AI - verifica che il file esista
-            if (file_exists(ALMA_PLUGIN_DIR . 'assets/ai.js')) {
-                wp_enqueue_script(
-                    'alma-ai-script',
-                    ALMA_PLUGIN_URL . 'assets/ai.js',
-                    array('jquery'),
-                    ALMA_VERSION,
-                    true
-                );
-
-                wp_localize_script('alma-ai-script', 'alma_ai', array(
-                    'ajax_url'    => admin_url('admin-ajax.php'),
-                    'nonce'       => wp_create_nonce('alma_ai_suggest_text'),
-                    'messages'    => array(
-                        'generating' => __('Generazione suggerimenti...', 'affiliate-link-manager-ai'),
-                        'generated'  => __('Suggerimenti generati!', 'affiliate-link-manager-ai'),
-                        'error'      => __('Errore durante la generazione', 'affiliate-link-manager-ai'),
-                    ),
-                ));
-            }
-            if ($hook === 'affiliate_link_page_alma-ai-content-agent' && file_exists(ALMA_PLUGIN_DIR . 'assets/admin.js')) {
-                wp_enqueue_script(
-                    'alma-admin-script',
-                    ALMA_PLUGIN_URL . 'assets/admin.js',
-                    array(),
-                    ALMA_VERSION,
-                    true
-                );
-            }
-
-            if ($hook === 'affiliate_link_page_alma-affiliate-sources') {
-                if (file_exists(ALMA_PLUGIN_DIR . 'assets/affiliate-sources.css')) {
-                    wp_enqueue_style('alma-affiliate-sources', ALMA_PLUGIN_URL . 'assets/affiliate-sources.css', array(), ALMA_VERSION);
-                }
-                if (file_exists(ALMA_PLUGIN_DIR . 'assets/affiliate-sources.js')) {
-                    wp_enqueue_script('alma-affiliate-sources', ALMA_PLUGIN_URL . 'assets/affiliate-sources.js', array('jquery'), ALMA_VERSION, true);
-                    if ($this->source_manager && method_exists($this->source_manager, 'get_provider_presets')) {
-                        wp_localize_script('alma-affiliate-sources', 'almaSourcePresets', array('presets' => $this->source_manager->get_provider_presets(),'ajax_url'=>admin_url('admin-ajax.php'),'nonce'=>wp_create_nonce('alma_test_connection_nonce'),'gygNonce'=>wp_create_nonce('alma_gyg_csv_import_nonce'),'gygJsVersion'=>ALMA_VERSION));
-                    }
-                }
-            }
-
-            if ($hook === 'affiliate_link_page_affiliate-link-manager-dashboard') {
-                wp_enqueue_script(
-                    'chart.js',
-                    'https://cdn.jsdelivr.net/npm/chart.js',
-                    array(),
-                    '4.4.0',
-                    true
-                );
-            }
-        }
-        
-        // Script editor solo per i tipi di contenuto selezionati
-        if ($screen && in_array($hook, array('post.php', 'post-new.php')) && in_array($screen->post_type, $allowed_types, true)) {
-            if (file_exists(ALMA_PLUGIN_DIR . 'assets/editor.js')) {
-                wp_enqueue_script(
-                    'alma-editor-script',
-                    ALMA_PLUGIN_URL . 'assets/editor.js',
-                    array('jquery'),
-                    ALMA_VERSION,
-                    true
-                );
-
-                wp_localize_script('alma-editor-script', 'alma_editor', array(
-                    'ajax_url' => admin_url('admin-ajax.php'),
-                    'nonce' => wp_create_nonce('alma_editor_search'),
-                    'plugin_url' => ALMA_PLUGIN_URL,
-                    'strings' => array(
-                        'button_text' => __('🔗 Link Affiliati', 'affiliate-link-manager-ai'),
-                        'search_placeholder' => __('Cerca link affiliato...', 'affiliate-link-manager-ai'),
-                        'no_results' => __('Nessun link trovato', 'affiliate-link-manager-ai'),
-                        'insert' => __('Inserisci', 'affiliate-link-manager-ai'),
-                        'loading' => __('Caricamento...', 'affiliate-link-manager-ai')
-                    )
-                ));
-            }
-        }
-
-        if ($hook === 'affiliate_link_page_alma-css-editor' && function_exists('wp_enqueue_code_editor')) {
-            $editor_settings = wp_enqueue_code_editor(array('type' => 'text/css'));
-            wp_enqueue_script('code-editor');
-            wp_enqueue_style('wp-codemirror');
-            if ($editor_settings) {
-                if (isset($editor_settings['codemirror'])) {
-                    $editor_settings['codemirror']['lineNumbers'] = true;
-                }
-                wp_add_inline_script('code-editor', 'jQuery(function($){wp.codeEditor.initialize("alma-custom-css", ' . wp_json_encode($editor_settings) . ');});');
-            }
-        }
     }
     
     /**
@@ -1967,65 +1492,6 @@ class AffiliateManagerAI {
     }
 
     /**
-     * Build the existing AI Content Agent admin URL without duplicating routing logic in widgets.
-     *
-     * @param string $tab Optional AI Content Agent tab.
-     * @return string
-     */
-    private function get_ai_content_agent_admin_url($tab = 'dashboard') {
-        $args = array(
-            'post_type' => 'affiliate_link',
-            'page'      => self::AI_CONTENT_AGENT_MENU_SLUG,
-        );
-
-        $tab = sanitize_key($tab);
-        if ($tab !== '') {
-            $args['tab'] = $tab;
-        }
-
-        return add_query_arg($args, admin_url('edit.php'));
-    }
-
-    /**
-     * Add a lightweight WordPress Dashboard shortcut to AI Content Agent.
-     */
-    public function add_ai_content_agent_dashboard_widget() {
-        if (!current_user_can(self::AI_CONTENT_AGENT_CAPABILITY)) {
-            return;
-        }
-
-        wp_add_dashboard_widget(
-            'alma_ai_content_agent_dashboard_widget',
-            __('AI Content Agent', 'affiliate-link-manager-ai'),
-            array($this, 'render_ai_content_agent_dashboard_widget'),
-            null,
-            null,
-            'normal',
-            'high'
-        );
-    }
-
-    /**
-     * Render the AI Content Agent dashboard shortcut widget.
-     */
-    public function render_ai_content_agent_dashboard_widget() {
-        if (!current_user_can(self::AI_CONTENT_AGENT_CAPABILITY)) {
-            return;
-        }
-
-        $agent_url = $this->get_ai_content_agent_admin_url('dashboard');
-
-        echo '<div class="alma-ai-content-agent-widget">';
-        echo '<div class="alma-ai-content-agent-widget__icon" aria-hidden="true"><span class="dashicons dashicons-edit-page"></span></div>';
-        echo '<div class="alma-ai-content-agent-widget__content">';
-        echo '<p class="alma-ai-content-agent-widget__description">' . esc_html__('Crea idee, genera brief e prepara bozze articolo con supporto AI.', 'affiliate-link-manager-ai') . '</p>';
-        echo '<p class="alma-ai-content-agent-widget__actions"><a class="button button-primary" href="' . esc_url($agent_url) . '">' . esc_html__('Apri AI Content Agent', 'affiliate-link-manager-ai') . '</a></p>';
-        echo '<p class="alma-ai-content-agent-widget__note">' . esc_html__('Scorciatoia rapida alla sezione admin: nessun dato AI o payload OpenAI viene mostrato nella Bacheca.', 'affiliate-link-manager-ai') . '</p>';
-        echo '</div>';
-        echo '</div>';
-    }
-
-    /**
      * Pagina importazione massiva
      */
     public function render_import_page() {
@@ -2940,170 +2406,6 @@ class AffiliateManagerAI {
         <?php
     }
     
-    /**
-     * Editor Integration - Non inserisce più HTML qui
-     */
-    public function add_editor_integration() {
-        // Il modal viene inserito tramite JavaScript nel file editor.js
-        // Questa funzione ora serve solo come placeholder per compatibilità
-        return;
-    }
-    
-    /**
-     * AJAX Handlers
-     */
-    
-    public function ajax_search_links() {
-        $this->ajax_require_nonce('alma_editor_search');
-        $this->ajax_require_capability('edit_posts');
-
-        $search = isset($_POST['search']) ? sanitize_text_field(wp_unslash($_POST['search'])) : '';
-        $type_filter = isset($_POST['type_filter']) ? absint($_POST['type_filter']) : 0;
-        
-        $args = array(
-            'post_type' => 'affiliate_link',
-            'post_status' => 'publish',
-            'posts_per_page' => 20,
-            'orderby' => 'title',
-            'order' => 'ASC'
-        );
-        
-        // Aggiungi ricerca se presente
-        if (!empty($search)) {
-            $args['s'] = $search;
-        }
-        
-        // Aggiungi filtro tipologia se presente
-        if ($type_filter > 0) {
-            $args['tax_query'] = array(
-                array(
-                    'taxonomy' => 'link_type',
-                    'field' => 'term_id',
-                    'terms' => $type_filter
-                )
-            );
-        }
-        
-        $query = new WP_Query($args);
-        $results = array();
-        
-        if ($query->have_posts()) {
-            while ($query->have_posts()) {
-                $query->the_post();
-                $post_id = get_the_ID();
-                
-                // Ottieni URL affiliato
-                $affiliate_url = get_post_meta($post_id, '_affiliate_url', true);
-                
-                // Ottieni statistiche
-                $click_count = get_post_meta($post_id, '_click_count', true) ?: 0;
-                $usage_data = $this->get_shortcode_usage_stats($post_id);
-                
-                // Ottieni tipologie
-                $terms = get_the_terms($post_id, 'link_type');
-                $types = array();
-                if ($terms && !is_wp_error($terms)) {
-                    foreach ($terms as $term) {
-                        $types[] = $term->name;
-                    }
-                }
-                
-                $results[] = array(
-                    'id' => (int) $post_id,
-                    'title' => get_the_title(),
-                    'url' => esc_url_raw($affiliate_url),
-                    'types' => array_map('sanitize_text_field', $types),
-                    'clicks' => (int) $click_count,
-                    'usage' => $usage_data,
-                    'shortcode' => '[affiliate_link id="' . $post_id . '"]'
-                );
-            }
-            wp_reset_postdata();
-        }
-        
-        wp_send_json_success($results);
-    }
-
-    public function ajax_ai_suggest_links() {
-        $this->ajax_require_nonce('alma_editor_search');
-        $this->ajax_require_capability('edit_posts');
-
-        $title   = isset($_POST['title']) ? wp_strip_all_tags(wp_unslash($_POST['title'])) : '';
-        $content = isset($_POST['content']) ? wp_strip_all_tags(wp_unslash($_POST['content'])) : '';
-
-        // Limita la lunghezza per evitare richieste eccessive
-        $title   = mb_substr($title, 0, 500);
-        $content = mb_substr($content, 0, 2000);
-
-        // Recupera fino a 50 link affiliati
-        $links = get_posts(array(
-            'post_type'      => 'affiliate_link',
-            'post_status'    => 'publish',
-            'numberposts'    => 50,
-            'orderby'        => 'title',
-            'order'          => 'ASC',
-        ));
-
-        if (empty($links)) {
-            wp_send_json_success(array());
-        }
-
-        $prompt = "Articolo: {$title}\n\n{$content}\n\nLinks disponibili:\n";
-        foreach ($links as $link) {
-            $prompt .= 'ID ' . $link->ID . ': ' . $link->post_title . "\n";
-        }
-        $prompt .= "\nRestituisci un array JSON con massimo 10 oggetti {\"id\": ID, \"score\": COERENZA}, dove COERENZA è un numero da 0 a 100 che indica quanto il link è coerente con l'articolo. Rispondi esclusivamente con JSON valido, senza testo aggiuntivo.\n";
-
-        $response = ALMA_AI_Utils::call_openai_api($prompt, 'Rispondi esclusivamente con JSON valido, senza testo aggiuntivo');
-        if (empty($response['success'])) {
-            $msg = $response['error'] ?? __('Impossibile generare suggerimenti con OpenAI.', 'affiliate-link-manager-ai');
-            ALMA_Logger::error('OpenAI API error', array('error' => $msg));
-            wp_send_json_error($msg);
-        }
-
-        $clean = ALMA_AI_Utils::extract_first_json($response['response']);
-        $items = json_decode($clean, true);
-        if (!is_array($items)) {
-            ALMA_Logger::warning('JSON decode failed', array('json_error' => json_last_error_msg(), 'raw_ai_response' => $response['response']));
-            wp_send_json_error(__('Risposta AI non valida.', 'affiliate-link-manager-ai'));
-        }
-
-        $results = array();
-        foreach (array_slice($items, 0, 10) as $item) {
-            $id    = isset($item['id']) ? intval($item['id']) : 0;
-            $score = isset($item['score']) ? floatval($item['score']) : 0;
-
-            $post = get_post($id);
-            if (!$post || $post->post_type !== 'affiliate_link') {
-                continue;
-            }
-
-            $affiliate_url = get_post_meta($id, '_affiliate_url', true);
-            $click_count   = get_post_meta($id, '_click_count', true) ?: 0;
-            $usage_data    = $this->get_shortcode_usage_stats($id);
-            $terms         = get_the_terms($id, 'link_type');
-            $types         = array();
-            if ($terms && !is_wp_error($terms)) {
-                foreach ($terms as $term) {
-                    $types[] = $term->name;
-                }
-            }
-
-            $results[] = array(
-                'id'       => (int) $id,
-                'title'    => get_the_title($id),
-                'url'      => esc_url_raw($affiliate_url),
-                'types'    => array_map('sanitize_text_field', $types),
-                'clicks'   => (int) $click_count,
-                'usage'    => $usage_data,
-                'shortcode'=> '[affiliate_link id="' . $id . '"]',
-                'score'    => max(0, min(100, round($score))),
-            );
-        }
-
-        wp_send_json_success($results);
-    }
-
     public function ajax_get_ai_suggestions() {
         $this->ajax_require_nonce('alma_admin_nonce');
 

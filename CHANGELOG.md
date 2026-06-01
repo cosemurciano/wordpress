@@ -3,6 +3,14 @@
 - Convertiti i log diretti più sensibili nelle aree OpenAI, AI draft builder, import GetYourGuide CSV, media index e internal link index in diagnostica controllata tramite logger.
 - I log `debug` rispettano `WP_DEBUG`; nessun segreto viene salvato in database e non cambiano UI, schema DB, payload OpenAI o flussi di import.
 
+## 2.36.1 - 2026-06-01
+- Alleggerito il bootstrap principale spostando il caricamento asset admin/frontend in `includes/class-assets.php`, mantenendo invariati handle CSS/JS e localizzazioni esistenti.
+- Spostata la registrazione/rendering degli shortcode in `includes/class-shortcodes.php`, mantenendo invariati `[affiliate_link]`, `[affiliate_links_widget]` e `[affiliate_chat_ai]` e lo stesso markup frontend.
+- Spostati gli endpoint AJAX editoriali `alma_search_links` e `alma_ai_suggest_links` in `includes/class-editor-ajax.php`, preservando nonce, capability e payload JSON.
+- Spostato il widget Bacheca WordPress **AI Content Agent** in `includes/class-ai-content-agent-dashboard-widget.php`, senza modificare capability, ID widget o URL admin.
+- Nessuna modifica a install/activation, CPT/tassonomie, schema DB, Affiliate Sources, AI Content Agent completo o Trend Radar.
+- Versione plugin aggiornata a `2.36.1`.
+
 ## 2.36.0 - 2026-06-01
 - Hardening tecnico degli endpoint AJAX admin/editoriali con controlli coerenti di nonce, capability, sanitizzazione input ed escaping dei payload JSON dove applicabile.
 - Aggiunto rate limit configurabile via filtro `alma_affiliate_chat_rate_limit` per la chat AI pubblica, con risposta JSON leggibile e logging redatto degli eventi bloccati.
