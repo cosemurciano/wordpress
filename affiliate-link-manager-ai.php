@@ -3,7 +3,7 @@
  * Plugin Name: Affiliate Link Manager AI
  * Plugin URI: https://your-website.com
  * Description: Gestisce link affiliati con intelligenza artificiale per ottimizzazione e tracking automatico.
- * Version: 2.36.2
+ * Version: 2.36.3
  * Author: Cosè Murciano
  * License: GPL v2 or later
  * Text Domain: affiliate-link-manager-ai
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Definisci costanti del plugin
-define('ALMA_VERSION', '2.36.2');
+define('ALMA_VERSION', '2.36.3');
 define('ALMA_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('ALMA_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('ALMA_PLUGIN_FILE', __FILE__);
@@ -882,16 +882,6 @@ class AffiliateManagerAI {
             array('ALMA_AI_Content_Agent_Admin', 'render_page')
         );
 
-        // Affiliate Chat AI
-        add_submenu_page(
-            'edit.php?post_type=affiliate_link',
-            __('Affiliate Chat AI', 'affiliate-link-manager-ai'),
-            __('Affiliate Chat AI', 'affiliate-link-manager-ai'),
-            'manage_options',
-            'affiliate-chat-ai',
-            array($this, 'render_affiliate_chat_ai_page')
-        );
-
         // Pagina nascosta per modifica widget
         add_submenu_page(
             null,
@@ -933,7 +923,6 @@ class AffiliateManagerAI {
             'alma-create-widget',
             'affiliate-link-widgets',
             'alma-bot-affiliate-settings',
-            'affiliate-chat-ai',
             'alma-affiliate-sources',
             self::AI_CONTENT_AGENT_MENU_SLUG,
             'affiliate-link-manager-settings',
@@ -965,9 +954,6 @@ class AffiliateManagerAI {
                             break;
                         case 'alma-bot-affiliate-settings':
                             $item[0] = __('BotAffiliate Post', 'affiliate-link-manager-ai');
-                            break;
-                        case 'affiliate-chat-ai':
-                            $item[0] = __('Affiliate Chat AI', 'affiliate-link-manager-ai');
                             break;
                         case 'alma-affiliate-sources':
                             $item[0] = __('Affiliate Sources', 'affiliate-link-manager-ai');
@@ -2273,20 +2259,6 @@ class AffiliateManagerAI {
                 $('.alma-color-field').wpColorPicker();
             });
             </script>
-        </div>
-        <?php
-    }
-
-    public function render_affiliate_chat_ai_page() {
-        if (!current_user_can('manage_options')) {
-            wp_die(__('Non hai i permessi per accedere a questa pagina.'));
-        }
-
-        ?>
-        <div class="wrap">
-            <h1><?php _e('Affiliate Chat AI', 'affiliate-link-manager-ai'); ?></h1>
-            <p style="color:#d63638;font-weight:bold;">Funzione in BETA TEST, non ancora rilasciata.</p>
-            <p><?php _e('Utilizza lo shortcode <code>[affiliate_chat_ai]</code> per mostrare il modulo di ricerca AI nelle pagine o nei post.', 'affiliate-link-manager-ai'); ?></p>
         </div>
         <?php
     }

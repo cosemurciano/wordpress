@@ -32,7 +32,10 @@ class ALMA_Logger {
         error_log($line);
     }
 
-    public static function redact($value, $key = '') {
+    public static function redact($value, $key = '', $inside_long_ai_context = false) {
+        $key = is_string($key) ? $key : '';
+        $current_long_ai_context = $inside_long_ai_context || self::is_long_ai_value_key($key);
+
         if (is_array($value)) {
             $redacted = array();
             foreach ($value as $item_key => $item_value) {
@@ -41,18 +44,18 @@ class ALMA_Logger {
                     $redacted[$item_key] = '[redacted]';
                     continue;
                 }
-                $redacted[$item_key] = self::redact($item_value, $item_key_string);
+                $redacted[$item_key] = self::redact($item_value, $item_key_string, $current_long_ai_context);
             }
             return $redacted;
         }
 
         if (is_object($value)) {
-            return self::redact(get_object_vars($value), $key);
+            return self::redact(get_object_vars($value), $key, $current_long_ai_context);
         }
 
         if (is_string($value)) {
             $value = self::redact_string($value);
-            if (self::is_long_ai_value_key($key) && strlen($value) > self::LONG_TEXT_LIMIT) {
+            if ($current_long_ai_context && strlen($value) > self::LONG_TEXT_LIMIT) {
                 return substr($value, 0, self::LONG_TEXT_KEEP) . '… [truncated ' . strlen($value) . ' chars]';
             }
             return $value;
@@ -75,7 +78,7 @@ class ALMA_Logger {
     private static function is_long_ai_value_key($key) {
         $key = strtolower((string) $key);
         if ($key === '') { return false; }
-        return (bool) preg_match('/(openai|payload|body|prompt|raw[_\-]?response|ai[_\-]?response|response|output[_\-]?text|input)/', $key);
+        return (bool) preg_match('/(^|[_\-])(openai|payload|body|prompt|raw[_\-]?response|ai[_\-]?response|openai[_\-]?response|response|output|output[_\-]?text|input|messages|content)([_\-]|$)/', $key);
     }
 
     private static function redact_string($value) {

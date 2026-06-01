@@ -1,7 +1,15 @@
 ## Unreleased
-- Introdotto `ALMA_Logger`, logger centralizzato con livelli `debug`, `info`, `warning` ed `error`, redazione automatica di API key, bearer token, header Authorization, URL con token e contenuti AI troppo lunghi.
+- Introdotto `ALMA_Logger`, logger centralizzato con livelli `debug`, `info`, `warning` ed `error`, redazione automatica di API key, bearer token, header Authorization, URL con token e contenuti AI troppo lunghi. Il troncamento copre anche risposte AI annidate.
 - Convertiti i log diretti più sensibili nelle aree OpenAI, AI draft builder, import GetYourGuide CSV, media index e internal link index in diagnostica controllata tramite logger.
 - I log `debug` rispettano `WP_DEBUG`; nessun segreto viene salvato in database e non cambiano UI, schema DB, payload OpenAI o flussi di import.
+
+## 2.36.3 - 2026-06-01
+- Rimossa la funzionalità dismessa **Affiliate Chat AI** dal menu admin, dagli shortcode, dagli endpoint AJAX e dagli asset frontend.
+- Rimosso lo shortcode `[affiliate_chat_ai]` senza fallback HTML.
+- Rimosso l'endpoint AJAX dismesso `alma_affiliate_chat`, inclusa la registrazione pubblica `nopriv`, e rimossa la relativa logica di rate limit della chat pubblica.
+- Eliminato l'asset dismesso `assets/chat-ai.js` e rimossi gli stili CSS usati solo dalla chat.
+- Corretto `ALMA_Logger` per troncare payload OpenAI/AI annidati preservando il contesto del parent key, inclusi percorsi come `raw_response.output[].content[].text`, senza indebolire redazione secret e URL.
+- Versione plugin aggiornata a `2.36.3`.
 
 ## 2.36.2 - 2026-06-01
 - Rimossa la funzionalità **AI Trend Radar** dal bootstrap, dal menu admin, dalle install/upgrade routine e dalle esecuzioni programmate.
@@ -13,7 +21,7 @@
 
 ## 2.36.1 - 2026-06-01
 - Alleggerito il bootstrap principale spostando il caricamento asset admin/frontend in `includes/class-assets.php`, mantenendo invariati handle CSS/JS e localizzazioni esistenti.
-- Spostata la registrazione/rendering degli shortcode in `includes/class-shortcodes.php`, mantenendo invariati `[affiliate_link]`, `[affiliate_links_widget]` e `[affiliate_chat_ai]` e lo stesso markup frontend.
+- Spostata la registrazione/rendering degli shortcode in `includes/class-shortcodes.php`, mantenendo invariati `[affiliate_link]` e `[affiliate_links_widget]`; la chat AI è stata rimossa come funzionalità dismessa in `2.36.3`.
 - Spostati gli endpoint AJAX editoriali `alma_search_links` e `alma_ai_suggest_links` in `includes/class-editor-ajax.php`, preservando nonce, capability e payload JSON.
 - Spostato il widget Bacheca WordPress **AI Content Agent** in `includes/class-ai-content-agent-dashboard-widget.php`, senza modificare capability, ID widget o URL admin.
 - Nessuna modifica a install/activation, CPT/tassonomie, schema DB, Affiliate Sources, AI Content Agent completo o Trend Radar.
@@ -21,7 +29,7 @@
 
 ## 2.36.0 - 2026-06-01
 - Hardening tecnico degli endpoint AJAX admin/editoriali con controlli coerenti di nonce, capability, sanitizzazione input ed escaping dei payload JSON dove applicabile.
-- Aggiunto rate limit configurabile via filtro `alma_affiliate_chat_rate_limit` per la chat AI pubblica, con risposta JSON leggibile e logging redatto degli eventi bloccati.
+- Aggiunto rate limit configurabile per la chat AI pubblica, funzionalità poi rimossa/dismessa in `2.36.3`, con risposta JSON leggibile e logging redatto degli eventi bloccati.
 - Introdotta validazione anti-SSRF centralizzata per URL esterni usati da provider Custom/Generic API e sideload immagini remote: solo HTTP/HTTPS, host obbligatorio, blocco localhost, loopback, IP privati e link-local, redirect limitati.
 - Nessuna modifica ai flussi utente principali, shortcode, CPT/tassonomie o import CSV GetYourGuide server-rendered.
 - Versione plugin aggiornata a `2.36.0`.
