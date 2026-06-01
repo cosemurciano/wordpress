@@ -3,6 +3,15 @@
 - Convertiti i log diretti più sensibili nelle aree OpenAI, AI draft builder, import GetYourGuide CSV, media index e internal link index in diagnostica controllata tramite logger.
 - I log `debug` rispettano `WP_DEBUG`; nessun segreto viene salvato in database e non cambiano UI, schema DB, payload OpenAI o flussi di import.
 
+## 2.36.4 - 2026-06-01
+- Migliorato il workflow **Importa contenuti → GetYourGuide CSV / Deep Link** con job background persistenti in `alma_gyg_csv_import_jobs`, batch sicuri, lock transient e continuazione via WP-Cron anche a pagina chiusa.
+- Estesa la sezione **Sessioni CSV recenti** con link admin sicuro al file caricato, record totali, importati, restanti, stato importazione e ultimo aggiornamento calcolati da sessioni/progress/job persistenti.
+- Semplificata la ripresa importazione CSV: la vista mostra file corrente, source corrente e il solo riepilogo delle tipologie attività, evitando step upload/configurazione già completati.
+- Corretta la preview/importazione subset: i job salvano sessione, source, tipologia attività, filtri, selezione e criteri preview, così Importa/continua lavora solo sui record selezionati o filtrati e non su tutto il CSV.
+- Aggiunta la colonna **Mapping Sothra** record-level nella tabella Risultati anteprima, con multi-select `link_type`, fallback da mapping tipologia/source e persistenza nel job prima dell’import.
+- Aggiunta progress bar WordPress-native con conteggi processati/totali, importati, aggiornati, già presenti, saltati, errori e stato testuale del job.
+- Versione plugin aggiornata a `2.36.4`.
+
 ## 2.36.3 - 2026-06-01
 - Rimossa la funzionalità dismessa **Affiliate Chat AI** dal menu admin, dagli shortcode, dagli endpoint AJAX e dagli asset frontend.
 - Rimosso lo shortcode `[affiliate_chat_ai]` senza fallback HTML.

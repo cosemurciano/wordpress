@@ -879,6 +879,63 @@ class ALMA_Affiliate_Source_GYG_CSV_Importer {
         if (!empty($term_ids)) $result['link_types_associated']++;
     }
 
+
+    public function import_selected_batch($path, $columns, $activity_type, $source, $external_ids, $fallback_term_ids, $record_mapping = array(), $cursor = 0, $batch_size = self::AJAX_BATCH_SIZE, $update_existing = false) {
+        $start = microtime(true);
+        $settings = self::default_settings(json_decode((string)($source['settings'] ?? '{}'), true));
+        $partner_id = (string)($settings['partner_id'] ?? '');
+        $utm = (string)($settings['utm_medium'] ?? 'online_publisher');
+        $selected = array_values(array_unique(array_filter(array_map('sanitize_text_field', (array)$external_ids))));
+        $cursor = max(0, absint($cursor));
+        $batch_size = max(1, min(self::AJAX_BATCH_SIZE, absint($batch_size)));
+        $fallback_term_ids = self::normalize_mapping_term_ids($fallback_term_ids);
+        $record_mapping = is_array($record_mapping) ? $record_mapping : array();
+        $result = $this->empty_import_result(array('selected'=>count($selected),'selected_external_ids_received'=>count($selected),'requested'=>count($selected),'next_cursor'=>$cursor));
+        if (empty($selected)) { $result['done'] = true; return $result; }
+        if (empty($fallback_term_ids)) return new WP_Error('missing_terms', __('Seleziona almeno una Tipologia Link Sothra.', 'affiliate-link-manager-ai'));
+        $selected_slice = array_slice($selected, $cursor, $batch_size);
+        $selected_map = array_fill_keys($selected_slice, true);
+        $source_for_import = $source;
+        $source_for_import['provider_preset'] = 'gyg_csv';
+        $source_for_import['provider'] = 'gyg_csv';
+        $source_for_import['settings'] = wp_json_encode(array_merge($settings, array('duplicate_policy'=>$update_existing ? 'create_update' : 'skip_existing')));
+        $source_for_import['import_mode'] = 'create_update';
+        $importer = new ALMA_Affiliate_Source_Importer();
+        $dedupe = new ALMA_Affiliate_Source_Import_Dedupe_Service();
+        $handle = fopen($path, 'r');
+        if (!$handle) return new WP_Error('csv_open', __('Impossibile leggere il CSV.', 'affiliate-link-manager-ai'));
+        $delimiter = $this->delimiter($path);
+        fgetcsv($handle, 0, $delimiter);
+        while (($row = fgetcsv($handle, 0, $delimiter)) !== false) {
+            if ($this->is_empty_csv_row($row)) continue;
+            $item = $this->row_to_item($row, $columns, $source, $partner_id, $utm);
+            if ($activity_type !== '' && $item['activity_type'] !== $activity_type) continue;
+            $external_id = sanitize_text_field((string)($item['external_id'] ?? ''));
+            if ($external_id === '' || empty($selected_map[$external_id])) continue;
+            unset($selected_map[$external_id]);
+            $term_ids = self::normalize_mapping_term_ids($record_mapping[$external_id] ?? $fallback_term_ids);
+            if (empty($term_ids)) $term_ids = $fallback_term_ids;
+            $term_names = array();
+            foreach ($term_ids as $tid) { $term = get_term($tid, 'link_type'); if ($term && !is_wp_error($term)) $term_names[] = $term->name; }
+            $source_for_record = $source_for_import;
+            $source_for_record['destination_term_id'] = (int)($term_ids[0] ?? 0);
+            $source_for_record['destination_term_ids'] = wp_json_encode($term_ids);
+            $this->process_import_item($item, $source_for_record, $term_ids, $term_names, $update_existing, $importer, $dedupe, $result);
+            $result['selected_external_ids_found']++;
+            if ($result['processed'] >= $batch_size) break;
+        }
+        fclose($handle);
+        $result['selected_external_ids_missing'] = count($selected_map);
+        $result['next_cursor'] = min(count($selected), $cursor + $result['processed'] + count($selected_map));
+        if ($result['processed'] === 0 && !empty($selected_slice)) $result['next_cursor'] = min(count($selected), $cursor + count($selected_slice));
+        $result['effective_processed'] = $result['processed'];
+        $result['titles_populated'] = $result['titles_read'];
+        $result['duration'] = round(microtime(true) - $start, 2);
+        $result['done'] = $result['next_cursor'] >= count($selected);
+        $result['logs'][] = sprintf(__('Batch background: cursor=%1$d, prossimo=%2$d, selezionati=%3$d, processati=%4$d.', 'affiliate-link-manager-ai'), $cursor, $result['next_cursor'], count($selected), absint($result['processed']));
+        return $result;
+    }
+
     public function import_selected($path, $columns, $activity_type, $source, $external_ids, $term_ids, $update_existing = false) {
         $start = microtime(true);
         $settings = self::default_settings(json_decode((string)($source['settings'] ?? '{}'), true));
