@@ -3,7 +3,7 @@
  * Plugin Name: Affiliate Link Manager AI
  * Plugin URI: https://your-website.com
  * Description: Gestisce link affiliati con intelligenza artificiale per ottimizzazione e tracking automatico.
- * Version: 2.35.0
+ * Version: 2.36.0
  * Author: Cosè Murciano
  * License: GPL v2 or later
  * Text Domain: affiliate-link-manager-ai
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Definisci costanti del plugin
-define('ALMA_VERSION', '2.35.0');
+define('ALMA_VERSION', '2.36.0');
 define('ALMA_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('ALMA_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('ALMA_PLUGIN_FILE', __FILE__);
@@ -60,6 +60,7 @@ require_once ALMA_PLUGIN_DIR . 'includes/class-trend-content-ideas-store.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-trend-content-ideas-service.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-trend-content-ideas-admin.php';
 
+require_once ALMA_PLUGIN_DIR . 'includes/class-affiliate-source-url-validator.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-affiliate-source-provider-interface.php';
 require_once ALMA_PLUGIN_DIR . 'includes/providers/class-affiliate-source-provider-manual.php';
 require_once ALMA_PLUGIN_DIR . 'includes/providers/class-affiliate-source-provider-csv.php';
@@ -410,35 +411,95 @@ class AffiliateManagerAI {
         return ob_get_clean();
     }
 
-    public function ajax_affiliate_chat() {
-        if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'alma_affiliate_chat')) {
-            wp_send_json_error(__('Nonce non valida', 'affiliate-link-manager-ai'));
+
+    private function ajax_require_nonce($action, $field = 'nonce') {
+        $nonce = isset($_POST[$field]) ? sanitize_text_field(wp_unslash($_POST[$field])) : '';
+        if (!$nonce || !wp_verify_nonce($nonce, $action)) {
+            wp_send_json_error(array('message' => __('Verifica di sicurezza non riuscita.', 'affiliate-link-manager-ai')), 403);
+        }
+    }
+
+    private function ajax_require_capability($capability, $args = array()) {
+        $allowed = empty($args) ? current_user_can($capability) : current_user_can($capability, $args[0]);
+        if (!$allowed) {
+            wp_send_json_error(array('message' => __('Permessi insufficienti.', 'affiliate-link-manager-ai')), 403);
+        }
+    }
+
+    private function get_affiliate_chat_rate_limit_key() {
+        $ip = $this->get_user_ip();
+        if (!filter_var($ip, FILTER_VALIDATE_IP)) {
+            $ip = 'unknown';
+        }
+        $ua = isset($_SERVER['HTTP_USER_AGENT']) ? sanitize_text_field(wp_unslash($_SERVER['HTTP_USER_AGENT'])) : '';
+        $ua = function_exists('mb_substr') ? mb_substr($ua, 0, 120) : substr($ua, 0, 120);
+        return 'alma_chat_rl_' . hash('sha256', $ip . '|' . $ua);
+    }
+
+    private function check_affiliate_chat_rate_limit() {
+        if (is_user_logged_in() && current_user_can('edit_posts')) {
+            return true;
         }
 
-        $query = sanitize_text_field($_POST['query'] ?? '');
+        $defaults = array('limit' => 10, 'window' => 10 * MINUTE_IN_SECONDS);
+        $config = apply_filters('alma_affiliate_chat_rate_limit', $defaults);
+        $limit = max(1, absint($config['limit'] ?? $defaults['limit']));
+        $window = max(MINUTE_IN_SECONDS, absint($config['window'] ?? $defaults['window']));
+        $key = $this->get_affiliate_chat_rate_limit_key();
+        $bucket = get_transient($key);
+        if (!is_array($bucket)) {
+            $bucket = array('count' => 0, 'reset' => time() + $window);
+        }
+
+        if ((int) ($bucket['count'] ?? 0) >= $limit) {
+            ALMA_AI_Usage_Logger::log(array(
+                'task' => 'affiliate_chat_rate_limited',
+                'success' => false,
+                'error' => 'rate_limit_exceeded',
+                'reference_id' => 'public_chat:' . substr($key, -12),
+            ));
+            wp_send_json_error(array(
+                'code' => 'rate_limit_exceeded',
+                'message' => __('Hai raggiunto il limite temporaneo di richieste. Attendi qualche minuto e riprova.', 'affiliate-link-manager-ai'),
+                'retry_after' => max(1, (int) ($bucket['reset'] ?? (time() + $window)) - time()),
+            ), 429);
+        }
+
+        $bucket['count'] = (int) ($bucket['count'] ?? 0) + 1;
+        $bucket['reset'] = (int) ($bucket['reset'] ?? (time() + $window));
+        set_transient($key, $bucket, max(1, $bucket['reset'] - time()));
+        return true;
+    }
+
+    public function ajax_affiliate_chat() {
+        $this->ajax_require_nonce('alma_affiliate_chat');
+        $this->check_affiliate_chat_rate_limit();
+
+        $query = isset($_POST['query']) ? sanitize_text_field(wp_unslash($_POST['query'])) : '';
+        $query = function_exists('mb_substr') ? mb_substr($query, 0, 500) : substr($query, 0, 500);
         if (empty($query)) {
-            wp_send_json_error(__('Richiesta mancante', 'affiliate-link-manager-ai'));
+            wp_send_json_error(array('message' => __('Richiesta mancante', 'affiliate-link-manager-ai')), 400);
         }
 
         // Recupera contenuti pertinenti dalla cache
         $cached       = ALMA_Content_Analysis_AI::search_cache($query);
         $content_text = '';
         foreach ($cached as $item) {
-            $snippet = mb_substr($item['content'], 0, 200);
-            $content_text .= '- ' . $item['title'] . ': ' . $snippet . "\n";
+            $snippet = function_exists('mb_substr') ? mb_substr(wp_strip_all_tags((string) ($item['content'] ?? '')), 0, 200) : substr(wp_strip_all_tags((string) ($item['content'] ?? '')), 0, 200);
+            $content_text .= '- ' . sanitize_text_field($item['title'] ?? '') . ': ' . sanitize_text_field($snippet) . "\n";
         }
 
         $conversation = array();
         if (!empty($_POST['conversation'])) {
-            $decoded = json_decode(stripslashes($_POST['conversation']), true);
+            $decoded = json_decode(wp_unslash($_POST['conversation']), true);
             if (is_array($decoded)) {
-                foreach ($decoded as $msg) {
+                foreach (array_slice($decoded, -10) as $msg) {
                     if (empty($msg['content'])) {
                         continue;
                     }
                     $conversation[] = array(
-                        'role'    => $msg['role'] === 'assistant' ? 'assistant' : 'user',
-                        'content' => sanitize_textarea_field($msg['content'])
+                        'role'    => isset($msg['role']) && $msg['role'] === 'assistant' ? 'assistant' : 'user',
+                        'content' => function_exists('mb_substr') ? mb_substr(sanitize_textarea_field($msg['content']), 0, 1000) : substr(sanitize_textarea_field($msg['content']), 0, 1000)
                     );
                 }
             }
@@ -467,9 +528,9 @@ class AffiliateManagerAI {
 
         $links_text = '';
         foreach ($links as $type => $items) {
-            $links_text .= "$type:\n";
+            $links_text .= sanitize_text_field($type) . ":\n";
             foreach ($items as $item) {
-                $links_text .= '- ' . $item['title'] . ': ' . $item['url'] . "\n";
+                $links_text .= '- ' . sanitize_text_field($item['title']) . ': ' . esc_url_raw($item['url']) . "\n";
             }
         }
 
@@ -494,10 +555,10 @@ class AffiliateManagerAI {
         $result = ALMA_AI_Utils::call_openai_api($user_prompt, $system_prompt, $conversation);
 
         if (!$result['success']) {
-            wp_send_json_error($result['error']);
+            wp_send_json_error(array('message' => __('Non riesco a generare una risposta in questo momento. Riprova più tardi.', 'affiliate-link-manager-ai')), 502);
         }
 
-        wp_send_json_success(array('reply' => $result['response']));
+        wp_send_json_success(array('reply' => wp_kses_post($result['response'])));
     }
 
     /**
@@ -1572,7 +1633,7 @@ class AffiliateManagerAI {
         ?>
         <div class="wrap">
             <h1><?php _e('Impostazioni - Affiliate Link Manager AI', 'affiliate-link-manager-ai'); ?></h1>
-            <p style="font-size:14px;color:#666;">Versione <?php echo ALMA_VERSION; ?></p>
+            <p style="font-size:14px;color:#666;">Versione <?php echo esc_html(ALMA_VERSION); ?></p>
             
             <form method="post" action="">
                 <?php wp_nonce_field('alma_save_settings', 'alma_settings_nonce'); ?>
@@ -2892,13 +2953,11 @@ class AffiliateManagerAI {
      */
     
     public function ajax_search_links() {
-        if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'alma_editor_search')) {
-            wp_send_json_error('Invalid nonce');
-            return;
-        }
-        
-        $search = sanitize_text_field($_POST['search'] ?? '');
-        $type_filter = isset($_POST['type_filter']) ? intval($_POST['type_filter']) : 0;
+        $this->ajax_require_nonce('alma_editor_search');
+        $this->ajax_require_capability('edit_posts');
+
+        $search = isset($_POST['search']) ? sanitize_text_field(wp_unslash($_POST['search'])) : '';
+        $type_filter = isset($_POST['type_filter']) ? absint($_POST['type_filter']) : 0;
         
         $args = array(
             'post_type' => 'affiliate_link',
@@ -2949,11 +3008,11 @@ class AffiliateManagerAI {
                 }
                 
                 $results[] = array(
-                    'id' => $post_id,
+                    'id' => (int) $post_id,
                     'title' => get_the_title(),
-                    'url' => $affiliate_url,
-                    'types' => $types,
-                    'clicks' => $click_count,
+                    'url' => esc_url_raw($affiliate_url),
+                    'types' => array_map('sanitize_text_field', $types),
+                    'clicks' => (int) $click_count,
                     'usage' => $usage_data,
                     'shortcode' => '[affiliate_link id="' . $post_id . '"]'
                 );
@@ -2965,10 +3024,8 @@ class AffiliateManagerAI {
     }
 
     public function ajax_ai_suggest_links() {
-        if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'alma_editor_search')) {
-            wp_send_json_error('Invalid nonce');
-            return;
-        }
+        $this->ajax_require_nonce('alma_editor_search');
+        $this->ajax_require_capability('edit_posts');
 
         $title   = isset($_POST['title']) ? wp_strip_all_tags(wp_unslash($_POST['title'])) : '';
         $content = isset($_POST['content']) ? wp_strip_all_tags(wp_unslash($_POST['content'])) : '';
@@ -3032,11 +3089,11 @@ class AffiliateManagerAI {
             }
 
             $results[] = array(
-                'id'       => $id,
+                'id'       => (int) $id,
                 'title'    => get_the_title($id),
-                'url'      => $affiliate_url,
-                'types'    => $types,
-                'clicks'   => $click_count,
+                'url'      => esc_url_raw($affiliate_url),
+                'types'    => array_map('sanitize_text_field', $types),
+                'clicks'   => (int) $click_count,
                 'usage'    => $usage_data,
                 'shortcode'=> '[affiliate_link id="' . $id . '"]',
                 'score'    => max(0, min(100, round($score))),
@@ -3047,12 +3104,14 @@ class AffiliateManagerAI {
     }
 
     public function ajax_get_ai_suggestions() {
-        if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'alma_admin_nonce')) {
-            wp_send_json_error('Invalid nonce');
-            return;
-        }
+        $this->ajax_require_nonce('alma_admin_nonce');
 
-        $link_id = intval($_POST['link_id']);
+        $link_id = isset($_POST['link_id']) ? absint($_POST['link_id']) : 0;
+        if ($link_id > 0) {
+            $this->ajax_require_capability('edit_post', array($link_id));
+        } else {
+            $this->ajax_require_capability('edit_posts');
+        }
 
         // Genera suggerimenti AI basati su OpenAI
         $suggestions = $this->generate_ai_suggestions($link_id);
@@ -3068,22 +3127,21 @@ class AffiliateManagerAI {
     }
 
     public function ajax_ai_suggest_text() {
-        if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'alma_ai_suggest_text')) {
-            wp_send_json_error('Invalid nonce');
-            return;
-        }
+        $this->ajax_require_nonce('alma_ai_suggest_text');
+        $this->ajax_require_capability('edit_posts');
 
         $title       = isset($_POST['title']) ? sanitize_text_field(wp_unslash($_POST['title'])) : '';
         $description = isset($_POST['description']) ? sanitize_textarea_field(wp_unslash($_POST['description'])) : '';
 
         // Se non vengono passati titolo/descrizione, prova a recuperarli dal link_id
         if (!$title && !$description && isset($_POST['link_id'])) {
-            $link_id = intval($_POST['link_id']);
+            $link_id = absint($_POST['link_id']);
             $post    = get_post($link_id);
 
             if ($post && $post->post_type === 'affiliate_link') {
-                $title       = $post->post_title;
-                $description = $post->post_content;
+                $this->ajax_require_capability('edit_post', array($link_id));
+                $title       = sanitize_text_field($post->post_title);
+                $description = sanitize_textarea_field($post->post_content);
             } else {
                 wp_send_json_error('Invalid link');
                 return;
@@ -3112,16 +3170,10 @@ class AffiliateManagerAI {
     }
     
     public function ajax_test_openai_connection() {
-        if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'alma_admin_nonce')) {
-            wp_send_json_error('Invalid nonce');
-            return;
-        }
-        
+        $this->ajax_require_nonce('alma_admin_nonce');
+        $this->ajax_require_capability('manage_options');
+
         $api_key = get_option('alma_openai_api_key');
-        if (!current_user_can('manage_options')) {
-            wp_send_json_error(__('Permessi insufficienti', 'affiliate-link-manager-ai'));
-            return;
-        }
 
         if (empty($api_key)) {
             wp_send_json_error('OpenAI API key non configurata');
@@ -3140,26 +3192,22 @@ class AffiliateManagerAI {
     }
     
     public function ajax_get_performance_predictions() {
-        if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'alma_admin_nonce')) {
-            wp_send_json_error('Invalid nonce');
-            return;
+        $this->ajax_require_nonce('alma_admin_nonce');
+
+        $link_id = isset($_POST['link_id']) ? absint($_POST['link_id']) : 0;
+        if ($link_id > 0) {
+            $this->ajax_require_capability('edit_post', array($link_id));
+        } else {
+            $this->ajax_require_capability('edit_posts');
         }
-        
-        $link_id = intval($_POST['link_id']);
         $predictions = $this->get_ai_performance_predictions($link_id);
         
         wp_send_json_success($predictions);
     }
     
     public function ajax_get_dashboard_data() {
-        if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'alma_admin_nonce')) {
-            wp_send_json_error(array('message' => 'Invalid nonce'), 403);
-            return;
-        }
-        if (!current_user_can('manage_options')) {
-            wp_send_json_error(array('message' => __('Permessi insufficienti.', 'affiliate-link-manager-ai')), 403);
-            return;
-        }
+        $this->ajax_require_nonce('alma_admin_nonce');
+        $this->ajax_require_capability('manage_options');
         $data = $this->dashboard_stats->get_summary(5);
         $data['top_links'] = array_map(function($item) {
             return array(
@@ -3173,14 +3221,8 @@ class AffiliateManagerAI {
     }
     
     public function ajax_get_chart_data() {
-        if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'alma_admin_nonce')) {
-            wp_send_json_error(array('message' => 'Invalid nonce'), 403);
-            return;
-        }
-        if (!current_user_can('manage_options')) {
-            wp_send_json_error(array('message' => __('Permessi insufficienti.', 'affiliate-link-manager-ai')), 403);
-            return;
-        }
+        $this->ajax_require_nonce('alma_admin_nonce');
+        $this->ajax_require_capability('manage_options');
         $metric = sanitize_key($_POST['metric'] ?? 'clicks');
         $range  = sanitize_key($_POST['range'] ?? 'monthly');
         $chart = $this->dashboard_stats->get_chart_data($metric, $range);
@@ -3192,11 +3234,9 @@ class AffiliateManagerAI {
     }
     
     public function ajax_get_link_types() {
-        if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'alma_editor_search')) {
-            wp_send_json_error('Invalid nonce');
-            return;
-        }
-        
+        $this->ajax_require_nonce('alma_editor_search');
+        $this->ajax_require_capability('edit_posts');
+
         $terms = get_terms(array(
             'taxonomy' => 'link_type',
             'hide_empty' => false,
@@ -3207,9 +3247,9 @@ class AffiliateManagerAI {
         if (!is_wp_error($terms) && !empty($terms)) {
             foreach ($terms as $term) {
                 $types[] = array(
-                    'id' => $term->term_id,
-                    'name' => $term->name,
-                    'count' => $term->count
+                    'id' => (int) $term->term_id,
+                    'name' => sanitize_text_field($term->name),
+                    'count' => (int) $term->count
                 );
             }
         }
@@ -3218,14 +3258,8 @@ class AffiliateManagerAI {
     }
     
     public function ajax_get_link_stats() {
-        if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'alma_admin_nonce')) {
-            wp_send_json_error(array('message' => 'Invalid nonce'), 403);
-            return;
-        }
-        if (!current_user_can('manage_options')) {
-            wp_send_json_error(array('message' => __('Permessi insufficienti.', 'affiliate-link-manager-ai')), 403);
-            return;
-        }
+        $this->ajax_require_nonce('alma_admin_nonce');
+        $this->ajax_require_capability('manage_options');
         $link_id = isset($_POST['link_id']) ? absint($_POST['link_id']) : 0;
         if (!$link_id) {
             wp_send_json_error(array('message' => __('ID link non valido.', 'affiliate-link-manager-ai')), 400);
@@ -3237,16 +3271,15 @@ class AffiliateManagerAI {
     }
 
     public function ajax_import_affiliate_link() {
-        if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'alma_import_links')) {
-            wp_send_json_error(array('code' => 'invalid_nonce'));
-        }
+        $this->ajax_require_nonce('alma_import_links');
+        $this->ajax_require_capability('manage_options');
 
-        $title = sanitize_text_field($_POST['title'] ?? '');
-        $url   = esc_url_raw($_POST['url'] ?? '');
-        $status = ($_POST['status'] ?? 'draft') === 'publish' ? 'publish' : 'draft';
-        $types = isset($_POST['types']) ? array_map('intval', (array) $_POST['types']) : array();
-        $link_rel = sanitize_text_field($_POST['rel'] ?? 'sponsored noopener');
-        $link_target = sanitize_text_field($_POST['target'] ?? '_blank');
+        $title = isset($_POST['title']) ? sanitize_text_field(wp_unslash($_POST['title'])) : '';
+        $url   = isset($_POST['url']) ? esc_url_raw(wp_unslash($_POST['url'])) : '';
+        $status = isset($_POST['status']) && sanitize_key(wp_unslash($_POST['status'])) === 'publish' ? 'publish' : 'draft';
+        $types = isset($_POST['types']) ? array_map('absint', (array) wp_unslash($_POST['types'])) : array();
+        $link_rel = isset($_POST['rel']) ? sanitize_text_field(wp_unslash($_POST['rel'])) : 'sponsored noopener';
+        $link_target = isset($_POST['target']) ? sanitize_text_field(wp_unslash($_POST['target'])) : '_blank';
 
         if (empty($title) || empty($url) || !filter_var($url, FILTER_VALIDATE_URL)) {
             wp_send_json_error(array('code' => 'invalid_data'));

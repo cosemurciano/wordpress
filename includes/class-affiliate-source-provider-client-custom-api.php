@@ -14,9 +14,8 @@ class ALMA_Affiliate_Source_Provider_Client_Custom_API {
     private function build_request($source) {
         $settings = $this->source_settings($source);
         $credentials = $this->source_credentials($source);
-        $endpoint = esc_url_raw($settings['endpoint'] ?? ($settings['base_url'] ?? ''));
-        if (!$endpoint) { return new WP_Error('missing_endpoint', __('Endpoint mancante.', 'affiliate-link-manager-ai')); }
-        if (!filter_var($endpoint, FILTER_VALIDATE_URL)) { return new WP_Error('invalid_endpoint', __('Endpoint non valido.', 'affiliate-link-manager-ai')); }
+        $endpoint = ALMA_Affiliate_Source_URL_Validator::validate($settings['endpoint'] ?? ($settings['base_url'] ?? ''));
+        if (is_wp_error($endpoint)) { return $endpoint; }
         $method = strtoupper(sanitize_text_field($settings['method'] ?? 'GET'));
         $headers = array('Accept' => 'application/json');
         if (!empty($settings['user_agent'])) { $headers['User-Agent'] = sanitize_text_field($settings['user_agent']); }
@@ -26,7 +25,7 @@ class ALMA_Affiliate_Source_Provider_Client_Custom_API {
         if (empty($credentials['api_key']) && empty($credentials['access_token']) && empty($credentials['bearer_token'])) {
             return new WP_Error('missing_credentials', __('Credenziali mancanti.', 'affiliate-link-manager-ai'));
         }
-        return array('endpoint' => $endpoint, 'args' => array('method' => $method, 'timeout' => 8, 'redirection' => 1, 'headers' => $headers));
+        return array('endpoint' => $endpoint, 'args' => ALMA_Affiliate_Source_URL_Validator::request_args(array('method' => $method, 'timeout' => 8, 'headers' => $headers)));
     }
 
     public function test_connection($source) {

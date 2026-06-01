@@ -751,7 +751,7 @@ class ALMA_Affiliate_Source_Manager {
 
     public function ajax_test_source_connection(){
         if(!current_user_can('manage_options')) wp_send_json_error(array('message'=>'Non autorizzato'),403);
-        check_ajax_referer('alma_test_connection_nonce','nonce');
+        if(!check_ajax_referer('alma_test_connection_nonce','nonce',false)) wp_send_json_error(array('message'=>'Verifica di sicurezza non riuscita'),403);
         $source_id = absint($_POST['source_id'] ?? 0);
         if($source_id<=0) wp_send_json_error(array('message'=>'Source non valida'));
         global $wpdb;
@@ -765,7 +765,7 @@ class ALMA_Affiliate_Source_Manager {
         wp_send_json_success(array('message'=>'Connessione riuscita'));
     }
     private function map_error($code,$fallback){
-        $map=array('missing_credentials'=>'Credenziali/token mancanti','missing_endpoint'=>'Endpoint mancante','invalid_endpoint'=>'Endpoint non valido','provider_unsupported'=>'Provider non ancora supportato','invalid_environment'=>'Environment non valido','invalid_api_version'=>'Versione API non valida','unauthorized'=>'Credenziale non autorizzata','forbidden'=>'Accesso negato','rate_limited'=>'Rate limit raggiunto','timeout'=>'Timeout','api_error'=>'Errore API','invalid_json'=>'Risposta API non valida','missing_minimum_criteria'=>'Parametri minimi mancanti per discovery','missing_destination_id'=>'Destination ID mancante','missing_search_term'=>'Search term mancante','invalid_environment'=>'Environment non valido','invalid_api_version'=>'Versione API non valida','unauthorized'=>'Credenziale non autorizzata','forbidden'=>'Credenziale senza permessi','rate_limited'=>'Limite richieste raggiunto','empty_response'=>'Risposta vuota','invalid_json'=>'Risposta API non valida','response_too_large'=>'Risposta troppo grande','catalog_unavailable'=>'Catalogo campi documentato non disponibile','internal_error'=>'Errore interno');
+        $map=array('missing_credentials'=>'Credenziali/token mancanti','missing_endpoint'=>'Endpoint mancante','invalid_endpoint'=>'Endpoint non valido','missing_url'=>'URL mancante','invalid_url'=>'URL non valido','invalid_scheme'=>'Schema URL non consentito','missing_host'=>'Host URL mancante','blocked_localhost'=>'Endpoint localhost non consentito','blocked_private_ip'=>'Endpoint verso IP privato, loopback o link-local non consentito','provider_unsupported'=>'Provider non ancora supportato','invalid_environment'=>'Environment non valido','invalid_api_version'=>'Versione API non valida','unauthorized'=>'Credenziale non autorizzata','forbidden'=>'Accesso negato','rate_limited'=>'Rate limit raggiunto','timeout'=>'Timeout','api_error'=>'Errore API','invalid_json'=>'Risposta API non valida','missing_minimum_criteria'=>'Parametri minimi mancanti per discovery','missing_destination_id'=>'Destination ID mancante','missing_search_term'=>'Search term mancante','invalid_environment'=>'Environment non valido','invalid_api_version'=>'Versione API non valida','unauthorized'=>'Credenziale non autorizzata','forbidden'=>'Credenziale senza permessi','rate_limited'=>'Limite richieste raggiunto','empty_response'=>'Risposta vuota','invalid_json'=>'Risposta API non valida','response_too_large'=>'Risposta troppo grande','catalog_unavailable'=>'Catalogo campi documentato non disponibile','internal_error'=>'Errore interno');
         return $map[$code] ?? sanitize_text_field($fallback ?: 'Errore interno');
     }
     public function render_importable_fields_page(){
