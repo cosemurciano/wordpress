@@ -58,7 +58,10 @@ class ALMA_OpenAI_Service {
         $res = self::post_responses_api($api_key, $body, $timeout);
         $rt = round((microtime(true)-$start)*1000);
 
-        if (is_wp_error($res)) return array('success'=>false,'error'=>__('Errore connessione AI', 'affiliate-link-manager-ai'),'error_code'=>'api_connection_error','error_category'=>'api','response_time'=>$rt,'model'=>$model,'max_output_tokens'=>$max_output_tokens,'response_format_used'=>$response_format_used,'warnings'=>$warnings);
+        if (is_wp_error($res)) {
+            ALMA_Logger::error('OpenAI connection error', array('error' => $res->get_error_message(), 'model' => $model, 'response_time' => $rt));
+            return array('success'=>false,'error'=>__('Errore connessione AI', 'affiliate-link-manager-ai'),'error_code'=>'api_connection_error','error_category'=>'api','response_time'=>$rt,'model'=>$model,'max_output_tokens'=>$max_output_tokens,'response_format_used'=>$response_format_used,'warnings'=>$warnings);
+        }
         $code = wp_remote_retrieve_response_code($res);
         $data = json_decode(wp_remote_retrieve_body($res), true);
         if ($code < 200 || $code >= 300) {
@@ -68,7 +71,10 @@ class ALMA_OpenAI_Service {
                 $initial_error = $data;
                 $res = self::post_responses_api($api_key, $retry_body, $timeout);
                 $rt = round((microtime(true)-$start)*1000);
-                if (is_wp_error($res)) return array('success'=>false,'error'=>__('Errore connessione AI', 'affiliate-link-manager-ai'),'error_code'=>'api_connection_error','error_category'=>'api','response_time'=>$rt,'model'=>$model,'max_output_tokens'=>$max_output_tokens,'response_format_used'=>$response_format_used,'warnings'=>$warnings,'raw_response'=>array('initial_error'=>$initial_error));
+                if (is_wp_error($res)) {
+                    ALMA_Logger::error('OpenAI retry connection error', array('error' => $res->get_error_message(), 'model' => $model, 'response_time' => $rt, 'raw_response' => array('initial_error' => $initial_error)));
+                    return array('success'=>false,'error'=>__('Errore connessione AI', 'affiliate-link-manager-ai'),'error_code'=>'api_connection_error','error_category'=>'api','response_time'=>$rt,'model'=>$model,'max_output_tokens'=>$max_output_tokens,'response_format_used'=>$response_format_used,'warnings'=>$warnings,'raw_response'=>array('initial_error'=>$initial_error));
+                }
                 $code = wp_remote_retrieve_response_code($res);
                 $data = json_decode(wp_remote_retrieve_body($res), true);
                 if (is_array($data)) {
@@ -88,6 +94,7 @@ class ALMA_OpenAI_Service {
             elseif ($code === 408) { $error_code = 'timeout'; }
             elseif (strpos($error_msg_l, 'response_format') !== false) { $error_code = 'response_format_unsupported'; }
             elseif (strpos($error_msg_l, 'model') !== false && strpos($error_msg_l, 'support') !== false) { $error_code = 'model_unsupported'; }
+            ALMA_Logger::warning('OpenAI HTTP error', array('http_status' => $code, 'error_code' => $error_code, 'error_type' => $error_type, 'error' => $err, 'model' => $model, 'response_time' => $rt, 'raw_response' => $data));
             return array('success'=>false,'error'=>sanitize_text_field($err),'error_code'=>$error_code,'error_type'=>$error_type,'error_category'=>'api','http_status'=>$code,'response_time'=>$rt,'model'=>$model,'max_output_tokens'=>$max_output_tokens,'response_format_used'=>$response_format_used,'raw_response'=>$data,'warnings'=>$warnings);
         }
         $text = '';
@@ -97,7 +104,10 @@ class ALMA_OpenAI_Service {
                 foreach ((array)($out['content'] ?? array()) as $c) { if (($c['type'] ?? '') === 'output_text' && !empty($c['text'])) { $text .= $c['text']; } }
             }
         }
-        if (trim($text) === '') return array('success'=>false,'error'=>__('Risposta AI vuota', 'affiliate-link-manager-ai'),'error_code'=>'empty_response','error_category'=>'api','response_time'=>$rt,'model'=>$data['model'] ?? $model,'max_output_tokens'=>$max_output_tokens,'response_format_used'=>$response_format_used,'warnings'=>$warnings,'raw_response'=>$data);
+        if (trim($text) === '') {
+            ALMA_Logger::warning('OpenAI empty response', array('model' => $data['model'] ?? $model, 'response_time' => $rt, 'raw_response' => $data));
+            return array('success'=>false,'error'=>__('Risposta AI vuota', 'affiliate-link-manager-ai'),'error_code'=>'empty_response','error_category'=>'api','response_time'=>$rt,'model'=>$data['model'] ?? $model,'max_output_tokens'=>$max_output_tokens,'response_format_used'=>$response_format_used,'warnings'=>$warnings,'raw_response'=>$data);
+        }
         return array('success'=>true,'response'=>$text,'model'=>$data['model'] ?? $model,'response_time'=>$rt,'usage'=>$data['usage'] ?? null,'max_output_tokens'=>$max_output_tokens,'response_format_used'=>$response_format_used,'raw_response'=>$data,'warnings'=>$warnings);
     }
 

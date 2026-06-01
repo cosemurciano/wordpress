@@ -1,3 +1,8 @@
+## Unreleased
+- Introdotto `ALMA_Logger`, logger centralizzato con livelli `debug`, `info`, `warning` ed `error`, redazione automatica di API key, bearer token, header Authorization, URL con token e contenuti AI troppo lunghi.
+- Convertiti i log diretti più sensibili nelle aree OpenAI, AI draft builder, import GetYourGuide CSV, media index e internal link index in diagnostica controllata tramite logger.
+- I log `debug` rispettano `WP_DEBUG`; nessun segreto viene salvato in database e non cambiano UI, schema DB, payload OpenAI o flussi di import.
+
 ## 2.36.0 - 2026-06-01
 - Hardening tecnico degli endpoint AJAX admin/editoriali con controlli coerenti di nonce, capability, sanitizzazione input ed escaping dei payload JSON dove applicabile.
 - Aggiunto rate limit configurabile via filtro `alma_affiliate_chat_rate_limit` per la chat AI pubblica, con risposta JSON leggibile e logging redatto degli eventi bloccati.

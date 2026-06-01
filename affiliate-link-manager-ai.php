@@ -21,6 +21,7 @@ define('ALMA_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('ALMA_PLUGIN_FILE', __FILE__);
 
 // Utilità comuni per le interazioni con l'AI
+require_once ALMA_PLUGIN_DIR . 'includes/class-logger.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-ai-utils.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-content-analysis-ai.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-dashboard-stats.php';
@@ -3056,14 +3057,14 @@ class AffiliateManagerAI {
         $response = ALMA_AI_Utils::call_openai_api($prompt, 'Rispondi esclusivamente con JSON valido, senza testo aggiuntivo');
         if (empty($response['success'])) {
             $msg = $response['error'] ?? __('Impossibile generare suggerimenti con OpenAI.', 'affiliate-link-manager-ai');
-            error_log('OpenAI API error: ' . $msg);
+            ALMA_Logger::error('OpenAI API error', array('error' => $msg));
             wp_send_json_error($msg);
         }
 
         $clean = ALMA_AI_Utils::extract_first_json($response['response']);
         $items = json_decode($clean, true);
         if (!is_array($items)) {
-            error_log('JSON decode failed: ' . json_last_error_msg() . ' | Raw: ' . $response['response']);
+            ALMA_Logger::warning('JSON decode failed', array('json_error' => json_last_error_msg(), 'raw_ai_response' => $response['response']));
             wp_send_json_error(__('Risposta AI non valida.', 'affiliate-link-manager-ai'));
         }
 
@@ -3449,7 +3450,7 @@ class AffiliateManagerAI {
         $clean = ALMA_AI_Utils::extract_first_json($response['response']);
         $items = json_decode($clean, true);
         if (!is_array($items)) {
-            error_log('JSON decode failed: ' . json_last_error_msg() . ' | Raw: ' . $response['response']);
+            ALMA_Logger::warning('JSON decode failed', array('json_error' => json_last_error_msg(), 'raw_ai_response' => $response['response']));
             return new \WP_Error('openai_parse_error', __('Risposta non valida dall\'AI', 'affiliate-link-manager-ai'));
         }
 
@@ -3517,7 +3518,7 @@ class AffiliateManagerAI {
         $decoded = json_decode($clean, true);
 
         if (!is_array($decoded)) {
-            error_log('JSON decode failed: ' . json_last_error_msg() . ' | Raw: ' . $response['response']);
+            ALMA_Logger::warning('JSON decode failed', array('json_error' => json_last_error_msg(), 'raw_ai_response' => $response['response']));
             return new \WP_Error('openai_parse_error', __('Risposta non valida da OpenAI', 'affiliate-link-manager-ai'));
         }
 
@@ -3560,7 +3561,7 @@ class AffiliateManagerAI {
         $decoded = json_decode($clean, true);
 
         if (!is_array($decoded)) {
-            error_log('JSON decode failed: ' . json_last_error_msg() . ' | Raw: ' . $response['response']);
+            ALMA_Logger::warning('JSON decode failed', array('json_error' => json_last_error_msg(), 'raw_ai_response' => $response['response']));
             return new \WP_Error('openai_parse_error', __('Risposta non valida da OpenAI', 'affiliate-link-manager-ai'));
         }
 
@@ -3598,7 +3599,7 @@ class AffiliateManagerAI {
         $decoded = json_decode($clean, true);
 
         if (!is_array($decoded)) {
-            error_log('JSON decode failed: ' . json_last_error_msg() . ' | Raw: ' . $response['response']);
+            ALMA_Logger::warning('JSON decode failed', array('json_error' => json_last_error_msg(), 'raw_ai_response' => $response['response']));
             return new \WP_Error('openai_parse_error', __('Risposta non valida da OpenAI', 'affiliate-link-manager-ai'));
         }
 

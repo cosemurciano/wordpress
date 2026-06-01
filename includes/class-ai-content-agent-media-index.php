@@ -108,7 +108,7 @@ class ALMA_AI_Content_Agent_Media_Index {
         $success = empty($missing) && empty($errors);
         $error = '';
         if (!$success) { $error = implode(' | ', array_merge($errors, array_map('sanitize_text_field', $missing))); }
-        if (!empty($added)) { error_log('ALMA media index schema updated: added missing columns ' . implode(', ', array_map('sanitize_key', $added))); }
+        if (!empty($added)) { ALMA_Logger::info('ALMA media index schema updated', array('added_columns' => array_map('sanitize_key', $added))); }
         return array('success'=>$success,'added_columns'=>$added,'missing_columns'=>$missing,'checked_columns'=>array_keys(self::expected_columns()),'error'=>$error);
     }
 
@@ -239,7 +239,7 @@ class ALMA_AI_Content_Agent_Media_Index {
         $exists = $wpdb->get_var($wpdb->prepare("SELECT id FROM " . self::table_name() . " WHERE attachment_id=%d", $attachment_id));
         $ok = $exists ? (false !== $wpdb->update(self::table_name(), $row, array('attachment_id'=>$attachment_id))) : (false !== $wpdb->insert(self::table_name(), $row));
         if (!$ok && !empty($wpdb->last_error)) {
-            error_log('ALMA media index insert/update failed: ' . sanitize_text_field($wpdb->last_error));
+            ALMA_Logger::error('ALMA media index insert/update failed', array('error' => sanitize_text_field($wpdb->last_error)));
         }
         return $ok;
     }
