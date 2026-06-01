@@ -9,6 +9,15 @@ Redazione automatica applicata ai log:
 - Parametri token noti negli URL (`token`, `access_token`, `refresh_token`, `api_key`, `key`, `signature`, `client_secret`).
 - Payload/prompt/body OpenAI lunghi e risposte AI grezze lunghe, incluse risposte AI annidate, troncati prima della scrittura nel log.
 
+## 2.36.4 - 2026-06-01
+- Migliorato il workflow **Importa contenuti → GetYourGuide CSV / Deep Link** con job background persistenti in `alma_gyg_csv_import_jobs`, batch sicuri, lock transient e continuazione via WP-Cron anche a pagina chiusa.
+- Estesa la sezione **Sessioni CSV recenti** con link admin sicuro al file caricato, record totali, importati, restanti, stato importazione e ultimo aggiornamento calcolati da sessioni/progress/job persistenti.
+- Semplificata la ripresa importazione CSV: la vista mostra file corrente, source corrente e il solo riepilogo delle tipologie attività, evitando step upload/configurazione già completati.
+- Corretta la preview/importazione subset: i job salvano sessione, source, tipologia attività, filtri, selezione e criteri preview, così Importa/continua lavora solo sui record selezionati o filtrati e non su tutto il CSV.
+- Aggiunta la colonna **Mapping Sothra** record-level nella tabella Risultati anteprima, con multi-select `link_type`, fallback da mapping tipologia/source e persistenza nel job prima dell’import.
+- Aggiunta progress bar WordPress-native con conteggi processati/totali, importati, aggiornati, già presenti, saltati, errori e stato testuale del job.
+- Versione plugin aggiornata a `2.36.4`.
+
 ## 2.36.3 - 2026-06-01
 - Rimossa dalle funzionalità attive la funzionalità dismessa **Affiliate Chat AI**.
 - Funzionalità dismesse: lo shortcode `[affiliate_chat_ai]` non viene più registrato e non è previsto un fallback HTML.

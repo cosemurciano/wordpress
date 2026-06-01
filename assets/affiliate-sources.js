@@ -191,6 +191,30 @@ jQuery(function($){
     $.each(ids, function(_, id){ url += sep + 'selected_external_ids[]=' + encodeURIComponent(id); sep='&'; });
     return url;
   }
+
+  function gygJobStatusLabel(status){ return ({queued:'In coda',running:'In corso',paused:'In pausa',completed:'Completato',failed:'Errore',cancelled:'Annullato'})[status] || status || '—'; }
+  function gygRenderJobStatus(d){
+    if(!d){ return; }
+    var pct = parseFloat(d.percent || 0); if(isNaN(pct)){ pct = 0; }
+    $('.alma-gyg-job-box').show().addClass('alma-gyg-job-active');
+    $('.alma-gyg-job-box .alma-progress-bar').css('width', Math.max(0, Math.min(100, pct))+'%');
+    $('.alma-gyg-job-status').text(gygJobStatusLabel(d.status)+' · '+pct+'% · '+(d.message || ''));
+    $('.alma-gyg-job-counts').text('Processati '+(d.processed_records||0)+' / '+(d.total_records||0)+' · importati '+(d.imported_count||0)+' · aggiornati '+(d.updated_count||0)+' · già presenti '+(d.existing_count||0)+' · saltati '+(d.skipped_count||0)+' · errori '+(d.error_count||0));
+  }
+  function gygPollJob(jobId){
+    if(!jobId){ return; }
+    $.post(gygAjaxUrl(), {action:'alma_gyg_csv_get_import_job_status', nonce:gygNonce(), job_id:jobId}).done(function(res){
+      if(res && res.success){ var d=res.data; gygRenderJobStatus(d); if($.inArray(d.status, ['queued','running','paused']) !== -1){ setTimeout(function(){ gygPollJob(jobId); }, 5000); } }
+    });
+  }
+  function gygAppendSelectedMappings($form, ids){
+    var selected = {}; $.each(ids || [], function(_, id){ selected[String(id)] = true; });
+    $form.find('select.alma-gyg-record-mapping').each(function(){
+      var m = String($(this).attr('name')||'').match(/record_link_type_term_ids\[([^\]]+)\]/), eid = m ? m[1] : '';
+      if(eid && !selected[eid]){ $(this).prop('disabled', true); }
+    });
+  }
+
   gygRefreshSelected();
   $(document).on('change', '.alma-gyg-row-select', function(){
     var id = String($(this).val()||''), ids = gygSelectedIds(), idx = ids.indexOf(id);
@@ -203,7 +227,22 @@ jQuery(function($){
   $(document).on('click', '.alma-gyg-select-filtered', function(e){ e.preventDefault(); var ids=gygSelectedIds(), add=[]; $('.alma-gyg-filtered-id').each(function(){ var id=String($(this).val()||''); if(id){ add.push(id); } }); if(add.length > 100 && !window.confirm('Stai per selezionare '+add.length+' record filtrati. Confermi?')){ return; } $.each(add, function(_, id){ if(ids.indexOf(id)===-1){ ids.push(id); } }); $('.alma-gyg-row-select').prop('checked', true); gygStoreSelected(ids); });
   $(document).on('submit', '.alma-gyg-filter-form', function(){ gygAppendSelectedToContainer($(this)); });
   $(document).on('click', '.alma-gyg-pagination a, .alma-gyg-filter-box a.button', function(e){ e.preventDefault(); window.location.href = gygUrlWithSelected($(this).attr('href')); });
-  $(document).on('submit', '.alma-gyg-selective-import-form', function(e){ var ids=gygStoreSelected(gygSelectedIds()); if(ids.length < 1){ e.preventDefault(); window.alert('Seleziona almeno un contenuto prima di importare.'); } });
+  $(document).on('submit', '.alma-gyg-selective-import-form', function(e){
+    var $form=$(this), ids=gygStoreSelected(gygSelectedIds());
+    if(ids.length < 1){ e.preventDefault(); window.alert('Seleziona almeno un contenuto prima di importare.'); return; }
+    e.preventDefault();
+    $form.find('select.alma-gyg-record-mapping').prop('disabled', false);
+    gygAppendSelectedMappings($form, ids);
+    var data=$form.serializeArray();
+    data.push({name:'action', value:'alma_gyg_csv_create_import_job'});
+    data.push({name:'nonce', value:gygNonce()});
+    $form.find('.alma-gyg-import-selected').prop('disabled', true).text('Job in creazione…');
+    $('.alma-gyg-job-box').show(); $('.alma-gyg-job-status').text('Creazione job background…');
+    $.post(gygAjaxUrl(), data).done(function(res){
+      if(!res || !res.success){ window.alert((res && res.data && res.data.message) || 'Errore creazione job.'); $form.find('.alma-gyg-import-selected').prop('disabled', false).text('Importa/continua'); return; }
+      gygRenderJobStatus(res.data); gygPollJob(res.data.job_id); $form.find('.alma-gyg-import-selected').text('Job avviato');
+    }).fail(function(xhr){ window.alert(gygAjaxErrorMessage(xhr, 'Errore di rete durante la creazione job.')); $form.find('.alma-gyg-import-selected').prop('disabled', false).text('Importa/continua'); });
+  });
 
   renderProviderFields();
   toggleSearchHints();
