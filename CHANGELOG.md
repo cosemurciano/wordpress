@@ -3,6 +3,14 @@
 - Convertiti i log diretti più sensibili nelle aree OpenAI, AI draft builder, import GetYourGuide CSV, media index e internal link index in diagnostica controllata tramite logger.
 - I log `debug` rispettano `WP_DEBUG`; nessun segreto viene salvato in database e non cambiano UI, schema DB, payload OpenAI o flussi di import.
 
+## 2.36.2 - 2026-06-01
+- Rimossa la funzionalità **AI Trend Radar** dal bootstrap, dal menu admin, dalle install/upgrade routine e dalle esecuzioni programmate.
+- Rimossa la funzionalità **Trend Idee contenuto** dal bootstrap, dal menu admin, dalla Bacheca WordPress, dalle install/upgrade routine e dalle esecuzioni programmate.
+- Aggiunto cleanup sicuro dei WP-Cron legacy `alma_ai_trend_radar_run_profile` e `alma_trend_content_ideas_cron`, senza droppare tabelle o cancellare dati legacy.
+- Corretta la duplicazione menu **Tipologie**/**Tipologie Link**: resta solo **Tipologie Link**, collegata alla schermata nativa della tassonomia `link_type` del CPT `affiliate_link`.
+- AI Content Agent, Affiliate Source Manager e import affiliate non sono stati modificati funzionalmente.
+- Versione plugin aggiornata a `2.36.2`.
+
 ## 2.36.1 - 2026-06-01
 - Alleggerito il bootstrap principale spostando il caricamento asset admin/frontend in `includes/class-assets.php`, mantenendo invariati handle CSS/JS e localizzazioni esistenti.
 - Spostata la registrazione/rendering degli shortcode in `includes/class-shortcodes.php`, mantenendo invariati `[affiliate_link]`, `[affiliate_links_widget]` e `[affiliate_chat_ai]` e lo stesso markup frontend.

@@ -9,6 +9,15 @@ Redazione automatica applicata ai log:
 - Parametri token noti negli URL (`token`, `access_token`, `refresh_token`, `api_key`, `key`, `signature`, `client_secret`).
 - Payload/prompt/body OpenAI lunghi e risposte AI grezze lunghe, troncati prima della scrittura nel log.
 
+
+## 2.36.2 - 2026-06-01
+- Rimosse dalle funzionalità attive le pagine e le esecuzioni di **AI Trend Radar** e **Trend Idee contenuto**; i dati legacy già presenti nel database non vengono eliminati automaticamente.
+- Disattivato il caricamento delle classi, la registrazione di menu/dashboard/admin-post e la creazione di nuove tabelle per i due moduli dismessi.
+- Aggiunto cleanup sicuro degli eventi WP-Cron legacy dedicati esclusivamente ai due moduli dismessi, senza toccare cron generici, import o AI Content Agent.
+- Corretta la duplicazione del menu tassonomia: resta una sola voce **Tipologie Link** che apre la schermata nativa `link_type` per `affiliate_link`.
+- AI Content Agent, Affiliate Sources e import affiliate non sono stati modificati funzionalmente.
+- Versione plugin aggiornata a `2.36.2`.
+
 ## 2.36.1 - 2026-06-01
 - Alleggerito il bootstrap principale spostando il caricamento asset admin/frontend in `includes/class-assets.php`, mantenendo invariati handle CSS/JS e localizzazioni esistenti.
 - Spostata la registrazione/rendering degli shortcode in `includes/class-shortcodes.php`, mantenendo invariati `[affiliate_link]`, `[affiliate_links_widget]` e `[affiliate_chat_ai]` e lo stesso markup frontend.
