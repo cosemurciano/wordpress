@@ -1,3 +1,10 @@
+## 2.36.0 - 2026-06-01
+- Hardening tecnico degli endpoint AJAX admin/editoriali con controlli coerenti di nonce, capability, sanitizzazione input ed escaping dei payload JSON dove applicabile.
+- Aggiunto rate limit configurabile via filtro `alma_affiliate_chat_rate_limit` per la chat AI pubblica, con risposta JSON leggibile e logging redatto degli eventi bloccati.
+- Introdotta validazione anti-SSRF centralizzata per URL esterni usati da provider Custom/Generic API e sideload immagini remote: solo HTTP/HTTPS, host obbligatorio, blocco localhost, loopback, IP privati e link-local, redirect limitati.
+- Nessuna modifica ai flussi utente principali, shortcode, CPT/tassonomie o import CSV GetYourGuide server-rendered.
+- Versione plugin aggiornata a `2.36.0`.
+
 ## 2.35.0 - 2026-05-10
 - Corretto il bug delle metriche fonti Trend: `fonti_analizzate` non deriva più da `fonti_citate`; per `editorial_plan` senza `fonti_interrogate` il report usa lo snapshot runtime delle fonti incluse nella run.
 - Le metriche distinguono fonti configurate, interrogate, citate, saltate, senza risultati, non raggiungibili e da verificare. `count_fonti_analizzate` resta solo per compatibilità come alias di `count_fonti_interrogate`.

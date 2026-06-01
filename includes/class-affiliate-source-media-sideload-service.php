@@ -40,8 +40,9 @@ class ALMA_Affiliate_Source_Media_Sideload_Service {
             return $result;
         }
 
-        if (!$this->is_valid_remote_url($url)) {
-            $result = $this->result('failed_validation', $post_id, $url, $hash, __('Immagine non importata: URL remoto non valido.', 'affiliate-link-manager-ai'), 'invalid_url');
+        $url_validation = ALMA_Affiliate_Source_URL_Validator::validate($url);
+        if (is_wp_error($url_validation)) {
+            $result = $this->result('failed_validation', $post_id, $url, $hash, __('Immagine non importata: URL remoto non valido.', 'affiliate-link-manager-ai'), $url_validation->get_error_code());
             $this->save_post_diagnostics($post_id, $result);
             $this->log_event('failed_validation', $result);
             return $result;
@@ -84,7 +85,15 @@ class ALMA_Affiliate_Source_Media_Sideload_Service {
         }
 
         $this->load_media_dependencies();
+        $request_args_filter = function($request_args, $request_url) use ($url) {
+            if ((string) $request_url === (string) $url) {
+                $request_args = ALMA_Affiliate_Source_URL_Validator::request_args($request_args);
+            }
+            return $request_args;
+        };
+        add_filter('http_request_args', $request_args_filter, 10, 2);
         $tmp = download_url($url);
+        remove_filter('http_request_args', $request_args_filter, 10);
         if (is_wp_error($tmp)) {
             $result = $this->result('failed_download', $post_id, $url, $hash, $tmp->get_error_message(), $tmp->get_error_code());
             $this->save_post_diagnostics($post_id, $result);
@@ -145,13 +154,6 @@ class ALMA_Affiliate_Source_Media_Sideload_Service {
         $normalized .= isset($parts['path']) ? (string)$parts['path'] : '/';
         if (!empty($parts['query'])) $normalized .= '?' . (string)$parts['query'];
         return esc_url_raw($normalized, array('http', 'https'));
-    }
-
-    private function is_valid_remote_url($url) {
-        $parts = wp_parse_url($url);
-        if (!is_array($parts) || empty($parts['scheme']) || empty($parts['host'])) return false;
-        if (!in_array(strtolower((string)$parts['scheme']), array('http', 'https'), true)) return false;
-        return (bool) wp_http_validate_url($url);
     }
 
     private function hash_url($url) { return hash('sha256', $this->normalize_url($url)); }
