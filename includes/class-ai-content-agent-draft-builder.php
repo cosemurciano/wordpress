@@ -1046,7 +1046,7 @@ class ALMA_AI_Content_Agent_Draft_Builder {
             $download_payload = self::build_payload_download_document($payload, $mode);
         } catch (Throwable $e) {
             if (defined('WP_DEBUG') && WP_DEBUG) {
-                error_log('ALMA payload download error: ' . $e->getMessage());
+                ALMA_Logger::warning('ALMA payload download error', array('error' => $e->getMessage()));
             }
             return new WP_Error('alma_payload_exception', 'Errore durante la costruzione del payload JSON.');
         }
@@ -1181,14 +1181,14 @@ class ALMA_AI_Content_Agent_Draft_Builder {
         if (is_wp_error($parsed)) {
             $diag = array('task'=>self::TASK_SELECTION,'model'=>$res['model'] ?? '','error_category'=>'json','error_code'=>$parsed->get_error_code(),'json_error'=>sanitize_text_field((string)$parsed->get_error_data('json_error')),'response_length'=>strlen((string)($res['response'] ?? '')),'response_preview'=>self::sanitize_response_preview((string)($res['response'] ?? ''), 1000),'response_format_used'=>sanitize_text_field((string)($res['response_format_used'] ?? 'none')),'max_output_tokens'=>absint($res['max_output_tokens'] ?? $max_output_tokens));
             ALMA_AI_Usage_Logger::log(array('task'=>self::TASK_SELECTION,'success'=>false,'error'=>'JSON error ['.$diag['error_code'].']: '.$parsed->get_error_message(),'model'=>$res['model'] ?? '','reference_id'=>'session:user:'.$user_id));
-            if (defined('WP_DEBUG') && WP_DEBUG) { error_log('ALMA Draft JSON diagnostic: '.wp_json_encode($diag)); }
+            ALMA_Logger::debug('ALMA Draft JSON diagnostic', array('diagnostic' => $diag));
             return self::fail($parsed->get_error_message(), $res['model'] ?? '', 'session:user:'.$user_id, array('error_category'=>'json','error_code'=>$parsed->get_error_code()));
         }
         $validated = self::validate_output_contract($parsed);
         if (is_wp_error($validated)) {
             $missing_fields = (array)$validated->get_error_data('missing_fields');
             $diag = array('task'=>self::TASK_SELECTION,'model'=>$res['model'] ?? '','error_category'=>'json_contract','error_code'=>$validated->get_error_code(),'missing_fields'=>$missing_fields,'response_length'=>strlen((string)($res['response'] ?? '')),'response_preview'=>self::sanitize_response_preview((string)($res['response'] ?? ''), 500),'response_format_used'=>sanitize_text_field((string)($res['response_format_used'] ?? 'none')));
-            if (defined('WP_DEBUG') && WP_DEBUG) { error_log('ALMA Draft contract diagnostic: '.wp_json_encode($diag)); }
+            ALMA_Logger::debug('ALMA Draft contract diagnostic', array('diagnostic' => $diag));
             return self::fail($validated->get_error_message(), $res['model'] ?? '', 'session:user:'.$user_id, array('error_category'=>'json_contract','error_code'=>$validated->get_error_code(),'missing_fields'=>$missing_fields));
         }
         $parsed = $validated;

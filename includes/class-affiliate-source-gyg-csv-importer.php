@@ -509,7 +509,7 @@ class ALMA_Affiliate_Source_GYG_CSV_Importer {
         $result['per_page'] = $page['per_page'];
         $result['total_pages'] = $page['total_pages'];
         if (defined('WP_DEBUG') && WP_DEBUG) {
-            error_log(sprintf('[ALMA gyg_csv filter] total=%d found=%d page=%d per_page=%d selected=%d status=%s search_in=%s mode=%s type_set=%s city_set=%s region_set=%s keywords_set=%s', absint($result['total_records']), absint($result['found']), absint($result['page']), absint($result['per_page']), absint($result['selected_count']), sanitize_key($filters['status']), sanitize_key($filters['search_in']), sanitize_key($filters['keyword_mode']), $filters['activity_type'] !== '' ? 'yes' : 'no', $filters['city'] !== '' ? 'yes' : 'no', $filters['region'] !== '' ? 'yes' : 'no', $filters['keywords'] !== '' ? 'yes' : 'no'));
+            ALMA_Logger::debug('ALMA gyg_csv filter', array('total' => absint($result['total_records']), 'found' => absint($result['found']), 'page' => absint($result['page']), 'per_page' => absint($result['per_page']), 'selected' => absint($result['selected_count']), 'status' => sanitize_key($filters['status']), 'search_in' => sanitize_key($filters['search_in']), 'mode' => sanitize_key($filters['keyword_mode']), 'type_set' => $filters['activity_type'] !== '' ? 'yes' : 'no', 'city_set' => $filters['city'] !== '' ? 'yes' : 'no', 'region_set' => $filters['region'] !== '' ? 'yes' : 'no', 'keywords_set' => $filters['keywords'] !== '' ? 'yes' : 'no'));
         }
         return $result;
     }
@@ -813,7 +813,7 @@ class ALMA_Affiliate_Source_GYG_CSV_Importer {
         $result['effective_processed'] = $result['processed'];
         $result['titles_populated'] = $result['titles_read'];
         $result['logs'][] = sprintf(__('Diagnostica: record processati=%d, match deduplica validi=%d, match deduplica stale=%d, creati=%d, aggiornati=%d, già presenti saltati=%d.', 'affiliate-link-manager-ai'), absint($result['processed']), absint($result['dedupe_matches_valid']), absint($result['dedupe_matches_stale']), absint($result['imported']), absint($result['updated']), absint($result['existing']));
-        if (defined('WP_DEBUG') && WP_DEBUG) error_log(sprintf('[ALMA gyg_csv] processed=%d valid_dedupe=%d stale_dedupe=%d imported=%d updated=%d skipped_existing=%d', absint($result['processed']), absint($result['dedupe_matches_valid']), absint($result['dedupe_matches_stale']), absint($result['imported']), absint($result['updated']), absint($result['existing'])));
+        ALMA_Logger::debug('ALMA gyg_csv import summary', array('processed' => absint($result['processed']), 'valid_dedupe' => absint($result['dedupe_matches_valid']), 'stale_dedupe' => absint($result['dedupe_matches_stale']), 'imported' => absint($result['imported']), 'updated' => absint($result['updated']), 'skipped_existing' => absint($result['existing'])));
         return $result;
     }
 
@@ -927,7 +927,7 @@ class ALMA_Affiliate_Source_GYG_CSV_Importer {
         $result['duration'] = round(microtime(true) - $start, 2);
         $result['done'] = true;
         $result['logs'][] = sprintf(__('Diagnostica selezione: external_id ricevuti=%1$d, trovati nel CSV=%2$d, non trovati=%3$d, match deduplica validi=%4$d, match deduplica stale=%5$d.', 'affiliate-link-manager-ai'), absint($result['selected_external_ids_received']), absint($result['selected_external_ids_found']), absint($result['selected_external_ids_missing']), absint($result['dedupe_matches_valid']), absint($result['dedupe_matches_stale']));
-        if (defined('WP_DEBUG') && WP_DEBUG) error_log(sprintf('[ALMA gyg_csv selected] received=%d found=%d missing=%d valid_dedupe=%d stale_dedupe=%d imported=%d updated=%d skipped_existing=%d', absint($result['selected_external_ids_received']), absint($result['selected_external_ids_found']), absint($result['selected_external_ids_missing']), absint($result['dedupe_matches_valid']), absint($result['dedupe_matches_stale']), absint($result['imported']), absint($result['updated']), absint($result['existing'])));
+        ALMA_Logger::debug('ALMA gyg_csv selected import summary', array('received' => absint($result['selected_external_ids_received']), 'found' => absint($result['selected_external_ids_found']), 'missing' => absint($result['selected_external_ids_missing']), 'valid_dedupe' => absint($result['dedupe_matches_valid']), 'stale_dedupe' => absint($result['dedupe_matches_stale']), 'imported' => absint($result['imported']), 'updated' => absint($result['updated']), 'skipped_existing' => absint($result['existing'])));
         return $result;
     }
 

@@ -1,3 +1,14 @@
+## Logging centralizzato sicuro
+
+Il plugin usa `ALMA_Logger` per la diagnostica controllata nelle aree OpenAI, AI draft builder, import GetYourGuide CSV e indici AI. Il logger scrive solo sul canale di log PHP/WordPress e non salva segreti nel database.
+
+Livelli supportati: `debug`, `info`, `warning`, `error`. I log `debug` vengono emessi solo quando `WP_DEBUG` è attivo, mentre gli altri livelli mantengono diagnostica utile senza modificare output UI, schema DB, payload OpenAI o flussi di import.
+
+Redazione automatica applicata ai log:
+- API key, bearer token e header `Authorization`.
+- Parametri token noti negli URL (`token`, `access_token`, `refresh_token`, `api_key`, `key`, `signature`, `client_secret`).
+- Payload/prompt/body OpenAI lunghi e risposte AI grezze lunghe, troncati prima della scrittura nel log.
+
 ## 2.36.0 - 2026-06-01
 - Hardening tecnico degli endpoint AJAX admin/editoriali con controlli coerenti di nonce, capability, sanitizzazione input ed escaping dei payload JSON dove applicabile.
 - Aggiunto rate limit configurabile via filtro `alma_affiliate_chat_rate_limit` per la chat AI pubblica, con risposta JSON leggibile e logging redatto degli eventi bloccati.

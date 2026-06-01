@@ -86,7 +86,7 @@ class ALMA_AI_Content_Agent_Internal_Link_Index {
         $success = empty($missing) && empty($errors);
         $error = '';
         if (!$success) { $error = implode(' | ', array_merge($errors, array_map('sanitize_text_field', $missing))); }
-        if (!empty($added)) { error_log('ALMA internal link index schema updated: added missing columns ' . implode(', ', array_map('sanitize_key', $added))); }
+        if (!empty($added)) { ALMA_Logger::info('ALMA internal link index schema updated', array('added_columns' => array_map('sanitize_key', $added))); }
         return array('success'=>$success,'added_columns'=>$added,'missing_columns'=>$missing,'checked_columns'=>array_keys(self::expected_columns()),'error'=>$error);
     }
 
