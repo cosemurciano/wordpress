@@ -223,7 +223,7 @@ class ALMA_Affiliate_Source_GYG_CSV_Importer {
             }
         };
         $collect($value);
-        return array_values(array_unique($ids));
+        return array_values($ids);
     }
 
     public static function normalize_header($header) {
@@ -879,6 +879,31 @@ class ALMA_Affiliate_Source_GYG_CSV_Importer {
         if (!empty($term_ids)) $result['link_types_associated']++;
     }
 
+
+
+    public function external_ids_for_activity_type($path, $columns, $activity_type, $source) {
+        $ids = array();
+        $path = (string)$path;
+        if ($path === '' || !is_readable($path) || !is_array($columns)) return $ids;
+        $settings = self::default_settings(json_decode((string)($source['settings'] ?? '{}'), true));
+        $partner_id = (string)($settings['partner_id'] ?? '');
+        $utm = (string)($settings['utm_medium'] ?? 'online_publisher');
+        $activity_type = sanitize_text_field((string)$activity_type);
+        $handle = fopen($path, 'r');
+        if (!$handle) return $ids;
+        $delimiter = $this->delimiter($path);
+        fgetcsv($handle, 0, $delimiter);
+        while (($row = fgetcsv($handle, 0, $delimiter)) !== false) {
+            if ($this->is_empty_csv_row($row)) continue;
+            $item = $this->row_to_item($row, $columns, $source, $partner_id, $utm);
+            if ($activity_type !== '' && (string)$item['activity_type'] !== $activity_type) continue;
+            $external_id = sanitize_text_field((string)($item['external_id'] ?? ''));
+            if ($external_id !== '' && !in_array($external_id, $ids, true)) $ids[] = $external_id;
+            if (count($ids) >= self::MAX_IMPORT_QUANTITY) break;
+        }
+        fclose($handle);
+        return array_values($ids);
+    }
 
     public function import_selected_batch($path, $columns, $activity_type, $source, $external_ids, $fallback_term_ids, $record_mapping = array(), $cursor = 0, $batch_size = self::AJAX_BATCH_SIZE, $update_existing = false) {
         $start = microtime(true);

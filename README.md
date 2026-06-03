@@ -9,6 +9,15 @@ Redazione automatica applicata ai log:
 - Parametri token noti negli URL (`token`, `access_token`, `refresh_token`, `api_key`, `key`, `signature`, `client_secret`).
 - Payload/prompt/body OpenAI lunghi e risposte AI grezze lunghe, incluse risposte AI annidate, troncati prima della scrittura nel log.
 
+## 2.36.5 - 2026-06-03
+- Consolidato il workflow **Importa contenuti → GetYourGuide CSV / Deep Link** nella pagina `import_contents` con riepilogo tipologie attività, Mapping Sothra, progressi per riga e log importazione sotto la tabella.
+- Rimossa dal workflow operativo la pagina `alma_view=gyg_csv_import_type`: i vecchi URL vengono reindirizzati in modo sicuro alla pagina principale preservando source, token e tipologia evidenziata.
+- Spostato il **Mapping Sothra** direttamente nella tabella riepilogo: ogni Tipologia attività CSV può essere associata a una o più tipologie `link_type`, con persistenza per sessione/source/tipologia e fallback dai termini source.
+- L’azione **Importa/continua** ora resta nella pagina principale, salva il mapping, crea o riprende un job background per la singola tipologia CSV, avvia il primo batch via AJAX e lascia WP-Cron proseguire a pagina chiusa.
+- Corretta la review P2 sui selected rows fuori scope: i job GetYourGuide CSV sono limitati a una sola `activity_type_hash`, filtrano eventuali ID legacy misti, calcolano `total_records` solo sui record realmente importabili dal batch e mantengono coerenti processed/remaining.
+- Aggiunti log sessione/job redatti in `alma_gyg_csv_import_logs` con eventi leggibili per mapping salvato, job creato/ripreso, batch, completamento, dedupe, record non validi ed errori import.
+- Versione plugin aggiornata a `2.36.5`.
+
 ## 2.36.4 - 2026-06-01
 - Migliorato il workflow **Importa contenuti → GetYourGuide CSV / Deep Link** con job background persistenti in `alma_gyg_csv_import_jobs`, batch sicuri, lock transient e continuazione via WP-Cron anche a pagina chiusa.
 - Estesa la sezione **Sessioni CSV recenti** con link admin sicuro al file caricato, record totali, importati, restanti, stato importazione e ultimo aggiornamento calcolati da sessioni/progress/job persistenti.
