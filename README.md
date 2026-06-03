@@ -9,6 +9,12 @@ Redazione automatica applicata ai log:
 - Parametri token noti negli URL (`token`, `access_token`, `refresh_token`, `api_key`, `key`, `signature`, `client_secret`).
 - Payload/prompt/body OpenAI lunghi e risposte AI grezze lunghe, incluse risposte AI annidate, troncati prima della scrittura nel log.
 
+## 2.36.6 - 2026-06-03
+- Corretto il rendering duplicato delle progress bar GetYourGuide CSV, ora visibili solo nella colonna **Progressi** della tabella riepilogo tipologie attività.
+- Lo stato iniziale `not_started` viene mostrato come **Non importato** anche durante polling AJAX e ricarica pagina.
+- Migliorata la leggibilità degli stati e dei contatori importazione senza modificare dedupe, mapping Sothra o job background.
+- Versione plugin aggiornata a `2.36.6`.
+
 ## 2.36.5 - 2026-06-03
 - Consolidato il workflow **Importa contenuti → GetYourGuide CSV / Deep Link** nella pagina `import_contents` con riepilogo tipologie attività, Mapping Sothra, progressi per riga e log importazione sotto la tabella.
 - Rimossa dal workflow operativo la pagina `alma_view=gyg_csv_import_type`: i vecchi URL vengono reindirizzati in modo sicuro alla pagina principale preservando source, token e tipologia evidenziata.
