@@ -74,8 +74,9 @@ body.alma-modal-open{overflow:hidden}
 .alma-gyg-record-mapping{min-width:160px;max-width:220px;width:100%}
 .alma-gyg-job-box{margin-top:14px;padding:12px;border:1px solid #72aee6;border-left:4px solid #2271b1;background:#f0f6fc}
 .alma-gyg-job-box h3{margin-top:0}.alma-gyg-job-counts{color:#50575e}
-.alma-gyg-mini-progress{height:8px;background:#f0f0f1;border:1px solid #c3c4c7;border-radius:8px;overflow:hidden;min-width:110px;margin-top:4px}
-.alma-gyg-mini-progress span{display:block;height:100%;background:#2271b1}
+.alma-gyg-mini-progress{display:none}
+.alma-gyg-activity-summary .alma-gyg-progress-cell .alma-gyg-mini-progress{display:block;height:8px;background:#f0f0f1;border:1px solid #c3c4c7;border-radius:8px;overflow:hidden;min-width:110px;margin-top:4px}
+.alma-gyg-activity-summary .alma-gyg-progress-cell .alma-gyg-mini-progress span{display:block;height:100%;background:#2271b1}
 .alma-gyg-preview-table th:nth-child(7),.alma-gyg-preview-table td:nth-child(7){width:190px}
 
 .alma-gyg-activity-summary select.alma-gyg-activity-mapping{min-width:220px;width:100%;max-width:320px}
