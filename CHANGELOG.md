@@ -1,4 +1,6 @@
 ## Unreleased
+- Corretto il rendering immagini dei Widget Link: il builder passa sempre `img_size="full"` allo shortcode `[affiliate_link]`, usando l'immagine originale/full del Link Affiliato in tutti i preset.
+- Corretto il blocco del browser che impediva ricerca, paginazione e selezione dei Link Affiliati prima dell'inserimento del titolo widget; il titolo viene validato solo su creazione/salvataggio finale.
 - Introdotto `ALMA_Logger`, logger centralizzato con livelli `debug`, `info`, `warning` ed `error`, redazione automatica di API key, bearer token, header Authorization, URL con token e contenuti AI troppo lunghi. Il troncamento copre anche risposte AI annidate.
 - Convertiti i log diretti più sensibili nelle aree OpenAI, AI draft builder, import GetYourGuide CSV, media index e internal link index in diagnostica controllata tramite logger.
 - I log `debug` rispettano `WP_DEBUG`; nessun segreto viene salvato in database e non cambiano UI, schema DB, payload OpenAI o flussi di import.
