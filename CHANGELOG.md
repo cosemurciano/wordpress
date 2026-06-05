@@ -3,6 +3,15 @@
 - Convertiti i log diretti più sensibili nelle aree OpenAI, AI draft builder, import GetYourGuide CSV, media index e internal link index in diagnostica controllata tramite logger.
 - I log `debug` rispettano `WP_DEBUG`; nessun segreto viene salvato in database e non cambiano UI, schema DB, payload OpenAI o flussi di import.
 
+## 2.38.0 - 2026-06-05
+- Riprogettato il workflow **Crea Widget AI** e **Modifica Widget**: titolo, contenuto introduttivo, preset layout, testo CTA, ricerca link affiliati, ID manuali validati e riepilogo link selezionati.
+- Rimossi dalla UI builder i toggle manuali di visibilità, i controlli avanzati desktop/mobile e il pulsante **Genera suggerimenti AI**; i nuovi widget salvano sempre immagine, titolo, contenuto e pulsante attivi.
+- Introdotti i preset `columns_1` - `columns_6` con default `columns_3`, scelto perché offre un equilibrio leggibile tra densità desktop e semplicità per utenti non tecnici.
+- Aggiunto il motore di ricerca paginato per `affiliate_link` pubblicati con keyword, filtro `link_type`, filtro fonte/provider disponibile, massimo 20 risultati per pagina e limite di 20 link per widget.
+- Aggiornato il rendering frontend dei widget con preset per rispettare colonne responsive, forzare link neri e mantenere compatibilità con widget legacy e tracking click esistenti.
+- Aggiunte sei anteprime SVG dei layout in `assets/` e stili admin per card layout, risultati ricerca, box link selezionati e badge layout.
+- Versione plugin aggiornata a `2.38.0`.
+
 ## 2.37.0 - 2026-06-05
 - Aggiunta la sezione visuale **Scegli layout widget** nelle pagine **Crea Widget AI** e **Modifica Widget**, con sei preset selezionabili e miniature SVG locali negli asset del plugin.
 - I preset aggiornano i campi esistenti per colonne desktop/mobile e visibilità di immagine, titolo, contenuto e pulsante, mantenendo i controlli tecnici come opzioni avanzate.

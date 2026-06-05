@@ -15,13 +15,31 @@ class ALMA_Affiliate_Links_Widget extends WP_Widget {
 
     public static function render_links($instance) {
         $links = isset($instance['links']) ? array_map('intval', (array) $instance['links']) : array();
-        $show_image = !empty($instance['show_image']);
-        $show_title = !empty($instance['show_title']);
-        $show_content = !empty($instance['show_content']);
-        $show_button = !empty($instance['show_button']);
+        $has_preset = !empty($instance['layout_preset']) && class_exists('ALMA_Affiliate_Widget_Layout_Registry') && ALMA_Affiliate_Widget_Layout_Registry::is_valid_preset($instance['layout_preset']);
+
+        if ($has_preset) {
+            $preset = ALMA_Affiliate_Widget_Layout_Registry::get_preset($instance['layout_preset']);
+            $show_image = true;
+            $show_title = true;
+            $show_content = true;
+            $show_button = true;
+            $desktop_columns = absint($preset['desktop']);
+            $mobile_columns = absint($preset['mobile']);
+            $layout_preset = ALMA_Affiliate_Widget_Layout_Registry::sanitize_preset($instance['layout_preset']);
+        } else {
+            $show_image = !empty($instance['show_image']);
+            $show_title = !empty($instance['show_title']);
+            $show_content = !empty($instance['show_content']);
+            $show_button = !empty($instance['show_button']);
+            $desktop_columns = isset($instance['template_desktop_columns']) ? intval($instance['template_desktop_columns']) : 0;
+            $mobile_columns = isset($instance['template_mobile_columns']) ? intval($instance['template_mobile_columns']) : 0;
+            $layout_preset = class_exists('ALMA_Affiliate_Widget_Layout_Registry') ? ALMA_Affiliate_Widget_Layout_Registry::infer_preset($instance) : '';
+        }
+
         $button_text = isset($instance['button_text']) ? sanitize_text_field($instance['button_text']) : '';
-        $desktop_columns = isset($instance['template_desktop_columns']) ? intval($instance['template_desktop_columns']) : 0;
-        $mobile_columns = isset($instance['template_mobile_columns']) ? intval($instance['template_mobile_columns']) : 0;
+        if ($button_text === '') {
+            $button_text = __('Scopri di più', 'affiliate-link-manager-ai');
+        }
 
         if ($desktop_columns < 1) {
             if (!empty($instance['format']) && $instance['format'] === 'small') {
@@ -35,9 +53,9 @@ class ALMA_Affiliate_Links_Widget extends WP_Widget {
         $desktop_columns = max(1, min(6, $desktop_columns));
 
         if ($mobile_columns < 1) {
-            $mobile_columns = 1;
+            $mobile_columns = $desktop_columns >= 4 ? 2 : 1;
         }
-        $mobile_columns = max(1, min(4, $mobile_columns));
+        $mobile_columns = $has_preset ? max(1, min(2, $mobile_columns)) : max(1, min(4, $mobile_columns));
 
         if (empty($links)) {
             return '';
@@ -67,7 +85,10 @@ class ALMA_Affiliate_Links_Widget extends WP_Widget {
         $img = $show_image ? 'yes' : 'no';
         $img_size = $desktop_columns > 2 ? 'thumbnail' : 'full';
 
-        $container_classes = 'alma-affiliate-widget template-desktop-' . $desktop_columns . ' template-mobile-' . $mobile_columns;
+        $container_classes = 'alma-affiliate-widget alma-affiliate-widget--black-links template-desktop-' . $desktop_columns . ' template-mobile-' . $mobile_columns;
+        if ($layout_preset) {
+            $container_classes .= ' layout-preset-' . sanitize_html_class($layout_preset);
+        }
         $container_style = '--alma-desktop-columns:' . $desktop_columns . ';--alma-mobile-columns:' . $mobile_columns . ';display:grid;gap:20px;';
 
         static $styles_printed = false;
@@ -76,7 +97,10 @@ class ALMA_Affiliate_Links_Widget extends WP_Widget {
             $styles_printed = true;
             $inline_css = '.alma-affiliate-widget{display:grid;gap:20px;grid-template-columns:repeat(var(--alma-desktop-columns,1),minmax(0,1fr));}'
                 . '.alma-affiliate-item{min-width:0;}'
-                . '@media (max-width:782px){.alma-affiliate-widget{grid-template-columns:repeat(var(--alma-mobile-columns,1),minmax(0,1fr));}}';
+                . '.alma-affiliate-widget--black-links a,.alma-affiliate-widget--black-links a:visited,.alma-affiliate-widget--black-links .affiliate-link-title a{color:#000!important;}'
+                . '.alma-affiliate-widget--black-links .affiliate-link-button,.alma-affiliate-widget--black-links a.button{color:#000!important;}'
+                . '@media (max-width:782px){.alma-affiliate-widget{grid-template-columns:repeat(var(--alma-mobile-columns,1),minmax(0,1fr));}}'
+                . '@media (max-width:480px){.alma-affiliate-widget{grid-template-columns:1fr!important;}}';
             $output .= '<style id="alma-affiliate-widget-template-styles">' . esc_html($inline_css) . '</style>';
         }
 

@@ -62,6 +62,9 @@ class ALMA_Assets {
         if ($screen && ($screen->post_type === 'affiliate_link' ||
             strpos($hook, 'affiliate-link-manager') !== false ||
             $hook === 'affiliate_link_page_alma-ai-content-agent' ||
+            $hook === 'affiliate_link_page_alma-create-widget' ||
+            $hook === 'affiliate_link_page_alma-edit-widget' ||
+            $hook === 'affiliate_link_page_affiliate-link-widgets' ||
             $hook === 'index.php')) {
 
             if (file_exists(ALMA_PLUGIN_DIR . 'assets/admin.css')) {
@@ -73,7 +76,7 @@ class ALMA_Assets {
                 );
             }
 
-            if (file_exists(ALMA_PLUGIN_DIR . 'assets/ai.js')) {
+            if (!in_array($hook, array('affiliate_link_page_alma-create-widget', 'affiliate_link_page_alma-edit-widget'), true) && file_exists(ALMA_PLUGIN_DIR . 'assets/ai.js')) {
                 wp_enqueue_script(
                     'alma-ai-script',
                     ALMA_PLUGIN_URL . 'assets/ai.js',
@@ -96,10 +99,13 @@ class ALMA_Assets {
                 wp_enqueue_script(
                     'alma-admin-script',
                     ALMA_PLUGIN_URL . 'assets/admin.js',
-                    array(),
+                    array('jquery'),
                     ALMA_VERSION,
                     true
                 );
+                wp_localize_script('alma-admin-script', 'almaAdmin', array(
+                    'copiedText' => __('Copiato', 'affiliate-link-manager-ai'),
+                ));
             }
 
             if ($hook === 'affiliate_link_page_alma-affiliate-sources') {
