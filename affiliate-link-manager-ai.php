@@ -847,8 +847,8 @@ class AffiliateManagerAI {
         // Creazione widget
         add_submenu_page(
             'edit.php?post_type=affiliate_link',
-            __('Crea Widget Link AI', 'affiliate-link-manager-ai'),
-            __('Crea Widget Link AI', 'affiliate-link-manager-ai'),
+            __('Crea Widget Link', 'affiliate-link-manager-ai'),
+            __('Crea Widget Link', 'affiliate-link-manager-ai'),
             'manage_options',
             'alma-create-widget',
             array($this, 'render_create_widget_page')
@@ -857,8 +857,8 @@ class AffiliateManagerAI {
         // Shortcode widget
         add_submenu_page(
             'edit.php?post_type=affiliate_link',
-            __('Shortcode Widget', 'affiliate-link-manager-ai'),
-            __('Shortcode Widget', 'affiliate-link-manager-ai'),
+            __('Elenco Widget Link', 'affiliate-link-manager-ai'),
+            __('Elenco Widget Link', 'affiliate-link-manager-ai'),
             'manage_options',
             'affiliate-link-widgets',
             array($this, 'render_widget_shortcode_page')
@@ -949,10 +949,10 @@ class AffiliateManagerAI {
                             $item[0] = __('Tipologie Link', 'affiliate-link-manager-ai');
                             break;
                         case 'alma-create-widget':
-                            $item[0] = __('Crea Widget Link AI', 'affiliate-link-manager-ai');
+                            $item[0] = __('Crea Widget Link', 'affiliate-link-manager-ai');
                             break;
                         case 'affiliate-link-widgets':
-                            $item[0] = __('Shortcode Widget', 'affiliate-link-manager-ai');
+                            $item[0] = __('Elenco Widget Link', 'affiliate-link-manager-ai');
                             break;
                         case 'alma-bot-affiliate-settings':
                             $item[0] = __('BotAffiliate Post', 'affiliate-link-manager-ai');
@@ -1755,7 +1755,8 @@ class AffiliateManagerAI {
 
         list($manual_ids, $invalid_ids) = $this->validate_widget_manual_ids(wp_unslash($_POST['manual_ids'] ?? ''));
         $selected = isset($_POST['links']) ? array_map('absint', (array) wp_unslash($_POST['links'])) : array();
-        $selected = array_filter(array_unique($selected));
+        $result_selected = isset($_POST['result_links']) ? array_map('absint', (array) wp_unslash($_POST['result_links'])) : array();
+        $selected = array_filter(array_unique(array_merge($selected, $result_selected)));
         $valid_selected = array();
         foreach ($selected as $link_id) {
             $item = $this->get_widget_link_item($link_id);
@@ -1786,11 +1787,37 @@ class AffiliateManagerAI {
         return array($instance, $invalid_ids, $limit_exceeded);
     }
 
+
+    private function remove_widget_link_from_instance($instance, $remove_id) {
+        $remove_id = absint($remove_id);
+        if (!$remove_id) {
+            return $instance;
+        }
+
+        $instance['links'] = array_values(array_diff(array_map('absint', (array) ($instance['links'] ?? array())), array($remove_id)));
+        $instance['manual_ids'] = array_values(array_diff(array_map('absint', (array) ($instance['manual_ids'] ?? array())), array($remove_id)));
+
+        return $instance;
+    }
+
     private function search_widget_affiliate_links($selected_ids = array()) {
         $keyword = sanitize_text_field(wp_unslash($_POST['affiliate_search_keyword'] ?? $_GET['affiliate_search_keyword'] ?? ''));
         $type = absint($_POST['affiliate_search_type'] ?? $_GET['affiliate_search_type'] ?? 0);
         $source = sanitize_text_field(wp_unslash($_POST['affiliate_search_source'] ?? $_GET['affiliate_search_source'] ?? ''));
         $page = max(1, absint($_POST['search_page'] ?? $_GET['search_page'] ?? 1));
+        $has_explicit_search = isset($_POST['alma_search_links']) || isset($_POST['search_page']) || isset($_GET['search_page']) || $keyword !== '' || $type > 0 || $source !== '';
+
+        if (!$has_explicit_search) {
+            return array(
+                'keyword' => $keyword,
+                'type'    => $type,
+                'source'  => $source,
+                'page'    => $page,
+                'pages'   => 0,
+                'results' => array(),
+                'searched' => false,
+            );
+        }
 
         $args = array(
             'post_type'      => 'affiliate_link',
@@ -1850,6 +1877,7 @@ class AffiliateManagerAI {
             'page'    => $page,
             'pages'   => max(1, (int) $query->max_num_pages),
             'results' => $results,
+            'searched' => true,
         );
     }
 
@@ -1937,7 +1965,7 @@ class AffiliateManagerAI {
                     <?php foreach ($search['results'] as $result) : ?>
                         <label class="alma-affiliate-search-result<?php echo $result['selected'] ? ' is-selected' : ''; ?>">
                             <span class="alma-affiliate-search-result__check">
-                                <input type="checkbox" name="links[]" value="<?php echo esc_attr($result['id']); ?>" <?php checked($result['selected']); ?>>
+                                <input type="checkbox" name="result_links[]" value="<?php echo esc_attr($result['id']); ?>" <?php checked($result['selected']); ?>>
                             </span>
                             <span class="alma-affiliate-search-result__thumb">
                                 <?php if ($result['thumbnail']) : ?>
@@ -1956,6 +1984,11 @@ class AffiliateManagerAI {
                         </label>
                     <?php endforeach; ?>
                 </div>
+                <p class="alma-affiliate-search__add-selected">
+                    <button type="submit" name="alma_add_selected_links" class="button button-primary">
+                        <?php esc_html_e('Aggiungi selezionati al widget', 'affiliate-link-manager-ai'); ?>
+                    </button>
+                </p>
                 <?php if ($search['pages'] > 1) : ?>
                     <p class="alma-pagination">
                         <?php for ($p = 1; $p <= $search['pages']; $p++) : ?>
@@ -1963,8 +1996,10 @@ class AffiliateManagerAI {
                         <?php endfor; ?>
                     </p>
                 <?php endif; ?>
+            <?php elseif (!empty($search['searched'])) : ?>
+                <p class="description"><?php _e('Nessun Link Affiliato trovato per i criteri selezionati.', 'affiliate-link-manager-ai'); ?></p>
             <?php else : ?>
-                <p class="description"><?php _e('Usa la ricerca per trovare fino a 20 link affiliati pubblicati per pagina.', 'affiliate-link-manager-ai'); ?></p>
+                <p class="description"><?php _e('Cerca per titolo, destinazione, attività o parola chiave per selezionare i Link Affiliati da inserire nel widget.', 'affiliate-link-manager-ai'); ?></p>
             <?php endif; ?>
         </div>
         <?php
@@ -1988,8 +2023,15 @@ class AffiliateManagerAI {
                             <span class="alma-selected-link__thumb">
                                 <?php if ($item['thumbnail']) : ?><img src="<?php echo esc_url($item['thumbnail']); ?>" alt=""><?php else : ?><span class="dashicons dashicons-admin-links" aria-hidden="true"></span><?php endif; ?>
                             </span>
-                            <span class="alma-selected-link__body"><strong><?php echo esc_html($link_id); ?> · <?php echo esc_html($item['title']); ?></strong></span>
-                            <button type="submit" name="remove_link" value="<?php echo esc_attr($link_id); ?>" class="button-link-delete alma-remove-selected-link"><?php esc_html_e('Rimuovi', 'affiliate-link-manager-ai'); ?></button>
+                            <span class="alma-selected-link__body">
+                                <strong><?php echo esc_html($item['title']); ?></strong>
+                                <span><?php printf(esc_html__('ID: %d', 'affiliate-link-manager-ai'), absint($link_id)); ?></span>
+                                <?php if (!empty($item['types'])) : ?><span><?php printf(esc_html__('Tipologia: %s', 'affiliate-link-manager-ai'), esc_html(implode(', ', $item['types']))); ?></span><?php endif; ?>
+                            </span>
+                            <button type="submit" name="remove_link" value="<?php echo esc_attr($link_id); ?>" class="button-link-delete alma-remove-selected-link" aria-label="<?php esc_attr_e('Rimuovi questo link dal widget', 'affiliate-link-manager-ai'); ?>" title="<?php esc_attr_e('Rimuovi questo link dal widget', 'affiliate-link-manager-ai'); ?>">
+                                <span class="dashicons dashicons-no-alt" aria-hidden="true"></span>
+                                <span class="screen-reader-text"><?php esc_html_e('Rimuovi questo link dal widget', 'affiliate-link-manager-ai'); ?></span>
+                            </button>
                         </div>
                     <?php endforeach; ?>
                 </div>
@@ -2012,6 +2054,7 @@ class AffiliateManagerAI {
         $invalid_manual_ids = array();
         $link_limit_exceeded = false;
         $no_links_selected = false;
+        $no_result_links_selected = false;
         $instance = array(
             'title' => '',
             'custom_content' => '',
@@ -2030,10 +2073,12 @@ class AffiliateManagerAI {
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             check_admin_referer('alma_create_widget');
             list($instance, $invalid_manual_ids, $link_limit_exceeded) = $this->normalize_widget_instance_from_request($instance);
+            if (isset($_POST['alma_add_selected_links']) && empty($_POST['result_links'])) {
+                $no_result_links_selected = true;
+            }
 
             if (isset($_POST['remove_link'])) {
-                $remove = absint($_POST['remove_link']);
-                $instance['links'] = array_values(array_diff((array) $instance['links'], array($remove)));
+                $instance = $this->remove_widget_link_from_instance($instance, $_POST['remove_link']);
             }
 
             if (isset($_POST['alma_create_widget'])) {
@@ -2059,22 +2104,24 @@ class AffiliateManagerAI {
         $search = $this->search_widget_affiliate_links($instance['links']);
         ?>
         <div class="wrap alma-widget-builder">
-            <h1><?php _e('Crea Widget AI', 'affiliate-link-manager-ai'); ?></h1>
+            <h1><?php _e('Crea Widget Link', 'affiliate-link-manager-ai'); ?></h1>
+            <p class="description alma-widget-builder-description"><?php esc_html_e('Crea un widget responsive di Link Affiliati scegliendo un layout preimpostato, cercando i link da inserire e copiando lo shortcode finale nei tuoi contenuti.', 'affiliate-link-manager-ai'); ?></p>
             <?php if ($link_limit_exceeded) : ?><div class="notice notice-warning"><p><?php _e('Hai selezionato più di 20 link: verranno utilizzati solo i primi 20.', 'affiliate-link-manager-ai'); ?></p></div><?php endif; ?>
             <?php if (!empty($invalid_manual_ids)) : ?><div class="notice notice-warning"><p><?php printf(esc_html__('Gli ID %s non sono validi e sono stati ignorati.', 'affiliate-link-manager-ai'), esc_html(implode(', ', $invalid_manual_ids))); ?></p></div><?php endif; ?>
             <?php if ($no_links_selected) : ?><div class="notice notice-error"><p><?php _e('Seleziona almeno un link prima di creare il widget.', 'affiliate-link-manager-ai'); ?></p></div><?php endif; ?>
+            <?php if ($no_result_links_selected) : ?><div class="notice notice-warning"><p><?php _e('Seleziona almeno un risultato di ricerca prima di aggiungerlo al widget.', 'affiliate-link-manager-ai'); ?></p></div><?php endif; ?>
             <?php if ($created) : ?>
                 <div class="notice notice-success"><p><?php _e('Widget creato con successo!', 'affiliate-link-manager-ai'); ?></p></div>
                 <div class="alma-widget-created-box">
                     <p><strong><?php _e('Shortcode:', 'affiliate-link-manager-ai'); ?></strong> <code id="alma-created-shortcode"><?php echo esc_html($shortcode); ?></code> <button type="button" class="button alma-copy-button" data-copy-target="#alma-created-shortcode"><?php esc_html_e('Copia shortcode', 'affiliate-link-manager-ai'); ?></button></p>
                     <p><strong><?php _e('Codice PHP:', 'affiliate-link-manager-ai'); ?></strong> <code id="alma-created-php"><?php echo esc_html($php_code); ?></code> <button type="button" class="button alma-copy-button" data-copy-target="#alma-created-php"><?php esc_html_e('Copia codice PHP', 'affiliate-link-manager-ai'); ?></button></p>
-                    <p><a class="button" href="<?php echo esc_url(admin_url('admin.php?page=affiliate-link-widgets')); ?>"><?php esc_html_e('Vai a Shortcode Widget', 'affiliate-link-manager-ai'); ?></a></p>
+                    <p><a class="button" href="<?php echo esc_url(admin_url('admin.php?page=affiliate-link-widgets')); ?>"><?php esc_html_e('Vai a Elenco Widget Link', 'affiliate-link-manager-ai'); ?></a></p>
                 </div>
             <?php endif; ?>
             <form method="post">
                 <?php wp_nonce_field('alma_create_widget'); ?>
                 <table class="form-table" role="presentation"><tbody>
-                    <tr><th scope="row"><label for="alma_widget_title"><?php _e('Titolo widget', 'affiliate-link-manager-ai'); ?></label></th><td><input name="title" id="alma_widget_title" type="text" value="<?php echo esc_attr($instance['title']); ?>" class="regular-text"></td></tr>
+                    <tr><th scope="row"><label for="alma_widget_title"><?php _e('Titolo widget', 'affiliate-link-manager-ai'); ?></label></th><td><input name="title" id="alma_widget_title" type="text" value="<?php echo esc_attr($instance['title']); ?>" class="regular-text" required></td></tr>
                     <tr><th scope="row"><label for="alma_widget_content"><?php _e('Contenuto introduttivo', 'affiliate-link-manager-ai'); ?></label></th><td><textarea name="custom_content" id="alma_widget_content" rows="5" class="large-text"><?php echo esc_textarea($instance['custom_content']); ?></textarea></td></tr>
                     <?php $this->render_widget_layout_preset_field($this->get_widget_layout_preset_for_instance($instance)); ?>
                     <tr><th scope="row"><label for="alma_widget_button_text"><?php _e('Testo pulsante', 'affiliate-link-manager-ai'); ?></label></th><td><input name="button_text" type="text" id="alma_widget_button_text" value="<?php echo esc_attr($instance['button_text']); ?>" class="regular-text"><p class="description"><?php _e('Default: Scopri di più. Se vuoto, verrà salvato il default.', 'affiliate-link-manager-ai'); ?></p></td></tr>
@@ -2105,13 +2152,16 @@ class AffiliateManagerAI {
         $invalid_manual_ids = array();
         $link_limit_exceeded = false;
         $no_links_selected = false;
+        $no_result_links_selected = false;
 
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             check_admin_referer('alma_edit_widget');
             list($instance, $invalid_manual_ids, $link_limit_exceeded) = $this->normalize_widget_instance_from_request($instance);
+            if (isset($_POST['alma_add_selected_links']) && empty($_POST['result_links'])) {
+                $no_result_links_selected = true;
+            }
             if (isset($_POST['remove_link'])) {
-                $remove = absint($_POST['remove_link']);
-                $instance['links'] = array_values(array_diff((array) $instance['links'], array($remove)));
+                $instance = $this->remove_widget_link_from_instance($instance, $_POST['remove_link']);
             }
             if (isset($_POST['alma_save_widget'])) {
                 if (empty($instance['links'])) {
@@ -2135,10 +2185,11 @@ class AffiliateManagerAI {
             <?php if ($link_limit_exceeded) : ?><div class="notice notice-warning"><p><?php _e('Hai selezionato più di 20 link: verranno utilizzati solo i primi 20.', 'affiliate-link-manager-ai'); ?></p></div><?php endif; ?>
             <?php if (!empty($invalid_manual_ids)) : ?><div class="notice notice-warning"><p><?php printf(esc_html__('Gli ID %s non sono validi e sono stati ignorati.', 'affiliate-link-manager-ai'), esc_html(implode(', ', $invalid_manual_ids))); ?></p></div><?php endif; ?>
             <?php if ($no_links_selected) : ?><div class="notice notice-error"><p><?php _e('Seleziona almeno un link prima di salvare il widget.', 'affiliate-link-manager-ai'); ?></p></div><?php endif; ?>
+            <?php if ($no_result_links_selected) : ?><div class="notice notice-warning"><p><?php _e('Seleziona almeno un risultato di ricerca prima di aggiungerlo al widget.', 'affiliate-link-manager-ai'); ?></p></div><?php endif; ?>
             <form method="post">
                 <?php wp_nonce_field('alma_edit_widget'); ?>
                 <table class="form-table" role="presentation"><tbody>
-                    <tr><th scope="row"><label for="alma_widget_title"><?php _e('Titolo widget', 'affiliate-link-manager-ai'); ?></label></th><td><input name="title" id="alma_widget_title" type="text" value="<?php echo esc_attr($instance['title'] ?? ''); ?>" class="regular-text"></td></tr>
+                    <tr><th scope="row"><label for="alma_widget_title"><?php _e('Titolo widget', 'affiliate-link-manager-ai'); ?></label></th><td><input name="title" id="alma_widget_title" type="text" value="<?php echo esc_attr($instance['title'] ?? ''); ?>" class="regular-text" required></td></tr>
                     <tr><th scope="row"><label for="alma_widget_content"><?php _e('Contenuto introduttivo', 'affiliate-link-manager-ai'); ?></label></th><td><textarea name="custom_content" id="alma_widget_content" rows="5" class="large-text"><?php echo esc_textarea($instance['custom_content'] ?? ''); ?></textarea></td></tr>
                     <?php $this->render_widget_layout_preset_field($this->get_widget_layout_preset_for_instance($instance)); ?>
                     <tr><th scope="row"><label for="alma_widget_button_text"><?php _e('Testo pulsante', 'affiliate-link-manager-ai'); ?></label></th><td><input name="button_text" type="text" id="alma_widget_button_text" value="<?php echo esc_attr($instance['button_text'] ?? __('Scopri di più', 'affiliate-link-manager-ai')); ?>" class="regular-text"><p class="description"><?php _e('Default: Scopri di più. Se vuoto, verrà salvato il default.', 'affiliate-link-manager-ai'); ?></p></td></tr>
@@ -2193,7 +2244,7 @@ class AffiliateManagerAI {
 
         ?>
         <div class="wrap">
-            <h1><?php _e('Shortcode Widget AI', 'affiliate-link-manager-ai'); ?></h1>
+            <h1><?php _e('Elenco Widget Link', 'affiliate-link-manager-ai'); ?></h1>
             <?php
             $has_items = false;
             if (is_array($instances)) {
@@ -2456,7 +2507,6 @@ class AffiliateManagerAI {
             $this->ajax_require_capability('edit_posts');
         }
 
-        // Genera suggerimenti AI basati su OpenAI
         $suggestions = $this->generate_ai_suggestions($link_id);
 
         if (is_wp_error($suggestions) || empty($suggestions)) {
