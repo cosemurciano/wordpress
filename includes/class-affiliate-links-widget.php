@@ -40,6 +40,7 @@ class ALMA_Affiliate_Links_Widget extends WP_Widget {
         if ($button_text === '') {
             $button_text = __('Scopri di più', 'affiliate-link-manager-ai');
         }
+        $rewritten_links = self::normalize_rewritten_links($instance['rewritten_links'] ?? array());
 
         if ($desktop_columns < 1) {
             if (!empty($instance['format']) && $instance['format'] === 'small') {
@@ -111,11 +112,22 @@ class ALMA_Affiliate_Links_Widget extends WP_Widget {
             $q->the_post();
             $id = get_the_ID();
 
-            $fields_attr = !empty($fields) ? ' fields="' . implode(',', $fields) . '"' : '';
-            $button_attr = $show_button ? ' button="yes"' : ' button="no"';
-            $text_attr = ($show_button && $button_text !== '') ? ' button_text="' . esc_attr($button_text) . '"' : '';
-            $shortcode = '[affiliate_link id="' . $id . '" img="' . $img . '" img_size="' . $img_size . '"' . $fields_attr . $button_attr . $text_attr . ' source="widget"]';
-            $link_html = do_shortcode($shortcode);
+            if (isset($rewritten_links[(string) $id])) {
+                $link_html = self::render_rewritten_link($id, $rewritten_links[(string) $id], array(
+                    'show_image' => $show_image,
+                    'show_title' => $show_title,
+                    'show_content' => $show_content,
+                    'show_button' => $show_button,
+                    'button_text' => $button_text,
+                    'img_size' => $img_size,
+                ));
+            } else {
+                $fields_attr = !empty($fields) ? ' fields="' . implode(',', $fields) . '"' : '';
+                $button_attr = $show_button ? ' button="yes"' : ' button="no"';
+                $text_attr = ($show_button && $button_text !== '') ? ' button_text="' . esc_attr($button_text) . '"' : '';
+                $shortcode = '[affiliate_link id="' . $id . '" img="' . $img . '" img_size="' . $img_size . '"' . $fields_attr . $button_attr . $text_attr . ' source="widget"]';
+                $link_html = do_shortcode($shortcode);
+            }
 
             $output .= '<div class="alma-affiliate-item">' . $link_html . '</div>';
         }
@@ -124,6 +136,72 @@ class ALMA_Affiliate_Links_Widget extends WP_Widget {
         $output .= '</div>';
 
         return $output;
+    }
+
+    private static function normalize_rewritten_links($rewritten_links) {
+        $items = array();
+        foreach ((array) $rewritten_links as $link_id => $item) {
+            $key = (string) absint($link_id);
+            if ($key === '0' || !is_array($item)) {
+                continue;
+            }
+            $title = sanitize_text_field((string) ($item['title'] ?? ''));
+            $description = sanitize_textarea_field((string) ($item['description'] ?? ''));
+            if ($title === '' || $description === '') {
+                continue;
+            }
+            $items[$key] = array('title' => $title, 'description' => $description);
+        }
+        return $items;
+    }
+
+    private static function render_rewritten_link($id, $rewrite, $args) {
+        $affiliate_url = get_post_meta($id, '_affiliate_url', true);
+        if (!$affiliate_url) {
+            return '<span style="color:red;">' . esc_html__('[Affiliate Link: URL non configurato]', 'affiliate-link-manager-ai') . '</span>';
+        }
+
+        $link_rel = get_post_meta($id, '_link_rel', true);
+        if ($link_rel === '') {
+            // Link interno: nessun attributo rel.
+        } elseif (!$link_rel) {
+            $link_rel = 'sponsored noopener';
+        }
+        $link_target = get_post_meta($id, '_link_target', true) ?: '_blank';
+        $link_title = get_post_meta($id, '_link_title', true);
+        if (empty($link_title)) {
+            $link_title = $rewrite['title'];
+        }
+
+        $image_html = '';
+        if (!empty($args['show_image'])) {
+            $image_html = get_the_post_thumbnail($id, $args['img_size'] ?? 'full', array('class' => 'alma-affiliate-img', 'alt' => esc_attr($rewrite['title'])));
+        }
+
+        $title_html = '';
+        if (!empty($args['show_title'])) {
+            $title_html = '<h4 class="alma-link-title">' . esc_html($rewrite['title']) . '</h4>';
+        }
+
+        $base_attrs = ' href="' . esc_url($affiliate_url) . '" data-link-id="' . esc_attr($id) . '" data-track="1" data-source="widget"';
+        if ($link_rel !== '') {
+            $base_attrs .= ' rel="' . esc_attr($link_rel) . '"';
+        }
+        $base_attrs .= ' target="' . esc_attr($link_target) . '" title="' . esc_attr($link_title) . '"';
+
+        $html = '<a' . $base_attrs . ' class="affiliate-link-btn alma-affiliate-link">' . $image_html . $title_html . '</a>';
+        if (!empty($args['show_content'])) {
+            $html .= '<div class="alma-link-content">' . wpautop(esc_html($rewrite['description'])) . '</div>';
+        }
+        if (!empty($args['show_button'])) {
+            $button_text = sanitize_text_field($args['button_text'] ?? '');
+            if ($button_text === '') {
+                $button_text = __('Scopri di più', 'affiliate-link-manager-ai');
+            }
+            $html .= '<div class="alma-button-wrapper" style="text-align:left;"><a' . $base_attrs . ' class="alma-affiliate-button alma-btn-medium alma-affiliate-link">' . esc_html($button_text) . '</a></div>';
+        }
+
+        return $html;
     }
 
     public function widget($args, $instance) {

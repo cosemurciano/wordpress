@@ -9,6 +9,15 @@ Redazione automatica applicata ai log:
 - Parametri token noti negli URL (`token`, `access_token`, `refresh_token`, `api_key`, `key`, `signature`, `client_secret`).
 - Payload/prompt/body OpenAI lunghi e risposte AI grezze lunghe, incluse risposte AI annidate, troncati prima della scrittura nel log.
 
+## 2.39.0 - 2026-06-05
+- Aggiunta la tab **Prompt Widget** in **Impostazioni - Affiliate Link Manager AI** per configurare il prompt di riscrittura widget, il limite `alma_widget_ai_rewrite_max_output_tokens`, il timeout `alma_widget_ai_rewrite_timeout`, vedere lo stato OpenAI e consultare gli ultimi log `widget_link_rewrite`.
+- **Crea Widget Link** ora richiede una riscrittura AI obbligatoria prima della creazione: per ogni Link Affiliato selezionato legge titolo, descrizione/contenuto, `_alma_ai_context`, source collegata e istruzioni `ai_source_instructions`, quindi salva il widget solo dopo una risposta OpenAI JSON valida.
+- Le riscritture sono salvate esclusivamente nell'istanza widget nel campo `rewritten_links` (`title`, `description`, `context_hash`, `rewritten_at`, `model`), senza sovrascrivere dati del post `affiliate_link` o il Contesto AI interno.
+- **Modifica Widget** riscrive solo i nuovi Link Affiliati aggiunti, conserva le riscritture già salvate e rimuove da `rewritten_links` gli ID non più presenti nel widget.
+- Il frontend di `[affiliate_links_widget]` mostra titolo e descrizione riscritti quando disponibili, mantenendo URL affiliato originale, immagine full/originale, CTA cliccabile, tracking click e fallback per widget legacy senza `rewritten_links`.
+- Gli errori OpenAI bloccano creazione/salvataggio con messaggi chiari e selezione/form preservati; log sintetici e diagnostici sono redatti e non includono API key, prompt completi lunghi o risposte complete.
+- Versione plugin aggiornata a `2.39.0`.
+
 ## 2.38.0 - 2026-06-05
 - Riprogettato il workflow **Crea Widget Link** e **Modifica Widget**: titolo, contenuto introduttivo, preset layout, testo CTA, ricerca link affiliati, ID manuali validati e riepilogo link selezionati.
 - Rimossi dalla UI builder i toggle manuali di visibilità, i controlli avanzati desktop/mobile e il pulsante **Genera suggerimenti AI**; i nuovi widget salvano sempre immagine, titolo, contenuto e pulsante attivi.

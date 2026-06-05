@@ -1,4 +1,14 @@
 ## Unreleased
+
+## 2.39.0 - 2026-06-05
+- Aggiunta la tab **Prompt Widget** in **Impostazioni - Affiliate Link Manager AI** con prompt configurabile, max output tokens, timeout richiesta, stato OpenAI e ultimi log `widget_link_rewrite`.
+- Introdotta la riscrittura AI obbligatoria dei testi in **Crea Widget Link**: prima del salvataggio OpenAI riscrive titolo e descrizione dei Link Affiliati selezionati usando Contesto AI, istruzioni Source e Prompt Widget.
+- Aggiunta `ALMA_Affiliate_Widget_AI_Rewriter`, che prepara payload compatti, usa `ALMA_OpenAI_Service::request()`, valida JSON Schema, registra log sintetici/diagnostici e blocca il salvataggio in caso di errore.
+- Le riscritture vengono salvate solo nell'istanza widget nel nuovo campo `rewritten_links`, con `context_hash`, data e modello, senza modificare `post_title`, `post_content` o `_alma_ai_context` dei Link Affiliati.
+- In modifica widget vengono inviati a OpenAI solo i nuovi Link Affiliati aggiunti, vengono mantenute le riscritture esistenti e vengono rimosse quelle relative ai link eliminati.
+- Aggiornato il rendering frontend dei widget per usare titolo/descrizione riscritti quando presenti, mantenendo URL affiliato, immagine full/originale, CTA, link neri, click tracking e fallback legacy.
+- Versione plugin aggiornata a `2.39.0`.
+
 - Corretto il rendering immagini dei Widget Link: il builder passa sempre `img_size="full"` allo shortcode `[affiliate_link]`, usando l'immagine originale/full del Link Affiliato in tutti i preset.
 - Corretto il blocco del browser che impediva ricerca, paginazione e selezione dei Link Affiliati prima dell'inserimento del titolo widget; il titolo viene validato solo su creazione/salvataggio finale.
 - Introdotto `ALMA_Logger`, logger centralizzato con livelli `debug`, `info`, `warning` ed `error`, redazione automatica di API key, bearer token, header Authorization, URL con token e contenuti AI troppo lunghi. Il troncamento copre anche risposte AI annidate.
