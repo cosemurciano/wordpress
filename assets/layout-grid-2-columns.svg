@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="320" height="180" viewBox="0 0 320 180" role="img" aria-labelledby="title desc">
+  <title id="title">Griglia 2 colonne</title>
+  <desc id="desc">Due card affiancate con immagini e testo.</desc>
+  <rect width="320" height="180" fill="#f6f7f7"/>
+  <g fill="#fff" stroke="#2271b1" stroke-width="3">
+    <rect x="28" y="24" width="124" height="132" rx="9"/>
+    <rect x="168" y="24" width="124" height="132" rx="9"/>
+  </g>
+  <g fill="#cfe5f7"><rect x="44" y="42" width="92" height="42" rx="5"/><rect x="184" y="42" width="92" height="42" rx="5"/></g>
+  <g fill="#1d2327"><rect x="44" y="98" width="78" height="9" rx="4.5"/><rect x="184" y="98" width="78" height="9" rx="4.5"/></g>
+  <g fill="#8c8f94"><rect x="44" y="118" width="92" height="7" rx="3.5"/><rect x="44" y="132" width="70" height="7" rx="3.5"/><rect x="184" y="118" width="92" height="7" rx="3.5"/><rect x="184" y="132" width="70" height="7" rx="3.5"/></g>
+</svg>

@@ -3,7 +3,7 @@
  * Plugin Name: Affiliate Link Manager AI
  * Plugin URI: https://your-website.com
  * Description: Gestisce link affiliati con intelligenza artificiale per ottimizzazione e tracking automatico.
- * Version: 2.36.6
+ * Version: 2.37.0
  * Author: Cosè Murciano
  * License: GPL v2 or later
  * Text Domain: affiliate-link-manager-ai
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Definisci costanti del plugin
-define('ALMA_VERSION', '2.36.6');
+define('ALMA_VERSION', '2.37.0');
 define('ALMA_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('ALMA_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('ALMA_PLUGIN_FILE', __FILE__);
@@ -1554,6 +1554,193 @@ class AffiliateManagerAI {
         <?php
     }
 
+
+    /**
+     * Restituisce i preset visuali disponibili per i widget AI.
+     */
+    private function get_widget_layout_presets() {
+        return array(
+            'vertical_single' => array(
+                'label'          => __('Card verticale singola', 'affiliate-link-manager-ai'),
+                'description'    => __('Una card ampia per dare risalto a un link alla volta.', 'affiliate-link-manager-ai'),
+                'image'          => 'layout-card-vertical-single.svg',
+                'desktop'        => 1,
+                'mobile'         => 1,
+                'show_image'     => 1,
+                'show_title'     => 1,
+                'show_content'   => 1,
+                'show_button'    => 0,
+            ),
+            'grid_two' => array(
+                'label'          => __('Griglia 2 colonne', 'affiliate-link-manager-ai'),
+                'description'    => __('Mostra due card affiancate su desktop, ideale per confronti semplici.', 'affiliate-link-manager-ai'),
+                'image'          => 'layout-grid-2-columns.svg',
+                'desktop'        => 2,
+                'mobile'         => 1,
+                'show_image'     => 1,
+                'show_title'     => 1,
+                'show_content'   => 1,
+                'show_button'    => 0,
+            ),
+            'grid_three' => array(
+                'label'          => __('Griglia 3 colonne', 'affiliate-link-manager-ai'),
+                'description'    => __('Compatta più suggerimenti nella stessa riga su schermi grandi.', 'affiliate-link-manager-ai'),
+                'image'          => 'layout-grid-3-columns.svg',
+                'desktop'        => 3,
+                'mobile'         => 1,
+                'show_image'     => 1,
+                'show_title'     => 1,
+                'show_content'   => 1,
+                'show_button'    => 0,
+            ),
+            'compact_list' => array(
+                'label'          => __('Lista compatta', 'affiliate-link-manager-ai'),
+                'description'    => __('Elenco essenziale e veloce da leggere, senza immagini o testo lungo.', 'affiliate-link-manager-ai'),
+                'image'          => 'layout-compact-list.svg',
+                'desktop'        => 1,
+                'mobile'         => 1,
+                'show_image'     => 0,
+                'show_title'     => 1,
+                'show_content'   => 0,
+                'show_button'    => 0,
+            ),
+            'cta_button' => array(
+                'label'          => __('Card CTA con pulsante', 'affiliate-link-manager-ai'),
+                'description'    => __('Card completa con pulsante ben visibile per aumentare i clic.', 'affiliate-link-manager-ai'),
+                'image'          => 'layout-card-cta-button.svg',
+                'desktop'        => 1,
+                'mobile'         => 1,
+                'show_image'     => 1,
+                'show_title'     => 1,
+                'show_content'   => 1,
+                'show_button'    => 1,
+            ),
+            'mobile_first' => array(
+                'label'          => __('Mobile first', 'affiliate-link-manager-ai'),
+                'description'    => __('Layout pensato per smartphone, con due elementi per riga quando lo spazio lo consente.', 'affiliate-link-manager-ai'),
+                'image'          => 'layout-mobile-first.svg',
+                'desktop'        => 2,
+                'mobile'         => 2,
+                'show_image'     => 1,
+                'show_title'     => 1,
+                'show_content'   => 0,
+                'show_button'    => 1,
+            ),
+        );
+    }
+
+    /**
+     * Sanitizza il preset layout opzionale salvato nell'istanza widget.
+     */
+    private function sanitize_widget_layout_preset($layout_preset) {
+        $layout_preset = sanitize_key($layout_preset);
+        $presets = $this->get_widget_layout_presets();
+
+        return isset($presets[$layout_preset]) ? $layout_preset : '';
+    }
+
+    /**
+     * Deduce il preset più vicino per widget legacy privi di layout_preset.
+     */
+    private function infer_widget_layout_preset($instance) {
+        $desktop     = isset($instance['template_desktop_columns']) ? (int) $instance['template_desktop_columns'] : 1;
+        $mobile      = isset($instance['template_mobile_columns']) ? (int) $instance['template_mobile_columns'] : 1;
+        $show_image  = !empty($instance['show_image']);
+        $show_content = !empty($instance['show_content']);
+        $show_button = !empty($instance['show_button']);
+
+        if ($mobile >= 2) {
+            return 'mobile_first';
+        }
+
+        if (!$show_image && !$show_content) {
+            return 'compact_list';
+        }
+
+        if ($show_button && $desktop <= 1) {
+            return 'cta_button';
+        }
+
+        if ($desktop >= 3) {
+            return 'grid_three';
+        }
+
+        if ($desktop === 2) {
+            return 'grid_two';
+        }
+
+        return 'vertical_single';
+    }
+
+    /**
+     * Restituisce il preset salvato o, per i widget legacy, quello dedotto dai campi esistenti.
+     */
+    private function get_widget_layout_preset_for_instance($instance) {
+        $saved = $this->sanitize_widget_layout_preset($instance['layout_preset'] ?? '');
+
+        return $saved ? $saved : $this->infer_widget_layout_preset($instance);
+    }
+
+    /**
+     * Nome leggibile del layout widget per le tabelle admin.
+     */
+    private function get_widget_layout_label($layout_preset) {
+        $presets = $this->get_widget_layout_presets();
+        $layout_preset = $this->sanitize_widget_layout_preset($layout_preset);
+
+        return $layout_preset && isset($presets[$layout_preset]) ? $presets[$layout_preset]['label'] : __('Layout automatico', 'affiliate-link-manager-ai');
+    }
+
+    /**
+     * Renderizza la selezione visuale dei layout widget.
+     */
+    private function render_widget_layout_preset_field($selected_layout) {
+        $presets = $this->get_widget_layout_presets();
+        $selected_layout = $this->sanitize_widget_layout_preset($selected_layout);
+        if (!$selected_layout) {
+            $selected_layout = 'vertical_single';
+        }
+        ?>
+        <tr>
+            <th scope="row"><?php _e('Scegli layout widget', 'affiliate-link-manager-ai'); ?></th>
+            <td>
+                <fieldset class="alma-layout-picker" aria-describedby="alma-layout-picker-description">
+                    <legend class="screen-reader-text"><span><?php _e('Scegli layout widget', 'affiliate-link-manager-ai'); ?></span></legend>
+                    <p id="alma-layout-picker-description" class="description alma-layout-picker__intro">
+                        <?php _e('Seleziona l’aspetto più adatto: i campi avanzati sotto verranno aggiornati automaticamente e potrai comunque modificarli.', 'affiliate-link-manager-ai'); ?>
+                    </p>
+                    <div class="alma-layout-grid">
+                        <?php foreach ($presets as $slug => $preset) :
+                            $input_id = 'alma_layout_preset_' . $slug;
+                            ?>
+                            <label class="alma-layout-card" for="<?php echo esc_attr($input_id); ?>">
+                                <input
+                                    type="radio"
+                                    id="<?php echo esc_attr($input_id); ?>"
+                                    name="layout_preset"
+                                    value="<?php echo esc_attr($slug); ?>"
+                                    data-desktop-columns="<?php echo esc_attr($preset['desktop']); ?>"
+                                    data-mobile-columns="<?php echo esc_attr($preset['mobile']); ?>"
+                                    data-show-image="<?php echo esc_attr($preset['show_image']); ?>"
+                                    data-show-title="<?php echo esc_attr($preset['show_title']); ?>"
+                                    data-show-content="<?php echo esc_attr($preset['show_content']); ?>"
+                                    data-show-button="<?php echo esc_attr($preset['show_button']); ?>"
+                                    <?php checked($selected_layout, $slug); ?>
+                                >
+                                <span class="alma-layout-card__visual">
+                                    <img src="<?php echo esc_url(ALMA_PLUGIN_URL . 'assets/' . $preset['image']); ?>" alt="<?php echo esc_attr(sprintf(__('Anteprima layout: %s', 'affiliate-link-manager-ai'), $preset['label'])); ?>" loading="lazy">
+                                </span>
+                                <span class="alma-layout-card__name"><?php echo esc_html($preset['label']); ?></span>
+                                <span class="alma-layout-card__description"><?php echo esc_html($preset['description']); ?></span>
+                            </label>
+                        <?php endforeach; ?>
+                    </div>
+                </fieldset>
+            </td>
+        </tr>
+        <?php
+    }
+
     /**
      * Pagina creazione widget
      */
@@ -1584,6 +1771,7 @@ class AffiliateManagerAI {
             'button_text'  => '',
             'template_desktop_columns' => 1,
             'template_mobile_columns'  => 1,
+            'layout_preset' => 'vertical_single',
             'links'        => array(),
             'manual_ids'   => array(),
         );
@@ -1598,6 +1786,12 @@ class AffiliateManagerAI {
             $instance['show_content'] = !empty($_POST['show_content']) ? 1 : 0;
             $instance['show_button']  = !empty($_POST['show_button']) ? 1 : 0;
             $instance['button_text']  = sanitize_text_field($_POST['button_text'] ?? '');
+            $layout_preset = $this->sanitize_widget_layout_preset($_POST['layout_preset'] ?? '');
+            if ($layout_preset) {
+                $instance['layout_preset'] = $layout_preset;
+            } else {
+                unset($instance['layout_preset']);
+            }
             $desktop_columns = isset($_POST['template_desktop_columns']) ? intval($_POST['template_desktop_columns']) : 1;
             if ($desktop_columns < 1 || $desktop_columns > 6) {
                 $desktop_columns = 1;
@@ -1744,6 +1938,7 @@ class AffiliateManagerAI {
                             <th scope="row"><label for="alma_widget_content"><?php _e('Contenuto', 'affiliate-link-manager-ai'); ?></label></th>
                             <td><textarea name="custom_content" id="alma_widget_content" rows="4" class="large-text code"><?php echo esc_textarea($instance['custom_content']); ?></textarea></td>
                         </tr>
+                        <?php $this->render_widget_layout_preset_field($this->get_widget_layout_preset_for_instance($instance)); ?>
                         <tr>
                             <th scope="row"><?php _e('Opzioni', 'affiliate-link-manager-ai'); ?></th>
                             <td>
@@ -1758,10 +1953,10 @@ class AffiliateManagerAI {
                             <td><input name="button_text" type="text" id="alma_widget_button_text" value="<?php echo esc_attr($instance['button_text']); ?>" class="regular-text"></td>
                         </tr>
                         <tr>
-                            <th scope="row" class="alma-required"><label for="alma_widget_template_desktop"><?php _e('Template Widget', 'affiliate-link-manager-ai'); ?></label></th>
+                            <th scope="row" class="alma-required"><label for="alma_widget_template_desktop"><?php _e('Controlli avanzati layout', 'affiliate-link-manager-ai'); ?></label></th>
                             <td>
                                 <fieldset>
-                                    <legend class="screen-reader-text"><span><?php _e('Template Widget', 'affiliate-link-manager-ai'); ?></span></legend>
+                                    <legend class="screen-reader-text"><span><?php _e('Controlli avanzati layout', 'affiliate-link-manager-ai'); ?></span></legend>
                                     <label for="alma_widget_template_desktop"><?php _e('Link per riga (Desktop)', 'affiliate-link-manager-ai'); ?></label>
                                     <select name="template_desktop_columns" id="alma_widget_template_desktop" class="alma-required-field" required>
                                         <?php for ($i = 1; $i <= 6; $i++) : ?>
@@ -1775,7 +1970,7 @@ class AffiliateManagerAI {
                                             <option value="<?php echo esc_attr($i); ?>" <?php selected((int) $instance['template_mobile_columns'], $i); ?>><?php echo esc_html($i); ?></option>
                                         <?php endfor; ?>
                                     </select>
-                                    <p class="description"><?php _e('Imposta il numero di link da mostrare per riga su desktop e smartphone.', 'affiliate-link-manager-ai'); ?></p>
+                                    <p class="description"><?php _e('Controlli opzionali per utenti esperti: modificano quante card vengono mostrate per riga su desktop e smartphone.', 'affiliate-link-manager-ai'); ?></p>
                                 </fieldset>
                             </td>
                         </tr>
@@ -1871,6 +2066,7 @@ class AffiliateManagerAI {
             'button_text'    => '',
             'template_desktop_columns' => 1,
             'template_mobile_columns'  => 1,
+            'layout_preset' => '',
         );
         if (!array_key_exists('template_desktop_columns', $instances[$widget_id])) {
             if (!empty($instance['format']) && $instance['format'] === 'small') {
@@ -1901,6 +2097,12 @@ class AffiliateManagerAI {
             $instance['show_content'] = !empty($_POST['show_content']) ? 1 : 0;
             $instance['show_button']  = !empty($_POST['show_button']) ? 1 : 0;
             $instance['button_text']  = sanitize_text_field($_POST['button_text'] ?? '');
+            $layout_preset = $this->sanitize_widget_layout_preset($_POST['layout_preset'] ?? '');
+            if ($layout_preset) {
+                $instance['layout_preset'] = $layout_preset;
+            } else {
+                unset($instance['layout_preset']);
+            }
             $desktop_columns = isset($_POST['template_desktop_columns']) ? intval($_POST['template_desktop_columns']) : (int) ($instance['template_desktop_columns'] ?? 1);
             if ($desktop_columns < 1 || $desktop_columns > 6) {
                 $desktop_columns = 1;
@@ -1988,6 +2190,7 @@ class AffiliateManagerAI {
                             <th scope="row"><label for="alma_widget_content"><?php _e('Contenuto', 'affiliate-link-manager-ai'); ?></label></th>
                             <td><textarea name="custom_content" id="alma_widget_content" rows="4" class="large-text code"><?php echo esc_textarea($instance['custom_content']); ?></textarea></td>
                         </tr>
+                        <?php $this->render_widget_layout_preset_field($this->get_widget_layout_preset_for_instance($instance)); ?>
                         <tr>
                             <th scope="row"><?php _e('Opzioni', 'affiliate-link-manager-ai'); ?></th>
                             <td>
@@ -2002,10 +2205,10 @@ class AffiliateManagerAI {
                             <td><input name="button_text" type="text" id="alma_widget_button_text" value="<?php echo esc_attr($instance['button_text']); ?>" class="regular-text"></td>
                         </tr>
                         <tr>
-                            <th scope="row"><label for="alma_widget_template_desktop"><?php _e('Template Widget', 'affiliate-link-manager-ai'); ?></label></th>
+                            <th scope="row"><label for="alma_widget_template_desktop"><?php _e('Controlli avanzati layout', 'affiliate-link-manager-ai'); ?></label></th>
                             <td>
                                 <fieldset>
-                                    <legend class="screen-reader-text"><span><?php _e('Template Widget', 'affiliate-link-manager-ai'); ?></span></legend>
+                                    <legend class="screen-reader-text"><span><?php _e('Controlli avanzati layout', 'affiliate-link-manager-ai'); ?></span></legend>
                                     <label for="alma_widget_template_desktop"><?php _e('Link per riga (Desktop)', 'affiliate-link-manager-ai'); ?></label>
                                     <select name="template_desktop_columns" id="alma_widget_template_desktop">
                                         <?php for ($i = 1; $i <= 6; $i++) : ?>
@@ -2019,7 +2222,7 @@ class AffiliateManagerAI {
                                             <option value="<?php echo esc_attr($i); ?>" <?php selected((int) $instance['template_mobile_columns'], $i); ?>><?php echo esc_html($i); ?></option>
                                         <?php endfor; ?>
                                     </select>
-                                    <p class="description"><?php _e('Imposta il numero di link da mostrare per riga su desktop e smartphone.', 'affiliate-link-manager-ai'); ?></p>
+                                    <p class="description"><?php _e('Controlli opzionali per utenti esperti: modificano quante card vengono mostrate per riga su desktop e smartphone.', 'affiliate-link-manager-ai'); ?></p>
                                 </fieldset>
                             </td>
                         </tr>
@@ -2110,6 +2313,7 @@ class AffiliateManagerAI {
                             <th><?php _e('ID Widget', 'affiliate-link-manager-ai'); ?></th>
                             <th><?php _e('Titolo', 'affiliate-link-manager-ai'); ?></th>
                             <th><?php _e('Creato il', 'affiliate-link-manager-ai'); ?></th>
+                            <th><?php _e('Layout', 'affiliate-link-manager-ai'); ?></th>
                             <th><?php _e('Shortcode', 'affiliate-link-manager-ai'); ?></th>
                             <th><?php _e('Azioni', 'affiliate-link-manager-ai'); ?></th>
                         </tr>
@@ -2123,11 +2327,13 @@ class AffiliateManagerAI {
                             $shortcode    = '[affiliate_links_widget id="' . $id . '"]';
                             $created_at   = $instance['created_at'] ?? '';
                             $created_disp = $created_at ? mysql2date(get_option('date_format'), $created_at) : '-';
+                            $layout_label = $this->get_widget_layout_label($this->get_widget_layout_preset_for_instance($instance));
                         ?>
                         <tr>
                             <td><?php echo esc_html($id); ?></td>
                             <td><?php echo esc_html($title); ?></td>
                             <td><?php echo esc_html($created_disp); ?></td>
+                            <td><span class="alma-layout-badge"><?php echo esc_html($layout_label); ?></span></td>
                             <td><code><?php echo esc_html($shortcode); ?></code></td>
                             <td>
                                 <a href="<?php echo esc_url(admin_url('admin.php?page=alma-edit-widget&widget_id=' . $id)); ?>"><?php _e('Modifica', 'affiliate-link-manager-ai'); ?></a> |

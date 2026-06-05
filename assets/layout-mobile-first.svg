@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="320" height="180" viewBox="0 0 320 180" role="img" aria-labelledby="title desc">
+  <title id="title">Mobile first</title>
+  <desc id="desc">Anteprima smartphone con due card per riga.</desc>
+  <rect width="320" height="180" fill="#f6f7f7"/>
+  <rect x="110" y="14" width="100" height="152" rx="16" fill="#fff" stroke="#2271b1" stroke-width="3"/>
+  <rect x="122" y="32" width="34" height="46" rx="6" fill="#cfe5f7"/>
+  <rect x="164" y="32" width="34" height="46" rx="6" fill="#cfe5f7"/>
+  <rect x="122" y="98" width="34" height="46" rx="6" fill="#cfe5f7"/>
+  <rect x="164" y="98" width="34" height="46" rx="6" fill="#cfe5f7"/>
+  <g fill="#1d2327"><rect x="126" y="84" width="26" height="5" rx="2.5"/><rect x="168" y="84" width="26" height="5" rx="2.5"/><rect x="126" y="150" width="26" height="5" rx="2.5"/><rect x="168" y="150" width="26" height="5" rx="2.5"/></g>
+  <circle cx="160" cy="24" r="3" fill="#8c8f94"/>
+</svg>

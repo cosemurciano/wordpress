@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="320" height="180" viewBox="0 0 320 180" role="img" aria-labelledby="title desc">
+  <title id="title">Card CTA con pulsante</title>
+  <desc id="desc">Card completa con pulsante di invito all'azione.</desc>
+  <rect width="320" height="180" fill="#f0f6fc"/>
+  <rect x="70" y="18" width="180" height="144" rx="10" fill="#fff" stroke="#2271b1" stroke-width="3"/>
+  <rect x="90" y="34" width="140" height="42" rx="6" fill="#cfe5f7"/>
+  <rect x="90" y="90" width="112" height="10" rx="5" fill="#1d2327"/>
+  <rect x="90" y="110" width="130" height="7" rx="3.5" fill="#8c8f94"/>
+  <rect x="90" y="132" width="96" height="20" rx="10" fill="#2271b1"/>
+  <rect x="108" y="139" width="60" height="6" rx="3" fill="#fff"/>
+</svg>
