@@ -1,3 +1,14 @@
+## 2.39.1 - 2026-06-05
+
+### Widget Link Contestuale
+- Aggiunto il nuovo widget WordPress **Widget Link Contestuale**, inseribile nelle sidebar e completamente opzionale: intercetta solo pagine singole supportate (`post` e, se abilitato, `page`) e non modifica mai il contenuto degli articoli.
+- La configurazione è disponibile in **Affiliate AI → Widget Contestuale** (`alma-contextual-widget`) con opzioni globali per abilitazione, post type, massimo link, soglia minima, titolo box, testo CTA, immagine, descrizione, esclusione link già presenti, TTL cache e fallback.
+- Il matching è locale e deterministico, senza OpenAI: analizza titolo, slug, contenuto pulito, excerpt, categorie, tag e heading H2/H3, confrontandoli con titolo/contenuto/tipologie/meta dei CPT `affiliate_link`.
+- Lo scoring MVP assegna punti per match nel titolo, keyword negli heading/contenuto, sovrapposizione `link_type` con categorie/tag, contesto `_alma_ai_context` e click storici, normalizzando a 100 e ordinando per score, click e titolo.
+- La cache per post salva ID link, score, timestamp e hash impostazioni con TTL `1h`, `6h`, `24h` o `7d`; una versione cache invalida i risultati quando si salvano articoli supportati, Link Affiliati o impostazioni, oppure dal pulsante **Svuota cache Widget Contestuale**.
+- Il fallback MVP supportato è `hide`: se non ci sono link sopra soglia il widget non renderizza nulla; la struttura prepara future modalità `popular`, `manual` e `same_type`.
+- Il rendering usa immagine originale/full del Link Affiliato, titolo, descrizione breve e CTA, mantenendo URL affiliato originale, `rel`/`target` del singolo link e click tracking con `data-source="contextual_widget"`.
+
 ## Logging centralizzato sicuro
 
 Il plugin usa `ALMA_Logger` per la diagnostica controllata nelle aree OpenAI, AI draft builder, import GetYourGuide CSV e indici AI. Il logger scrive solo sul canale di log PHP/WordPress e non salva segreti nel database.

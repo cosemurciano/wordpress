@@ -1,5 +1,14 @@
 ## Unreleased
 
+## 2.39.1 - 2026-06-05
+- Aggiunto il **Widget Link Contestuale** come widget WordPress opzionale per sidebar, attivo solo su singole `post`/`page` supportate e senza modifiche al contenuto degli articoli.
+- Introdotta la pagina **Widget Contestuale** sotto il menu `affiliate_link`, con impostazioni globali WordPress-native, nonce, sanitizzazione, messaggio di salvataggio e pulsante **Svuota cache Widget Contestuale**.
+- Creato il matcher locale senza AI che estrae segnali da titolo, slug, categorie, tag, contenuto, excerpt e heading H2/H3, valuta i CPT `affiliate_link` pubblicati con URL affiliato e ordina i risultati per score, click e titolo.
+- Implementata cache per post con hash impostazioni, TTL configurabile e invalidazione tramite versione cache al salvataggio di articoli supportati, Link Affiliati, impostazioni e flush manuale.
+- Il frontend mostra card minimali con immagine full/originale, titolo, descrizione e CTA, mantenendo URL/rel/target originali e click tracking con source `contextual_widget`.
+- Documentati limiti MVP: candidati limitati a 200 Link Affiliati, fallback attivo `hide` e possibili evoluzioni con indice dedicato o fallback popular/manual/same_type.
+- Versione plugin aggiornata a `2.39.1`.
+
 ## 2.39.0 - 2026-06-05
 - Aggiunta la tab **Prompt Widget** in **Impostazioni - Affiliate Link Manager AI** con prompt configurabile, max output tokens, timeout richiesta, stato OpenAI e ultimi log `widget_link_rewrite`.
 - Introdotta la riscrittura AI obbligatoria dei testi in **Crea Widget Link**: prima del salvataggio OpenAI riscrive titolo e descrizione dei Link Affiliati selezionati usando Contesto AI, istruzioni Source e Prompt Widget.

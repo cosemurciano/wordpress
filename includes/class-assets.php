@@ -66,6 +66,7 @@ class ALMA_Assets {
             $hook === 'affiliate_link_page_alma-edit-widget' ||
             $hook === 'admin_page_alma-edit-widget' ||
             $hook === 'affiliate_link_page_affiliate-link-widgets' ||
+            $hook === 'affiliate_link_page_alma-contextual-widget' ||
             $hook === 'index.php')) {
 
             if (file_exists(ALMA_PLUGIN_DIR . 'assets/admin.css')) {

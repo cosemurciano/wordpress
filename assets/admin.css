@@ -1332,3 +1332,18 @@ button:disabled {
         justify-content: flex-start;
     }
 }
+
+/* Widget Link Contestuale settings */
+.alma-contextual-widget-admin .card {
+    max-width: 900px;
+}
+
+.alma-contextual-widget-admin .alma-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: #f0f6fc;
+    color: #0969da;
+    font-size: 12px;
+    font-weight: 600;
+}

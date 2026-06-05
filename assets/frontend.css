@@ -22,3 +22,65 @@
 .alma-widget-content {
     margin-bottom: 10px;
 }
+
+/* Widget Link Contestuale */
+.alma-contextual-widget {
+    display: block;
+}
+
+.alma-contextual-widget__list {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.alma-contextual-widget__item {
+    border: 1px solid #e2e4e7;
+    border-radius: 10px;
+    overflow: hidden;
+    background: #fff;
+}
+
+.alma-contextual-widget__image {
+    display: block;
+    line-height: 0;
+}
+
+.alma-contextual-widget__image img {
+    display: block;
+    width: 100%;
+    height: auto;
+}
+
+.alma-contextual-widget__content {
+    padding: 14px;
+}
+
+.alma-contextual-widget__link-title {
+    display: inline-block;
+    font-weight: 700;
+    color: #111827;
+    text-decoration: none;
+}
+
+.alma-contextual-widget__description {
+    margin: 8px 0 12px;
+    color: #4b5563;
+    font-size: 0.95em;
+}
+
+.alma-contextual-widget__button {
+    display: inline-block;
+    padding: 8px 12px;
+    border-radius: 6px;
+    background: #111827;
+    color: #fff;
+    text-decoration: none;
+    font-weight: 600;
+}
+
+.alma-contextual-widget__button:hover,
+.alma-contextual-widget__button:focus {
+    color: #fff;
+    opacity: 0.9;
+}
