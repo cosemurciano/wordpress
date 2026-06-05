@@ -3,7 +3,7 @@
  * Plugin Name: Affiliate Link Manager AI
  * Plugin URI: https://your-website.com
  * Description: Gestisce link affiliati con intelligenza artificiale per ottimizzazione e tracking automatico.
- * Version: 2.39.0
+ * Version: 2.39.1
  * Author: Cosè Murciano
  * License: GPL v2 or later
  * Text Domain: affiliate-link-manager-ai
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Definisci costanti del plugin
-define('ALMA_VERSION', '2.39.0');
+define('ALMA_VERSION', '2.39.1');
 define('ALMA_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('ALMA_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('ALMA_PLUGIN_FILE', __FILE__);
@@ -88,6 +88,8 @@ require_once ALMA_PLUGIN_DIR . 'includes/class-affiliate-link-ai-context-builder
 require_once ALMA_PLUGIN_DIR . 'includes/class-affiliate-source-manager.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-affiliate-links-source-filter.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-affiliate-widget-layout-registry.php';
+require_once ALMA_PLUGIN_DIR . 'includes/class-contextual-affiliate-matcher.php';
+require_once ALMA_PLUGIN_DIR . 'includes/class-contextual-affiliate-widget.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-assets.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-shortcodes.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-editor-ajax.php';
@@ -119,6 +121,7 @@ class AffiliateManagerAI {
         $this->editor_ajax = new ALMA_Editor_Ajax($this->dashboard_stats);
         $this->ai_content_agent_dashboard_widget = new ALMA_AI_Content_Agent_Dashboard_Widget();
         add_action('init', array($this, 'init'));
+        add_action('widgets_init', array('ALMA_Contextual_Affiliate_Widget', 'register_widget'));
         register_activation_hook(__FILE__, array($this, 'activate'));
         register_deactivation_hook(__FILE__, array($this, 'deactivate'));
         add_action('plugins_loaded', array($this, 'maybe_run_update_tasks'));
@@ -164,6 +167,7 @@ class AffiliateManagerAI {
         // Shortcodes and editor AJAX are now routed through dedicated classes.
         $this->shortcodes->init();
         $this->editor_ajax->init();
+        add_action('save_post', array('ALMA_Contextual_Affiliate_Widget', 'maybe_invalidate_on_save'), 20, 3);
         
         // Hook AJAX per tracking click (modificato per tracking asincrono)
         add_action('wp_ajax_alma_track_click', array($this, 'ajax_track_click'));
@@ -865,6 +869,16 @@ class AffiliateManagerAI {
             array($this, 'render_widget_shortcode_page')
         );
 
+        // Widget contestuale
+        add_submenu_page(
+            'edit.php?post_type=affiliate_link',
+            __('Widget Link Contestuale', 'affiliate-link-manager-ai'),
+            __('Widget Contestuale', 'affiliate-link-manager-ai'),
+            'manage_options',
+            ALMA_Contextual_Affiliate_Widget::MENU_SLUG,
+            array($this, 'render_contextual_widget_page')
+        );
+
         // BotAffiliate Post settings
         add_submenu_page(
             'edit.php?post_type=affiliate_link',
@@ -925,6 +939,7 @@ class AffiliateManagerAI {
             'edit-tags.php?taxonomy=link_type&post_type=affiliate_link',
             'alma-create-widget',
             'affiliate-link-widgets',
+            ALMA_Contextual_Affiliate_Widget::MENU_SLUG,
             'alma-bot-affiliate-settings',
             'alma-affiliate-sources',
             self::AI_CONTENT_AGENT_MENU_SLUG,
@@ -955,6 +970,9 @@ class AffiliateManagerAI {
                         case 'affiliate-link-widgets':
                             $item[0] = __('Elenco Widget Link', 'affiliate-link-manager-ai');
                             break;
+                        case ALMA_Contextual_Affiliate_Widget::MENU_SLUG:
+                            $item[0] = __('Widget Contestuale', 'affiliate-link-manager-ai');
+                            break;
                         case 'alma-bot-affiliate-settings':
                             $item[0] = __('BotAffiliate Post', 'affiliate-link-manager-ai');
                             break;
@@ -983,6 +1001,14 @@ class AffiliateManagerAI {
         }
 
         $submenu[$parent] = $new;
+    }
+    
+
+    /**
+     * Render Contextual Widget settings page.
+     */
+    public function render_contextual_widget_page() {
+        ALMA_Contextual_Affiliate_Widget::render_settings_page();
     }
     
     /**
@@ -3275,6 +3301,7 @@ class AffiliateManagerAI {
         $this->create_analytics_table();
         ALMA_AI_Usage_Logger::create_table();
         ALMA_Affiliate_Source_Manager::create_tables();
+        ALMA_Contextual_Affiliate_Widget::maybe_set_default_options();
         $this->create_default_categories();
         update_option('alma_db_schema_version', '4');
         update_option('alma_plugin_version', ALMA_VERSION);
@@ -3321,6 +3348,7 @@ class AffiliateManagerAI {
             $this->create_analytics_table();
             ALMA_AI_Usage_Logger::create_table();
             ALMA_Affiliate_Source_Manager::create_tables();
+            ALMA_Contextual_Affiliate_Widget::maybe_set_default_options();
             update_option('alma_db_schema_version', '4');
             update_option('alma_plugin_version', ALMA_VERSION);
         }
