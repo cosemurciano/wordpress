@@ -3,7 +3,7 @@
  * Plugin Name: Affiliate Link Manager AI
  * Plugin URI: https://your-website.com
  * Description: Gestisce link affiliati con intelligenza artificiale per ottimizzazione e tracking automatico.
- * Version: 2.38.0
+ * Version: 2.39.0
  * Author: Cosè Murciano
  * License: GPL v2 or later
  * Text Domain: affiliate-link-manager-ai
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Definisci costanti del plugin
-define('ALMA_VERSION', '2.38.0');
+define('ALMA_VERSION', '2.39.0');
 define('ALMA_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('ALMA_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('ALMA_PLUGIN_FILE', __FILE__);
@@ -27,6 +27,7 @@ require_once ALMA_PLUGIN_DIR . 'includes/class-content-analysis-ai.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-dashboard-stats.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-openai-service.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-ai-usage-logger.php';
+require_once ALMA_PLUGIN_DIR . 'includes/class-affiliate-widget-ai-rewriter.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-ai-content-agent-admin.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-ai-content-agent-store.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-ai-content-agent-media-index.php';
@@ -1093,6 +1094,13 @@ class AffiliateManagerAI {
             update_option('alma_openai_max_output_tokens', absint($_POST['openai_max_output_tokens'] ?? 600));
             update_option('alma_openai_timeout', absint($_POST['openai_timeout'] ?? 30));
             update_option('alma_openai_temperature', floatval($_POST['openai_temperature'] ?? 0.7));
+
+            // Prompt Widget AI rewrite settings
+            update_option('alma_widget_ai_rewrite_prompt', sanitize_textarea_field(wp_unslash($_POST['alma_widget_ai_rewrite_prompt'] ?? '')));
+            $widget_tokens = absint($_POST['alma_widget_ai_rewrite_max_output_tokens'] ?? ALMA_Affiliate_Widget_AI_Rewriter::DEFAULT_MAX_OUTPUT_TOKENS);
+            update_option('alma_widget_ai_rewrite_max_output_tokens', $widget_tokens > 0 ? $widget_tokens : ALMA_Affiliate_Widget_AI_Rewriter::DEFAULT_MAX_OUTPUT_TOKENS);
+            $widget_timeout = absint($_POST['alma_widget_ai_rewrite_timeout'] ?? ALMA_Affiliate_Widget_AI_Rewriter::DEFAULT_TIMEOUT);
+            update_option('alma_widget_ai_rewrite_timeout', $widget_timeout > 0 ? $widget_timeout : ALMA_Affiliate_Widget_AI_Rewriter::DEFAULT_TIMEOUT);
             
             echo '<div class="notice notice-success"><p>' . __('Impostazioni salvate!', 'affiliate-link-manager-ai') . '</p></div>';
         }
@@ -1103,6 +1111,10 @@ class AffiliateManagerAI {
         $openai_api_key = get_option('alma_openai_api_key', '');
         $openai_model = get_option('alma_openai_model', 'gpt-5.4-mini');
         $openai_temperature = get_option('alma_openai_temperature', 0.7);
+        $widget_rewrite_prompt = get_option('alma_widget_ai_rewrite_prompt', '');
+        $widget_rewrite_max_output_tokens = ALMA_Affiliate_Widget_AI_Rewriter::get_max_output_tokens();
+        $widget_rewrite_timeout = ALMA_Affiliate_Widget_AI_Rewriter::get_timeout();
+        $widget_rewrite_logs = $this->get_widget_ai_rewrite_logs(10);
         $allowed_post_types = get_option('alma_link_post_types', array('post', 'page'));
 
         ?>
@@ -1121,6 +1133,7 @@ class AffiliateManagerAI {
                     <a href="#ai" class="nav-tab">AI Settings</a>
                     <a href="#openai" class="nav-tab">OpenAI API</a>
                     <a href="#content-analysis" class="nav-tab">Content Analysis AI</a>
+                    <a href="#prompt-widget" class="nav-tab">Prompt Widget</a>
                     <a href="#editor" class="nav-tab">Editor</a>
                     <a href="#cleanup" class="nav-tab">Pulizia</a>
                 </h2>
@@ -1263,6 +1276,63 @@ class AffiliateManagerAI {
                                 ?>
                                 <p class="description"><?php _e('Seleziona i contenuti da analizzare e memorizzare in cache.', 'affiliate-link-manager-ai'); ?></p>
                                 <?php submit_button(__('Analizza e aggiorna cache', 'affiliate-link-manager-ai'), 'secondary', 'alma_refresh_content_cache', false); ?>
+                            </td>
+                        </tr>
+                    </table>
+                </div>
+
+                <!-- Prompt Widget Settings -->
+                <div id="prompt-widget" class="alma-settings-section" style="display:none;">
+                    <h2><?php _e('Prompt Widget', 'affiliate-link-manager-ai'); ?></h2>
+                    <p><?php _e('Configura il prompt usato per riscrivere obbligatoriamente titolo e descrizione dei Link Affiliati selezionati prima della creazione o salvataggio di un Widget Link.', 'affiliate-link-manager-ai'); ?></p>
+                    <table class="form-table">
+                        <tr>
+                            <th scope="row"><label for="alma_widget_ai_rewrite_prompt"><?php _e('Prompt Widget', 'affiliate-link-manager-ai'); ?></label></th>
+                            <td>
+                                <textarea name="alma_widget_ai_rewrite_prompt" id="alma_widget_ai_rewrite_prompt" rows="8" class="large-text"><?php echo esc_textarea($widget_rewrite_prompt); ?></textarea>
+                                <p class="description"><?php _e('Se lasciato vuoto viene usato il prompt default qui sotto. Il prompt viene combinato con Contesto AI del link e istruzioni della Source.', 'affiliate-link-manager-ai'); ?></p>
+                                <p><strong><?php _e('Prompt default:', 'affiliate-link-manager-ai'); ?></strong></p>
+                                <pre style="white-space:pre-wrap;background:#fff;border:1px solid #ccd0d4;padding:12px;max-width:900px;"><?php echo esc_html(ALMA_Affiliate_Widget_AI_Rewriter::default_prompt()); ?></pre>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><label for="alma_widget_ai_rewrite_max_output_tokens"><?php _e('Max output tokens Widget', 'affiliate-link-manager-ai'); ?></label></th>
+                            <td><input type="number" min="1" name="alma_widget_ai_rewrite_max_output_tokens" id="alma_widget_ai_rewrite_max_output_tokens" value="<?php echo esc_attr($widget_rewrite_max_output_tokens); ?>" class="small-text"><p class="description"><?php _e('Default consigliato: 3000.', 'affiliate-link-manager-ai'); ?></p></td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><label for="alma_widget_ai_rewrite_timeout"><?php _e('Timeout richiesta Widget', 'affiliate-link-manager-ai'); ?></label></th>
+                            <td><input type="number" min="1" name="alma_widget_ai_rewrite_timeout" id="alma_widget_ai_rewrite_timeout" value="<?php echo esc_attr($widget_rewrite_timeout); ?>" class="small-text"> <?php esc_html_e('secondi', 'affiliate-link-manager-ai'); ?><p class="description"><?php _e('Default consigliato: 60 secondi.', 'affiliate-link-manager-ai'); ?></p></td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><?php _e('Stato OpenAI', 'affiliate-link-manager-ai'); ?></th>
+                            <td>
+                                <?php if (ALMA_Affiliate_Widget_AI_Rewriter::is_openai_configured()) : ?>
+                                    <span style="color:#008a20;font-weight:600;"><?php _e('Configurato', 'affiliate-link-manager-ai'); ?></span>
+                                <?php else : ?>
+                                    <span style="color:#b32d2e;font-weight:600;"><?php _e('Non configurato', 'affiliate-link-manager-ai'); ?></span>
+                                <?php endif; ?>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><?php _e('Ultimi log riscrittura widget', 'affiliate-link-manager-ai'); ?></th>
+                            <td>
+                                <?php if (empty($widget_rewrite_logs)) : ?>
+                                    <p class="description"><?php _e('Nessun log disponibile per widget_link_rewrite.', 'affiliate-link-manager-ai'); ?></p>
+                                <?php else : ?>
+                                    <table class="widefat striped" style="max-width:1000px;"><thead><tr><th><?php _e('Data', 'affiliate-link-manager-ai'); ?></th><th><?php _e('Esito', 'affiliate-link-manager-ai'); ?></th><th><?php _e('Modello', 'affiliate-link-manager-ai'); ?></th><th><?php _e('Tempo', 'affiliate-link-manager-ai'); ?></th><th><?php _e('Token', 'affiliate-link-manager-ai'); ?></th><th><?php _e('Riferimento', 'affiliate-link-manager-ai'); ?></th><th><?php _e('Errore', 'affiliate-link-manager-ai'); ?></th></tr></thead><tbody>
+                                    <?php foreach ($widget_rewrite_logs as $log) : ?>
+                                        <tr>
+                                            <td><?php echo esc_html($log['created_at'] ?? ''); ?></td>
+                                            <td><?php echo !empty($log['success']) ? esc_html__('Successo', 'affiliate-link-manager-ai') : esc_html__('Fallimento', 'affiliate-link-manager-ai'); ?></td>
+                                            <td><?php echo esc_html($log['model'] ?? ''); ?></td>
+                                            <td><?php echo esc_html(isset($log['response_time']) ? absint($log['response_time']) . ' ms' : ''); ?></td>
+                                            <td><?php echo esc_html(absint($log['input_tokens'] ?? 0) . ' / ' . absint($log['output_tokens'] ?? 0)); ?></td>
+                                            <td><?php echo esc_html($log['reference_id'] ?? ''); ?></td>
+                                            <td><?php echo esc_html($log['error_message'] ?? ''); ?></td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                    </tbody></table>
+                                <?php endif; ?>
                             </td>
                         </tr>
                     </table>
@@ -1796,6 +1866,12 @@ class AffiliateManagerAI {
 
         $instance['links'] = array_values(array_diff(array_map('absint', (array) ($instance['links'] ?? array())), array($remove_id)));
         $instance['manual_ids'] = array_values(array_diff(array_map('absint', (array) ($instance['manual_ids'] ?? array())), array($remove_id)));
+        if (isset($instance['rewritten_links'][(string) $remove_id])) {
+            unset($instance['rewritten_links'][(string) $remove_id]);
+        }
+        if (isset($instance['rewritten_links'][$remove_id])) {
+            unset($instance['rewritten_links'][$remove_id]);
+        }
 
         return $instance;
     }
@@ -2040,6 +2116,17 @@ class AffiliateManagerAI {
         <?php
     }
 
+    private function get_widget_ai_rewrite_logs($limit = 10) {
+        global $wpdb;
+        $table = ALMA_AI_Usage_Logger::table_name();
+        $exists = $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $table));
+        if ($exists !== $table) {
+            return array();
+        }
+        $rows = $wpdb->get_results($wpdb->prepare("SELECT * FROM {$table} WHERE task = %s ORDER BY created_at DESC LIMIT %d", ALMA_Affiliate_Widget_AI_Rewriter::TASK, absint($limit)), ARRAY_A);
+        return is_array($rows) ? $rows : array();
+    }
+
     /**
      * Pagina creazione widget
      */
@@ -2056,6 +2143,7 @@ class AffiliateManagerAI {
         $no_links_selected = false;
         $no_result_links_selected = false;
         $title_required = false;
+        $ai_rewrite_error = '';
         $instance = array(
             'title' => '',
             'custom_content' => '',
@@ -2093,13 +2181,19 @@ class AffiliateManagerAI {
                     while (isset($instances[$id])) {
                         $id++;
                     }
-                    update_option('alma_widget_next_id', $id + 1);
-                    $instance['created_at'] = current_time('mysql');
-                    $instances[$id] = $instance;
-                    update_option('widget_affiliate_links_widget', $instances);
-                    $created = true;
-                    $shortcode = '[affiliate_links_widget id="' . $id . '"]';
-                    $php_code = "<?php echo do_shortcode('" . $shortcode . "'); ?>";
+                    $rewrite = ALMA_Affiliate_Widget_AI_Rewriter::rewrite_links($instance['links'], array('widget_id' => $id));
+                    if (empty($rewrite['success'])) {
+                        $ai_rewrite_error = sanitize_text_field($rewrite['error'] ?? __('Riscrittura AI non riuscita: il widget non è stato creato.', 'affiliate-link-manager-ai'));
+                    } else {
+                        update_option('alma_widget_next_id', $id + 1);
+                        $instance['created_at'] = current_time('mysql');
+                        $instance['rewritten_links'] = ALMA_Affiliate_Widget_AI_Rewriter::sanitize_rewritten_links($rewrite['items'] ?? array(), $instance['links']);
+                        $instances[$id] = $instance;
+                        update_option('widget_affiliate_links_widget', $instances);
+                        $created = true;
+                        $shortcode = '[affiliate_links_widget id="' . $id . '"]';
+                        $php_code = "<?php echo do_shortcode('" . $shortcode . "'); ?>";
+                    }
                 }
             }
         }
@@ -2114,8 +2208,9 @@ class AffiliateManagerAI {
             <?php if ($title_required) : ?><div class="notice notice-error"><p><?php _e('Il titolo widget è obbligatorio per creare il widget.', 'affiliate-link-manager-ai'); ?></p></div><?php endif; ?>
             <?php if ($no_links_selected) : ?><div class="notice notice-error"><p><?php _e('Seleziona almeno un link prima di creare il widget.', 'affiliate-link-manager-ai'); ?></p></div><?php endif; ?>
             <?php if ($no_result_links_selected) : ?><div class="notice notice-warning"><p><?php _e('Seleziona almeno un risultato di ricerca prima di aggiungerlo al widget.', 'affiliate-link-manager-ai'); ?></p></div><?php endif; ?>
+            <?php if ($ai_rewrite_error !== '') : ?><div class="notice notice-error"><p><?php echo esc_html($ai_rewrite_error); ?></p></div><?php endif; ?>
             <?php if ($created) : ?>
-                <div class="notice notice-success"><p><?php _e('Widget creato con successo!', 'affiliate-link-manager-ai'); ?></p></div>
+                <div class="notice notice-success"><p><?php _e('Widget Link creato. I testi dei link selezionati sono stati riscritti dall’AI.', 'affiliate-link-manager-ai'); ?></p></div>
                 <div class="alma-widget-created-box">
                     <p><strong><?php _e('Shortcode:', 'affiliate-link-manager-ai'); ?></strong> <code id="alma-created-shortcode"><?php echo esc_html($shortcode); ?></code> <button type="button" class="button alma-copy-button" data-copy-target="#alma-created-shortcode"><?php esc_html_e('Copia shortcode', 'affiliate-link-manager-ai'); ?></button></p>
                     <p><strong><?php _e('Codice PHP:', 'affiliate-link-manager-ai'); ?></strong> <code id="alma-created-php"><?php echo esc_html($php_code); ?></code> <button type="button" class="button alma-copy-button" data-copy-target="#alma-created-php"><?php esc_html_e('Copia codice PHP', 'affiliate-link-manager-ai'); ?></button></p>
@@ -2158,6 +2253,7 @@ class AffiliateManagerAI {
         $no_links_selected = false;
         $no_result_links_selected = false;
         $title_required = false;
+        $ai_rewrite_error = '';
 
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             check_admin_referer('alma_edit_widget');
@@ -2174,12 +2270,26 @@ class AffiliateManagerAI {
                 } elseif (empty($instance['links'])) {
                     $no_links_selected = true;
                 } else {
-                    if (empty($instance['created_at'])) {
-                        $instance['created_at'] = current_time('mysql');
+                    $existing_rewrites = ALMA_Affiliate_Widget_AI_Rewriter::sanitize_rewritten_links($instances[$widget_id]['rewritten_links'] ?? array(), $instance['links']);
+                    $new_link_ids = array_values(array_diff(array_map('absint', (array) $instance['links']), array_map('absint', array_keys($existing_rewrites))));
+                    $new_rewrites = array();
+                    if (!empty($new_link_ids)) {
+                        $rewrite = ALMA_Affiliate_Widget_AI_Rewriter::rewrite_links($new_link_ids, array('widget_id' => $widget_id));
+                        if (empty($rewrite['success'])) {
+                            $ai_rewrite_error = sanitize_text_field($rewrite['error'] ?? __('Riscrittura AI non riuscita: il widget non è stato salvato.', 'affiliate-link-manager-ai'));
+                        } else {
+                            $new_rewrites = ALMA_Affiliate_Widget_AI_Rewriter::sanitize_rewritten_links($rewrite['items'] ?? array(), $new_link_ids);
+                        }
                     }
-                    $instances[$widget_id] = $instance;
-                    update_option('widget_affiliate_links_widget', $instances);
-                    $saved = true;
+                    if ($ai_rewrite_error === '') {
+                        if (empty($instance['created_at'])) {
+                            $instance['created_at'] = current_time('mysql');
+                        }
+                        $instance['rewritten_links'] = ALMA_Affiliate_Widget_AI_Rewriter::sanitize_rewritten_links(array_replace($existing_rewrites, $new_rewrites), $instance['links']);
+                        $instances[$widget_id] = $instance;
+                        update_option('widget_affiliate_links_widget', $instances);
+                        $saved = true;
+                    }
                 }
             }
         }
@@ -2188,12 +2298,13 @@ class AffiliateManagerAI {
         ?>
         <div class="wrap alma-widget-builder">
             <h1><?php printf(esc_html__('Modifica Widget #%d', 'affiliate-link-manager-ai'), absint($widget_id)); ?></h1>
-            <?php if ($saved) : ?><div class="notice notice-success"><p><?php _e('Widget aggiornato.', 'affiliate-link-manager-ai'); ?></p></div><?php endif; ?>
+            <?php if ($saved) : ?><div class="notice notice-success"><p><?php _e('Widget Link aggiornato. I nuovi link aggiunti sono stati riscritti dall’AI.', 'affiliate-link-manager-ai'); ?></p></div><?php endif; ?>
             <?php if ($link_limit_exceeded) : ?><div class="notice notice-warning"><p><?php _e('Hai selezionato più di 20 link: verranno utilizzati solo i primi 20.', 'affiliate-link-manager-ai'); ?></p></div><?php endif; ?>
             <?php if (!empty($invalid_manual_ids)) : ?><div class="notice notice-warning"><p><?php printf(esc_html__('Gli ID %s non sono validi e sono stati ignorati.', 'affiliate-link-manager-ai'), esc_html(implode(', ', $invalid_manual_ids))); ?></p></div><?php endif; ?>
             <?php if ($title_required) : ?><div class="notice notice-error"><p><?php _e('Il titolo widget è obbligatorio per salvare il widget.', 'affiliate-link-manager-ai'); ?></p></div><?php endif; ?>
             <?php if ($no_links_selected) : ?><div class="notice notice-error"><p><?php _e('Seleziona almeno un link prima di salvare il widget.', 'affiliate-link-manager-ai'); ?></p></div><?php endif; ?>
             <?php if ($no_result_links_selected) : ?><div class="notice notice-warning"><p><?php _e('Seleziona almeno un risultato di ricerca prima di aggiungerlo al widget.', 'affiliate-link-manager-ai'); ?></p></div><?php endif; ?>
+            <?php if ($ai_rewrite_error !== '') : ?><div class="notice notice-error"><p><?php echo esc_html($ai_rewrite_error); ?></p></div><?php endif; ?>
             <form method="post">
                 <?php wp_nonce_field('alma_edit_widget'); ?>
                 <table class="form-table" role="presentation"><tbody>
@@ -2231,6 +2342,7 @@ class AffiliateManagerAI {
             'template_mobile_columns'  => absint($preset['mobile']),
             'links'                    => $links,
             'manual_ids'               => $manual_ids,
+            'rewritten_links'          => class_exists('ALMA_Affiliate_Widget_AI_Rewriter') ? ALMA_Affiliate_Widget_AI_Rewriter::sanitize_rewritten_links($instance['rewritten_links'] ?? array(), $links) : (array) ($instance['rewritten_links'] ?? array()),
         ));
     }
 
