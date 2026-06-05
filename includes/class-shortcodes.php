@@ -8,6 +8,9 @@ if (!defined('ABSPATH')) {
 
 class ALMA_Shortcodes {
     public function init() {
+        if (file_exists(ALMA_PLUGIN_DIR . 'includes/class-affiliate-widget-layout-registry.php')) {
+            require_once ALMA_PLUGIN_DIR . 'includes/class-affiliate-widget-layout-registry.php';
+        }
         require_once ALMA_PLUGIN_DIR . 'includes/class-affiliate-links-widget.php';
 
         add_shortcode('affiliate_link', array($this, 'display_affiliate_link'));
