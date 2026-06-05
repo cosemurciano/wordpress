@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="320" height="180" viewBox="0 0 320 180" role="img" aria-labelledby="title desc">
+  <title id="title">Griglia 3 colonne</title>
+  <desc id="desc">Tre card compatte affiancate.</desc>
+  <rect width="320" height="180" fill="#f6f7f7"/>
+  <g fill="#fff" stroke="#2271b1" stroke-width="3">
+    <rect x="22" y="30" width="82" height="120" rx="8"/>
+    <rect x="119" y="30" width="82" height="120" rx="8"/>
+    <rect x="216" y="30" width="82" height="120" rx="8"/>
+  </g>
+  <g fill="#cfe5f7"><rect x="34" y="46" width="58" height="34" rx="5"/><rect x="131" y="46" width="58" height="34" rx="5"/><rect x="228" y="46" width="58" height="34" rx="5"/></g>
+  <g fill="#1d2327"><rect x="34" y="94" width="50" height="8" rx="4"/><rect x="131" y="94" width="50" height="8" rx="4"/><rect x="228" y="94" width="50" height="8" rx="4"/></g>
+  <g fill="#8c8f94"><rect x="34" y="114" width="58" height="6" rx="3"/><rect x="34" y="128" width="44" height="6" rx="3"/><rect x="131" y="114" width="58" height="6" rx="3"/><rect x="131" y="128" width="44" height="6" rx="3"/><rect x="228" y="114" width="58" height="6" rx="3"/><rect x="228" y="128" width="44" height="6" rx="3"/></g>
+</svg>

@@ -92,7 +92,7 @@ class ALMA_Assets {
                     ),
                 ));
             }
-            if ($hook === 'affiliate_link_page_alma-ai-content-agent' && file_exists(ALMA_PLUGIN_DIR . 'assets/admin.js')) {
+            if (in_array($hook, array('affiliate_link_page_alma-ai-content-agent', 'affiliate_link_page_alma-create-widget', 'affiliate_link_page_alma-edit-widget'), true) && file_exists(ALMA_PLUGIN_DIR . 'assets/admin.js')) {
                 wp_enqueue_script(
                     'alma-admin-script',
                     ALMA_PLUGIN_URL . 'assets/admin.js',

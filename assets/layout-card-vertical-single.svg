@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="320" height="180" viewBox="0 0 320 180" role="img" aria-labelledby="title desc">
+  <title id="title">Card verticale singola</title>
+  <desc id="desc">Una card con immagine, titolo e testo su una colonna.</desc>
+  <rect width="320" height="180" fill="#f0f6fc"/>
+  <rect x="82" y="18" width="156" height="144" rx="10" fill="#fff" stroke="#2271b1" stroke-width="3"/>
+  <rect x="100" y="36" width="120" height="48" rx="6" fill="#cfe5f7"/>
+  <rect x="100" y="98" width="102" height="10" rx="5" fill="#1d2327"/>
+  <rect x="100" y="118" width="120" height="7" rx="3.5" fill="#8c8f94"/>
+  <rect x="100" y="132" width="90" height="7" rx="3.5" fill="#8c8f94"/>
+</svg>

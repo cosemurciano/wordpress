@@ -3,6 +3,13 @@
 - Convertiti i log diretti più sensibili nelle aree OpenAI, AI draft builder, import GetYourGuide CSV, media index e internal link index in diagnostica controllata tramite logger.
 - I log `debug` rispettano `WP_DEBUG`; nessun segreto viene salvato in database e non cambiano UI, schema DB, payload OpenAI o flussi di import.
 
+## 2.37.0 - 2026-06-05
+- Aggiunta la sezione visuale **Scegli layout widget** nelle pagine **Crea Widget AI** e **Modifica Widget**, con sei preset selezionabili e miniature SVG locali negli asset del plugin.
+- I preset aggiornano i campi esistenti per colonne desktop/mobile e visibilità di immagine, titolo, contenuto e pulsante, mantenendo i controlli tecnici come opzioni avanzate.
+- Introdotto il campo opzionale `layout_preset` nelle istanze widget, con deduzione automatica del layout più vicino per widget legacy privi del nuovo campo.
+- La pagina **Shortcode Widget AI** mostra il layout usato tramite una nuova colonna/badge, senza modificare il rendering frontend o gli shortcode esistenti.
+- Versione plugin aggiornata a `2.37.0`.
+
 ## 2.36.6 - 2026-06-03
 - Corretto il rendering duplicato delle progress bar GetYourGuide CSV, limitando il markup alla sola colonna **Progressi** della riga tipologia attività.
 - Tradotto lo stato tecnico `not_started` in **Non importato** nel render PHP e negli aggiornamenti AJAX.

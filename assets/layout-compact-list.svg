@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="320" height="180" viewBox="0 0 320 180" role="img" aria-labelledby="title desc">
+  <title id="title">Lista compatta</title>
+  <desc id="desc">Lista di righe compatte senza immagini.</desc>
+  <rect width="320" height="180" fill="#f6f7f7"/>
+  <rect x="46" y="28" width="228" height="124" rx="10" fill="#fff" stroke="#2271b1" stroke-width="3"/>
+  <g fill="#1d2327"><rect x="72" y="54" width="142" height="10" rx="5"/><rect x="72" y="86" width="126" height="10" rx="5"/><rect x="72" y="118" width="150" height="10" rx="5"/></g>
+  <g fill="#8c8f94"><circle cx="56" cy="59" r="5"/><circle cx="56" cy="91" r="5"/><circle cx="56" cy="123" r="5"/></g>
+</svg>
