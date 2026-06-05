@@ -4,19 +4,22 @@
 - I log `debug` rispettano `WP_DEBUG`; nessun segreto viene salvato in database e non cambiano UI, schema DB, payload OpenAI o flussi di import.
 
 ## 2.38.0 - 2026-06-05
-- Riprogettato il workflow **Crea Widget AI** e **Modifica Widget**: titolo, contenuto introduttivo, preset layout, testo CTA, ricerca link affiliati, ID manuali validati e riepilogo link selezionati.
+- Riprogettato il workflow **Crea Widget Link** e **Modifica Widget**: titolo, contenuto introduttivo, preset layout, testo CTA, ricerca link affiliati, ID manuali validati e riepilogo link selezionati.
 - Rimossi dalla UI builder i toggle manuali di visibilità, i controlli avanzati desktop/mobile e il pulsante **Genera suggerimenti AI**; i nuovi widget salvano sempre immagine, titolo, contenuto e pulsante attivi.
 - Introdotti i preset `columns_1` - `columns_6` con default `columns_3`, scelto perché offre un equilibrio leggibile tra densità desktop e semplicità per utenti non tecnici.
 - Aggiunto il motore di ricerca paginato per `affiliate_link` pubblicati con keyword, filtro `link_type`, filtro fonte/provider disponibile, massimo 20 risultati per pagina e limite di 20 link per widget.
 - Aggiornato il rendering frontend dei widget con preset per rispettare colonne responsive, forzare link neri e mantenere compatibilità con widget legacy e tracking click esistenti.
 - Aggiunte sei anteprime SVG dei layout in `assets/` e stili admin per card layout, risultati ricerca, box link selezionati e badge layout.
+- Corrette le review P2: `assets/admin.js` viene caricato anche nella pagina nascosta `admin_page_alma-edit-widget` e la rimozione link elimina gli ID sia da `links` sia da `manual_ids`.
+- Rifinita la UX di **Crea Widget Link**: descrizione introduttiva, titolo obbligatorio, ricerca senza risultati iniziali, pulsante **Aggiungi selezionati al widget**, rimozione con Dashicon accessibile e shortcode subito visibile dopo la creazione.
+- Il rendering frontend di `[affiliate_links_widget]` e del widget WordPress stampa il titolo in H3, poi il contenuto introduttivo solo se presente, quindi la griglia link affiliati.
 - Versione plugin aggiornata a `2.38.0`.
 
 ## 2.37.0 - 2026-06-05
-- Aggiunta la sezione visuale **Scegli layout widget** nelle pagine **Crea Widget AI** e **Modifica Widget**, con sei preset selezionabili e miniature SVG locali negli asset del plugin.
+- Aggiunta la sezione visuale **Scegli layout widget** nelle pagine **Crea Widget Link** e **Modifica Widget**, con sei preset selezionabili e miniature SVG locali negli asset del plugin.
 - I preset aggiornano i campi esistenti per colonne desktop/mobile e visibilità di immagine, titolo, contenuto e pulsante, mantenendo i controlli tecnici come opzioni avanzate.
 - Introdotto il campo opzionale `layout_preset` nelle istanze widget, con deduzione automatica del layout più vicino per widget legacy privi del nuovo campo.
-- La pagina **Shortcode Widget AI** mostra il layout usato tramite una nuova colonna/badge, senza modificare il rendering frontend o gli shortcode esistenti.
+- La pagina **Elenco Widget Link** mostra il layout usato tramite una nuova colonna/badge, senza modificare il rendering frontend o gli shortcode esistenti.
 - Versione plugin aggiornata a `2.37.0`.
 
 ## 2.36.6 - 2026-06-03

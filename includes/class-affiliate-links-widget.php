@@ -128,7 +128,7 @@ class ALMA_Affiliate_Links_Widget extends WP_Widget {
     public function widget($args, $instance) {
         echo $args['before_widget'];
         if (!empty($instance['title'])) {
-            echo $args['before_title'] . apply_filters('widget_title', $instance['title']) . $args['after_title'];
+            echo '<h3 class="alma-widget-title">' . esc_html(apply_filters('widget_title', $instance['title'])) . '</h3>';
         }
         if (!empty($instance['custom_content'])) {
             echo '<div class="alma-widget-content">' . wp_kses_post($instance['custom_content']) . '</div>';
@@ -252,7 +252,7 @@ class ALMA_Affiliate_Links_Widget extends WP_Widget {
         $title = $instance['title'] ?? '';
         $output = '';
         if ($title) {
-            $output .= '<h2 class="alma-widget-title">' . esc_html($title) . '</h2>';
+            $output .= '<h3 class="alma-widget-title">' . esc_html($title) . '</h3>';
         }
         if (!empty($instance['custom_content'])) {
             $output .= '<div class="alma-widget-content">' . wp_kses_post($instance['custom_content']) . '</div>';
