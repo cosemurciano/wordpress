@@ -83,7 +83,8 @@ class ALMA_Affiliate_Links_Widget extends WP_Widget {
         }
 
         $img = $show_image ? 'yes' : 'no';
-        $img_size = $desktop_columns > 2 ? 'thumbnail' : 'full';
+        // I widget usano sempre l'immagine originale/full del singolo Link Affiliato.
+        $img_size = 'full';
 
         $container_classes = 'alma-affiliate-widget alma-affiliate-widget--black-links template-desktop-' . $desktop_columns . ' template-mobile-' . $mobile_columns;
         if ($layout_preset) {

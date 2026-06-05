@@ -2055,6 +2055,7 @@ class AffiliateManagerAI {
         $link_limit_exceeded = false;
         $no_links_selected = false;
         $no_result_links_selected = false;
+        $title_required = false;
         $instance = array(
             'title' => '',
             'custom_content' => '',
@@ -2082,7 +2083,9 @@ class AffiliateManagerAI {
             }
 
             if (isset($_POST['alma_create_widget'])) {
-                if (empty($instance['links'])) {
+                if (trim((string) ($instance['title'] ?? '')) === '') {
+                    $title_required = true;
+                } elseif (empty($instance['links'])) {
                     $no_links_selected = true;
                 } else {
                     $instances = get_option('widget_affiliate_links_widget', array());
@@ -2108,6 +2111,7 @@ class AffiliateManagerAI {
             <p class="description alma-widget-builder-description"><?php esc_html_e('Crea un widget responsive di Link Affiliati scegliendo un layout preimpostato, cercando i link da inserire e copiando lo shortcode finale nei tuoi contenuti.', 'affiliate-link-manager-ai'); ?></p>
             <?php if ($link_limit_exceeded) : ?><div class="notice notice-warning"><p><?php _e('Hai selezionato più di 20 link: verranno utilizzati solo i primi 20.', 'affiliate-link-manager-ai'); ?></p></div><?php endif; ?>
             <?php if (!empty($invalid_manual_ids)) : ?><div class="notice notice-warning"><p><?php printf(esc_html__('Gli ID %s non sono validi e sono stati ignorati.', 'affiliate-link-manager-ai'), esc_html(implode(', ', $invalid_manual_ids))); ?></p></div><?php endif; ?>
+            <?php if ($title_required) : ?><div class="notice notice-error"><p><?php _e('Il titolo widget è obbligatorio per creare il widget.', 'affiliate-link-manager-ai'); ?></p></div><?php endif; ?>
             <?php if ($no_links_selected) : ?><div class="notice notice-error"><p><?php _e('Seleziona almeno un link prima di creare il widget.', 'affiliate-link-manager-ai'); ?></p></div><?php endif; ?>
             <?php if ($no_result_links_selected) : ?><div class="notice notice-warning"><p><?php _e('Seleziona almeno un risultato di ricerca prima di aggiungerlo al widget.', 'affiliate-link-manager-ai'); ?></p></div><?php endif; ?>
             <?php if ($created) : ?>
@@ -2121,7 +2125,7 @@ class AffiliateManagerAI {
             <form method="post">
                 <?php wp_nonce_field('alma_create_widget'); ?>
                 <table class="form-table" role="presentation"><tbody>
-                    <tr><th scope="row"><label for="alma_widget_title"><?php _e('Titolo widget', 'affiliate-link-manager-ai'); ?></label></th><td><input name="title" id="alma_widget_title" type="text" value="<?php echo esc_attr($instance['title']); ?>" class="regular-text" required></td></tr>
+                    <tr><th scope="row"><label for="alma_widget_title"><?php _e('Titolo widget', 'affiliate-link-manager-ai'); ?></label></th><td><input name="title" id="alma_widget_title" type="text" value="<?php echo esc_attr($instance['title']); ?>" class="regular-text"></td></tr>
                     <tr><th scope="row"><label for="alma_widget_content"><?php _e('Contenuto introduttivo', 'affiliate-link-manager-ai'); ?></label></th><td><textarea name="custom_content" id="alma_widget_content" rows="5" class="large-text"><?php echo esc_textarea($instance['custom_content']); ?></textarea></td></tr>
                     <?php $this->render_widget_layout_preset_field($this->get_widget_layout_preset_for_instance($instance)); ?>
                     <tr><th scope="row"><label for="alma_widget_button_text"><?php _e('Testo pulsante', 'affiliate-link-manager-ai'); ?></label></th><td><input name="button_text" type="text" id="alma_widget_button_text" value="<?php echo esc_attr($instance['button_text']); ?>" class="regular-text"><p class="description"><?php _e('Default: Scopri di più. Se vuoto, verrà salvato il default.', 'affiliate-link-manager-ai'); ?></p></td></tr>
@@ -2153,6 +2157,7 @@ class AffiliateManagerAI {
         $link_limit_exceeded = false;
         $no_links_selected = false;
         $no_result_links_selected = false;
+        $title_required = false;
 
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             check_admin_referer('alma_edit_widget');
@@ -2164,7 +2169,9 @@ class AffiliateManagerAI {
                 $instance = $this->remove_widget_link_from_instance($instance, $_POST['remove_link']);
             }
             if (isset($_POST['alma_save_widget'])) {
-                if (empty($instance['links'])) {
+                if (trim((string) ($instance['title'] ?? '')) === '') {
+                    $title_required = true;
+                } elseif (empty($instance['links'])) {
                     $no_links_selected = true;
                 } else {
                     if (empty($instance['created_at'])) {
@@ -2184,12 +2191,13 @@ class AffiliateManagerAI {
             <?php if ($saved) : ?><div class="notice notice-success"><p><?php _e('Widget aggiornato.', 'affiliate-link-manager-ai'); ?></p></div><?php endif; ?>
             <?php if ($link_limit_exceeded) : ?><div class="notice notice-warning"><p><?php _e('Hai selezionato più di 20 link: verranno utilizzati solo i primi 20.', 'affiliate-link-manager-ai'); ?></p></div><?php endif; ?>
             <?php if (!empty($invalid_manual_ids)) : ?><div class="notice notice-warning"><p><?php printf(esc_html__('Gli ID %s non sono validi e sono stati ignorati.', 'affiliate-link-manager-ai'), esc_html(implode(', ', $invalid_manual_ids))); ?></p></div><?php endif; ?>
+            <?php if ($title_required) : ?><div class="notice notice-error"><p><?php _e('Il titolo widget è obbligatorio per salvare il widget.', 'affiliate-link-manager-ai'); ?></p></div><?php endif; ?>
             <?php if ($no_links_selected) : ?><div class="notice notice-error"><p><?php _e('Seleziona almeno un link prima di salvare il widget.', 'affiliate-link-manager-ai'); ?></p></div><?php endif; ?>
             <?php if ($no_result_links_selected) : ?><div class="notice notice-warning"><p><?php _e('Seleziona almeno un risultato di ricerca prima di aggiungerlo al widget.', 'affiliate-link-manager-ai'); ?></p></div><?php endif; ?>
             <form method="post">
                 <?php wp_nonce_field('alma_edit_widget'); ?>
                 <table class="form-table" role="presentation"><tbody>
-                    <tr><th scope="row"><label for="alma_widget_title"><?php _e('Titolo widget', 'affiliate-link-manager-ai'); ?></label></th><td><input name="title" id="alma_widget_title" type="text" value="<?php echo esc_attr($instance['title'] ?? ''); ?>" class="regular-text" required></td></tr>
+                    <tr><th scope="row"><label for="alma_widget_title"><?php _e('Titolo widget', 'affiliate-link-manager-ai'); ?></label></th><td><input name="title" id="alma_widget_title" type="text" value="<?php echo esc_attr($instance['title'] ?? ''); ?>" class="regular-text"></td></tr>
                     <tr><th scope="row"><label for="alma_widget_content"><?php _e('Contenuto introduttivo', 'affiliate-link-manager-ai'); ?></label></th><td><textarea name="custom_content" id="alma_widget_content" rows="5" class="large-text"><?php echo esc_textarea($instance['custom_content'] ?? ''); ?></textarea></td></tr>
                     <?php $this->render_widget_layout_preset_field($this->get_widget_layout_preset_for_instance($instance)); ?>
                     <tr><th scope="row"><label for="alma_widget_button_text"><?php _e('Testo pulsante', 'affiliate-link-manager-ai'); ?></label></th><td><input name="button_text" type="text" id="alma_widget_button_text" value="<?php echo esc_attr($instance['button_text'] ?? __('Scopri di più', 'affiliate-link-manager-ai')); ?>" class="regular-text"><p class="description"><?php _e('Default: Scopri di più. Se vuoto, verrà salvato il default.', 'affiliate-link-manager-ai'); ?></p></td></tr>

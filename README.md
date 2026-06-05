@@ -19,6 +19,7 @@ Redazione automatica applicata ai log:
 - Corrette le review P2: `assets/admin.js` viene caricato anche nella pagina nascosta `admin_page_alma-edit-widget` e la rimozione link elimina gli ID sia da `links` sia da `manual_ids`.
 - Rifinita la UX di **Crea Widget Link**: descrizione introduttiva, titolo obbligatorio, ricerca senza risultati iniziali, pulsante **Aggiungi selezionati al widget**, rimozione con Dashicon accessibile e shortcode subito visibile dopo la creazione.
 - Il rendering frontend di `[affiliate_links_widget]` e del widget WordPress stampa il titolo in H3, poi il contenuto introduttivo solo se presente, quindi la griglia link affiliati.
+- Le card generate da **Crea Widget Link** usano l'immagine originale/full associata al singolo Link Affiliato, anche nei preset a 3, 4, 5 e 6 colonne.
 - Versione plugin aggiornata a `2.38.0`.
 
 ## 2.37.0 - 2026-06-05
