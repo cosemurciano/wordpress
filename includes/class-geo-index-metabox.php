@@ -5,6 +5,7 @@ if (!defined('ABSPATH')) { exit; }
  * Admin metabox for editing Geo Index data on content objects.
  */
 class ALMA_Geo_Index_Metabox {
+    const MAX_ASSOCIATED_LOCATIONS = 10;
     const NONCE_ACTION = 'alma_geo_index_save_metabox';
     const NONCE_NAME = 'alma_geo_index_nonce';
 
@@ -48,7 +49,15 @@ class ALMA_Geo_Index_Metabox {
                     'associate' => __('Associa luogo', 'affiliate-link-manager-ai'),
                     'type' => __('Tipo:', 'affiliate-link-manager-ai'),
                     'country' => __('Paese:', 'affiliate-link-manager-ai'),
+                    'limitReached' => __('Puoi associare al massimo 10 località a questo contenuto.', 'affiliate-link-manager-ai'),
+                    'removed' => __('Località rimossa. Salva il post per confermare.', 'affiliate-link-manager-ai'),
+                    'promoted' => __('La località principale è stata rimossa: la prima località rimasta è stata promossa a principale.', 'affiliate-link-manager-ai'),
+                    'duplicate' => __('Questa località è già associata al contenuto.', 'affiliate-link-manager-ai'),
+                    'emptyLocations' => __('Nessuna località associata.', 'affiliate-link-manager-ai'),
+                    'remove' => __('Rimuovi', 'affiliate-link-manager-ai'),
+                    'main' => __('Principale', 'affiliate-link-manager-ai'),
                 ),
+                'maxLocations' => self::MAX_ASSOCIATED_LOCATIONS,
             ));
         }
         if (file_exists(ALMA_PLUGIN_DIR . 'assets/admin.css')) {
@@ -132,16 +141,14 @@ class ALMA_Geo_Index_Metabox {
             '_alma_geo_primary_formatted_address' => $formatted_address,
             '_alma_geo_geocoding_status' => $effective_geocoding_status,
         ));
-        $has_location = $display_values['_alma_geo_primary_name'] !== '' || $place_id !== '' || ($lat !== '' && $lng !== '');
+        $associated_locations = $this->get_associated_locations($post->ID, $post->post_type, $display_values);
+        $has_location = !empty($associated_locations);
         ?>
         <div class="alma-geo-metabox" data-has-primary-location="<?php echo $has_location ? '1' : '0'; ?>">
             <p><?php esc_html_e('Cerca una località con Google Maps, associala al contenuto e lascia che il plugin compili i campi geografici tecnici.', 'affiliate-link-manager-ai'); ?></p>
 
             <div class="alma-geo-section alma-geo-location-search">
                 <h3><?php esc_html_e('Cerca e associa località', 'affiliate-link-manager-ai'); ?></h3>
-                <?php if ($has_location) : ?>
-                    <p class="description alma-geo-replace-note"><?php esc_html_e('Questa operazione sostituirà la località primaria attuale.', 'affiliate-link-manager-ai'); ?></p>
-                <?php endif; ?>
                 <div class="alma-geo-search-row">
                     <input type="text" id="alma_geo_location_query" class="alma-geo-search-input" value="" placeholder="<?php echo esc_attr__('Cerca Londra, Palermo, Kyoto, Etihad Stadium...', 'affiliate-link-manager-ai'); ?>" autocomplete="off">
                     <button type="button" class="button button-secondary" id="alma_geo_location_search_button"><?php esc_html_e('Cerca località', 'affiliate-link-manager-ai'); ?></button>
@@ -164,20 +171,27 @@ class ALMA_Geo_Index_Metabox {
                 </p>
             </div>
 
-            <div class="alma-geo-section">
-                <h3><?php esc_html_e('Località associata', 'affiliate-link-manager-ai'); ?></h3>
-                <dl class="alma-geo-kv alma-geo-associated-location">
-                    <dt><?php esc_html_e('Località', 'affiliate-link-manager-ai'); ?></dt><dd data-alma-geo-display="_alma_geo_primary_name"><?php echo esc_html($display_values['_alma_geo_primary_name']); ?></dd>
-                    <dt><?php esc_html_e('Tipo', 'affiliate-link-manager-ai'); ?></dt><dd data-alma-geo-display="_alma_geo_primary_type"><?php echo esc_html($this->primary_type_label($display_values['_alma_geo_primary_type'])); ?></dd>
-                    <dt><?php esc_html_e('Paese', 'affiliate-link-manager-ai'); ?></dt><dd data-alma-geo-display="_alma_geo_primary_country"><?php echo esc_html($display_values['_alma_geo_primary_country']); ?></dd>
-                    <dt><?php esc_html_e('Codice paese', 'affiliate-link-manager-ai'); ?></dt><dd data-alma-geo-display="_alma_geo_primary_country_code"><?php echo esc_html($display_values['_alma_geo_primary_country_code']); ?></dd>
-                    <dt><?php esc_html_e('Regione', 'affiliate-link-manager-ai'); ?></dt><dd data-alma-geo-display="_alma_geo_primary_region"><?php echo esc_html($display_values['_alma_geo_primary_region']); ?></dd>
-                    <dt><?php esc_html_e('Città', 'affiliate-link-manager-ai'); ?></dt><dd data-alma-geo-display="_alma_geo_primary_city"><?php echo esc_html($display_values['_alma_geo_primary_city']); ?></dd>
-                    <dt><?php esc_html_e('Formatted address', 'affiliate-link-manager-ai'); ?></dt><dd data-alma-geo-display="_alma_geo_primary_formatted_address"><?php echo esc_html($formatted_address); ?></dd>
-                    <dt><?php esc_html_e('Coordinate', 'affiliate-link-manager-ai'); ?></dt><dd data-alma-geo-display="coordinates"><?php echo esc_html(trim((string) $lat . ', ' . (string) $lng, ', ')); ?></dd>
-                    <dt><?php esc_html_e('Place ID', 'affiliate-link-manager-ai'); ?></dt><dd data-alma-geo-display="_alma_geo_primary_place_id"><?php echo esc_html($place_id); ?></dd>
-                    <dt><?php esc_html_e('Provider', 'affiliate-link-manager-ai'); ?></dt><dd data-alma-geo-display="_alma_geo_provider"><?php echo esc_html($provider === 'google_maps' ? __('Google Maps', 'affiliate-link-manager-ai') : $provider); ?></dd>
-                </dl>
+            <div class="alma-geo-section alma-geo-associated-section">
+                <h3><?php esc_html_e('Località associate al contenuto', 'affiliate-link-manager-ai'); ?></h3>
+                <input type="hidden" id="alma_geo_associated_locations_json" name="alma_geo[associated_locations_json]" value="<?php echo esc_attr(wp_json_encode($associated_locations)); ?>">
+                <p class="description"><?php esc_html_e('Associa fino a 10 località tramite Google Maps, scegli una sola principale e assegna un ruolo editoriale alle secondarie.', 'affiliate-link-manager-ai'); ?></p>
+                <table class="widefat striped alma-geo-associated-table" id="alma_geo_associated_locations_table">
+                    <thead>
+                        <tr>
+                            <th><?php esc_html_e('Principale', 'affiliate-link-manager-ai'); ?></th>
+                            <th><?php esc_html_e('Nome località', 'affiliate-link-manager-ai'); ?></th>
+                            <th><?php esc_html_e('Tipo', 'affiliate-link-manager-ai'); ?></th>
+                            <th><?php esc_html_e('Paese', 'affiliate-link-manager-ai'); ?></th>
+                            <th><?php esc_html_e('Regione', 'affiliate-link-manager-ai'); ?></th>
+                            <th><?php esc_html_e('Città', 'affiliate-link-manager-ai'); ?></th>
+                            <th><?php esc_html_e('Stato geocoding', 'affiliate-link-manager-ai'); ?></th>
+                            <th><?php esc_html_e('Ruolo', 'affiliate-link-manager-ai'); ?></th>
+                            <th><?php esc_html_e('Azione', 'affiliate-link-manager-ai'); ?></th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+                <p class="description alma-geo-empty-locations" id="alma_geo_empty_locations"><?php esc_html_e('Nessuna località associata.', 'affiliate-link-manager-ai'); ?></p>
                 <div class="alma-geo-hidden-primary-fields">
                     <?php $this->render_input('_alma_geo_primary_name', __('Nome località', 'affiliate-link-manager-ai'), $display_values, 'hidden'); ?>
                     <?php $this->render_input('_alma_geo_primary_canonical_name', __('Nome canonico', 'affiliate-link-manager-ai'), $display_values, 'hidden'); ?>
@@ -197,7 +211,7 @@ class ALMA_Geo_Index_Metabox {
             </div>
 
             <details class="alma-geo-details">
-                <summary><?php esc_html_e('Campi avanzati', 'affiliate-link-manager-ai'); ?></summary>
+                <summary><?php esc_html_e('Classificazione e campi avanzati', 'affiliate-link-manager-ai'); ?></summary>
                 <div class="alma-geo-grid">
                     <?php $this->render_select('_alma_geo_content_type', __('Content type', 'affiliate-link-manager-ai'), $values, self::content_types()); ?>
                     <?php $this->render_select('_alma_geo_commercial_intent', __('Commercial intent', 'affiliate-link-manager-ai'), $values, self::commercial_intents()); ?>
@@ -216,7 +230,7 @@ class ALMA_Geo_Index_Metabox {
                 </div>
                 <?php $this->render_textarea('_alma_geo_quality_flags', __('Quality flags', 'affiliate-link-manager-ai'), $values, 3); ?>
                 <?php $this->render_textarea('_alma_geo_notes', __('Note interne', 'affiliate-link-manager-ai'), $values, 4); ?>
-                <?php $this->render_textarea('_alma_geo_locations_json', __('Località secondarie JSON', 'affiliate-link-manager-ai'), $values, 5); ?>
+                <?php $this->render_textarea('_alma_geo_locations_json', __('JSON tecnico località', 'affiliate-link-manager-ai'), $values, 5); ?>
             </details>
         </div>
         <?php
@@ -259,6 +273,25 @@ class ALMA_Geo_Index_Metabox {
         if (!$this->has_geo_payload($data) && !$this->has_existing_geo_meta($post_id)) {
             return;
         }
+        $has_associated_payload = array_key_exists('associated_locations_json', $raw);
+        $locations = $this->sanitize_associated_locations($raw['associated_locations_json'] ?? '');
+        if ($has_associated_payload) {
+            $result = $this->store->save_geo_meta_for_object($post_id, $post->post_type, array(
+                'locations' => $locations,
+                'geo_scope' => $data['_alma_geo_scope'],
+                'content_type' => $data['_alma_geo_content_type'],
+                'commercial_intent' => $data['_alma_geo_commercial_intent'],
+                'widget_eligible' => $data['_alma_geo_widget_eligible'],
+            ), 'manual_google_search');
+            foreach (self::meta_keys() as $key) {
+                if (!array_key_exists($key, $result['meta'] ?? array())) {
+                    update_post_meta($post_id, $key, $data[$key] ?? '');
+                }
+            }
+            update_post_meta($post_id, '_alma_geo_locations_json', wp_json_encode($result['locations'] ?? $locations));
+            return;
+        }
+
         foreach (self::meta_keys() as $key) {
             update_post_meta($post_id, $key, $data[$key] ?? '');
         }
@@ -403,6 +436,72 @@ class ALMA_Geo_Index_Metabox {
             $values['_alma_geo_widget_eligible'] = 'yes';
         }
         return $values;
+    }
+
+    private function get_associated_locations($post_id, $post_type, $display_values) {
+        $locations = $this->store->get_associated_locations_for_object($post_id, $post_type);
+        if (!empty($locations)) {
+            return $locations;
+        }
+        $locations = array();
+        if (!empty($display_values['_alma_geo_primary_name']) || !empty($display_values['_alma_geo_primary_place_id'])) {
+            $locations[] = array(
+                'location_id' => 0,
+                'name' => $display_values['_alma_geo_primary_name'],
+                'canonical_name' => $display_values['_alma_geo_primary_canonical_name'],
+                'type' => $display_values['_alma_geo_primary_type'],
+                'country' => $display_values['_alma_geo_primary_country'],
+                'country_code' => $display_values['_alma_geo_primary_country_code'],
+                'region' => $display_values['_alma_geo_primary_region'],
+                'city' => $display_values['_alma_geo_primary_city'],
+                'area' => $display_values['_alma_geo_primary_area'],
+                'poi' => $display_values['_alma_geo_primary_poi'],
+                'lat' => $display_values['_alma_geo_primary_lat'],
+                'lng' => $display_values['_alma_geo_primary_lng'],
+                'geo_provider' => $display_values['_alma_geo_primary_provider'] ?: $display_values['_alma_geo_provider'],
+                'geo_provider_place_id' => $display_values['_alma_geo_primary_place_id'],
+                'formatted_address' => $display_values['_alma_geo_primary_formatted_address'],
+                'geocoding_status' => $display_values['_alma_geo_geocoding_status'],
+                'role' => 'main_destination',
+                'is_primary' => true,
+                'source' => $display_values['_alma_geo_source'],
+                'confidence' => $display_values['_alma_geo_confidence'] !== '' ? $display_values['_alma_geo_confidence'] : 1,
+                'match_weight' => 100,
+            );
+        }
+        $decoded = json_decode((string) ($display_values['_alma_geo_locations_json'] ?? ''), true);
+        if (is_array($decoded)) {
+            foreach ($decoded as $secondary) {
+                if (is_array($secondary)) {
+                    $secondary['is_primary'] = false;
+                    $secondary['role'] = sanitize_key($secondary['role'] ?? 'major_destination');
+                    $locations[] = $this->store->format_location_for_json($secondary);
+                }
+            }
+        }
+        return $this->store->normalize_associated_locations($locations, 'manual');
+    }
+
+    private function sanitize_associated_locations($json) {
+        $json = trim((string) $json);
+        if ($json === '') {
+            return array();
+        }
+        $decoded = json_decode($json, true);
+        if (!is_array($decoded)) {
+            return array();
+        }
+        $locations = array();
+        foreach ($decoded as $location) {
+            if (is_array($location)) {
+                $locations[] = $this->store->format_location_for_json($location);
+            }
+        }
+        return $this->store->normalize_associated_locations($locations, 'manual_google_search');
+    }
+
+    public static function location_roles() {
+        return array('main_destination','major_destination','mentioned_destination','excursion','nearby_place','route_stop','context_only');
     }
 
     private function primary_type_label($type) {

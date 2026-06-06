@@ -1,4 +1,5 @@
 ## Unreleased
+- Migliorata la gestione delle località nel metabox Geo Index: sostituito il JSON visibile con una lista di località associate, una località principale selezionabile e più località secondarie aggiungibili tramite ricerca Google.
 - Migliorato il metabox Geolocalizzazione contenuto con ricerca località tramite Google Maps, associazione guidata del luogo e autopopolazione dei campi geografici.
 - Corretto allineamento tra località geocodificate e stato geocoding dei contenuti collegati.
 - Aggiunta risincronizzazione manuale dei dati geocoding nei post.
