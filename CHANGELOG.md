@@ -1,4 +1,5 @@
 ## Unreleased
+- Migliorato il metabox Geolocalizzazione contenuto con ricerca località tramite Google Maps, associazione guidata del luogo e autopopolazione dei campi geografici.
 - Corretto allineamento tra località geocodificate e stato geocoding dei contenuti collegati.
 - Aggiunta risincronizzazione manuale dei dati geocoding nei post.
 - Semplificato il metabox Geolocalizzazione contenuto con vista sintetica e sezioni avanzate.

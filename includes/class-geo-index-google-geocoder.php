@@ -52,6 +52,57 @@ class ALMA_Geo_Index_Google_Geocoder {
         return $normalized;
     }
 
+    public function search_locations($query, $args = array()) {
+        $result = $this->geocode($query, $args);
+        if (empty($result['success'])) {
+            return $result;
+        }
+        $results = array();
+        foreach (array_slice($result['results'] ?? array(), 0, 5) as $item) {
+            $results[] = $this->normalize_location_result($item);
+        }
+        $result['results'] = $results;
+        return $result;
+    }
+
+    public function normalize_location_result($item) {
+        $components = is_array($item['address_components'] ?? null) ? $item['address_components'] : array();
+        $type = $this->normalize_google_type(is_array($item['types'] ?? null) ? $item['types'] : array());
+        $name = $this->extract_name($components, $item['formatted_address'] ?? '');
+        $country = $this->extract_component($components, 'country', 'long_name');
+        $country_code = $this->extract_component($components, 'country', 'short_name');
+        $region = $this->extract_first_component($components, array('administrative_area_level_1', 'administrative_area_level_2'), 'long_name');
+        $city = $this->extract_first_component($components, array('locality', 'postal_town', 'administrative_area_level_3'), 'long_name');
+        $area = $type === 'area' ? $name : $this->extract_first_component($components, array('neighborhood', 'sublocality', 'natural_feature'), 'long_name');
+        $poi = in_array($type, array('poi', 'airport', 'port'), true) ? $name : '';
+        return array(
+            'name' => $name,
+            'formatted_address' => sanitize_text_field($item['formatted_address'] ?? ''),
+            'type' => $type,
+            'country' => sanitize_text_field($country),
+            'country_code' => strtoupper(sanitize_text_field($country_code)),
+            'region' => sanitize_text_field($region),
+            'city' => sanitize_text_field($city),
+            'area' => sanitize_text_field($area),
+            'poi' => sanitize_text_field($poi),
+            'lat' => isset($item['lat']) ? (float) $item['lat'] : null,
+            'lng' => isset($item['lng']) ? (float) $item['lng'] : null,
+            'place_id' => sanitize_text_field($item['place_id'] ?? ''),
+            'provider' => 'google_maps',
+            'canonical_name' => sanitize_text_field($name),
+            'google_types' => array_map('sanitize_key', is_array($item['types'] ?? null) ? $item['types'] : array()),
+            'geo_scope' => $this->default_geo_scope_for_type($type),
+            'content_type' => $this->default_content_type_for_type($type),
+            'commercial_intent' => 'high',
+            'widget_eligible' => 'yes',
+            'confidence' => 1,
+            'match_weight' => 100,
+            'source' => 'manual_google_search',
+            'import_status' => 'imported',
+            'geocoding_status' => (!empty($item['place_id']) && isset($item['lat']) && isset($item['lng'])) ? 'verified' : 'manual_required',
+        );
+    }
+
     public function normalize_response($response) {
         $data = json_decode((string) $response, true);
         if (!is_array($data)) {
@@ -95,6 +146,84 @@ class ALMA_Geo_Index_Google_Geocoder {
             $params['region'] = strtolower(sanitize_text_field($args['region']));
         }
         return add_query_arg($params, self::ENDPOINT);
+    }
+
+    private function normalize_google_type($types) {
+        $types = array_map('sanitize_key', is_array($types) ? $types : array());
+        if (in_array('country', $types, true)) {
+            return 'country';
+        }
+        if (in_array('administrative_area_level_1', $types, true) || in_array('administrative_area_level_2', $types, true)) {
+            return 'region';
+        }
+        if (in_array('locality', $types, true) || in_array('postal_town', $types, true)) {
+            return 'city';
+        }
+        if (in_array('airport', $types, true)) {
+            return 'airport';
+        }
+        if (in_array('route', $types, true)) {
+            return 'route';
+        }
+        if (in_array('natural_feature', $types, true) || in_array('neighborhood', $types, true) || in_array('sublocality', $types, true)) {
+            return 'area';
+        }
+        if (in_array('tourist_attraction', $types, true) || in_array('point_of_interest', $types, true) || in_array('establishment', $types, true)) {
+            return 'poi';
+        }
+        return 'unknown';
+    }
+
+    private function default_geo_scope_for_type($type) {
+        return in_array($type, array('country', 'region', 'city', 'area', 'poi'), true) ? $type : 'uncertain';
+    }
+
+    private function default_content_type_for_type($type) {
+        $map = array(
+            'country' => 'country_guide',
+            'region' => 'region_guide',
+            'city' => 'city_guide',
+            'area' => 'area_guide',
+            'poi' => 'poi_guide',
+        );
+        return $map[$type] ?? 'destination_guide';
+    }
+
+    private function extract_name($components, $fallback) {
+        foreach ($components as $component) {
+            $types = is_array($component['types'] ?? null) ? $component['types'] : array();
+            if (in_array('point_of_interest', $types, true) || in_array('establishment', $types, true) || in_array('tourist_attraction', $types, true)) {
+                return sanitize_text_field($component['long_name'] ?? $fallback);
+            }
+        }
+        foreach (array('locality', 'postal_town', 'administrative_area_level_1', 'country', 'natural_feature') as $type) {
+            $name = $this->extract_component($components, $type, 'long_name');
+            if ($name !== '') {
+                return sanitize_text_field($name);
+            }
+        }
+        $parts = explode(',', (string) $fallback);
+        return sanitize_text_field(trim($parts[0] ?? $fallback));
+    }
+
+    private function extract_first_component($components, $types, $field = 'long_name') {
+        foreach ($types as $type) {
+            $value = $this->extract_component($components, $type, $field);
+            if ($value !== '') {
+                return $value;
+            }
+        }
+        return '';
+    }
+
+    private function extract_component($components, $type, $field = 'long_name') {
+        foreach ($components as $component) {
+            $types = is_array($component['types'] ?? null) ? $component['types'] : array();
+            if (in_array($type, $types, true) && !empty($component[$field])) {
+                return sanitize_text_field($component[$field]);
+            }
+        }
+        return '';
     }
 
     private function extract_country_code($components) {
