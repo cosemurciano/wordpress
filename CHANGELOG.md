@@ -1,5 +1,11 @@
 ## Unreleased
 
+- Corretto il nome specifico dei POI nei risultati Google e nelle località associate, preservando città, regione, paese e indirizzo formattato.
+- Corretta la deduplica delle località Geo Index usando prima il Google Place ID e solo in assenza una firma testuale completa.
+- Corretto il bug di sovrascrittura delle località associate durante aggiunte multiple e salvataggi bozza/post.
+- Preservate le modifiche manuali ai campi avanzati Geo Index senza ricalcolo forzato dalla località primaria.
+- Preservato lo stato salvato della checkbox Widget eligible al caricamento del metabox.
+- Migliorata la persistenza di tutte le località associate dopo salvataggio bozza/post.
 - Corretta la persistenza delle località associate al salvataggio bozza/post nel metabox Geo Index.
 - Migliorata la gestione dei POI nei risultati Google del Geo Index.
 - Aggiunta la rimozione dei risultati ricerca prima dell’associazione.

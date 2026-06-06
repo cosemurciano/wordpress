@@ -176,6 +176,7 @@ class ALMA_Geo_Index_Metabox {
             <div class="alma-geo-section alma-geo-associated-section">
                 <h3><?php esc_html_e('Località associate al contenuto', 'affiliate-link-manager-ai'); ?></h3>
                 <input type="hidden" id="alma_geo_associated_locations_json" name="alma_geo[associated_locations_json]" value="<?php echo esc_attr(wp_json_encode($associated_locations)); ?>">
+                <input type="hidden" id="alma_geo_primary_changed" name="alma_geo[primary_changed]" value="0">
                 <p class="description"><?php esc_html_e('Associa fino a 10 località tramite Google Maps, scegli una sola principale e assegna un ruolo editoriale alle secondarie.', 'affiliate-link-manager-ai'); ?></p>
                 <table class="widefat striped alma-geo-associated-table" id="alma_geo_associated_locations_table">
                     <thead>
@@ -284,7 +285,7 @@ class ALMA_Geo_Index_Metabox {
                 'content_type' => $data['_alma_geo_content_type'],
                 'commercial_intent' => $data['_alma_geo_commercial_intent'],
                 'widget_eligible' => $data['_alma_geo_widget_eligible'],
-                'derive_from_primary' => true,
+                'derive_from_primary' => !empty($raw['primary_changed']),
             ), 'manual_google_search');
             foreach (self::meta_keys() as $key) {
                 if (!array_key_exists($key, $result['meta'] ?? array())) {
