@@ -240,13 +240,6 @@ class ALMA_Geo_Index_Metabox {
     }
 
     public function save($post_id, $post) {
-        if (!isset($_POST[self::NONCE_NAME])) {
-            return;
-        }
-        $nonce = sanitize_text_field(wp_unslash($_POST[self::NONCE_NAME]));
-        if (!wp_verify_nonce($nonce, self::NONCE_ACTION)) {
-            return;
-        }
         if (defined('DOING_AUTOSAVE') && DOING_AUTOSAVE) {
             return;
         }
@@ -254,12 +247,24 @@ class ALMA_Geo_Index_Metabox {
             return;
         }
         if (!in_array($post->post_type, array('post', 'page', 'affiliate_link'), true)) {
+            $this->log_save_event('warning', 'Geo Index metabox save skipped: post type not allowed.', $post_id, $post->post_type);
+            return;
+        }
+        if (!isset($_POST[self::NONCE_NAME])) {
+            $this->log_save_event('warning', 'Geo Index metabox save skipped: nonce missing.', $post_id, $post->post_type);
+            return;
+        }
+        $nonce = sanitize_text_field(wp_unslash($_POST[self::NONCE_NAME]));
+        if (!wp_verify_nonce($nonce, self::NONCE_ACTION)) {
+            $this->log_save_event('warning', 'Geo Index metabox save skipped: nonce invalid.', $post_id, $post->post_type);
             return;
         }
         if (!current_user_can('edit_post', $post_id)) {
+            $this->log_save_event('warning', 'Geo Index metabox save skipped: capability check failed.', $post_id, $post->post_type);
             return;
         }
         if (!isset($_POST['alma_geo']) || !is_array($_POST['alma_geo'])) {
+            $this->log_save_event('warning', 'Geo Index metabox save skipped: Geo payload missing.', $post_id, $post->post_type);
             return;
         }
 
@@ -273,12 +278,18 @@ class ALMA_Geo_Index_Metabox {
 
         $raw = wp_unslash($_POST['alma_geo']);
         $data = $this->sanitize_submitted_data($raw);
-        if (!$this->has_geo_payload($data) && !$this->has_existing_geo_meta($post_id)) {
-            return;
-        }
         $has_associated_payload = array_key_exists('associated_locations_json', $raw);
         $locations = $this->sanitize_associated_locations($raw['associated_locations_json'] ?? '');
+        if ($has_associated_payload && trim((string) ($raw['associated_locations_json'] ?? '')) !== '' && empty($locations)) {
+            $this->log_save_event('warning', 'Geo Index metabox save received invalid or empty associated locations JSON.', $post_id, $post->post_type);
+        }
+        if (!$has_associated_payload && !$this->has_geo_payload($data) && !$this->has_existing_geo_meta($post_id)) {
+            return;
+        }
         if ($has_associated_payload) {
+            if (empty($locations)) {
+                $this->log_save_event('info', 'Geo Index metabox save received no associated locations.', $post_id, $post->post_type);
+            }
             $result = $this->store->save_geo_meta_for_object($post_id, $post->post_type, array(
                 'locations' => $locations,
                 'geo_scope' => $data['_alma_geo_scope'],
@@ -507,6 +518,25 @@ class ALMA_Geo_Index_Metabox {
             }
         }
         return $this->store->normalize_associated_locations($locations, 'manual_google_search');
+    }
+
+    private function log_save_event($level, $message, $post_id, $post_type = '') {
+        if (!class_exists('ALMA_Logger')) {
+            return;
+        }
+        $context = array(
+            'post_id' => absint($post_id),
+            'post_type' => sanitize_key($post_type),
+        );
+        if ($level === 'error') {
+            ALMA_Logger::error($message, $context);
+        } elseif ($level === 'warning') {
+            ALMA_Logger::warning($message, $context);
+        } elseif ($level === 'info') {
+            ALMA_Logger::info($message, $context);
+        } else {
+            ALMA_Logger::debug($message, $context);
+        }
     }
 
     public static function location_roles() {
