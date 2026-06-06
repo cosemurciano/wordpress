@@ -1,5 +1,6 @@
 ## Unreleased
 - Aggiunta la sezione **Export Link Affiliati** in **Impostazioni - Affiliate Link Manager AI**, con download CSV admin-only protetto da nonce per esportare URL, tipologie, provider/source, contesto AI, contenuti, immagine e meta Geo dei CPT `affiliate_link`; il file è pensato per analisi esterne e preparazione di un futuro CSV di geolocalizzazione.
+- L’export CSV dei Link Affiliati protegge ogni cella da formule potenzialmente eseguibili in fogli di calcolo, senza modificare i dati salvati nel database.
 - Il salvataggio del metabox **Geolocalizzazione contenuto** sui `affiliate_link` mantiene il redirect standard alla schermata di modifica del Link Affiliato e non forza più la lista dei Post.
 - La deduplica delle località Geo Index ora cerca prima per Place ID e poi per firma testuale, e gestisce `formatted_address` legacy `NULL` per evitare duplicati.
 - Il metabox **Geolocalizzazione contenuto** mantiene ora un JSON hidden sincronizzato dalla lista visuale, ripopola le località associate dopo il salvataggio, include POI come musei/attrazioni nei risultati Google, consente di nascondere singoli risultati ricerca e mostra ruoli località in italiano.

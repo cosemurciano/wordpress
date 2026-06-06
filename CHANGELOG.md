@@ -1,5 +1,9 @@
 ## Unreleased
 
+- Corretto il salvataggio dei dati Geo Index sui Link Affiliati.
+- Corretto il redirect errato dopo aggiornamento dei Link Affiliati.
+- Rafforzato l’export CSV Link Affiliati contro formule CSV potenzialmente pericolose.
+- Verificata/corretta la deduplica località Geo Index con Place ID e formatted address nullable.
 - Corretto il redirect dopo aggiornamento di un Link Affiliato quando il metabox Geo Index è attivo, preservando la schermata standard di modifica del CPT.
 - Corretta la deduplica località Geo Index con fallback da Place ID a firma testuale quando il Place ID non trova record esistenti.
 - Corretta la deduplica località Geo Index con `formatted_address` nullable tramite confronto SQL compatibile con righe legacy.

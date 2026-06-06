@@ -1132,7 +1132,7 @@ class AffiliateManagerAI {
         $headers = array(
             'affiliate_link_id','post_title','post_slug','post_status','affiliate_url','link_title','link_target','link_rel','click_count','link_types','provider','source_name','source_id','external_id','ai_context','post_content','post_excerpt','featured_image_url','featured_image_id','geo_enabled','geo_scope','geo_primary_name','geo_primary_type','geo_primary_country','geo_primary_country_code','geo_primary_region','geo_primary_city','geo_primary_area','geo_primary_poi','geo_geocoding_status','geo_lat','geo_lng','geo_place_id','created_at','updated_at'
         );
-        fputcsv($output, $headers);
+        fputcsv($output, $this->escape_csv_row($headers));
 
         $paged = 1;
         $per_page = 200;
@@ -1158,7 +1158,7 @@ class AffiliateManagerAI {
                     }
                 }
 
-                fputcsv($output, array(
+                fputcsv($output, $this->escape_csv_row(array(
                     $post_id,
                     $post->post_title,
                     $post->post_name,
@@ -1194,7 +1194,7 @@ class AffiliateManagerAI {
                     get_post_meta($post_id, '_alma_geo_primary_place_id', true),
                     $post->post_date,
                     $post->post_modified,
-                ));
+                )));
             }
 
             $count = count($query->posts);
@@ -1214,6 +1214,28 @@ class AffiliateManagerAI {
             }
         }
         return '';
+    }
+
+    private function escape_csv_row($row) {
+        return array_map(array($this, 'escape_csv_cell'), (array) $row);
+    }
+
+    private function escape_csv_cell($value) {
+        if (is_bool($value)) {
+            $value = $value ? '1' : '0';
+        } elseif (is_scalar($value) || $value === null) {
+            $value = (string) $value;
+        } else {
+            $value = wp_json_encode($value);
+            $value = is_string($value) ? $value : '';
+        }
+
+        $trimmed = ltrim($value);
+        if ($trimmed !== '' && in_array($trimmed[0], array('=', '+', '-', '@'), true)) {
+            return "'" . $value;
+        }
+
+        return $value;
     }
 
     private function clean_affiliate_export_text($text) {

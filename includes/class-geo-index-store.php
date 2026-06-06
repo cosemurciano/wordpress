@@ -322,6 +322,9 @@ class ALMA_Geo_Index_Store {
 
         $source = sanitize_text_field($source);
         $locations = $this->normalize_associated_locations($locations, $source);
+        if (empty($locations)) {
+            $this->log_geo_store_event('info', 'Geo Index Store save received no associated locations.', $object_id, $object_type);
+        }
         $primary = null;
         foreach ($locations as $location) {
             if (!empty($location['is_primary'])) {
@@ -364,6 +367,9 @@ class ALMA_Geo_Index_Store {
                 'address_components' => $location['address_components'] ?? null,
                 'geocoded_at' => $location['geocoding_status'] === 'verified' ? $now : '',
             ));
+            if (!$location_id) {
+                $this->log_geo_store_event('warning', 'Geo Index Store could not upsert location.', $object_id, $object_type);
+            }
             $location['location_id'] = $location_id;
             $location['match_weight'] = !empty($location['is_primary']) ? 100 : $this->default_match_weight_for_role($location['role']);
             $content_index_id = $this->upsert_content_index($object_id, $object_type, $location_id, array(
@@ -378,6 +384,9 @@ class ALMA_Geo_Index_Store {
                 'source' => $location['source'] ?: $source,
                 'raw_payload' => array('location' => $location),
             ));
+            if (!$content_index_id) {
+                $this->log_geo_store_event('warning', 'Geo Index Store could not upsert content index relation.', $object_id, $object_type);
+            }
             if (!empty($location['is_primary'])) {
                 $primary_location_id = $location_id;
                 $primary_content_index_id = $content_index_id;
@@ -419,6 +428,25 @@ class ALMA_Geo_Index_Store {
             update_post_meta($object_id, $key, $value);
         }
         return array('location_id' => $primary_location_id, 'content_index_id' => $primary_content_index_id, 'locations' => $updated_locations, 'meta' => $meta);
+    }
+
+    private function log_geo_store_event($level, $message, $object_id, $object_type) {
+        if (!class_exists('ALMA_Logger')) {
+            return;
+        }
+        $context = array(
+            'object_id' => absint($object_id),
+            'object_type' => sanitize_key($object_type),
+        );
+        if ($level === 'error') {
+            ALMA_Logger::error($message, $context);
+        } elseif ($level === 'warning') {
+            ALMA_Logger::warning($message, $context);
+        } elseif ($level === 'info') {
+            ALMA_Logger::info($message, $context);
+        } else {
+            ALMA_Logger::debug($message, $context);
+        }
     }
 
     public function normalize_associated_locations($locations, $source = 'manual') {
