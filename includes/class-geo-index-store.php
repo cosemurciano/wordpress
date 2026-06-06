@@ -260,6 +260,11 @@ class ALMA_Geo_Index_Store {
             'content_relations' => (int) $wpdb->get_var("SELECT COUNT(*) FROM {$this->table_content_index()}"),
             'pending_geocoding' => (int) $wpdb->get_var("SELECT COUNT(*) FROM {$this->table_locations()} WHERE geocoding_status = 'pending'"),
             'verified_geocoding' => (int) $wpdb->get_var("SELECT COUNT(*) FROM {$this->table_locations()} WHERE geocoding_status = 'verified'"),
+            'content_with_verified_locations' => (int) $wpdb->get_var("SELECT COUNT(DISTINCT ci.object_id) FROM {$this->table_content_index()} ci INNER JOIN {$this->table_locations()} l ON l.id = ci.location_id WHERE ci.is_primary = 1 AND l.geocoding_status = 'verified'"),
+            'content_pending_geocoding' => (int) $wpdb->get_var("SELECT COUNT(DISTINCT ci.object_id) FROM {$this->table_content_index()} ci INNER JOIN {$this->table_locations()} l ON l.id = ci.location_id WHERE ci.is_primary = 1 AND l.geocoding_status = 'pending'"),
+            'locations_verified' => (int) $wpdb->get_var("SELECT COUNT(*) FROM {$this->table_locations()} WHERE geocoding_status = 'verified'"),
+            'locations_pending' => (int) $wpdb->get_var("SELECT COUNT(*) FROM {$this->table_locations()} WHERE geocoding_status = 'pending'"),
+            'locations_failed' => (int) $wpdb->get_var("SELECT COUNT(*) FROM {$this->table_locations()} WHERE geocoding_status = 'failed'"),
             'manual_review' => (int) $wpdb->get_var("SELECT COUNT(*) FROM {$this->table_locations()} WHERE geocoding_status IN ('manual_required','ambiguous')"),
             'inactive_or_discarded' => (int) $wpdb->get_var("SELECT COUNT(DISTINCT post_id) FROM {$wpdb->postmeta} WHERE (meta_key = '_alma_geo_enabled' AND meta_value IN $inactive_values) OR (meta_key = '_alma_geo_import_status' AND meta_value IN ('discard','geocoding_failed'))"),
             'widget_eligible' => (int) $wpdb->get_var("SELECT COUNT(*) FROM {$this->table_content_index()} WHERE widget_eligible = 1"),
@@ -300,7 +305,7 @@ class ALMA_Geo_Index_Store {
             return array();
         }
         $status = sanitize_key($status);
-        $limit = max(1, min(50, absint($limit)));
+        $limit = max(1, min(5000, absint($limit)));
         return $wpdb->get_results(
             $wpdb->prepare(
                 "SELECT * FROM {$this->table_locations()} WHERE geocoding_status = %s ORDER BY updated_at ASC, id ASC LIMIT %d",
@@ -309,6 +314,94 @@ class ALMA_Geo_Index_Store {
             ),
             ARRAY_A
         );
+    }
+
+    public function sync_location_to_linked_objects($location_id) {
+        global $wpdb;
+        $report = array(
+            'location_id' => absint($location_id),
+            'objects_found' => 0,
+            'objects_updated' => 0,
+            'objects_skipped' => 0,
+            'errors' => array(),
+        );
+
+        $location = $this->get_location($location_id);
+        if (!$location) {
+            $report['errors'][] = __('Località non trovata.', 'affiliate-link-manager-ai');
+            return $report;
+        }
+        if (($location['geocoding_status'] ?? '') !== 'verified') {
+            $report['errors'][] = __('Località non verified: sincronizzazione saltata.', 'affiliate-link-manager-ai');
+            return $report;
+        }
+
+        $allowed_types = array(self::OBJECT_TYPE_POST, self::OBJECT_TYPE_PAGE, self::OBJECT_TYPE_AFFILIATE_LINK);
+        $relations = $wpdb->get_results(
+            $wpdb->prepare(
+                "SELECT * FROM {$this->table_content_index()} WHERE location_id = %d AND is_primary = 1",
+                absint($location_id)
+            ),
+            ARRAY_A
+        );
+        $report['objects_found'] = count($relations);
+
+        foreach ($relations as $relation) {
+            $object_id = absint($relation['object_id'] ?? 0);
+            $object_type = sanitize_key($relation['object_type'] ?? '');
+            if (!$object_id || !in_array($object_type, $allowed_types, true)) {
+                $report['objects_skipped']++;
+                continue;
+            }
+
+            $post = get_post($object_id);
+            if (!$post || $post->post_type !== $object_type) {
+                $report['objects_skipped']++;
+                $report['errors'][] = sprintf(__('Oggetto #%1$d non trovato o tipo non coerente.', 'affiliate-link-manager-ai'), $object_id);
+                continue;
+            }
+
+            $current_primary = $this->get_primary_location_for_object($object_id, $object_type);
+            if (!empty($current_primary['id']) && (int) $current_primary['id'] !== (int) $location['id']) {
+                $report['objects_skipped']++;
+                continue;
+            }
+
+            update_post_meta($object_id, '_alma_geo_geocoding_status', 'verified');
+            update_post_meta($object_id, '_alma_geo_primary_lat', $location['lat'] !== null ? (string) $location['lat'] : '');
+            update_post_meta($object_id, '_alma_geo_primary_lng', $location['lng'] !== null ? (string) $location['lng'] : '');
+            update_post_meta($object_id, '_alma_geo_primary_place_id', (string) ($location['geo_provider_place_id'] ?? ''));
+            update_post_meta($object_id, '_alma_geo_provider', (string) ($location['geo_provider'] ?? ''));
+            update_post_meta($object_id, '_alma_geo_primary_provider', (string) ($location['geo_provider'] ?? ''));
+            update_post_meta($object_id, '_alma_geo_primary_formatted_address', (string) ($location['formatted_address'] ?? ''));
+            update_post_meta($object_id, '_alma_geo_updated_at', current_time('mysql'));
+            $report['objects_updated']++;
+        }
+
+        return $report;
+    }
+
+    public function sync_all_verified_locations_to_objects() {
+        $locations = $this->get_locations_by_geocoding_status('verified', 5000);
+        $report = array(
+            'locations_found' => count($locations),
+            'locations_processed' => 0,
+            'objects_found' => 0,
+            'objects_updated' => 0,
+            'objects_skipped' => 0,
+            'errors' => array(),
+        );
+        foreach ($locations as $location) {
+            $sync = $this->sync_location_to_linked_objects((int) $location['id']);
+            $report['locations_processed']++;
+            $report['objects_found'] += (int) ($sync['objects_found'] ?? 0);
+            $report['objects_updated'] += (int) ($sync['objects_updated'] ?? 0);
+            $report['objects_skipped'] += (int) ($sync['objects_skipped'] ?? 0);
+            foreach (($sync['errors'] ?? array()) as $error) {
+                $report['errors'][] = array('location_id' => (int) $location['id'], 'message' => $error);
+            }
+        }
+        return $report;
     }
 
     public function get_geocoding_status_counts() {

@@ -51,6 +51,8 @@ class ALMA_Geo_Index_Geocoder {
             'manual_required' => 0,
             'failed' => 0,
             'skipped_verified' => 0,
+            'linked_objects_synced' => 0,
+            'linked_objects_sync_errors' => 0,
             'errors' => array(),
         );
 
@@ -67,6 +69,8 @@ class ALMA_Geo_Index_Geocoder {
                 if (!empty($result['message']) && $result_status !== 'verified') {
                     $report['errors'][] = array('location_id' => (int) $location['id'], 'status' => $result_status, 'message' => sanitize_text_field($result['message']));
                 }
+                $report['linked_objects_synced'] += (int) ($result['linked_objects_synced'] ?? 0);
+                $report['linked_objects_sync_errors'] += (int) ($result['linked_objects_sync_errors'] ?? 0);
             }
             if ($settings['delay_ms'] > 0) {
                 usleep($settings['delay_ms'] * 1000);
@@ -92,6 +96,12 @@ class ALMA_Geo_Index_Geocoder {
         $provider_result = $provider->geocode($query, array('region' => $settings['country_bias']));
         $validated = $this->validate_result($location, $provider_result);
         $this->store->update_location_geocoding($location['id'], $validated);
+        if (($validated['status'] ?? '') === 'verified') {
+            $sync_report = $this->store->sync_location_to_linked_objects((int) $location['id']);
+            $validated['linked_objects_synced'] = (int) ($sync_report['objects_updated'] ?? 0);
+            $validated['linked_objects_sync_errors'] = count($sync_report['errors'] ?? array());
+            $validated['linked_objects_sync_report'] = $sync_report;
+        }
         $this->log_result($location['id'], $query, $validated, $provider_result);
         return $validated;
     }

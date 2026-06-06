@@ -1,4 +1,8 @@
 ## Unreleased
+- Corretto allineamento tra località geocodificate e stato geocoding dei contenuti collegati.
+- Aggiunta risincronizzazione manuale dei dati geocoding nei post.
+- Semplificato il metabox Geolocalizzazione contenuto con vista sintetica e sezioni avanzate.
+
 
 ## 2.41.0 - 2026-06-06
 - Aggiunta la fondazione di geocoding admin-only per **Indice Geografico**, con tab Geocoding, impostazioni Google Maps API key mascherata, batch controllati e report in `alma_geo_geocoding_last_report`.
