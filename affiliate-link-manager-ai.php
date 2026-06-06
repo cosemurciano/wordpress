@@ -380,6 +380,8 @@ class AffiliateManagerAI {
         // Metabox per dettagli link
         add_action('add_meta_boxes', array($this, 'add_meta_boxes'));
         add_action('save_post_affiliate_link', array($this, 'save_link_meta'));
+        add_filter('redirect_post_location', array($this, 'normalize_affiliate_link_update_redirect'), 99, 2);
+        add_action('admin_post_alma_export_affiliate_links_csv', array($this, 'export_affiliate_links_csv'));
         
         // Colonne personalizzate nella lista
         add_filter('manage_affiliate_link_posts_columns', array($this, 'set_custom_columns'));
@@ -1059,6 +1061,173 @@ class AffiliateManagerAI {
         <?php
     }    
     /**
+     * Mantiene il redirect standard di WordPress dopo aggiornamento Link Affiliato.
+     */
+    public function normalize_affiliate_link_update_redirect($location, $post_id) {
+        $post_id = absint($post_id ?: ($_POST['post_ID'] ?? 0));
+        if (!$post_id) {
+            return $location;
+        }
+        $post = get_post($post_id);
+        if (!$post || $post->post_type !== 'affiliate_link') {
+            return $location;
+        }
+
+        $parts = wp_parse_url($location);
+        $path = isset($parts['path']) ? basename($parts['path']) : '';
+        if ($path !== 'edit.php') {
+            return $location;
+        }
+
+        $query_args = array();
+        if (!empty($parts['query'])) {
+            wp_parse_str($parts['query'], $query_args);
+        }
+        if (($query_args['post_type'] ?? '') === 'affiliate_link') {
+            return $location;
+        }
+
+        $message = isset($query_args['message']) ? absint($query_args['message']) : 1;
+        return add_query_arg(
+            array(
+                'post' => $post_id,
+                'action' => 'edit',
+                'message' => $message,
+            ),
+            admin_url('post.php')
+        );
+    }
+
+    private function get_affiliate_link_export_counts() {
+        $counts = wp_count_posts('affiliate_link');
+        $total = 0;
+        if ($counts) {
+            foreach ((array) $counts as $count) {
+                $total += (int) $count;
+            }
+        }
+        return array(
+            'total' => $total,
+            'publish' => $counts && isset($counts->publish) ? (int) $counts->publish : 0,
+        );
+    }
+
+    public function export_affiliate_links_csv() {
+        if (!is_admin() || !current_user_can('manage_options')) {
+            wp_die(__('Permessi insufficienti.', 'affiliate-link-manager-ai'));
+        }
+        check_admin_referer('alma_export_affiliate_links_csv');
+
+        $filename = 'sothra_affiliate_links_export_' . current_time('Y-m-d_H-i-s') . '.csv';
+        nocache_headers();
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename=' . $filename);
+        header('Pragma: no-cache');
+
+        $output = fopen('php://output', 'w');
+        if (!$output) {
+            wp_die(__('Impossibile aprire lo stream CSV.', 'affiliate-link-manager-ai'));
+        }
+
+        $headers = array(
+            'affiliate_link_id','post_title','post_slug','post_status','affiliate_url','link_title','link_target','link_rel','click_count','link_types','provider','source_name','source_id','external_id','ai_context','post_content','post_excerpt','featured_image_url','featured_image_id','geo_enabled','geo_scope','geo_primary_name','geo_primary_type','geo_primary_country','geo_primary_country_code','geo_primary_region','geo_primary_city','geo_primary_area','geo_primary_poi','geo_geocoding_status','geo_lat','geo_lng','geo_place_id','created_at','updated_at'
+        );
+        fputcsv($output, $headers);
+
+        $paged = 1;
+        $per_page = 200;
+        do {
+            $query = new WP_Query(array(
+                'post_type' => 'affiliate_link',
+                'post_status' => 'any',
+                'posts_per_page' => $per_page,
+                'paged' => $paged,
+                'orderby' => 'ID',
+                'order' => 'ASC',
+                'no_found_rows' => true,
+            ));
+
+            foreach ($query->posts as $post) {
+                $post_id = (int) $post->ID;
+                $featured_image_id = (int) get_post_thumbnail_id($post_id);
+                $terms = get_the_terms($post_id, 'link_type');
+                $term_names = array();
+                if (!is_wp_error($terms) && !empty($terms)) {
+                    foreach ($terms as $term) {
+                        $term_names[] = $term->name;
+                    }
+                }
+
+                fputcsv($output, array(
+                    $post_id,
+                    $post->post_title,
+                    $post->post_name,
+                    $post->post_status,
+                    get_post_meta($post_id, '_affiliate_url', true),
+                    get_post_meta($post_id, '_link_title', true),
+                    get_post_meta($post_id, '_link_target', true),
+                    get_post_meta($post_id, '_link_rel', true),
+                    (int) get_post_meta($post_id, '_click_count', true),
+                    implode('|', $term_names),
+                    $this->get_first_post_meta_value($post_id, array('_alma_provider', '_alma_source_provider', '_alma_provider_preset')),
+                    $this->get_first_post_meta_value($post_id, array('_alma_source_name', '_alma_source_provider_label')),
+                    get_post_meta($post_id, '_alma_source_id', true),
+                    get_post_meta($post_id, '_alma_external_id', true),
+                    $this->clean_affiliate_export_text(get_post_meta($post_id, '_alma_ai_context', true)),
+                    $this->clean_affiliate_export_text($post->post_content),
+                    $this->clean_affiliate_export_text($post->post_excerpt),
+                    $featured_image_id ? wp_get_attachment_url($featured_image_id) : '',
+                    $featured_image_id,
+                    get_post_meta($post_id, '_alma_geo_enabled', true),
+                    get_post_meta($post_id, '_alma_geo_scope', true),
+                    get_post_meta($post_id, '_alma_geo_primary_name', true),
+                    get_post_meta($post_id, '_alma_geo_primary_type', true),
+                    get_post_meta($post_id, '_alma_geo_primary_country', true),
+                    get_post_meta($post_id, '_alma_geo_primary_country_code', true),
+                    get_post_meta($post_id, '_alma_geo_primary_region', true),
+                    get_post_meta($post_id, '_alma_geo_primary_city', true),
+                    get_post_meta($post_id, '_alma_geo_primary_area', true),
+                    get_post_meta($post_id, '_alma_geo_primary_poi', true),
+                    get_post_meta($post_id, '_alma_geo_geocoding_status', true),
+                    get_post_meta($post_id, '_alma_geo_primary_lat', true),
+                    get_post_meta($post_id, '_alma_geo_primary_lng', true),
+                    get_post_meta($post_id, '_alma_geo_primary_place_id', true),
+                    $post->post_date,
+                    $post->post_modified,
+                ));
+            }
+
+            $count = count($query->posts);
+            wp_reset_postdata();
+            $paged++;
+        } while ($count === $per_page);
+
+        fclose($output);
+        exit;
+    }
+
+    private function get_first_post_meta_value($post_id, $keys) {
+        foreach ($keys as $key) {
+            $value = get_post_meta($post_id, $key, true);
+            if ($value !== '') {
+                return $value;
+            }
+        }
+        return '';
+    }
+
+    private function clean_affiliate_export_text($text) {
+        $text = (string) $text;
+        if (function_exists('strip_shortcodes')) {
+            $text = strip_shortcodes($text);
+        }
+        $text = wp_strip_all_tags($text, true);
+        $text = html_entity_decode($text, ENT_QUOTES, get_bloginfo('charset') ?: 'UTF-8');
+        $text = preg_replace('/[\r\n\t]+/', ' ', $text);
+        return trim(preg_replace('/ {2,}/', ' ', $text));
+    }
+
+    /**
      * Render Settings Page
      */
     public function render_settings_page() {
@@ -1178,6 +1347,7 @@ class AffiliateManagerAI {
                     <a href="#openai" class="nav-tab">OpenAI API</a>
                     <a href="#content-analysis" class="nav-tab">Content Analysis AI</a>
                     <a href="#prompt-widget" class="nav-tab">Prompt Widget</a>
+                    <a href="#export-affiliate-links" class="nav-tab">Export Link Affiliati</a>
                     <a href="#editor" class="nav-tab">Editor</a>
                     <a href="#cleanup" class="nav-tab">Pulizia</a>
                 </h2>
@@ -1377,6 +1547,36 @@ class AffiliateManagerAI {
                                     <?php endforeach; ?>
                                     </tbody></table>
                                 <?php endif; ?>
+                            </td>
+                        </tr>
+                    </table>
+                </div>
+
+                <!-- Export Affiliate Links -->
+                <div id="export-affiliate-links" class="alma-settings-section" style="display:none;">
+                    <h2><?php _e('Export Link Affiliati', 'affiliate-link-manager-ai'); ?></h2>
+                    <p><?php _e('Esporta i Link Affiliati con URL, tipologie, contesto AI, provider, immagine e dati geografici già presenti. Il CSV può essere usato per analisi esterne e per preparare un futuro file di geolocalizzazione dei Link Affiliati.', 'affiliate-link-manager-ai'); ?></p>
+                    <table class="form-table">
+                        <tr>
+                            <th scope="row"><?php _e('Link Affiliati disponibili', 'affiliate-link-manager-ai'); ?></th>
+                            <td>
+                                <?php $affiliate_counts = $this->get_affiliate_link_export_counts(); ?>
+                                <p>
+                                    <strong><?php echo esc_html(number_format_i18n($affiliate_counts['total'])); ?></strong> <?php esc_html_e('totali', 'affiliate-link-manager-ai'); ?> ·
+                                    <strong><?php echo esc_html(number_format_i18n($affiliate_counts['publish'])); ?></strong> <?php esc_html_e('pubblicati', 'affiliate-link-manager-ai'); ?>
+                                </p>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><?php _e('CSV analisi esterna', 'affiliate-link-manager-ai'); ?></th>
+                            <td>
+                                <p class="description"><?php _e('Esporta tutti i Link Affiliati in un file CSV utile per analisi esterne, geolocalizzazione e successivo re-import dei dati geografici.', 'affiliate-link-manager-ai'); ?></p>
+                                <p>
+                                    <a class="button button-primary" href="<?php echo esc_url(wp_nonce_url(admin_url('admin-post.php?action=alma_export_affiliate_links_csv'), 'alma_export_affiliate_links_csv')); ?>">
+                                        <?php _e('Esporta Link Affiliati CSV', 'affiliate-link-manager-ai'); ?>
+                                    </a>
+                                </p>
+                                <p class="description"><?php _e('Il file non include API key, log tecnici privati o altri segreti; contiene solo dati del CPT affiliate_link e meta utili alla geolocalizzazione.', 'affiliate-link-manager-ai'); ?></p>
                             </td>
                         </tr>
                     </table>
