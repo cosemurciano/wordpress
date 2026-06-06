@@ -151,12 +151,15 @@ class ALMA_Geo_Index_Admin {
             return;
         }
         $cards = array(
-            __('Articoli/pagine con geo meta', 'affiliate-link-manager-ai') => $counts['posts_with_geo_meta'],
+            __('Contenuti geolocalizzati attivi', 'affiliate-link-manager-ai') => $counts['active_geo_content'],
+            __('In attesa di geocoding', 'affiliate-link-manager-ai') => $counts['pending_geocoding'],
+            __('Geocodificati', 'affiliate-link-manager-ai') => $counts['verified_geocoding'],
+            __('Da revisione', 'affiliate-link-manager-ai') => $counts['manual_review'],
+            __('Non attivi/scartati', 'affiliate-link-manager-ai') => $counts['inactive_or_discarded'],
+            __('Compatibilità widget', 'affiliate-link-manager-ai') => $counts['widget_eligible'],
             __('Link Affiliati con geo meta', 'affiliate-link-manager-ai') => $counts['affiliate_links_with_geo_meta'],
             __('Località salvate', 'affiliate-link-manager-ai') => $counts['locations'],
             __('Relazioni contenuto/località', 'affiliate-link-manager-ai') => $counts['content_relations'],
-            __('Record pending geocoding', 'affiliate-link-manager-ai') => $counts['pending_geocoding'],
-            __('Record widget eligible', 'affiliate-link-manager-ai') => $counts['widget_eligible'],
         );
         echo '<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-top:16px;">';
         foreach ($cards as $label => $value) {
@@ -225,7 +228,7 @@ class ALMA_Geo_Index_Admin {
             echo '<tr><td colspan="11">' . esc_html__('Nessuna località salvata.', 'affiliate-link-manager-ai') . '</td></tr>';
         }
         foreach ($locations as $location) {
-            echo '<tr><td>' . esc_html((string) $location['id']) . '</td><td>' . esc_html($location['canonical_name']) . '</td><td>' . esc_html($location['type']) . '</td><td>' . esc_html($location['country']) . '</td><td>' . esc_html($location['region']) . '</td><td>' . esc_html($location['city']) . '</td><td>' . esc_html($location['area']) . '</td><td>' . esc_html($location['poi']) . '</td><td>' . esc_html($location['geocoding_status']) . '</td><td>' . esc_html($location['suggested_geocoding_query']) . '</td><td>' . esc_html((string) $location['content_count']) . '</td></tr>';
+            echo '<tr><td>' . esc_html((string) $location['id']) . '</td><td>' . esc_html($location['canonical_name']) . '</td><td>' . esc_html($location['type']) . '</td><td>' . esc_html($location['country']) . '</td><td>' . esc_html($location['region']) . '</td><td>' . esc_html($location['city']) . '</td><td>' . esc_html($location['area']) . '</td><td>' . esc_html($location['poi']) . '</td><td>' . esc_html(ALMA_Geo_Index_Metabox::geocoding_status_label($location['geocoding_status'])) . '</td><td>' . esc_html($location['suggested_geocoding_query']) . '</td><td>' . esc_html((string) $location['content_count']) . '</td></tr>';
         }
         echo '</tbody></table>';
     }

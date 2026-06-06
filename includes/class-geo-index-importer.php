@@ -239,8 +239,7 @@ class ALMA_Geo_Index_Importer {
     public function is_safe_row($row) {
         $import_status = sanitize_key($row['geo_import_status'] ?? '');
         return $this->to_bool($row['safe_for_auto_import'] ?? false)
-            && $this->to_bool($row['safe_for_auto_geocoding'] ?? false)
-            && in_array($import_status, array('needs_geocoding', 'ready'), true);
+            && in_array($import_status, array('', 'active', 'needs_geocoding', 'ready'), true);
     }
 
     public function row_to_meta($row) {
@@ -248,15 +247,14 @@ class ALMA_Geo_Index_Importer {
         $commercial_intent = $this->allowed_or_default($row['commercial_intent'] ?? '', ALMA_Geo_Index_Metabox::commercial_intents(), 'none');
         $geo_scope = $this->allowed_or_default($row['geo_scope'] ?? '', ALMA_Geo_Index_Metabox::geo_scopes(), 'uncertain');
         $primary_type = $this->allowed_or_default($row['primary_type'] ?? '', ALMA_Geo_Index_Metabox::primary_types(), 'unknown');
-        $import_status = $this->allowed_or_default($row['geo_import_status'] ?? '', ALMA_Geo_Index_Metabox::geo_import_statuses(), 'review');
-        $geocoding_status = $this->allowed_or_default($row['geocoding_status'] ?? '', ALMA_Geo_Index_Metabox::geocoding_statuses(), 'pending');
+        $widget_eligible = $this->to_bool($row['widget_eligible'] ?? false) || $this->to_bool($row['safe_for_auto_import'] ?? false);
 
         return array(
-            '_alma_geo_enabled' => '1',
+            '_alma_geo_enabled' => 'yes',
             '_alma_geo_scope' => $geo_scope,
             '_alma_geo_content_type' => $content_type,
             '_alma_geo_commercial_intent' => $commercial_intent,
-            '_alma_geo_widget_eligible' => $commercial_intent === 'high' || $commercial_intent === 'medium' ? '1' : '0',
+            '_alma_geo_widget_eligible' => $widget_eligible ? 'yes' : 'no',
             '_alma_geo_primary_name' => sanitize_text_field($row['primary_name'] ?? ''),
             '_alma_geo_primary_canonical_name' => sanitize_text_field($row['primary_canonical_name'] ?? ($row['primary_name'] ?? '')),
             '_alma_geo_primary_type' => $primary_type,
@@ -271,12 +269,12 @@ class ALMA_Geo_Index_Importer {
             '_alma_geo_primary_place_id' => '',
             '_alma_geo_confidence' => isset($row['confidence']) && $row['confidence'] !== '' ? (string) min(1, max(0, (float) $row['confidence'])) : '',
             '_alma_geo_match_weight' => isset($row['match_weight']) && $row['match_weight'] !== '' ? (string) (int) $row['match_weight'] : '',
-            '_alma_geo_geocoding_status' => $geocoding_status,
-            '_alma_geo_import_status' => $import_status,
+            '_alma_geo_geocoding_status' => 'pending',
+            '_alma_geo_import_status' => 'active',
             '_alma_geo_locations_json' => '',
             '_alma_geo_quality_flags' => sanitize_textarea_field($row['geo_quality_flags'] ?? ''),
             '_alma_geo_notes' => '',
-            '_alma_geo_source' => sanitize_text_field($row['primary_source'] ?? 'safe_csv'),
+            '_alma_geo_source' => sanitize_text_field(!empty($row['primary_source']) ? $row['primary_source'] : 'safe_import_csv'),
             '_alma_geo_updated_at' => current_time('mysql'),
         );
     }

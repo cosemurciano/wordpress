@@ -244,13 +244,20 @@ class ALMA_Geo_Index_Store {
             return array('tables_exist' => false);
         }
 
+        $enabled_values = "('1','yes','true','on')";
+        $inactive_values = "('0','no','false','off')";
+
         return array(
             'tables_exist' => true,
-            'posts_with_geo_meta' => (int) $wpdb->get_var("SELECT COUNT(DISTINCT pm.post_id) FROM {$wpdb->postmeta} pm INNER JOIN {$wpdb->posts} p ON p.ID = pm.post_id WHERE pm.meta_key = '_alma_geo_enabled' AND pm.meta_value = '1' AND p.post_type IN ('post','page')"),
-            'affiliate_links_with_geo_meta' => (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(DISTINCT pm.post_id) FROM {$wpdb->postmeta} pm INNER JOIN {$wpdb->posts} p ON p.ID = pm.post_id WHERE pm.meta_key = '_alma_geo_enabled' AND pm.meta_value = '1' AND p.post_type = %s", self::OBJECT_TYPE_AFFILIATE_LINK)),
+            'active_geo_content' => (int) $wpdb->get_var("SELECT COUNT(DISTINCT pm.post_id) FROM {$wpdb->postmeta} pm INNER JOIN {$wpdb->posts} p ON p.ID = pm.post_id WHERE pm.meta_key = '_alma_geo_enabled' AND pm.meta_value IN $enabled_values AND p.post_type IN ('post','page')"),
+            'posts_with_geo_meta' => (int) $wpdb->get_var("SELECT COUNT(DISTINCT pm.post_id) FROM {$wpdb->postmeta} pm INNER JOIN {$wpdb->posts} p ON p.ID = pm.post_id WHERE pm.meta_key = '_alma_geo_enabled' AND pm.meta_value IN $enabled_values AND p.post_type IN ('post','page')"),
+            'affiliate_links_with_geo_meta' => (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(DISTINCT pm.post_id) FROM {$wpdb->postmeta} pm INNER JOIN {$wpdb->posts} p ON p.ID = pm.post_id WHERE pm.meta_key = '_alma_geo_enabled' AND pm.meta_value IN $enabled_values AND p.post_type = %s", self::OBJECT_TYPE_AFFILIATE_LINK)),
             'locations' => (int) $wpdb->get_var("SELECT COUNT(*) FROM {$this->table_locations()}"),
             'content_relations' => (int) $wpdb->get_var("SELECT COUNT(*) FROM {$this->table_content_index()}"),
-            'pending_geocoding' => (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$this->table_locations()} WHERE geocoding_status = %s", 'pending')),
+            'pending_geocoding' => (int) $wpdb->get_var("SELECT COUNT(DISTINCT pm.post_id) FROM {$wpdb->postmeta} pm INNER JOIN {$wpdb->posts} p ON p.ID = pm.post_id INNER JOIN {$wpdb->postmeta} enabled ON enabled.post_id = pm.post_id AND enabled.meta_key = '_alma_geo_enabled' AND enabled.meta_value IN $enabled_values WHERE pm.meta_key = '_alma_geo_geocoding_status' AND pm.meta_value = 'pending' AND p.post_type IN ('post','page')"),
+            'verified_geocoding' => (int) $wpdb->get_var("SELECT COUNT(DISTINCT post_id) FROM {$wpdb->postmeta} WHERE meta_key = '_alma_geo_geocoding_status' AND meta_value = 'verified'"),
+            'manual_review' => (int) $wpdb->get_var("SELECT COUNT(DISTINCT post_id) FROM {$wpdb->postmeta} WHERE (meta_key = '_alma_geo_geocoding_status' AND meta_value = 'manual_required') OR (meta_key = '_alma_geo_import_status' AND meta_value = 'review')"),
+            'inactive_or_discarded' => (int) $wpdb->get_var("SELECT COUNT(DISTINCT post_id) FROM {$wpdb->postmeta} WHERE (meta_key = '_alma_geo_enabled' AND meta_value IN $inactive_values) OR (meta_key = '_alma_geo_import_status' AND meta_value IN ('discard','geocoding_failed'))"),
             'widget_eligible' => (int) $wpdb->get_var("SELECT COUNT(*) FROM {$this->table_content_index()} WHERE widget_eligible = 1"),
         );
     }

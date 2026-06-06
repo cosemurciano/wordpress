@@ -1,4 +1,5 @@
 ## Unreleased
+- Chiarita la distinzione tra record Geo Index attivo e stato geocoding `pending`: i record importati correttamente vengono marcati come attivi e `pending` viene mostrato come “In attesa di geocoding”.
 
 ## 2.40.1 - 2026-06-06
 - Corretto l’upload CSV del modulo **Indice Geografico** evitando il blocco MIME di WordPress su file `.csv` identificati come `text/plain`, `application/vnd.ms-excel`, `application/csv` o `application/octet-stream` valido.
@@ -10,7 +11,7 @@
 - Aggiunto il modulo **Indice Geografico** come fondazione interna del plugin, con menu admin `alma-geo-index`, dashboard conteggi, import CSV safe, elenco località e log ultimo import.
 - Create via `dbDelta` le nuove tabelle `alma_geo_locations` e `alma_geo_content_index`, senza rimuovere o modificare dati/tabelle esistenti.
 - Aggiunto il metabox **Geolocalizzazione contenuto** su `post`, `page` e `affiliate_link`, con nonce, capability, check autosave/revision, sanitizzazione, post meta `_alma_geo_*` e sincronizzazione verso le tabelle Geo Index.
-- Implementato l’import conservativo di `sothra_geo_article_index_safe_import.csv` per `post` e `page`: validazione header, preview primi 10 record, import solo se `safe_for_auto_import` e `safe_for_auto_geocoding` sono veri, gestione no-overwrite default e report in option.
+- Implementato l’import conservativo di `sothra_geo_article_index_safe_import.csv` per `post` e `page`: validazione header, preview primi 10 record, import solo se `safe_for_auto_import` è vero, gestione no-overwrite default e report in option.
 - Nessun uso di AI, nessuna chiamata Google Maps API e nessuna modifica alla logica frontend del Widget Link Contestuale o agli shortcode esistenti.
 - Versione plugin aggiornata a `2.40.0`.
 
