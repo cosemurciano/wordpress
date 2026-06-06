@@ -1,5 +1,8 @@
 ## Unreleased
 
+- Corretto il redirect dopo creazione e modifica dei Link Affiliati, forzando i salvataggi normali del CPT a rientrare in `post.php?post={ID}&action=edit` e preservando `classic-editor`.
+- Rafforzata la diagnostica controllata del flusso salvataggio/redirect dei Link Affiliati, includendo payload `redirect_post_location`, `save_post_affiliate_link` e Geo Index.
+- Verificato l’isolamento del metabox Geo Index dal form standard WordPress: nessun form annidato/campo di redirect e bottoni interni non-submit.
 - Corretto definitivamente il redirect dopo aggiornamento dei Link Affiliati con Geo Index attivo.
 - Rafforzato il salvataggio Geo Index sui Link Affiliati.
 - Aggiunta diagnostica controllata per il flusso di salvataggio Geo/redirect dei Link Affiliati.

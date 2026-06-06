@@ -381,6 +381,7 @@ class AffiliateManagerAI {
         add_action('add_meta_boxes', array($this, 'add_meta_boxes'));
         add_action('save_post_affiliate_link', array($this, 'save_link_meta'));
         add_filter('redirect_post_location', array($this, 'normalize_affiliate_link_update_redirect'), 99, 2);
+        add_filter('wp_redirect', array($this, 'guard_affiliate_link_editpost_redirect'), 99, 2);
         add_action('admin_post_alma_export_affiliate_links_csv', array($this, 'export_affiliate_links_csv'));
         
         // Colonne personalizzate nella lista
@@ -667,12 +668,15 @@ class AffiliateManagerAI {
      * Salva meta del link
      */
     public function save_link_meta($post_id) {
-        $nonce_valid = isset($_POST['affiliate_link_nonce']) && wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['affiliate_link_nonce'])), 'save_affiliate_link');
+        $nonce_present = isset($_POST['affiliate_link_nonce']);
+        $nonce_valid = $nonce_present && wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['affiliate_link_nonce'])), 'save_affiliate_link');
         $this->log_affiliate_link_save_diagnostic('Affiliate link meta save received.', array(
             'post_id' => absint($post_id),
+            'post_type' => get_post_type($post_id),
+            'link_nonce_present' => (bool) $nonce_present,
             'link_nonce_valid' => (bool) $nonce_valid,
-            'post_type' => isset($_POST['post_type']) ? sanitize_key(wp_unslash($_POST['post_type'])) : '',
-            'action' => isset($_POST['action']) ? sanitize_key(wp_unslash($_POST['action'])) : '',
+            'post_post_type' => isset($_POST['post_type']) ? sanitize_key(wp_unslash($_POST['post_type'])) : '',
+            'post_action' => isset($_POST['action']) ? sanitize_key(wp_unslash($_POST['action'])) : '',
         ));
 
         if (!$nonce_valid) {
@@ -1068,68 +1072,20 @@ class AffiliateManagerAI {
         <?php
     }    
     /**
-     * Mantiene il redirect standard di WordPress dopo aggiornamento Link Affiliato.
+     * Mantiene i salvataggi normali dei Link Affiliati nella schermata di modifica del CPT.
      */
     public function normalize_affiliate_link_update_redirect($location, $post_id) {
         $original_location = $location;
-        $post_id = absint($post_id);
-        if (!$post_id && isset($_POST['post_ID'])) {
-            $post_id = absint(wp_unslash($_POST['post_ID']));
-        }
-        if (!$post_id && isset($_REQUEST['post'])) {
-            $post_id = absint(wp_unslash($_REQUEST['post']));
-        }
-
-        $diagnostic_context = array(
-            'original_location' => $original_location,
-            'filter_post_id' => absint($post_id),
-            'post_post_id' => isset($_POST['post_ID']) ? absint(wp_unslash($_POST['post_ID'])) : 0,
-            'post_post_type' => isset($_POST['post_type']) ? sanitize_key(wp_unslash($_POST['post_type'])) : '',
-            'request_post' => isset($_REQUEST['post']) ? absint(wp_unslash($_REQUEST['post'])) : 0,
-            'request_action' => isset($_REQUEST['action']) ? sanitize_key(wp_unslash($_REQUEST['action'])) : '',
-            'referer' => wp_get_referer(),
-        );
-
+        $received_filter_post_id = absint($post_id);
+        $post_id = $this->resolve_affiliate_link_redirect_post_id($post_id);
+        $post_type = $this->resolve_affiliate_link_redirect_post_type($post_id);
+        $diagnostic_context = $this->get_affiliate_link_redirect_diagnostic_context($original_location, $post_id, $post_type);
+        $diagnostic_context['received_filter_post_id'] = $received_filter_post_id;
         $final_location = $location;
-        $bypass_reason = '';
-        if ((function_exists('wp_doing_ajax') && wp_doing_ajax()) || (defined('DOING_AJAX') && DOING_AJAX)) {
-            $bypass_reason = 'ajax';
-        } elseif (defined('DOING_AUTOSAVE') && DOING_AUTOSAVE) {
-            $bypass_reason = 'autosave';
-        } elseif (!$post_id || wp_is_post_autosave($post_id) || wp_is_post_revision($post_id)) {
-            $bypass_reason = 'empty_or_autosave_or_revision';
-        } elseif (get_post_type($post_id) !== 'affiliate_link') {
-            $bypass_reason = 'not_affiliate_link';
-        } else {
-            $request_action = isset($_REQUEST['action']) ? sanitize_key(wp_unslash($_REQUEST['action'])) : '';
-            $request_action2 = isset($_REQUEST['action2']) ? sanitize_key(wp_unslash($_REQUEST['action2'])) : '';
-            $blocked_actions = array('trash', 'delete', 'delete_all', 'untrash', 'bulk_edit', 'inline-save', 'restore');
-            if (in_array($request_action, $blocked_actions, true) || in_array($request_action2, $blocked_actions, true)) {
-                $bypass_reason = 'blocked_action';
-            } elseif ($request_action !== 'editpost') {
-                $bypass_reason = 'not_editpost';
-            } else {
-                $parts = wp_parse_url($location);
-                $query_args = array();
-                if (!empty($parts['query'])) {
-                    wp_parse_str($parts['query'], $query_args);
-                }
-                $message = isset($query_args['message']) ? absint($query_args['message']) : 1;
-                if (!$message) {
-                    $message = 1;
-                }
+        $bypass_reason = $this->get_affiliate_link_redirect_bypass_reason($post_id, $post_type);
 
-                $args = array(
-                    'post' => $post_id,
-                    'action' => 'edit',
-                    'message' => $message,
-                );
-                if ($this->affiliate_link_update_requested_classic_editor()) {
-                    $args['classic-editor'] = '';
-                }
-
-                $final_location = add_query_arg($args, admin_url('post.php'));
-            }
+        if ($bypass_reason === '') {
+            $final_location = $this->build_affiliate_link_edit_redirect($post_id, $location);
         }
 
         $diagnostic_context['final_location'] = $final_location;
@@ -1139,7 +1095,144 @@ class AffiliateManagerAI {
         return $final_location;
     }
 
-    private function is_affiliate_link_post_php_update_request() {
+    /**
+     * Ultima difesa: corregge solo redirect admin strettamente riconducibili a editpost affiliate_link verso edit.php.
+     */
+    public function guard_affiliate_link_editpost_redirect($location, $status = 302) {
+        $post_id = $this->resolve_affiliate_link_redirect_post_id(0);
+        $post_type = $this->resolve_affiliate_link_redirect_post_type($post_id);
+        $diagnostic_context = $this->get_affiliate_link_redirect_diagnostic_context($location, $post_id, $post_type);
+        $diagnostic_context['http_status'] = absint($status);
+        $diagnostic_context['guard'] = 'wp_redirect';
+        $final_location = $location;
+        $bypass_reason = $this->get_affiliate_link_redirect_bypass_reason($post_id, $post_type);
+
+        if ($bypass_reason === '') {
+            $path = wp_parse_url($location, PHP_URL_PATH);
+            $query = wp_parse_url($location, PHP_URL_QUERY);
+            $query_args = array();
+            if ($query) {
+                wp_parse_str($query, $query_args);
+            }
+            $is_plain_admin_edit = $path && basename($path) === 'edit.php' && empty($query_args['post_type']);
+            if ($is_plain_admin_edit) {
+                $final_location = $this->build_affiliate_link_edit_redirect($post_id, $location);
+            } else {
+                $bypass_reason = 'not_plain_edit_php_redirect';
+            }
+        }
+
+        $diagnostic_context['final_location'] = $final_location;
+        $diagnostic_context['bypass_reason'] = $bypass_reason;
+        $this->log_affiliate_link_save_diagnostic('Affiliate link wp_redirect guard evaluated.', $diagnostic_context);
+
+        return $final_location;
+    }
+
+    private function resolve_affiliate_link_redirect_post_id($post_id) {
+        $post_id = absint($post_id);
+        if (!$post_id && isset($_POST['post_ID'])) {
+            $post_id = absint(wp_unslash($_POST['post_ID']));
+        }
+        if (!$post_id && isset($_REQUEST['post'])) {
+            $post_id = absint(wp_unslash($_REQUEST['post']));
+        }
+        return $post_id;
+    }
+
+    private function resolve_affiliate_link_redirect_post_type($post_id) {
+        $post_type = $post_id ? get_post_type($post_id) : '';
+        if (!$post_type && isset($_POST['post_type'])) {
+            $post_type = sanitize_key(wp_unslash($_POST['post_type']));
+        }
+        if (!$post_type && isset($_REQUEST['post_type'])) {
+            $post_type = sanitize_key(wp_unslash($_REQUEST['post_type']));
+        }
+        return (string) $post_type;
+    }
+
+    private function get_affiliate_link_redirect_bypass_reason($post_id, $post_type) {
+        if ((function_exists('wp_doing_ajax') && wp_doing_ajax()) || (defined('DOING_AJAX') && DOING_AJAX)) {
+            return 'ajax';
+        }
+        if (defined('DOING_AUTOSAVE') && DOING_AUTOSAVE) {
+            return 'autosave';
+        }
+        if (!$post_id || wp_is_post_autosave($post_id) || wp_is_post_revision($post_id)) {
+            return 'empty_or_autosave_or_revision';
+        }
+        if ($post_type !== 'affiliate_link') {
+            return 'not_affiliate_link';
+        }
+        $request_action = isset($_REQUEST['action']) ? sanitize_key(wp_unslash($_REQUEST['action'])) : '';
+        $request_action2 = isset($_REQUEST['action2']) ? sanitize_key(wp_unslash($_REQUEST['action2'])) : '';
+        $blocked_actions = array('trash', 'delete', 'delete_all', 'untrash', 'bulk_edit', 'inline-save', 'restore');
+        if (in_array($request_action, $blocked_actions, true) || in_array($request_action2, $blocked_actions, true)) {
+            return 'blocked_action';
+        }
+        if ($request_action !== 'editpost') {
+            return 'not_editpost';
+        }
+        if (!$this->is_affiliate_link_post_editor_save_request()) {
+            return 'not_post_editor_save_request';
+        }
+        return '';
+    }
+
+    private function build_affiliate_link_edit_redirect($post_id, $location = '') {
+        $message = $this->resolve_affiliate_link_redirect_message($location);
+        $args = array(
+            'post' => absint($post_id),
+            'action' => 'edit',
+            'message' => $message,
+        );
+        $classic_editor = $this->affiliate_link_update_requested_classic_editor();
+        if ($classic_editor) {
+            $args['classic-editor'] = '';
+        }
+        $redirect = add_query_arg($args, admin_url('post.php'));
+        if ($classic_editor) {
+            $redirect = preg_replace('/([?&])classic-editor=(?=(&|$))/', '$1classic-editor', $redirect);
+        }
+        return $redirect;
+    }
+
+    private function resolve_affiliate_link_redirect_message($location) {
+        $parts = wp_parse_url((string) $location);
+        $query_args = array();
+        if (!empty($parts['query'])) {
+            wp_parse_str($parts['query'], $query_args);
+        }
+        $message = isset($query_args['message']) ? absint($query_args['message']) : 0;
+        if ($message) {
+            return $message;
+        }
+        $original_status = isset($_POST['original_post_status']) ? sanitize_key(wp_unslash($_POST['original_post_status'])) : '';
+        $original_post_id = isset($_POST['original_post_ID']) ? absint(wp_unslash($_POST['original_post_ID'])) : 0;
+        if ($original_status === 'auto-draft' || !$original_post_id) {
+            return 6;
+        }
+        return 1;
+    }
+
+    private function get_affiliate_link_redirect_diagnostic_context($location, $post_id, $post_type) {
+        return array(
+            'original_location' => $location,
+            'filter_post_id' => absint($post_id),
+            'resolved_post_type' => $post_type,
+            'get_post_type' => $post_id ? get_post_type($post_id) : '',
+            'post_post_id' => isset($_POST['post_ID']) ? absint(wp_unslash($_POST['post_ID'])) : 0,
+            'post_post_type' => isset($_POST['post_type']) ? sanitize_key(wp_unslash($_POST['post_type'])) : '',
+            'post_action' => isset($_POST['action']) ? sanitize_key(wp_unslash($_POST['action'])) : '',
+            'request_post' => isset($_REQUEST['post']) ? absint(wp_unslash($_REQUEST['post'])) : 0,
+            'request_post_type' => isset($_REQUEST['post_type']) ? sanitize_key(wp_unslash($_REQUEST['post_type'])) : '',
+            'request_action' => isset($_REQUEST['action']) ? sanitize_key(wp_unslash($_REQUEST['action'])) : '',
+            'request_classic_editor' => isset($_REQUEST['classic-editor']) ? sanitize_text_field(wp_unslash($_REQUEST['classic-editor'])) : '',
+            'referer' => wp_get_referer(),
+        );
+    }
+
+    private function is_affiliate_link_post_editor_save_request() {
         $paths = array();
         if (!empty($_SERVER['REQUEST_URI'])) {
             $request_path = wp_parse_url(wp_unslash($_SERVER['REQUEST_URI']), PHP_URL_PATH);
@@ -1158,7 +1251,7 @@ class AffiliateManagerAI {
             }
         }
 
-        return in_array('post.php', $paths, true);
+        return (bool) array_intersect(array('post.php', 'post-new.php'), $paths);
     }
 
     private function affiliate_link_update_requested_classic_editor() {
@@ -1187,13 +1280,25 @@ class AffiliateManagerAI {
     }
 
     private function log_affiliate_link_save_diagnostic($message, $context = array()) {
-        if (class_exists('ALMA_Logger')) {
-            ALMA_Logger::debug($message, $context);
+        if (!$this->is_affiliate_link_save_diagnostic_enabled()) {
             return;
         }
-        if (defined('WP_DEBUG') && WP_DEBUG) {
-            error_log('[ALMA] [DEBUG] ' . $message . ' | context=' . wp_json_encode($context));
+        if (class_exists('ALMA_Logger')) {
+            if (defined('WP_DEBUG') && WP_DEBUG) {
+                ALMA_Logger::debug($message, $context);
+            } else {
+                ALMA_Logger::info($message, $context);
+            }
+            return;
         }
+        error_log('[ALMA] [DEBUG] ' . $message . ' | context=' . wp_json_encode($context));
+    }
+
+    private function is_affiliate_link_save_diagnostic_enabled() {
+        if (defined('WP_DEBUG') && WP_DEBUG) {
+            return true;
+        }
+        return (bool) get_option('alma_affiliate_link_save_redirect_diagnostics', false);
     }
 
     private function get_affiliate_link_export_counts() {
@@ -3614,7 +3719,15 @@ class AffiliateManagerAI {
             return;
         }
         global $pagenow;
-        if ($pagenow !== 'edit.php' || $query->get('post_type') !== 'post' || !isset($_GET['alma_no_affiliates'])) {
+        if ($pagenow !== 'edit.php' || !isset($_GET['alma_no_affiliates'])) {
+            return;
+        }
+        $screen = function_exists('get_current_screen') ? get_current_screen() : null;
+        if (!$screen || $screen->id !== 'edit-post') {
+            return;
+        }
+        $query_post_type = $query->get('post_type');
+        if ($query_post_type !== 'post' && $query_post_type !== '') {
             return;
         }
         global $wpdb;
