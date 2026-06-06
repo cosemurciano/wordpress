@@ -6,6 +6,7 @@ if (!defined('ABSPATH')) { exit; }
  */
 class ALMA_Geo_Index_Google_Geocoder {
     const ENDPOINT = 'https://maps.googleapis.com/maps/api/geocode/json';
+    const PLACES_TEXT_SEARCH_ENDPOINT = 'https://places.googleapis.com/v1/places:searchText';
 
     private $api_key;
     private $timeout;
@@ -13,6 +14,70 @@ class ALMA_Geo_Index_Google_Geocoder {
     public function __construct($api_key = '', $timeout = 15) {
         $this->api_key = trim((string) $api_key);
         $this->timeout = max(1, absint($timeout));
+    }
+
+
+    private function places_text_search($query, $args = array()) {
+        $query = sanitize_text_field($query);
+        if ($query === '' || $this->api_key === '') {
+            return array('success' => false, 'status' => 'INVALID_QUERY', 'message' => __('Query Places vuota o API key mancante.', 'affiliate-link-manager-ai'), 'results' => array());
+        }
+
+        $body = array('textQuery' => $query, 'languageCode' => 'it');
+        if (!empty($args['region'])) {
+            $body['regionCode'] = strtoupper(sanitize_text_field($args['region']));
+        }
+
+        $started = microtime(true);
+        $response = wp_remote_post(self::PLACES_TEXT_SEARCH_ENDPOINT, array(
+            'timeout' => $this->timeout,
+            'headers' => array(
+                'Content-Type' => 'application/json',
+                'X-Goog-Api-Key' => $this->api_key,
+                'X-Goog-FieldMask' => 'places.id,places.displayName,places.formattedAddress,places.location,places.types,places.addressComponents',
+            ),
+            'body' => wp_json_encode($body),
+        ));
+        $duration_ms = (int) round((microtime(true) - $started) * 1000);
+
+        if (is_wp_error($response)) {
+            return array('success' => false, 'status' => 'HTTP_ERROR', 'message' => $response->get_error_message(), 'results' => array(), 'duration_ms' => $duration_ms);
+        }
+
+        $code = (int) wp_remote_retrieve_response_code($response);
+        $data = json_decode((string) wp_remote_retrieve_body($response), true);
+        if ($code < 200 || $code >= 300 || !is_array($data)) {
+            return array('success' => false, 'status' => 'HTTP_' . $code, 'message' => __('Ricerca Google Places non disponibile.', 'affiliate-link-manager-ai'), 'results' => array(), 'response_code' => $code, 'duration_ms' => $duration_ms);
+        }
+
+        $results = array();
+        foreach (array_slice(is_array($data['places'] ?? null) ? $data['places'] : array(), 0, 10) as $place) {
+            $results[] = $this->normalize_location_result($this->normalize_places_result($place));
+        }
+
+        return array('success' => true, 'status' => 'OK', 'message' => '', 'results' => $results, 'response_code' => $code, 'duration_ms' => $duration_ms);
+    }
+
+    private function normalize_places_result($place) {
+        $components = array();
+        foreach (is_array($place['addressComponents'] ?? null) ? $place['addressComponents'] : array() as $component) {
+            $components[] = array(
+                'long_name' => sanitize_text_field($component['longText'] ?? ''),
+                'short_name' => sanitize_text_field($component['shortText'] ?? ''),
+                'types' => array_map('sanitize_key', is_array($component['types'] ?? null) ? $component['types'] : array()),
+            );
+        }
+
+        return array(
+            'place_id' => sanitize_text_field($place['id'] ?? ''),
+            'formatted_address' => sanitize_text_field($place['formattedAddress'] ?? ''),
+            'name' => sanitize_text_field($place['displayName']['text'] ?? ''),
+            'displayName' => is_array($place['displayName'] ?? null) ? $place['displayName'] : array(),
+            'lat' => isset($place['location']['latitude']) ? (float) $place['location']['latitude'] : null,
+            'lng' => isset($place['location']['longitude']) ? (float) $place['location']['longitude'] : null,
+            'types' => array_map('sanitize_key', is_array($place['types'] ?? null) ? $place['types'] : array()),
+            'address_components' => $components,
+        );
     }
 
     public function geocode($query, $args = array()) {
@@ -53,6 +118,11 @@ class ALMA_Geo_Index_Google_Geocoder {
     }
 
     public function search_locations($query, $args = array()) {
+        $places_result = $this->places_text_search($query, $args);
+        if (!empty($places_result['success']) && !empty($places_result['results'])) {
+            return $places_result;
+        }
+
         $result = $this->geocode($query, $args);
         if (empty($result['success'])) {
             return $result;
@@ -68,7 +138,7 @@ class ALMA_Geo_Index_Google_Geocoder {
     public function normalize_location_result($item) {
         $components = is_array($item['address_components'] ?? null) ? $item['address_components'] : array();
         $type = $this->normalize_google_type(is_array($item['types'] ?? null) ? $item['types'] : array());
-        $name = $this->extract_name($components, $item['formatted_address'] ?? '');
+        $name = $this->extract_name($components, $item['formatted_address'] ?? '', $item, $type);
         $country = $this->extract_component($components, 'country', 'long_name');
         $country_code = $this->extract_component($components, 'country', 'short_name');
         $region = $this->extract_first_component($components, array('administrative_area_level_1', 'administrative_area_level_2'), 'long_name');
@@ -118,6 +188,7 @@ class ALMA_Geo_Index_Google_Geocoder {
             $normalized_results[] = array(
                 'place_id' => sanitize_text_field($result['place_id'] ?? ''),
                 'formatted_address' => sanitize_text_field($result['formatted_address'] ?? ''),
+                'name' => $this->extract_google_result_name($result),
                 'lat' => isset($location['lat']) ? (float) $location['lat'] : null,
                 'lng' => isset($location['lng']) ? (float) $location['lng'] : null,
                 'types' => array_map('sanitize_key', is_array($result['types'] ?? null) ? $result['types'] : array()),
@@ -168,10 +239,10 @@ class ALMA_Geo_Index_Google_Geocoder {
         if (in_array('route', $types, true)) {
             return 'route';
         }
-        if (array_intersect($types, array('tourist_attraction', 'point_of_interest', 'establishment', 'museum', 'church', 'stadium'))) {
+        if (array_intersect($types, array('tourist_attraction', 'point_of_interest', 'establishment', 'museum', 'church', 'stadium', 'lodging', 'restaurant', 'premise', 'park'))) {
             return 'poi';
         }
-        if (in_array('park', $types, true) || in_array('natural_feature', $types, true) || in_array('neighborhood', $types, true) || in_array('sublocality', $types, true)) {
+        if (in_array('natural_feature', $types, true) || in_array('neighborhood', $types, true) || in_array('sublocality', $types, true)) {
             return 'area';
         }
         return 'unknown';
@@ -196,13 +267,25 @@ class ALMA_Geo_Index_Google_Geocoder {
         return $map[$type] ?? 'destination_guide';
     }
 
-    private function extract_name($components, $fallback) {
+    private function extract_name($components, $fallback, $item = array(), $normalized_type = 'unknown') {
+        $explicit_name = $this->extract_google_result_name(is_array($item) ? $item : array());
+        if ($explicit_name !== '') {
+            return $explicit_name;
+        }
+
+        $poi_types = array('point_of_interest', 'establishment', 'tourist_attraction', 'museum', 'church', 'stadium', 'lodging', 'restaurant', 'premise', 'park');
         foreach ($components as $component) {
             $types = is_array($component['types'] ?? null) ? $component['types'] : array();
-            if (array_intersect($types, array('point_of_interest', 'establishment', 'tourist_attraction', 'museum', 'church', 'stadium'))) {
+            if (array_intersect($types, $poi_types)) {
                 return sanitize_text_field($component['long_name'] ?? $fallback);
             }
         }
+
+        if ($normalized_type === 'poi') {
+            $parts = explode(',', (string) $fallback);
+            return sanitize_text_field(trim($parts[0] ?? $fallback));
+        }
+
         foreach (array('locality', 'postal_town', 'administrative_area_level_1', 'country', 'natural_feature') as $type) {
             $name = $this->extract_component($components, $type, 'long_name');
             if ($name !== '') {
@@ -211,6 +294,32 @@ class ALMA_Geo_Index_Google_Geocoder {
         }
         $parts = explode(',', (string) $fallback);
         return sanitize_text_field(trim($parts[0] ?? $fallback));
+    }
+
+    private function extract_google_result_name($result) {
+        if (!is_array($result)) {
+            return '';
+        }
+        $candidates = array(
+            $result['displayName']['text'] ?? '',
+            $result['display_name']['text'] ?? '',
+            $result['displayName'] ?? '',
+            $result['name'] ?? '',
+            $result['structured_formatting']['main_text'] ?? '',
+            $result['placePrediction']['structuredFormat']['mainText']['text'] ?? '',
+            $result['placePrediction']['text']['text'] ?? '',
+        );
+        foreach ($candidates as $candidate) {
+            if (!is_string($candidate) || trim($candidate) === '') {
+                continue;
+            }
+            $candidate = trim($candidate);
+            if (strpos($candidate, 'places/') === 0) {
+                continue;
+            }
+            return sanitize_text_field($candidate);
+        }
+        return '';
     }
 
     private function extract_first_component($components, $types, $field = 'long_name') {

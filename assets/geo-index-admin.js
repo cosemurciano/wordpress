@@ -2,6 +2,8 @@
     'use strict';
 
     var locations = [];
+    var isInitialRender = true;
+    var primaryChanged = false;
     var roles = ['main_destination', 'major_destination', 'mentioned_destination', 'excursion', 'nearby_place', 'route_stop', 'context_only'];
 
     function strings(key) {
@@ -61,7 +63,7 @@
         var primary = truthy(isPrimary) || truthy(data.is_primary);
         var status = data.geocoding_status || (data.place_id || data.geo_provider_place_id ? 'verified' : 'pending');
         var item = {
-            local_id: data.local_id || data.geo_provider_place_id || data.place_id || ('alma-local-' + Date.now() + '-' + Math.floor(Math.random() * 100000)),
+            local_id: data.local_id || data.geo_provider_place_id || data.place_id || data.location_id || data.id || ('alma-local-' + Date.now() + '-' + Math.floor(Math.random() * 100000)),
             location_id: data.location_id || data.id || 0,
             name: data.name || data.canonical_name || '',
             canonical_name: data.canonical_name || data.name || '',
@@ -91,7 +93,16 @@
     }
 
     function signature(item) {
-        return (item.geo_provider_place_id || '') || [item.canonical_name || item.name, item.type, item.country_code, item.region, item.city, item.area, item.poi].join('|').toLowerCase();
+        item = item || {};
+        if (item.geo_provider_place_id) {
+            return 'place:' + item.geo_provider_place_id;
+        }
+        return 'text:' + [item.canonical_name || item.name, item.type, item.country_code, item.region, item.city, item.area, item.poi, item.formatted_address].join('|').toLowerCase();
+    }
+
+    function markPrimaryChanged() {
+        primaryChanged = true;
+        $('#alma_geo_primary_changed').val('1');
     }
 
     function statusLabel(status) {
@@ -154,9 +165,13 @@
         var primary = primaryLocation();
         if (!primary) {
             ['_alma_geo_primary_name', '_alma_geo_primary_canonical_name', '_alma_geo_primary_type', '_alma_geo_primary_country', '_alma_geo_primary_country_code', '_alma_geo_primary_region', '_alma_geo_primary_city', '_alma_geo_primary_area', '_alma_geo_primary_poi', '_alma_geo_primary_lat', '_alma_geo_primary_lng', '_alma_geo_primary_place_id', '_alma_geo_provider', '_alma_geo_primary_provider', '_alma_geo_primary_formatted_address'].forEach(function (key) { setField(key, ''); });
-            $('#_alma_geo_enabled, #_alma_geo_widget_eligible').prop('checked', false);
-            setField('_alma_geo_geocoding_status', 'pending');
-            setField('_alma_geo_import_status', 'review');
+            if (!isInitialRender) {
+                $('#_alma_geo_enabled').prop('checked', false);
+            }
+            if (!isInitialRender) {
+                setField('_alma_geo_geocoding_status', 'pending');
+                setField('_alma_geo_import_status', 'review');
+            }
             $('.alma-geo-metabox').attr('data-has-primary-location', '0');
             return;
         }
@@ -175,11 +190,18 @@
         setField('_alma_geo_provider', primary.geo_provider);
         setField('_alma_geo_primary_provider', primary.geo_provider);
         setField('_alma_geo_primary_formatted_address', primary.formatted_address);
-        setField('_alma_geo_geocoding_status', primary.geocoding_status || 'pending');
-        setField('_alma_geo_source', primary.source || 'manual_google_search');
-        setField('_alma_geo_import_status', 'imported');
-        $('#_alma_geo_enabled, #_alma_geo_widget_eligible').prop('checked', true);
-        applyDerivedGeoFieldsFromPrimary(primary);
+        if (!isInitialRender) {
+            setField('_alma_geo_geocoding_status', primary.geocoding_status || 'pending');
+            setField('_alma_geo_source', primary.source || 'manual_google_search');
+            setField('_alma_geo_import_status', 'imported');
+        }
+        if (!isInitialRender) {
+            $('#_alma_geo_enabled').prop('checked', true);
+        }
+        if (primaryChanged || !field('_alma_geo_scope').val() || !field('_alma_geo_content_type').val() || !field('_alma_geo_commercial_intent').val()) {
+            applyDerivedGeoFieldsFromPrimary(primary);
+            primaryChanged = false;
+        }
         $('.alma-geo-metabox').attr('data-has-primary-location', '1');
     }
 
@@ -209,7 +231,9 @@
         ensureSinglePrimary();
         $('#alma_geo_associated_locations_json').val(JSON.stringify(locations));
         updatePrimaryFields();
-        updateBadges();
+        if (!isInitialRender) {
+            updateBadges();
+        }
     }
 
     function renderLocations() {
@@ -220,6 +244,7 @@
             var $row = $('<tr></tr>');
             $('<td></td>').append($('<label></label>').append(
                 $('<input type="radio" name="alma_geo_primary_location_choice">').prop('checked', truthy(item.is_primary)).on('change', function () {
+                    markPrimaryChanged();
                     locations.forEach(function (location, idx) {
                         location.is_primary = idx === index;
                         location.role = idx === index ? 'main_destination' : (location.role === 'main_destination' ? 'major_destination' : location.role);
@@ -253,6 +278,7 @@
                     locations[0].is_primary = true;
                     locations[0].role = 'main_destination';
                     locations[0].match_weight = 100;
+                    markPrimaryChanged();
                     setFeedback(strings('promoted'), 'warning');
                 } else {
                     setFeedback(strings('removed'), 'success');
@@ -269,7 +295,8 @@
             setFeedback(strings('limitReached'), 'warning');
             return;
         }
-        var item = normalizeLocation(data, locations.length === 0);
+        var willBePrimary = locations.length === 0;
+        var item = normalizeLocation(data, willBePrimary);
         var itemSig = signature(item);
         if (locations.some(function (location) { return signature(location) === itemSig; })) {
             setFeedback(strings('duplicate'), 'warning');
@@ -280,6 +307,10 @@
             item.match_weight = 70;
         }
         locations.push(item);
+        if (willBePrimary) {
+            markPrimaryChanged();
+        }
+        $('#_alma_geo_enabled').prop('checked', true);
         renderLocations();
         setFeedback(strings('associated'), 'success');
     }
@@ -353,6 +384,7 @@
         }
         locations = locations.map(function (item) { return normalizeLocation(item, item.is_primary); });
         renderLocations();
+        isInitialRender = false;
     }
 
     $(function () {

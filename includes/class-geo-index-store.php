@@ -133,6 +133,7 @@ class ALMA_Geo_Index_Store {
                    AND LOWER(city) = %s
                    AND LOWER(area) = %s
                    AND LOWER(poi) = %s
+                   AND LOWER(formatted_address) = %s
                  LIMIT 1",
                 $signature['canonical_name'],
                 $signature['type'],
@@ -140,7 +141,8 @@ class ALMA_Geo_Index_Store {
                 $signature['region'],
                 $signature['city'],
                 $signature['area'],
-                $signature['poi']
+                $signature['poi'],
+                $signature['formatted_address']
             ),
             ARRAY_A
         );
@@ -154,8 +156,10 @@ class ALMA_Geo_Index_Store {
         }
 
         $now = current_time('mysql');
-        $existing = $data['geo_provider_place_id'] !== '' ? $this->get_location_by_place_id($data['geo_provider_place_id'], $data['geo_provider']) : null;
-        if (!$existing) {
+        $existing = null;
+        if ($data['geo_provider_place_id'] !== '') {
+            $existing = $this->get_location_by_place_id($data['geo_provider_place_id'], $data['geo_provider']);
+        } else {
             $existing = $this->get_location_by_signature($data);
         }
         $formats = array('%s','%s','%s','%s','%s','%s','%s','%s','%f','%f','%s','%s','%s','%s','%s','%s','%s','%s','%s','%s');
@@ -326,9 +330,12 @@ class ALMA_Geo_Index_Store {
         }
 
         $derive_from_primary = !empty($geo_data['derive_from_primary']);
-        $geo_scope = $derive_from_primary && $primary ? $this->default_geo_scope_for_type($primary['type']) : sanitize_key($geo_data['geo_scope'] ?? ($primary ? $this->default_geo_scope_for_type($primary['type']) : 'uncertain'));
-        $content_type = $derive_from_primary && $primary ? $this->default_content_type_for_type($primary['type']) : sanitize_key($geo_data['content_type'] ?? ($primary ? $this->default_content_type_for_type($primary['type']) : 'uncertain'));
-        $commercial_intent = sanitize_key($geo_data['commercial_intent'] ?? 'none');
+        $submitted_geo_scope = sanitize_key($geo_data['geo_scope'] ?? '');
+        $submitted_content_type = sanitize_key($geo_data['content_type'] ?? '');
+        $submitted_commercial_intent = sanitize_key($geo_data['commercial_intent'] ?? '');
+        $geo_scope = $submitted_geo_scope !== '' ? $submitted_geo_scope : ($primary ? $this->default_geo_scope_for_type($primary['type']) : 'uncertain');
+        $content_type = $submitted_content_type !== '' ? $submitted_content_type : ($primary ? $this->default_content_type_for_type($primary['type']) : 'uncertain');
+        $commercial_intent = $submitted_commercial_intent !== '' ? $submitted_commercial_intent : ($derive_from_primary && $primary ? 'high' : 'none');
         $widget_eligible = !empty($geo_data['widget_eligible']) && !in_array((string) $geo_data['widget_eligible'], array('no', '0', 'false', 'off'), true);
         $now = current_time('mysql');
         $updated_locations = array();
@@ -415,6 +422,7 @@ class ALMA_Geo_Index_Store {
 
     public function normalize_associated_locations($locations, $source = 'manual') {
         $normalized = array();
+        $seen = array();
         $has_primary = false;
         foreach (is_array($locations) ? $locations : array() as $location) {
             if (!is_array($location)) {
@@ -423,6 +431,13 @@ class ALMA_Geo_Index_Store {
             $item = $this->format_location_for_json($location);
             if ($item['name'] === '' && $item['canonical_name'] === '') {
                 continue;
+            }
+            $dedupe_key = $this->location_dedupe_key($item);
+            if ($dedupe_key !== '' && isset($seen[$dedupe_key])) {
+                continue;
+            }
+            if ($dedupe_key !== '') {
+                $seen[$dedupe_key] = true;
             }
             $item['source'] = $item['source'] ?: sanitize_text_field($source);
             if (!empty($item['is_primary']) && !$has_primary) {
@@ -476,6 +491,25 @@ class ALMA_Geo_Index_Store {
             'confidence' => isset($location['confidence']) && $location['confidence'] !== '' ? (float) $location['confidence'] : 1,
             'match_weight' => isset($location['match_weight']) && $location['match_weight'] !== '' ? (int) $location['match_weight'] : ($is_primary ? 100 : 70),
         );
+    }
+
+
+    private function location_dedupe_key($location) {
+        $location = $this->format_location_for_json($location);
+        if ($location['geo_provider_place_id'] !== '') {
+            return 'place:' . strtolower($location['geo_provider_place_id']);
+        }
+        $parts = array(
+            $location['canonical_name'] ?: $location['name'],
+            $location['type'],
+            $location['country_code'],
+            $location['region'],
+            $location['city'],
+            $location['area'],
+            $location['poi'],
+            $location['formatted_address'],
+        );
+        return 'text:' . strtolower(implode('|', array_map('trim', $parts)));
     }
 
     public static function get_location_role_labels() {
@@ -802,7 +836,7 @@ class ALMA_Geo_Index_Store {
 
     private function normalize_location_signature($data) {
         $data = $this->sanitize_location_data($data);
-        foreach (array('canonical_name', 'region', 'city', 'area', 'poi') as $key) {
+        foreach (array('canonical_name', 'region', 'city', 'area', 'poi', 'formatted_address') as $key) {
             $data[$key] = strtolower(trim($data[$key]));
         }
         return $data;
