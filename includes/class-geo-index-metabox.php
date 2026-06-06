@@ -40,13 +40,18 @@ class ALMA_Geo_Index_Metabox {
         ?>
         <p><?php esc_html_e('Questi dati servono a collegare il contenuto a una località geografica e saranno usati in futuro per il Widget Link Contestuale, per il matching con Link Affiliati e per mappe interattive.', 'affiliate-link-manager-ai'); ?></p>
         <style>
-            .alma-geo-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 18px}.alma-geo-field label{display:block;font-weight:600;margin-bottom:4px}.alma-geo-field input,.alma-geo-field select,.alma-geo-field textarea{width:100%;max-width:100%}.alma-geo-section{border-top:1px solid #dcdcde;margin-top:16px;padding-top:12px}.alma-geo-checks label{margin-right:18px}
+            .alma-geo-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 18px}.alma-geo-field label{display:block;font-weight:600;margin-bottom:4px}.alma-geo-field input,.alma-geo-field select,.alma-geo-field textarea{width:100%;max-width:100%}.alma-geo-section{border-top:1px solid #dcdcde;margin-top:16px;padding-top:12px}.alma-geo-checks label{margin-right:18px}.alma-geo-status-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:12px 0}.alma-geo-badge{display:inline-block;border-radius:999px;padding:3px 9px;font-weight:600;background:#f0f0f1;color:#2c3338}.alma-geo-badge-active{background:#d1e7dd;color:#0f5132}.alma-geo-badge-inactive{background:#f8d7da;color:#842029}.alma-geo-badge-pending{background:#fff3cd;color:#664d03}.alma-geo-badge-verified{background:#cfe2ff;color:#084298}.alma-geo-badge-manual{background:#fde2c2;color:#7a3e00}.alma-geo-badge-failed{background:#f8d7da;color:#842029}
         </style>
         <div class="alma-geo-section">
             <h3><?php esc_html_e('Stato', 'affiliate-link-manager-ai'); ?></h3>
+            <div class="alma-geo-status-summary">
+                <div><?php esc_html_e('Indice geografico:', 'affiliate-link-manager-ai'); ?> <?php echo $this->render_record_status_badge($values['_alma_geo_enabled'] ?? 'no'); ?></div>
+                <div><?php esc_html_e('Stato import:', 'affiliate-link-manager-ai'); ?> <?php echo $this->render_import_status_badge($values['_alma_geo_import_status'] ?? 'review'); ?></div>
+                <div><?php esc_html_e('Stato geocoding:', 'affiliate-link-manager-ai'); ?> <?php echo $this->render_geocoding_status_badge($values['_alma_geo_geocoding_status'] ?? 'pending'); ?></div>
+            </div>
             <p class="alma-geo-checks">
-                <label><input type="checkbox" name="alma_geo[_alma_geo_enabled]" value="1" <?php checked($values['_alma_geo_enabled'], '1'); ?>> <?php esc_html_e('Abilita geolocalizzazione', 'affiliate-link-manager-ai'); ?></label>
-                <label><input type="checkbox" name="alma_geo[_alma_geo_widget_eligible]" value="1" <?php checked($values['_alma_geo_widget_eligible'], '1'); ?>> <?php esc_html_e('Widget eligible', 'affiliate-link-manager-ai'); ?></label>
+                <label><input type="checkbox" name="alma_geo[_alma_geo_enabled]" value="yes" <?php checked($this->is_yes($values['_alma_geo_enabled'] ?? ''), true); ?>> <?php esc_html_e('Abilita geolocalizzazione', 'affiliate-link-manager-ai'); ?></label>
+                <label><input type="checkbox" name="alma_geo[_alma_geo_widget_eligible]" value="yes" <?php checked($this->is_yes($values['_alma_geo_widget_eligible'] ?? ''), true); ?>> <?php esc_html_e('Widget eligible', 'affiliate-link-manager-ai'); ?></label>
             </p>
             <div class="alma-geo-grid">
                 <?php $this->render_select('_alma_geo_import_status', __('Stato import', 'affiliate-link-manager-ai'), $values, self::geo_import_statuses()); ?>
@@ -165,7 +170,7 @@ class ALMA_Geo_Index_Metabox {
             'geo_scope' => $data['_alma_geo_scope'],
             'content_type' => $data['_alma_geo_content_type'],
             'commercial_intent' => $data['_alma_geo_commercial_intent'],
-            'widget_eligible' => $data['_alma_geo_widget_eligible'] === '1',
+            'widget_eligible' => $this->is_yes($data['_alma_geo_widget_eligible']),
             'confidence' => $data['_alma_geo_confidence'],
             'match_weight' => $data['_alma_geo_match_weight'],
             'source' => $data['_alma_geo_source'],
@@ -183,8 +188,8 @@ class ALMA_Geo_Index_Metabox {
         foreach (self::meta_keys() as $key) {
             $data[$key] = '';
         }
-        $data['_alma_geo_enabled'] = !empty($raw['_alma_geo_enabled']) ? '1' : '0';
-        $data['_alma_geo_widget_eligible'] = !empty($raw['_alma_geo_widget_eligible']) ? '1' : '0';
+        $data['_alma_geo_enabled'] = !empty($raw['_alma_geo_enabled']) ? 'yes' : 'no';
+        $data['_alma_geo_widget_eligible'] = !empty($raw['_alma_geo_widget_eligible']) ? 'yes' : 'no';
         $data['_alma_geo_scope'] = $this->sanitize_allowed($raw['_alma_geo_scope'] ?? '', self::geo_scopes(), 'uncertain');
         $data['_alma_geo_content_type'] = $this->sanitize_allowed($raw['_alma_geo_content_type'] ?? '', self::content_types(), 'uncertain');
         $data['_alma_geo_commercial_intent'] = $this->sanitize_allowed($raw['_alma_geo_commercial_intent'] ?? '', self::commercial_intents(), 'none');
@@ -220,12 +225,12 @@ class ALMA_Geo_Index_Metabox {
     public static function primary_types() { return array('continent','country','region','city','area','island','poi','airport','port','route','unknown'); }
     public static function content_types() { return array('destination_guide','country_guide','region_guide','city_guide','area_guide','poi_guide','itinerary','itinerary_multi_location','cruise_ship','cruise_company','travel_advice','honeymoon','informational','generic_travel','non_travel','uncertain'); }
     public static function commercial_intents() { return array('high','medium','low','none'); }
-    public static function geo_import_statuses() { return array('ready','review','discard','needs_geocoding','geocoding_failed'); }
+    public static function geo_import_statuses() { return array('active','ready','review','discard','needs_geocoding','geocoding_failed'); }
     public static function geocoding_statuses() { return array('pending','not_required','manual_required','verified','failed'); }
 
 
     private function has_geo_payload($data) {
-        if (($data['_alma_geo_enabled'] ?? '0') === '1' || ($data['_alma_geo_widget_eligible'] ?? '0') === '1') {
+        if ($this->is_yes($data['_alma_geo_enabled'] ?? 'no') || $this->is_yes($data['_alma_geo_widget_eligible'] ?? 'no')) {
             return true;
         }
         if (($data['_alma_geo_scope'] ?? 'uncertain') !== 'uncertain' || ($data['_alma_geo_content_type'] ?? 'uncertain') !== 'uncertain' || ($data['_alma_geo_commercial_intent'] ?? 'none') !== 'none' || ($data['_alma_geo_import_status'] ?? 'review') !== 'review' || ($data['_alma_geo_geocoding_status'] ?? 'pending') !== 'pending' || ($data['_alma_geo_primary_type'] ?? 'unknown') !== 'unknown') {
@@ -256,6 +261,69 @@ class ALMA_Geo_Index_Metabox {
         return $values;
     }
 
+
+    private function render_record_status_badge($value) {
+        $active = $this->is_yes($value);
+        $label = $active ? __('Attivo', 'affiliate-link-manager-ai') : __('Non attivo', 'affiliate-link-manager-ai');
+        $class = $active ? 'alma-geo-badge-active' : 'alma-geo-badge-inactive';
+        return '<span class="alma-geo-badge ' . esc_attr($class) . '">' . esc_html($label) . '</span>';
+    }
+
+    private function render_import_status_badge($status) {
+        $status = sanitize_key($status);
+        $class = in_array($status, array('active', 'ready', 'needs_geocoding'), true) ? 'alma-geo-badge-active' : 'alma-geo-badge-inactive';
+        return '<span class="alma-geo-badge ' . esc_attr($class) . '">' . esc_html(self::import_status_label($status)) . '</span>';
+    }
+
+    private function render_geocoding_status_badge($status) {
+        $status = sanitize_key($status);
+        $classes = array(
+            'pending' => 'alma-geo-badge-pending',
+            'verified' => 'alma-geo-badge-verified',
+            'manual_required' => 'alma-geo-badge-manual',
+            'failed' => 'alma-geo-badge-failed',
+        );
+        $class = $classes[$status] ?? 'alma-geo-badge';
+        return '<span class="alma-geo-badge ' . esc_attr($class) . '">' . esc_html(self::geocoding_status_label($status)) . '</span>';
+    }
+
+    private function status_label($key, $status) {
+        if ($key === '_alma_geo_geocoding_status') {
+            return self::geocoding_status_label($status);
+        }
+        if ($key === '_alma_geo_import_status') {
+            return self::import_status_label($status);
+        }
+        return $status;
+    }
+
+    public static function geocoding_status_label($status) {
+        $labels = array(
+            'pending' => __('In attesa di geocoding', 'affiliate-link-manager-ai'),
+            'verified' => __('Geocodificato', 'affiliate-link-manager-ai'),
+            'manual_required' => __('Richiede verifica manuale', 'affiliate-link-manager-ai'),
+            'failed' => __('Geocoding fallito', 'affiliate-link-manager-ai'),
+            'not_required' => __('Non richiesto', 'affiliate-link-manager-ai'),
+        );
+        return $labels[sanitize_key($status)] ?? $status;
+    }
+
+    public static function import_status_label($status) {
+        $labels = array(
+            'active' => __('Importato', 'affiliate-link-manager-ai'),
+            'ready' => __('Importato', 'affiliate-link-manager-ai'),
+            'needs_geocoding' => __('Importato — in attesa di geocoding', 'affiliate-link-manager-ai'),
+            'review' => __('Richiede revisione', 'affiliate-link-manager-ai'),
+            'discard' => __('Scartato', 'affiliate-link-manager-ai'),
+            'geocoding_failed' => __('Geocoding fallito', 'affiliate-link-manager-ai'),
+        );
+        return $labels[sanitize_key($status)] ?? $status;
+    }
+
+    private function is_yes($value) {
+        return in_array((string) $value, array('1', 'yes', 'true', 'on'), true);
+    }
+
     private function render_input($key, $label, $values, $type = 'text', $attrs = '') {
         printf('<div class="alma-geo-field"><label for="%1$s">%2$s</label><input type="%3$s" id="%1$s" name="alma_geo[%1$s]" value="%4$s" %5$s></div>', esc_attr($key), esc_html($label), esc_attr($type), esc_attr($values[$key] ?? ''), $attrs);
     }
@@ -268,7 +336,7 @@ class ALMA_Geo_Index_Metabox {
         echo '<div class="alma-geo-field"><label for="' . esc_attr($key) . '">' . esc_html($label) . '</label><select id="' . esc_attr($key) . '" name="alma_geo[' . esc_attr($key) . ']">';
         echo '<option value="">' . esc_html__('— Seleziona —', 'affiliate-link-manager-ai') . '</option>';
         foreach ($options as $option) {
-            echo '<option value="' . esc_attr($option) . '" ' . selected($values[$key] ?? '', $option, false) . '>' . esc_html($option) . '</option>';
+            echo '<option value="' . esc_attr($option) . '" ' . selected($values[$key] ?? '', $option, false) . '>' . esc_html($this->status_label($key, $option)) . '</option>';
         }
         echo '</select></div>';
     }
