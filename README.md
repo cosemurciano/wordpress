@@ -1,3 +1,10 @@
+## Unreleased
+
+### Indice Geografico — sincronizzazione geocoding
+- Le località `verified` sincronizzano i dati geocoding sui contenuti primari collegati tramite `alma_geo_content_index`, mantenendo compatibilità con i meta `_alma_geo_*` esistenti.
+- La tab **Geocoding** include il pulsante **Risincronizza geocoding nei contenuti**, che copia solo dati già salvati nelle località senza chiamare Google Maps.
+- Il metabox **Geolocalizzazione contenuto** separa indice, import e geocoding, mostra lo stato effettivo della località primaria verificata e sposta classificazione, campi tecnici e località secondarie in sezioni richiudibili.
+
 ## 2.41.0 - 2026-06-06
 
 ### Indice Geografico — Geocoding admin

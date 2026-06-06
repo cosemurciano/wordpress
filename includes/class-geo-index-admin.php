@@ -133,7 +133,13 @@ class ALMA_Geo_Index_Admin {
             }
             $settings = $this->geocoder->get_settings();
             $report = $this->geocoder->geocode_batch($settings['batch_size'], $action === 'retry_failed' ? 'failed' : 'pending');
-            $this->notice_success(sprintf(__('Batch geocoding completato: %1$d processate, %2$d verified, %3$d ambiguous, %4$d manual_required, %5$d failed.', 'affiliate-link-manager-ai'), $report['processed'], $report['verified'], $report['ambiguous'], $report['manual_required'], $report['failed']));
+            $this->notice_success(sprintf(__('Batch geocoding completato: %1$d processate, %2$d verified, %3$d ambiguous, %4$d manual_required, %5$d failed. Oggetti collegati sincronizzati: %6$d, errori sync: %7$d.', 'affiliate-link-manager-ai'), $report['processed'], $report['verified'], $report['ambiguous'], $report['manual_required'], $report['failed'], $report['linked_objects_synced'], $report['linked_objects_sync_errors']));
+            return;
+        }
+        if ($action === 'sync_verified_locations') {
+            $report = $this->store->sync_all_verified_locations_to_objects();
+            update_option('alma_geo_geocoding_last_sync_report', $report, false);
+            $this->notice_success(sprintf(__('Risincronizzazione completata: %1$d località verified, %2$d oggetti trovati, %3$d aggiornati, %4$d saltati, %5$d errori.', 'affiliate-link-manager-ai'), $report['locations_found'], $report['objects_found'], $report['objects_updated'], $report['objects_skipped'], count($report['errors'])));
             return;
         }
         if ($action === 'geocode_location' || $action === 'retry_location') {
@@ -149,7 +155,7 @@ class ALMA_Geo_Index_Admin {
                 return;
             }
             $result = $this->geocoder->geocode_location($location_id);
-            $this->notice_success(sprintf(__('Località #%1$d aggiornata con stato %2$s.', 'affiliate-link-manager-ai'), $location_id, ALMA_Geo_Index_Metabox::geocoding_status_label($result['status'] ?? 'failed')));
+            $this->notice_success(sprintf(__('Località #%1$d aggiornata con stato %2$s. Oggetti collegati sincronizzati: %3$d, errori sync: %4$d.', 'affiliate-link-manager-ai'), $location_id, ALMA_Geo_Index_Metabox::geocoding_status_label($result['status'] ?? 'failed'), (int) ($result['linked_objects_synced'] ?? 0), (int) ($result['linked_objects_sync_errors'] ?? 0)));
             return;
         }
         if ($action === 'mark_manual_required') {
@@ -230,8 +236,11 @@ class ALMA_Geo_Index_Admin {
         }
         $cards = array(
             __('Contenuti geolocalizzati attivi', 'affiliate-link-manager-ai') => $counts['active_geo_content'],
-            __('In attesa di geocoding', 'affiliate-link-manager-ai') => $counts['pending_geocoding'],
-            __('Geocodificati', 'affiliate-link-manager-ai') => $counts['verified_geocoding'],
+            __('Contenuti con località verified', 'affiliate-link-manager-ai') => $counts['content_with_verified_locations'],
+            __('Contenuti ancora pending', 'affiliate-link-manager-ai') => $counts['content_pending_geocoding'],
+            __('Località verified', 'affiliate-link-manager-ai') => $counts['locations_verified'],
+            __('Località pending', 'affiliate-link-manager-ai') => $counts['locations_pending'],
+            __('Località failed', 'affiliate-link-manager-ai') => $counts['locations_failed'],
             __('Da revisione', 'affiliate-link-manager-ai') => $counts['manual_review'],
             __('Non attivi/scartati', 'affiliate-link-manager-ai') => $counts['inactive_or_discarded'],
             __('Compatibilità widget', 'affiliate-link-manager-ai') => $counts['widget_eligible'],
@@ -336,6 +345,10 @@ class ALMA_Geo_Index_Admin {
         if (!empty($last_report)) {
             echo '<div class="postbox"><div class="inside"><h3>' . esc_html__('Ultimo report geocoding', 'affiliate-link-manager-ai') . '</h3><pre style="white-space:pre-wrap">' . esc_html(wp_json_encode($last_report, JSON_PRETTY_PRINT)) . '</pre></div></div>';
         }
+        $last_sync_report = get_option('alma_geo_geocoding_last_sync_report', array());
+        if (!empty($last_sync_report)) {
+            echo '<div class="postbox"><div class="inside"><h3>' . esc_html__('Ultimo report risincronizzazione', 'affiliate-link-manager-ai') . '</h3><pre style="white-space:pre-wrap">' . esc_html(wp_json_encode($last_sync_report, JSON_PRETTY_PRINT)) . '</pre></div></div>';
+        }
         ?>
         <form method="post" class="postbox" style="padding:12px;">
             <?php wp_nonce_field('alma_geo_index_geocoding'); ?>
@@ -356,6 +369,7 @@ class ALMA_Geo_Index_Admin {
             <?php $this->render_geocoding_button('test_api_key', __('Test API key', 'affiliate-link-manager-ai')); ?>
             <?php $this->render_geocoding_button('batch_pending', __('Geocodifica prossime località pending', 'affiliate-link-manager-ai')); ?>
             <?php $this->render_geocoding_button('retry_failed', __('Riprova failed', 'affiliate-link-manager-ai')); ?>
+            <?php $this->render_geocoding_button('sync_verified_locations', __('Risincronizza geocoding nei contenuti', 'affiliate-link-manager-ai')); ?>
         </div>
         <?php
         echo '<h3>' . esc_html__('Località pending/recenti', 'affiliate-link-manager-ai') . '</h3>';
