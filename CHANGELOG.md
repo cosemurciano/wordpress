@@ -1,4 +1,12 @@
 ## Unreleased
+
+- Corretta la persistenza delle località associate al salvataggio bozza/post nel metabox Geo Index.
+- Migliorata la gestione dei POI nei risultati Google del Geo Index.
+- Aggiunta la rimozione dei risultati ricerca prima dell’associazione.
+- Tradotti i ruoli località nell’interfaccia admin mantenendo i valori tecnici salvati.
+- Corretto `ZERO_RESULTS` Google per mostrare “Nessun luogo trovato” invece di errore.
+- Aggiornati i campi derivati quando cambia la località principale.
+
 - Migliorata la gestione delle località nel metabox Geo Index: sostituito il JSON visibile con una lista di località associate, una località principale selezionabile e più località secondarie aggiungibili tramite ricerca Google.
 - Migliorato il metabox Geolocalizzazione contenuto con ricerca località tramite Google Maps, associazione guidata del luogo e autopopolazione dei campi geografici.
 - Corretto allineamento tra località geocodificate e stato geocoding dei contenuti collegati.

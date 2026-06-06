@@ -1360,3 +1360,8 @@ button:disabled {
 @media (max-width: 782px){
     .alma-geo-associated-table { display:block; overflow-x:auto; }
 }
+.alma-geo-result-actions { display:flex; align-items:center; gap:8px; margin-top:10px; }
+.alma-geo-hide-result { color:#646970; min-width:32px; min-height:32px; display:inline-flex; align-items:center; justify-content:center; text-decoration:none; }
+.alma-geo-hide-result:hover,
+.alma-geo-hide-result:focus { color:#d63638; }
+.alma-geo-associated-table .alma-geo-location-role { min-width: 170px; }

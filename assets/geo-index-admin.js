@@ -8,6 +8,10 @@
         return (window.almaGeoIndexAdmin && window.almaGeoIndexAdmin.strings && window.almaGeoIndexAdmin.strings[key]) || key;
     }
 
+    function roleLabel(role) {
+        return (window.almaGeoIndexAdmin && window.almaGeoIndexAdmin.roleLabels && window.almaGeoIndexAdmin.roleLabels[role]) || role;
+    }
+
     function maxLocations() {
         return parseInt((window.almaGeoIndexAdmin && window.almaGeoIndexAdmin.maxLocations) || 10, 10);
     }
@@ -32,23 +36,32 @@
         field(key).val(value == null ? '' : value).trigger('change');
     }
 
-    function currentFieldValue(key) {
-        return field(key).val() || '';
-    }
-
-    function setIfEmpty(key, value) {
-        if (!currentFieldValue(key)) {
-            setField(key, value);
-        }
-    }
-
     function truthy(value) {
         return value === true || value === 1 || value === '1' || value === 'yes' || value === 'true';
     }
 
+    function derivedForType(type) {
+        var map = {
+            city: ['city', 'city_guide'],
+            country: ['country', 'country_guide'],
+            region: ['region', 'region_guide'],
+            area: ['area', 'area_guide'],
+            poi: ['poi', 'poi_guide'],
+            route: ['itinerary_multi_location', 'itinerary']
+        };
+        return map[type] || ['uncertain', 'destination_guide'];
+    }
+
+    function isVerifiedLocation(item) {
+        return item.geocoding_status === 'verified' || (item.lat !== '' && item.lng !== '' && item.geo_provider_place_id !== '');
+    }
+
     function normalizeLocation(data, isPrimary) {
+        data = data || {};
         var primary = truthy(isPrimary) || truthy(data.is_primary);
-        return {
+        var status = data.geocoding_status || (data.place_id || data.geo_provider_place_id ? 'verified' : 'pending');
+        var item = {
+            local_id: data.local_id || data.geo_provider_place_id || data.place_id || ('alma-local-' + Date.now() + '-' + Math.floor(Math.random() * 100000)),
             location_id: data.location_id || data.id || 0,
             name: data.name || data.canonical_name || '',
             canonical_name: data.canonical_name || data.name || '',
@@ -61,16 +74,20 @@
             poi: data.poi || '',
             lat: data.lat == null ? '' : data.lat,
             lng: data.lng == null ? '' : data.lng,
-            geo_provider: data.geo_provider || data.provider || 'google_maps',
+            geo_provider: data.geo_provider || data.provider || (data.place_id ? 'google_maps' : ''),
             geo_provider_place_id: data.geo_provider_place_id || data.place_id || '',
             formatted_address: data.formatted_address || '',
-            geocoding_status: data.geocoding_status || 'verified',
+            geocoding_status: status,
             role: primary ? 'main_destination' : (data.role && data.role !== 'main_destination' ? data.role : 'major_destination'),
             is_primary: primary,
             source: data.source || 'manual_google_search',
             confidence: data.confidence == null || data.confidence === '' ? 1 : data.confidence,
             match_weight: primary ? 100 : (data.match_weight || 70)
         };
+        if (isVerifiedLocation(item)) {
+            item.geocoding_status = 'verified';
+        }
+        return item;
     }
 
     function signature(item) {
@@ -103,9 +120,9 @@
     function updateBadges() {
         var primary = primaryLocation();
         if (!primary) {
-            setBadge('Indice geografico:', 'Non completo', 'alma-geo-badge-pending');
-            setBadge('Stato import:', 'Da importare', 'alma-geo-badge-pending');
-            setBadge('Stato geocoding:', 'In attesa', 'alma-geo-badge-pending');
+            setBadge('Indice geografico:', 'Non attivo', 'alma-geo-badge-inactive');
+            setBadge('Stato import:', 'Richiede revisione', 'alma-geo-badge-inactive');
+            setBadge('Stato geocoding:', 'In attesa di geocoding', 'alma-geo-badge-pending');
             return;
         }
         setBadge('Indice geografico:', 'Attivo', 'alma-geo-badge-active');
@@ -113,19 +130,33 @@
         if (primary.geocoding_status === 'verified') {
             setBadge('Stato geocoding:', 'Geocodificato', 'alma-geo-badge-verified');
         } else if (primary.geocoding_status === 'failed') {
-            setBadge('Stato geocoding:', 'Fallito', 'alma-geo-badge-failed');
+            setBadge('Stato geocoding:', 'Geocoding fallito', 'alma-geo-badge-failed');
         } else if (primary.geocoding_status === 'manual_required') {
-            setBadge('Stato geocoding:', 'Manuale', 'alma-geo-badge-manual');
+            setBadge('Stato geocoding:', 'Richiede verifica manuale', 'alma-geo-badge-manual');
         } else {
-            setBadge('Stato geocoding:', 'In attesa', 'alma-geo-badge-pending');
+            setBadge('Stato geocoding:', 'In attesa di geocoding', 'alma-geo-badge-pending');
         }
+    }
+
+    function applyDerivedGeoFieldsFromPrimary(primary) {
+        if (!primary) {
+            return;
+        }
+        var derived = derivedForType(primary.type || 'unknown');
+        setField('_alma_geo_scope', derived[0]);
+        setField('_alma_geo_content_type', derived[1]);
+        setField('_alma_geo_commercial_intent', primary.commercial_intent || 'high');
+        setField('_alma_geo_match_weight', primary.match_weight || 100);
+        setField('_alma_geo_confidence', primary.confidence == null || primary.confidence === '' ? 1 : primary.confidence);
     }
 
     function updatePrimaryFields() {
         var primary = primaryLocation();
         if (!primary) {
             ['_alma_geo_primary_name', '_alma_geo_primary_canonical_name', '_alma_geo_primary_type', '_alma_geo_primary_country', '_alma_geo_primary_country_code', '_alma_geo_primary_region', '_alma_geo_primary_city', '_alma_geo_primary_area', '_alma_geo_primary_poi', '_alma_geo_primary_lat', '_alma_geo_primary_lng', '_alma_geo_primary_place_id', '_alma_geo_provider', '_alma_geo_primary_provider', '_alma_geo_primary_formatted_address'].forEach(function (key) { setField(key, ''); });
+            $('#_alma_geo_enabled, #_alma_geo_widget_eligible').prop('checked', false);
             setField('_alma_geo_geocoding_status', 'pending');
+            setField('_alma_geo_import_status', 'review');
             $('.alma-geo-metabox').attr('data-has-primary-location', '0');
             return;
         }
@@ -145,14 +176,37 @@
         setField('_alma_geo_primary_provider', primary.geo_provider);
         setField('_alma_geo_primary_formatted_address', primary.formatted_address);
         setField('_alma_geo_geocoding_status', primary.geocoding_status || 'pending');
-        setField('_alma_geo_confidence', primary.confidence || 1);
-        setField('_alma_geo_match_weight', 100);
         setField('_alma_geo_source', primary.source || 'manual_google_search');
+        setField('_alma_geo_import_status', 'imported');
+        $('#_alma_geo_enabled, #_alma_geo_widget_eligible').prop('checked', true);
+        applyDerivedGeoFieldsFromPrimary(primary);
         $('.alma-geo-metabox').attr('data-has-primary-location', '1');
     }
 
-    function syncHidden() {
-        locations = locations.map(function (item) { return normalizeLocation(item, item.is_primary); });
+    function ensureSinglePrimary() {
+        var hasPrimary = false;
+        locations = locations.slice(0, maxLocations()).map(function (item) {
+            item = normalizeLocation(item, item.is_primary);
+            if (truthy(item.is_primary) && !hasPrimary) {
+                hasPrimary = true;
+                item.is_primary = true;
+                item.role = 'main_destination';
+                item.match_weight = 100;
+            } else {
+                item.is_primary = false;
+                item.role = item.role === 'main_destination' ? 'major_destination' : item.role;
+            }
+            return item;
+        });
+        if (!hasPrimary && locations.length) {
+            locations[0].is_primary = true;
+            locations[0].role = 'main_destination';
+            locations[0].match_weight = 100;
+        }
+    }
+
+    function syncAssociatedLocationsToHiddenField() {
+        ensureSinglePrimary();
         $('#alma_geo_associated_locations_json').val(JSON.stringify(locations));
         updatePrimaryFields();
         updateBadges();
@@ -160,6 +214,7 @@
 
     function renderLocations() {
         var $tbody = $('#alma_geo_associated_locations_table tbody').empty();
+        ensureSinglePrimary();
         $('#alma_geo_empty_locations').toggle(!locations.length);
         locations.forEach(function (item, index) {
             var $row = $('<tr></tr>');
@@ -183,12 +238,12 @@
             $('<td></td>').text(statusLabel(item.geocoding_status)).appendTo($row);
             var $select = $('<select class="alma-geo-location-role"></select>');
             roles.forEach(function (role) {
-                $('<option></option>').val(role).text(role).prop('selected', item.role === role).appendTo($select);
+                $('<option></option>').val(role).text(roleLabel(role)).prop('selected', item.role === role).appendTo($select);
             });
             $select.prop('disabled', truthy(item.is_primary)).on('change', function () {
                 locations[index].role = $(this).val();
                 locations[index].match_weight = '';
-                syncHidden();
+                syncAssociatedLocationsToHiddenField();
             });
             $('<td></td>').append($select).appendTo($row);
             $('<td></td>').append($('<button type="button" class="button button-small"></button>').text(strings('remove')).on('click', function () {
@@ -206,7 +261,7 @@
             })).appendTo($row);
             $tbody.append($row);
         });
-        syncHidden();
+        syncAssociatedLocationsToHiddenField();
     }
 
     function addLocation(data) {
@@ -225,11 +280,6 @@
             item.match_weight = 70;
         }
         locations.push(item);
-        $('#_alma_geo_enabled, #_alma_geo_widget_eligible').prop('checked', true);
-        setField('_alma_geo_import_status', 'imported');
-        setIfEmpty('_alma_geo_commercial_intent', data.commercial_intent || 'high');
-        setIfEmpty('_alma_geo_scope', data.geo_scope || 'uncertain');
-        setIfEmpty('_alma_geo_content_type', data.content_type || 'destination_guide');
         renderLocations();
         setFeedback(strings('associated'), 'success');
     }
@@ -242,12 +292,20 @@
         }
         results.forEach(function (item) {
             var $card = $('<div class="alma-geo-result-card"></div>');
+            var $actions = $('<div class="alma-geo-result-actions"></div>');
             $card.append('<strong class="alma-geo-result-title">' + esc(item.name) + '</strong>');
             $card.append('<div class="alma-geo-result-address">' + esc(item.formatted_address) + '</div>');
             $card.append('<div class="alma-geo-result-meta">' + esc(strings('type')) + ' ' + esc(item.type || 'unknown') + (item.country ? ' · ' + esc(strings('country')) + ' ' + esc(item.country) : '') + '</div>');
             $('<button type="button" class="button button-primary"></button>').text(strings('associate')).on('click', function () {
                 addLocation(item);
-            }).appendTo($card);
+            }).appendTo($actions);
+            $('<button type="button" class="button-link alma-geo-hide-result" aria-label="' + esc(strings('hideSearchResult')) + '" title="' + esc(strings('hideSearchResult')) + '"><span class="dashicons dashicons-no-alt" aria-hidden="true"></span></button>').on('click', function () {
+                $card.remove();
+                if (!$wrap.children().length) {
+                    setFeedback(strings('noResults'), 'warning');
+                }
+            }).appendTo($actions);
+            $card.append($actions);
             $wrap.append($card);
         });
         setFeedback('', 'success');
@@ -274,6 +332,9 @@
         }).done(function (response) {
             if (response && response.success) {
                 renderResults((response.data && response.data.results) || []);
+                if (response.data && response.data.message && !(response.data.results || []).length) {
+                    setFeedback(response.data.message, 'warning');
+                }
                 return;
             }
             setFeedback((response.data && response.data.message) || strings('searchError'), 'error');
@@ -291,11 +352,6 @@
             locations = [];
         }
         locations = locations.map(function (item) { return normalizeLocation(item, item.is_primary); });
-        if (locations.length && !primaryLocation()) {
-            locations[0].is_primary = true;
-            locations[0].role = 'main_destination';
-            locations[0].match_weight = 100;
-        }
         renderLocations();
     }
 
@@ -307,6 +363,9 @@
                 event.preventDefault();
                 searchLocation();
             }
+        });
+        $('#post').on('submit', function () {
+            syncAssociatedLocationsToHiddenField();
         });
     });
 }(jQuery));
