@@ -1,7 +1,8 @@
 ## Unreleased
 
-- Corretto il salvataggio dei dati Geo Index sui Link Affiliati.
-- Corretto il redirect errato dopo aggiornamento dei Link Affiliati.
+- Corretto il salvataggio del metabox Geo Index su Link Affiliati, preservando `object_type=affiliate_link` nelle tabelle Geo Index.
+- Corretto il redirect dopo aggiornamento Link Affiliato per restare in `post.php?post={ID}&action=edit`, preservando `classic-editor`.
+- Reso robusto il callback `save_post` del Geo Index con `accepted_args=3` e fallback difensivo a `get_post()`.
 - Rafforzato l’export CSV Link Affiliati contro formule CSV potenzialmente pericolose.
 - Verificata/corretta la deduplica località Geo Index con Place ID e formatted address nullable.
 - Corretto il redirect dopo aggiornamento di un Link Affiliato quando il metabox Geo Index è attivo, preservando la schermata standard di modifica del CPT.

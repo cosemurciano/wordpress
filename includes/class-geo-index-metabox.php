@@ -17,7 +17,7 @@ class ALMA_Geo_Index_Metabox {
 
     public function init() {
         add_action('add_meta_boxes', array($this, 'add_meta_boxes'));
-        add_action('save_post', array($this, 'save'), 30, 2);
+        add_action('save_post', array($this, 'save'), 30, 3);
         add_action('wp_ajax_alma_geo_search_location', array($this, 'ajax_search_location'));
         add_action('admin_enqueue_scripts', array($this, 'enqueue_assets'));
     }
@@ -239,7 +239,20 @@ class ALMA_Geo_Index_Metabox {
         <?php
     }
 
-    public function save($post_id, $post) {
+    public function save($post_id, $post = null, $update = false) {
+        $post_id = absint($post_id);
+        if (!$post_id) {
+            return;
+        }
+
+        if (!$post instanceof WP_Post) {
+            $post = get_post($post_id);
+        }
+
+        if (!$post instanceof WP_Post) {
+            return;
+        }
+
         if (defined('DOING_AUTOSAVE') && DOING_AUTOSAVE) {
             return;
         }
