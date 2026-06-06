@@ -1,5 +1,11 @@
 ## Unreleased
 
+## 2.40.1 - 2026-06-06
+- Corretto l’upload CSV del modulo **Indice Geografico** evitando il blocco MIME di WordPress su file `.csv` identificati come `text/plain`, `application/vnd.ms-excel`, `application/csv` o `application/octet-stream` valido.
+- Aggiunta validazione dedicata solo al Geo Index per estensione `.csv`, MIME CSV consentiti, leggibilità, intestazioni obbligatorie e delimitatori `,`/`;`, senza filtri globali permanenti `upload_mimes` e senza salvataggio in Media Library.
+- Migliorato il messaggio admin per file non CSV e documentata nella tab import la richiesta di intestazioni generate dal flusso Geo Index.
+- Versione plugin aggiornata a `2.40.1`.
+
 ## 2.40.0 - 2026-06-06
 - Aggiunto il modulo **Indice Geografico** come fondazione interna del plugin, con menu admin `alma-geo-index`, dashboard conteggi, import CSV safe, elenco località e log ultimo import.
 - Create via `dbDelta` le nuove tabelle `alma_geo_locations` e `alma_geo_content_index`, senza rimuovere o modificare dati/tabelle esistenti.

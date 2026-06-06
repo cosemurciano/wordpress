@@ -82,41 +82,42 @@ class ALMA_Geo_Index_Admin {
     }
 
     private function handle_preview_upload() {
-        if (empty($_FILES['alma_geo_csv']['name'])) {
-            $this->notice_error(__('Seleziona un file CSV da caricare.', 'affiliate-link-manager-ai'));
+        if (!current_user_can('manage_options')) {
+            $this->notice_error(__('Permessi insufficienti.', 'affiliate-link-manager-ai'));
             return;
         }
-        $file_name = sanitize_file_name($_FILES['alma_geo_csv']['name']);
-        if (strtolower(pathinfo($file_name, PATHINFO_EXTENSION)) !== 'csv') {
-            $this->notice_error(__('Sono accettati solo file .csv.', 'affiliate-link-manager-ai'));
+
+        $validation = $this->importer->validate_uploaded_csv($_FILES['alma_geo_csv'] ?? array());
+        if (is_wp_error($validation)) {
+            $this->notice_error($this->format_upload_error_message($validation));
             return;
         }
-        require_once ABSPATH . 'wp-admin/includes/file.php';
-        $uploaded = wp_handle_upload($_FILES['alma_geo_csv'], array(
-            'test_form' => false,
-            'mimes' => array('csv' => 'text/csv|text/plain|application/csv|application/vnd.ms-excel'),
-        ));
-        if (!empty($uploaded['error'])) {
-            $this->notice_error($uploaded['error']);
+
+        $stored_file = $this->store_preview_upload($validation);
+        if (is_wp_error($stored_file)) {
+            $this->notice_error($stored_file->get_error_message());
             return;
         }
-        $parsed = $this->importer->parse_csv_file($uploaded['file'], 10);
-        $validation = $this->importer->validate_headers($parsed['headers']);
+
+        $parsed = $this->importer->parse_csv_file($stored_file, 10, $validation['delimiter']);
         $preview = array(
-            'file' => $uploaded['file'],
-            'file_name' => $file_name,
+            'file' => $stored_file,
+            'file_name' => $validation['file_name'],
             'total' => $parsed['total'],
             'headers' => $parsed['headers'],
             'rows' => $parsed['rows'],
-            'valid' => $validation['valid'],
-            'missing' => $validation['missing'],
+            'valid' => true,
+            'missing' => array(),
+            'delimiter' => $validation['delimiter'],
+            'mime' => $validation['mime'],
         );
-        set_transient($this->preview_key(), $preview, HOUR_IN_SECONDS);
-        if ($validation['valid']) {
-            $this->notice_success(__('CSV caricato e validato. Controlla la preview e conferma l’importazione.', 'affiliate-link-manager-ai'));
-        } else {
-            $this->notice_error(sprintf(__('CSV non valido. Header mancanti: %s', 'affiliate-link-manager-ai'), esc_html(implode(', ', $validation['missing']))));
+
+        $old_preview = get_transient($this->preview_key());
+        if (!empty($old_preview['file']) && file_exists($old_preview['file'])) {
+            wp_delete_file($old_preview['file']);
         }
+        set_transient($this->preview_key(), $preview, HOUR_IN_SECONDS);
+        $this->notice_success(__('CSV caricato e validato. Controlla la preview e conferma l’importazione.', 'affiliate-link-manager-ai'));
     }
 
     private function handle_import_submit() {
@@ -134,6 +135,7 @@ class ALMA_Geo_Index_Admin {
             'overwrite' => $overwrite,
             'file_name' => $preview['file_name'],
             'allowed_post_types' => array('post', 'page'),
+            'delimiter' => $preview['delimiter'] ?? null,
         ));
         if (file_exists($preview['file'])) {
             wp_delete_file($preview['file']);
@@ -168,10 +170,11 @@ class ALMA_Geo_Index_Admin {
         ?>
         <h2><?php esc_html_e('Importa record articoli', 'affiliate-link-manager-ai'); ?></h2>
         <p><?php esc_html_e('File atteso: sothra_geo_article_index_safe_import.csv. Verranno importati solo record safe per articoli e pagine, senza geocoding automatico.', 'affiliate-link-manager-ai'); ?></p>
+        <p><?php esc_html_e('Sono accettati file CSV con intestazioni generate dal flusso Geo Index.', 'affiliate-link-manager-ai'); ?></p>
         <form method="post" enctype="multipart/form-data">
             <?php wp_nonce_field('alma_geo_index_import'); ?>
             <input type="hidden" name="alma_geo_index_action" value="preview">
-            <input type="file" name="alma_geo_csv" accept=".csv,text/csv" required>
+            <input type="file" name="alma_geo_csv" accept=".csv,text/csv,text/plain,application/csv,application/vnd.ms-excel" required>
             <?php submit_button(__('Carica e mostra preview', 'affiliate-link-manager-ai'), 'secondary', 'submit', false); ?>
         </form>
         <?php
@@ -242,6 +245,41 @@ class ALMA_Geo_Index_Admin {
         if (!empty($report['messages'])) {
             echo '<h3>' . esc_html__('Dettaglio esiti', 'affiliate-link-manager-ai') . '</h3><pre style="background:#fff;border:1px solid #ccd0d4;padding:12px;max-height:320px;overflow:auto;">' . esc_html(wp_json_encode($report['messages'], JSON_PRETTY_PRINT)) . '</pre>';
         }
+    }
+
+    private function store_preview_upload($validation) {
+        $upload_dir = wp_upload_dir();
+        if (!empty($upload_dir['error'])) {
+            return new WP_Error('geo_csv_upload_dir_error', $upload_dir['error']);
+        }
+
+        $dir = trailingslashit($upload_dir['basedir']) . 'alma-geo-index-imports';
+        if (!wp_mkdir_p($dir)) {
+            return new WP_Error('geo_csv_temp_dir_error', __('Impossibile creare la cartella temporanea per la preview CSV.', 'affiliate-link-manager-ai'));
+        }
+
+        if (!file_exists($dir . '/index.html')) {
+            file_put_contents($dir . '/index.html', ''); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents
+        }
+        if (!file_exists($dir . '/.htaccess')) {
+            file_put_contents($dir . '/.htaccess', "Options -Indexes\n<FilesMatch \".*\">\nRequire all denied\n</FilesMatch>\n"); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents
+        }
+
+        $file_name = wp_unique_filename($dir, wp_generate_uuid4() . '-' . $validation['file_name']);
+        $target = trailingslashit($dir) . $file_name;
+        if (!move_uploaded_file($validation['tmp_name'], $target)) {
+            return new WP_Error('geo_csv_move_failed', __('Impossibile salvare temporaneamente il CSV per la preview.', 'affiliate-link-manager-ai'));
+        }
+
+        return $target;
+    }
+
+    private function format_upload_error_message($error) {
+        if (in_array($error->get_error_code(), array('geo_csv_invalid_mime', 'geo_csv_invalid_extension'), true)) {
+            return __('Il file caricato non sembra un CSV valido. Carica un file .csv esportato dal processo Geo Index.', 'affiliate-link-manager-ai');
+        }
+
+        return $error->get_error_message();
     }
 
     private function tab_link($tab, $label, $current) {
