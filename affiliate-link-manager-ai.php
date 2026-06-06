@@ -3,7 +3,7 @@
  * Plugin Name: Affiliate Link Manager AI
  * Plugin URI: https://your-website.com
  * Description: Gestisce link affiliati con intelligenza artificiale per ottimizzazione e tracking automatico.
- * Version: 2.39.1
+ * Version: 2.40.0
  * Author: Cosè Murciano
  * License: GPL v2 or later
  * Text Domain: affiliate-link-manager-ai
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Definisci costanti del plugin
-define('ALMA_VERSION', '2.39.1');
+define('ALMA_VERSION', '2.40.0');
 define('ALMA_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('ALMA_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('ALMA_PLUGIN_FILE', __FILE__);
@@ -94,6 +94,10 @@ require_once ALMA_PLUGIN_DIR . 'includes/class-assets.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-shortcodes.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-editor-ajax.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-ai-content-agent-dashboard-widget.php';
+require_once ALMA_PLUGIN_DIR . 'includes/class-geo-index-store.php';
+require_once ALMA_PLUGIN_DIR . 'includes/class-geo-index-metabox.php';
+require_once ALMA_PLUGIN_DIR . 'includes/class-geo-index-importer.php';
+require_once ALMA_PLUGIN_DIR . 'includes/class-geo-index-admin.php';
 
 /**
  * Classe principale del plugin
@@ -110,6 +114,9 @@ class AffiliateManagerAI {
     private $shortcodes;
     private $editor_ajax;
     private $ai_content_agent_dashboard_widget;
+    private $geo_index_store;
+    private $geo_index_metabox;
+    private $geo_index_admin;
     
     public function __construct() {
         global $wpdb;
@@ -120,6 +127,9 @@ class AffiliateManagerAI {
         $this->shortcodes = new ALMA_Shortcodes();
         $this->editor_ajax = new ALMA_Editor_Ajax($this->dashboard_stats);
         $this->ai_content_agent_dashboard_widget = new ALMA_AI_Content_Agent_Dashboard_Widget();
+        $this->geo_index_store = new ALMA_Geo_Index_Store();
+        $this->geo_index_metabox = new ALMA_Geo_Index_Metabox($this->geo_index_store);
+        $this->geo_index_admin = new ALMA_Geo_Index_Admin($this->geo_index_store);
         add_action('init', array($this, 'init'));
         add_action('widgets_init', array('ALMA_Contextual_Affiliate_Widget', 'register_widget'));
         register_activation_hook(__FILE__, array($this, 'activate'));
@@ -392,6 +402,8 @@ class AffiliateManagerAI {
         // Dashboard widget
         add_action('wp_dashboard_setup', array($this, 'add_dashboard_widget'));
         $this->ai_content_agent_dashboard_widget->init();
+        $this->geo_index_metabox->init();
+        $this->geo_index_admin->init();
         add_action('pre_get_posts', array($this, 'filter_posts_without_affiliates'));
     }
     
@@ -941,6 +953,7 @@ class AffiliateManagerAI {
             'affiliate-link-widgets',
             ALMA_Contextual_Affiliate_Widget::MENU_SLUG,
             'alma-bot-affiliate-settings',
+            ALMA_Geo_Index_Admin::MENU_SLUG,
             'alma-affiliate-sources',
             self::AI_CONTENT_AGENT_MENU_SLUG,
             'affiliate-link-manager-settings',
@@ -975,6 +988,9 @@ class AffiliateManagerAI {
                             break;
                         case 'alma-bot-affiliate-settings':
                             $item[0] = __('BotAffiliate Post', 'affiliate-link-manager-ai');
+                            break;
+                        case ALMA_Geo_Index_Admin::MENU_SLUG:
+                            $item[0] = __('Indice Geografico', 'affiliate-link-manager-ai');
                             break;
                         case 'alma-affiliate-sources':
                             $item[0] = __('Affiliate Sources', 'affiliate-link-manager-ai');
@@ -3301,6 +3317,7 @@ class AffiliateManagerAI {
         $this->create_analytics_table();
         ALMA_AI_Usage_Logger::create_table();
         ALMA_Affiliate_Source_Manager::create_tables();
+        ALMA_Geo_Index_Store::create_tables();
         ALMA_Contextual_Affiliate_Widget::maybe_set_default_options();
         $this->create_default_categories();
         update_option('alma_db_schema_version', '4');
@@ -3348,6 +3365,7 @@ class AffiliateManagerAI {
             $this->create_analytics_table();
             ALMA_AI_Usage_Logger::create_table();
             ALMA_Affiliate_Source_Manager::create_tables();
+            ALMA_Geo_Index_Store::create_tables();
             ALMA_Contextual_Affiliate_Widget::maybe_set_default_options();
             update_option('alma_db_schema_version', '4');
             update_option('alma_plugin_version', ALMA_VERSION);
