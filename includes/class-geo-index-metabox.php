@@ -580,6 +580,9 @@ class ALMA_Geo_Index_Metabox {
     }
 
     private function log_save_event($level, $message, $post_id, $post_type = '', $context = array()) {
+        if (!$this->is_save_diagnostic_enabled()) {
+            return;
+        }
         $context = array_merge(array(
             'post_id' => absint($post_id),
             'post_type' => sanitize_key($post_type),
@@ -589,16 +592,21 @@ class ALMA_Geo_Index_Metabox {
                 ALMA_Logger::error($message, $context);
             } elseif ($level === 'warning') {
                 ALMA_Logger::warning($message, $context);
-            } elseif ($level === 'info') {
+            } elseif ($level === 'info' || !(defined('WP_DEBUG') && WP_DEBUG)) {
                 ALMA_Logger::info($message, $context);
             } else {
                 ALMA_Logger::debug($message, $context);
             }
             return;
         }
+        error_log('[ALMA] [' . strtoupper((string) $level) . '] ' . $message . ' | context=' . wp_json_encode($context));
+    }
+
+    private function is_save_diagnostic_enabled() {
         if (defined('WP_DEBUG') && WP_DEBUG) {
-            error_log('[ALMA] [' . strtoupper((string) $level) . '] ' . $message . ' | context=' . wp_json_encode($context));
+            return true;
         }
+        return (bool) get_option('alma_affiliate_link_save_redirect_diagnostics', false);
     }
 
     public static function location_roles() {
