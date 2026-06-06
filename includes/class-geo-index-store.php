@@ -133,7 +133,7 @@ class ALMA_Geo_Index_Store {
                    AND LOWER(city) = %s
                    AND LOWER(area) = %s
                    AND LOWER(poi) = %s
-                   AND LOWER(formatted_address) = %s
+                   AND LOWER(COALESCE(formatted_address, '')) = %s
                  LIMIT 1",
                 $signature['canonical_name'],
                 $signature['type'],
@@ -159,7 +159,8 @@ class ALMA_Geo_Index_Store {
         $existing = null;
         if ($data['geo_provider_place_id'] !== '') {
             $existing = $this->get_location_by_place_id($data['geo_provider_place_id'], $data['geo_provider']);
-        } else {
+        }
+        if (!$existing) {
             $existing = $this->get_location_by_signature($data);
         }
         $formats = array('%s','%s','%s','%s','%s','%s','%s','%s','%f','%f','%s','%s','%s','%s','%s','%s','%s','%s','%s','%s');

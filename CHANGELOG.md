@@ -1,5 +1,9 @@
 ## Unreleased
 
+- Corretto il redirect dopo aggiornamento di un Link Affiliato quando il metabox Geo Index è attivo, preservando la schermata standard di modifica del CPT.
+- Corretta la deduplica località Geo Index con fallback da Place ID a firma testuale quando il Place ID non trova record esistenti.
+- Corretta la deduplica località Geo Index con `formatted_address` nullable tramite confronto SQL compatibile con righe legacy.
+- Aggiunta esportazione CSV dei Link Affiliati dalle impostazioni del plugin per analisi esterne e preparazione di future geolocalizzazioni.
 - Corretto il nome specifico dei POI nei risultati Google e nelle località associate, preservando città, regione, paese e indirizzo formattato.
 - Corretta la deduplica delle località Geo Index usando prima il Google Place ID e solo in assenza una firma testuale completa.
 - Corretto il bug di sovrascrittura delle località associate durante aggiunte multiple e salvataggi bozza/post.
