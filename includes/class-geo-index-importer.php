@@ -17,12 +17,23 @@ class ALMA_Geo_Index_Importer {
 
     public static function required_headers() {
         return array(
-            'post_id','source_url','post_title','post_slug','content_type','commercial_intent','geo_scope','primary_name','primary_canonical_name','primary_type','primary_country','primary_country_code','primary_region','primary_city','primary_area','primary_poi','primary_source','primary_strength','primary_role','confidence','match_weight','suggested_primary_geocoding_query','safe_for_auto_import','safe_for_auto_geocoding','geo_import_status','geocoding_status','geo_quality_flags'
+            'post_id','source_url','post_title','geo_scope','primary_name','safe_for_auto_import','safe_for_auto_geocoding'
+        );
+    }
+
+    public static function allowed_csv_mimes() {
+        return array(
+            'text/csv',
+            'text/plain',
+            'application/csv',
+            'application/vnd.ms-excel',
+            'application/octet-stream',
         );
     }
 
     public function validate_headers($headers) {
         $headers = array_map('sanitize_key', (array) $headers);
+        $headers = array_values(array_filter($headers));
         $missing = array();
         foreach (self::required_headers() as $required) {
             if (!in_array($required, $headers, true)) {
@@ -32,16 +43,87 @@ class ALMA_Geo_Index_Importer {
         return array('valid' => empty($missing), 'missing' => $missing, 'headers' => $headers);
     }
 
-    public function parse_csv_file($file_path, $limit = 0) {
+    public function validate_uploaded_csv($file) {
+        if (empty($file) || !is_array($file) || empty($file['name'])) {
+            return new WP_Error('geo_csv_missing_file', __('File mancante. Seleziona un file CSV da caricare.', 'affiliate-link-manager-ai'));
+        }
+
+        $upload_error = isset($file['error']) ? (int) $file['error'] : UPLOAD_ERR_NO_FILE;
+        if ($upload_error !== UPLOAD_ERR_OK) {
+            return new WP_Error('geo_csv_upload_error', $this->upload_error_message($upload_error));
+        }
+
+        $file_name = sanitize_file_name($file['name']);
+        if (strtolower(pathinfo($file_name, PATHINFO_EXTENSION)) !== 'csv') {
+            return new WP_Error('geo_csv_invalid_extension', __('Estensione non valida. Carica solo file con estensione .csv generati dal flusso Geo Index.', 'affiliate-link-manager-ai'));
+        }
+
+        $tmp_name = $file['tmp_name'] ?? '';
+        if (!$tmp_name || !is_readable($tmp_name)) {
+            return new WP_Error('geo_csv_not_readable', __('File non leggibile. Riprova il caricamento del CSV.', 'affiliate-link-manager-ai'));
+        }
+
+        $content = $this->validate_csv_content($tmp_name);
+        if (is_wp_error($content)) {
+            return $content;
+        }
+
+        $detected_mime = $this->detect_uploaded_mime($tmp_name, $file_name, $file['type'] ?? '');
+        if ($detected_mime && !in_array($detected_mime, self::allowed_csv_mimes(), true)) {
+            return new WP_Error('geo_csv_invalid_mime', __('MIME non consentito. Il file caricato non sembra un CSV valido. Carica un file .csv esportato dal processo Geo Index.', 'affiliate-link-manager-ai'), array('mime' => $detected_mime));
+        }
+
+        return array(
+            'file_name' => $file_name,
+            'tmp_name' => $tmp_name,
+            'mime' => $detected_mime,
+            'headers' => $content['headers'],
+            'delimiter' => $content['delimiter'],
+        );
+    }
+
+    public function validate_csv_content($file_path) {
+        if (!$file_path || !is_readable($file_path)) {
+            return new WP_Error('geo_csv_not_readable', __('File non leggibile. Riprova il caricamento del CSV.', 'affiliate-link-manager-ai'));
+        }
+
+        $delimiter = $this->detect_csv_delimiter($file_path);
+        $handle = fopen($file_path, 'r');
+        if (!$handle) {
+            return new WP_Error('geo_csv_not_readable', __('File non leggibile. Riprova il caricamento del CSV.', 'affiliate-link-manager-ai'));
+        }
+
+        $headers = fgetcsv($handle, 0, $delimiter);
+        fclose($handle);
+
+        if (isset($headers[0])) {
+            $headers[0] = preg_replace('/^\xEF\xBB\xBF/', '', $headers[0]);
+        }
+        $headers = array_map('sanitize_key', (array) $headers);
+        $headers = array_values(array_filter($headers));
+        if (empty($headers) || count($headers) < 2) {
+            return new WP_Error('geo_csv_missing_headers', __('CSV senza intestazioni. Verifica che la prima riga contenga le intestazioni generate dal flusso Geo Index.', 'affiliate-link-manager-ai'));
+        }
+
+        $validation = $this->validate_headers($headers);
+        if (!$validation['valid']) {
+            return new WP_Error('geo_csv_required_headers_missing', sprintf(__('Intestazioni obbligatorie mancanti: %s', 'affiliate-link-manager-ai'), implode(', ', $validation['missing'])), array('missing' => $validation['missing']));
+        }
+
+        return array('headers' => $headers, 'delimiter' => $delimiter);
+    }
+
+    public function parse_csv_file($file_path, $limit = 0, $delimiter = null) {
         $rows = array();
         $headers = array();
         $total = 0;
+        $delimiter = $delimiter ?: $this->detect_csv_delimiter($file_path);
         $handle = fopen($file_path, 'r');
         if (!$handle) {
-            return array('headers' => array(), 'rows' => array(), 'total' => 0, 'error' => 'file_open_failed');
+            return array('headers' => array(), 'rows' => array(), 'total' => 0, 'error' => 'file_open_failed', 'delimiter' => $delimiter);
         }
 
-        while (($data = fgetcsv($handle, 0, ',')) !== false) {
+        while (($data = fgetcsv($handle, 0, $delimiter)) !== false) {
             if (empty($headers)) {
                 if (isset($data[0])) {
                     $data[0] = preg_replace('/^\xEF\xBB\xBF/', '', $data[0]);
@@ -59,7 +141,7 @@ class ALMA_Geo_Index_Importer {
         }
         fclose($handle);
 
-        return array('headers' => $headers, 'rows' => $rows, 'total' => $total, 'error' => '');
+        return array('headers' => $headers, 'rows' => $rows, 'total' => $total, 'error' => '', 'delimiter' => $delimiter);
     }
 
     public function import_csv($file_path, $args = array()) {
@@ -68,7 +150,7 @@ class ALMA_Geo_Index_Importer {
             'file_name' => basename($file_path),
             'allowed_post_types' => array('post', 'page'),
         ));
-        $parsed = $this->parse_csv_file($file_path);
+        $parsed = $this->parse_csv_file($file_path, 0, $args['delimiter'] ?? null);
         $validation = $this->validate_headers($parsed['headers']);
         $report = $this->empty_report($args['file_name']);
         $report['records_read'] = (int) $parsed['total'];
@@ -197,6 +279,68 @@ class ALMA_Geo_Index_Importer {
             '_alma_geo_source' => sanitize_text_field($row['primary_source'] ?? 'safe_csv'),
             '_alma_geo_updated_at' => current_time('mysql'),
         );
+    }
+
+    private function detect_csv_delimiter($file_path) {
+        $line = '';
+        $handle = fopen($file_path, 'r');
+        if ($handle) {
+            $line = (string) fgets($handle);
+            fclose($handle);
+        }
+
+        $comma_count = substr_count($line, ',');
+        $semicolon_count = substr_count($line, ';');
+        return $semicolon_count > $comma_count ? ';' : ',';
+    }
+
+    private function detect_uploaded_mime($tmp_name, $file_name, $browser_mime) {
+        $browser_mime = sanitize_mime_type($browser_mime);
+        if ($browser_mime && in_array($browser_mime, self::allowed_csv_mimes(), true)) {
+            return $browser_mime;
+        }
+
+        if (function_exists('finfo_open')) {
+            $finfo = finfo_open(FILEINFO_MIME_TYPE);
+            if ($finfo) {
+                $finfo_mime = sanitize_mime_type((string) finfo_file($finfo, $tmp_name));
+                finfo_close($finfo);
+                if ($finfo_mime) {
+                    return $finfo_mime;
+                }
+            }
+        }
+
+        $allowed = array('csv' => implode('|', self::allowed_csv_mimes()));
+        if (function_exists('wp_check_filetype_and_ext')) {
+            $checked = wp_check_filetype_and_ext($tmp_name, $file_name, $allowed);
+            if (!empty($checked['type'])) {
+                return $checked['type'];
+            }
+        }
+
+        $filetype = wp_check_filetype($file_name, $allowed);
+        return !empty($filetype['type']) ? $filetype['type'] : $browser_mime;
+    }
+
+    private function upload_error_message($error_code) {
+        switch ((int) $error_code) {
+            case UPLOAD_ERR_INI_SIZE:
+            case UPLOAD_ERR_FORM_SIZE:
+                return __('Errore upload: il file CSV supera la dimensione massima consentita dal server.', 'affiliate-link-manager-ai');
+            case UPLOAD_ERR_PARTIAL:
+                return __('Errore upload: il file CSV è stato caricato solo parzialmente.', 'affiliate-link-manager-ai');
+            case UPLOAD_ERR_NO_FILE:
+                return __('File mancante. Seleziona un file CSV da caricare.', 'affiliate-link-manager-ai');
+            case UPLOAD_ERR_NO_TMP_DIR:
+                return __('Errore upload: cartella temporanea del server non disponibile.', 'affiliate-link-manager-ai');
+            case UPLOAD_ERR_CANT_WRITE:
+                return __('Errore upload: impossibile scrivere il file temporaneo sul server.', 'affiliate-link-manager-ai');
+            case UPLOAD_ERR_EXTENSION:
+                return __('Errore upload: il server ha bloccato il caricamento del file.', 'affiliate-link-manager-ai');
+            default:
+                return __('Errore upload sconosciuto. Riprova con un file CSV valido.', 'affiliate-link-manager-ai');
+        }
     }
 
     private function empty_report($file_name) {
