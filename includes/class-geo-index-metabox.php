@@ -17,6 +17,75 @@ class ALMA_Geo_Index_Metabox {
     public function init() {
         add_action('add_meta_boxes', array($this, 'add_meta_boxes'));
         add_action('save_post', array($this, 'save'), 30, 2);
+        add_action('wp_ajax_alma_geo_search_location', array($this, 'ajax_search_location'));
+        add_action('admin_enqueue_scripts', array($this, 'enqueue_assets'));
+    }
+
+
+    public function enqueue_assets($hook) {
+        if (!in_array($hook, array('post.php', 'post-new.php'), true)) {
+            return;
+        }
+        $screen = function_exists('get_current_screen') ? get_current_screen() : null;
+        if (!$screen || !in_array($screen->post_type, array('post', 'page', 'affiliate_link'), true)) {
+            return;
+        }
+        if (file_exists(ALMA_PLUGIN_DIR . 'assets/geo-index-admin.js')) {
+            wp_enqueue_script('alma-geo-index-admin', ALMA_PLUGIN_URL . 'assets/geo-index-admin.js', array('jquery'), ALMA_VERSION, true);
+            wp_localize_script('alma-geo-index-admin', 'almaGeoIndexAdmin', array(
+                'ajaxUrl' => admin_url('admin-ajax.php'),
+                'nonce' => wp_create_nonce('alma_geo_search_location'),
+                'postId' => isset($_GET['post']) ? absint($_GET['post']) : 0,
+                'strings' => array(
+                    'minChars' => __('Inserisci almeno 3 caratteri.', 'affiliate-link-manager-ai'),
+                    'noResults' => __('Nessun luogo trovato.', 'affiliate-link-manager-ai'),
+                    'apiKeyMissing' => __('Google Maps API key non configurata.', 'affiliate-link-manager-ai'),
+                    'associated' => __('Luogo associato. Salva o aggiorna il post per confermare le modifiche.', 'affiliate-link-manager-ai'),
+                    'replaced' => __('Località sostituita. Salva il post per confermare.', 'affiliate-link-manager-ai'),
+                    'searchError' => __('Errore durante la ricerca località.', 'affiliate-link-manager-ai'),
+                    'replaceConfirm' => __('Questa operazione sostituirà la località primaria attuale.', 'affiliate-link-manager-ai'),
+                    'searching' => __('Ricerca in corso...', 'affiliate-link-manager-ai'),
+                    'associate' => __('Associa luogo', 'affiliate-link-manager-ai'),
+                    'type' => __('Tipo:', 'affiliate-link-manager-ai'),
+                    'country' => __('Paese:', 'affiliate-link-manager-ai'),
+                ),
+            ));
+        }
+        if (file_exists(ALMA_PLUGIN_DIR . 'assets/admin.css')) {
+            wp_enqueue_style('alma-admin-style', ALMA_PLUGIN_URL . 'assets/admin.css', array(), ALMA_VERSION);
+        }
+    }
+
+    public function ajax_search_location() {
+        check_ajax_referer('alma_geo_search_location', 'nonce');
+        $post_id = isset($_POST['post_id']) ? absint($_POST['post_id']) : 0;
+        if ($post_id > 0) {
+            if (!current_user_can('edit_post', $post_id)) {
+                wp_send_json_error(array('message' => __('Permessi insufficienti.', 'affiliate-link-manager-ai')), 403);
+            }
+        } elseif (!current_user_can('edit_posts')) {
+            wp_send_json_error(array('message' => __('Permessi insufficienti.', 'affiliate-link-manager-ai')), 403);
+        }
+
+        $query = isset($_POST['query']) ? sanitize_text_field(wp_unslash($_POST['query'])) : '';
+        if (strlen($query) < 3) {
+            wp_send_json_error(array('message' => __('Inserisci almeno 3 caratteri.', 'affiliate-link-manager-ai')), 400);
+        }
+        $api_key = trim((string) get_option('alma_geo_google_maps_api_key', ''));
+        if ($api_key === '') {
+            wp_send_json_error(array('message' => __('Google Maps API key non configurata.', 'affiliate-link-manager-ai'), 'code' => 'api_key_missing'), 400);
+        }
+
+        $provider = new ALMA_Geo_Index_Google_Geocoder($api_key, (int) get_option('alma_geo_geocoding_timeout', 15));
+        $result = $provider->search_locations($query, array('region' => get_option('alma_geo_geocoding_country_bias', '')));
+        if (empty($result['success'])) {
+            wp_send_json_error(array('message' => sanitize_text_field($result['message'] ?? __('Errore durante la ricerca località.', 'affiliate-link-manager-ai'))), 500);
+        }
+        $results = array_slice(is_array($result['results'] ?? null) ? $result['results'] : array(), 0, 5);
+        if (empty($results)) {
+            wp_send_json_success(array('results' => array(), 'message' => __('Nessun luogo trovato.', 'affiliate-link-manager-ai')));
+        }
+        wp_send_json_success(array('results' => $results));
     }
 
     public function add_meta_boxes() {
@@ -35,9 +104,9 @@ class ALMA_Geo_Index_Metabox {
     public function render($post) {
         wp_nonce_field(self::NONCE_ACTION, self::NONCE_NAME);
         $values = $this->get_values($post->ID);
+        $values = $this->apply_new_post_defaults($post->ID, $values);
         $primary_location = $this->store->get_primary_location_for_object($post->ID, $post->post_type);
         $effective_geocoding_status = $this->effective_geocoding_status($values, $primary_location);
-        $meta_synced = $this->is_primary_location_synced($values, $primary_location);
         $suggested_query = $primary_location['suggested_geocoding_query'] ?? '';
         $provider = $values['_alma_geo_primary_provider'] ?: ($values['_alma_geo_provider'] ?? '');
         $provider = $provider ?: ($primary_location['geo_provider'] ?? '');
@@ -55,103 +124,101 @@ class ALMA_Geo_Index_Metabox {
             '_alma_geo_primary_city' => $values['_alma_geo_primary_city'] ?: ($primary_location['city'] ?? ''),
             '_alma_geo_primary_area' => $values['_alma_geo_primary_area'] ?: ($primary_location['area'] ?? ''),
             '_alma_geo_primary_poi' => $values['_alma_geo_primary_poi'] ?: ($primary_location['poi'] ?? ''),
+            '_alma_geo_primary_lat' => $lat,
+            '_alma_geo_primary_lng' => $lng,
+            '_alma_geo_primary_place_id' => $place_id,
+            '_alma_geo_provider' => $provider,
+            '_alma_geo_primary_provider' => $provider,
+            '_alma_geo_primary_formatted_address' => $formatted_address,
+            '_alma_geo_geocoding_status' => $effective_geocoding_status,
         ));
+        $has_location = $display_values['_alma_geo_primary_name'] !== '' || $place_id !== '' || ($lat !== '' && $lng !== '');
         ?>
-        <p><?php esc_html_e('Vista sintetica dei dati geografici del contenuto. I campi manuali restano modificabili, mentre i dettagli tecnici sono raccolti nelle sezioni avanzate.', 'affiliate-link-manager-ai'); ?></p>
-        <style>
-            .alma-geo-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 18px}.alma-geo-field label{display:block;font-weight:600;margin-bottom:4px}.alma-geo-field input,.alma-geo-field select,.alma-geo-field textarea{width:100%;max-width:100%}.alma-geo-section{border-top:1px solid #dcdcde;margin-top:16px;padding-top:12px}.alma-geo-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:12px 0}.alma-geo-kv{display:grid;grid-template-columns:180px 1fr;gap:6px 12px}.alma-geo-kv dt{font-weight:600}.alma-geo-badge{display:inline-block;border-radius:999px;padding:3px 9px;font-weight:600;background:#f0f0f1;color:#2c3338}.alma-geo-badge-active{background:#d1e7dd;color:#0f5132}.alma-geo-badge-inactive{background:#f8d7da;color:#842029}.alma-geo-badge-pending{background:#fff3cd;color:#664d03}.alma-geo-badge-verified{background:#cfe2ff;color:#084298}.alma-geo-badge-manual{background:#fde2c2;color:#7a3e00}.alma-geo-badge-failed{background:#f8d7da;color:#842029}.alma-geo-badge-ambiguous{background:#e2d9f3;color:#3d0a69}.alma-geo-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.alma-geo-actions .button{margin:0}.alma-geo-details{border:1px solid #dcdcde;padding:10px 12px;margin-top:14px;background:#fff}.alma-geo-details summary{font-weight:600;cursor:pointer}
-        </style>
+        <div class="alma-geo-metabox" data-has-primary-location="<?php echo $has_location ? '1' : '0'; ?>">
+            <p><?php esc_html_e('Cerca una località con Google Maps, associala al contenuto e lascia che il plugin compili i campi geografici tecnici.', 'affiliate-link-manager-ai'); ?></p>
 
-        <div class="alma-geo-section">
-            <h3><?php esc_html_e('Stato sintetico', 'affiliate-link-manager-ai'); ?></h3>
-            <div class="alma-geo-summary">
-                <div><?php esc_html_e('Indice geografico:', 'affiliate-link-manager-ai'); ?> <?php echo $this->render_record_status_badge($values['_alma_geo_enabled'] ?? 'no'); ?></div>
-                <div><?php esc_html_e('Stato import:', 'affiliate-link-manager-ai'); ?> <?php echo $this->render_import_status_badge($values['_alma_geo_import_status'] ?? 'review'); ?></div>
-                <div><?php esc_html_e('Stato geocoding:', 'affiliate-link-manager-ai'); ?> <?php echo $this->render_geocoding_status_badge($effective_geocoding_status); ?></div>
-            </div>
-            <p>
-                <label><input type="checkbox" name="alma_geo[_alma_geo_enabled]" value="yes" <?php checked($this->is_yes($values['_alma_geo_enabled'] ?? ''), true); ?>> <?php esc_html_e('Abilita geolocalizzazione', 'affiliate-link-manager-ai'); ?></label>
-                &nbsp;&nbsp;
-                <label><input type="checkbox" name="alma_geo[_alma_geo_widget_eligible]" value="yes" <?php checked($this->is_yes($values['_alma_geo_widget_eligible'] ?? ''), true); ?>> <?php esc_html_e('Widget eligible', 'affiliate-link-manager-ai'); ?></label>
-            </p>
-        </div>
-
-        <div class="alma-geo-section">
-            <h3><?php esc_html_e('Località primaria', 'affiliate-link-manager-ai'); ?></h3>
-            <div class="alma-geo-grid">
-                <?php $this->render_input('_alma_geo_primary_name', __('Nome località', 'affiliate-link-manager-ai'), $display_values); ?>
-                <?php $this->render_select('_alma_geo_primary_type', __('Tipo', 'affiliate-link-manager-ai'), $display_values, self::primary_types()); ?>
-                <?php $this->render_input('_alma_geo_primary_country', __('Paese', 'affiliate-link-manager-ai'), $display_values); ?>
-                <?php $this->render_input('_alma_geo_primary_region', __('Regione', 'affiliate-link-manager-ai'), $display_values); ?>
-                <?php $this->render_input('_alma_geo_primary_city', __('Città', 'affiliate-link-manager-ai'), $display_values); ?>
-                <?php $this->render_input('_alma_geo_primary_area', __('Area', 'affiliate-link-manager-ai'), $display_values); ?>
-                <?php $this->render_input('_alma_geo_primary_poi', __('POI', 'affiliate-link-manager-ai'), $display_values); ?>
-            </div>
-        </div>
-
-        <div class="alma-geo-section">
-            <h3><?php esc_html_e('Dati geocoding', 'affiliate-link-manager-ai'); ?></h3>
-            <dl class="alma-geo-kv">
-                <dt><?php esc_html_e('Provider', 'affiliate-link-manager-ai'); ?></dt><dd><?php echo esc_html($provider); ?></dd>
-                <dt><?php esc_html_e('Place ID', 'affiliate-link-manager-ai'); ?></dt><dd><?php echo esc_html($place_id); ?></dd>
-                <dt><?php esc_html_e('Formatted address', 'affiliate-link-manager-ai'); ?></dt><dd><?php echo esc_html($formatted_address); ?></dd>
-                <dt><?php esc_html_e('Latitudine', 'affiliate-link-manager-ai'); ?></dt><dd><?php echo esc_html((string) $lat); ?></dd>
-                <dt><?php esc_html_e('Longitudine', 'affiliate-link-manager-ai'); ?></dt><dd><?php echo esc_html((string) $lng); ?></dd>
-                <dt><?php esc_html_e('Ultimo geocoding', 'affiliate-link-manager-ai'); ?></dt><dd><?php echo esc_html($primary_location['geocoded_at'] ?? ''); ?></dd>
-                <dt><?php esc_html_e('Errore', 'affiliate-link-manager-ai'); ?></dt><dd><?php echo esc_html($primary_location['geocoding_error'] ?? ''); ?></dd>
-            </dl>
-            <div class="alma-geo-grid">
-                <?php $this->render_input('_alma_geo_primary_lat', __('Latitudine manuale', 'affiliate-link-manager-ai'), array_merge($values, array('_alma_geo_primary_lat' => $lat)), 'number', 'step="0.0000001"'); ?>
-                <?php $this->render_input('_alma_geo_primary_lng', __('Longitudine manuale', 'affiliate-link-manager-ai'), array_merge($values, array('_alma_geo_primary_lng' => $lng)), 'number', 'step="0.0000001"'); ?>
-                <?php $this->render_input('_alma_geo_primary_place_id', __('Place ID', 'affiliate-link-manager-ai'), array_merge($values, array('_alma_geo_primary_place_id' => $place_id))); ?>
-                <?php $this->render_input('_alma_geo_provider', __('Provider geocoding', 'affiliate-link-manager-ai'), array_merge($values, array('_alma_geo_provider' => $provider))); ?>
-                <?php $this->render_input('_alma_geo_primary_formatted_address', __('Formatted address', 'affiliate-link-manager-ai'), array_merge($values, array('_alma_geo_primary_formatted_address' => $formatted_address))); ?>
-                <input type="hidden" name="alma_geo[_alma_geo_primary_provider]" value="<?php echo esc_attr($provider); ?>">
-            </div>
-            <div class="alma-geo-actions">
-                <a class="button" href="#alma_geo_suggested_geocoding_query"><?php esc_html_e('Cerca località', 'affiliate-link-manager-ai'); ?></a>
-                <?php if ($effective_geocoding_status === 'pending') : ?>
-                    <span class="button disabled" aria-disabled="true"><?php esc_html_e('Geocodifica questa località dalla tab Geocoding', 'affiliate-link-manager-ai'); ?></span>
+            <div class="alma-geo-section alma-geo-location-search">
+                <h3><?php esc_html_e('Cerca e associa località', 'affiliate-link-manager-ai'); ?></h3>
+                <?php if ($has_location) : ?>
+                    <p class="description alma-geo-replace-note"><?php esc_html_e('Questa operazione sostituirà la località primaria attuale.', 'affiliate-link-manager-ai'); ?></p>
                 <?php endif; ?>
-                <?php if (!empty($primary_location['id']) && ($primary_location['geocoding_status'] ?? '') === 'verified' && !$meta_synced) : ?>
-                    <button type="submit" class="button" name="alma_geo_resync_post" value="1"><?php esc_html_e('Risincronizza dati località', 'affiliate-link-manager-ai'); ?></button>
-                <?php endif; ?>
+                <div class="alma-geo-search-row">
+                    <input type="text" id="alma_geo_location_query" class="alma-geo-search-input" value="" placeholder="<?php echo esc_attr__('Cerca Londra, Palermo, Kyoto, Etihad Stadium...', 'affiliate-link-manager-ai'); ?>" autocomplete="off">
+                    <button type="button" class="button button-secondary" id="alma_geo_location_search_button"><?php esc_html_e('Cerca località', 'affiliate-link-manager-ai'); ?></button>
+                </div>
+                <div class="alma-geo-feedback" id="alma_geo_location_feedback" role="status" aria-live="polite"></div>
+                <div class="alma-geo-search-results" id="alma_geo_location_results"></div>
             </div>
-        </div>
 
-        <details class="alma-geo-details">
-            <summary><?php esc_html_e('Classificazione', 'affiliate-link-manager-ai'); ?></summary>
-            <div class="alma-geo-grid">
-                <?php $this->render_select('_alma_geo_content_type', __('Content type', 'affiliate-link-manager-ai'), $values, self::content_types()); ?>
-                <?php $this->render_select('_alma_geo_commercial_intent', __('Commercial intent', 'affiliate-link-manager-ai'), $values, self::commercial_intents()); ?>
-                <?php $this->render_select('_alma_geo_scope', __('Geo scope', 'affiliate-link-manager-ai'), $values, self::geo_scopes()); ?>
-                <?php $this->render_input('_alma_geo_confidence', __('Confidence', 'affiliate-link-manager-ai'), $values, 'number', 'step="0.001" min="0" max="1"'); ?>
-                <?php $this->render_input('_alma_geo_match_weight', __('Match weight', 'affiliate-link-manager-ai'), $values, 'number'); ?>
+            <div class="alma-geo-section">
+                <h3><?php esc_html_e('Stato sintetico', 'affiliate-link-manager-ai'); ?></h3>
+                <div class="alma-geo-summary">
+                    <div><?php esc_html_e('Indice geografico:', 'affiliate-link-manager-ai'); ?> <?php echo $this->render_record_status_badge($values['_alma_geo_enabled'] ?? 'no'); ?></div>
+                    <div><?php esc_html_e('Stato import:', 'affiliate-link-manager-ai'); ?> <?php echo $this->render_import_status_badge($values['_alma_geo_import_status'] ?? 'review'); ?></div>
+                    <div><?php esc_html_e('Stato geocoding:', 'affiliate-link-manager-ai'); ?> <?php echo $this->render_geocoding_status_badge($effective_geocoding_status); ?></div>
+                </div>
+                <p>
+                    <label><input type="checkbox" id="_alma_geo_enabled" name="alma_geo[_alma_geo_enabled]" value="yes" <?php checked($this->is_yes($values['_alma_geo_enabled'] ?? ''), true); ?>> <?php esc_html_e('Abilita geolocalizzazione', 'affiliate-link-manager-ai'); ?></label>
+                    &nbsp;&nbsp;
+                    <label><input type="checkbox" id="_alma_geo_widget_eligible" name="alma_geo[_alma_geo_widget_eligible]" value="yes" <?php checked($this->is_yes($values['_alma_geo_widget_eligible'] ?? ''), true); ?>> <?php esc_html_e('Widget eligible', 'affiliate-link-manager-ai'); ?></label>
+                </p>
             </div>
-        </details>
 
-        <details class="alma-geo-details">
-            <summary><?php esc_html_e('Campi tecnici', 'affiliate-link-manager-ai'); ?></summary>
-            <div class="alma-geo-grid">
-                <?php $this->render_input('_alma_geo_primary_canonical_name', __('Nome canonico', 'affiliate-link-manager-ai'), $display_values); ?>
-                <?php $this->render_input('_alma_geo_primary_country_code', __('Codice paese', 'affiliate-link-manager-ai'), $display_values); ?>
-                <?php $this->render_select('_alma_geo_import_status', __('Geo import status', 'affiliate-link-manager-ai'), $values, self::geo_import_statuses()); ?>
-                <?php $this->render_select('_alma_geo_geocoding_status', __('Stato geocoding meta', 'affiliate-link-manager-ai'), array_merge($values, array('_alma_geo_geocoding_status' => $effective_geocoding_status)), self::geocoding_statuses()); ?>
-                <?php $this->render_input('_alma_geo_source', __('Fonte dati', 'affiliate-link-manager-ai'), $values); ?>
-                <?php $this->render_input('_alma_geo_updated_at', __('Ultimo aggiornamento', 'affiliate-link-manager-ai'), $values, 'text', 'readonly'); ?>
-                <div class="alma-geo-field" style="grid-column:1/-1">
-                    <label for="alma_geo_suggested_geocoding_query"><?php esc_html_e('Query geocoding suggerita', 'affiliate-link-manager-ai'); ?></label>
-                    <input type="text" id="alma_geo_suggested_geocoding_query" name="alma_geo[suggested_geocoding_query]" value="<?php echo esc_attr($suggested_query); ?>">
+            <div class="alma-geo-section">
+                <h3><?php esc_html_e('Località associata', 'affiliate-link-manager-ai'); ?></h3>
+                <dl class="alma-geo-kv alma-geo-associated-location">
+                    <dt><?php esc_html_e('Località', 'affiliate-link-manager-ai'); ?></dt><dd data-alma-geo-display="_alma_geo_primary_name"><?php echo esc_html($display_values['_alma_geo_primary_name']); ?></dd>
+                    <dt><?php esc_html_e('Tipo', 'affiliate-link-manager-ai'); ?></dt><dd data-alma-geo-display="_alma_geo_primary_type"><?php echo esc_html($this->primary_type_label($display_values['_alma_geo_primary_type'])); ?></dd>
+                    <dt><?php esc_html_e('Paese', 'affiliate-link-manager-ai'); ?></dt><dd data-alma-geo-display="_alma_geo_primary_country"><?php echo esc_html($display_values['_alma_geo_primary_country']); ?></dd>
+                    <dt><?php esc_html_e('Codice paese', 'affiliate-link-manager-ai'); ?></dt><dd data-alma-geo-display="_alma_geo_primary_country_code"><?php echo esc_html($display_values['_alma_geo_primary_country_code']); ?></dd>
+                    <dt><?php esc_html_e('Regione', 'affiliate-link-manager-ai'); ?></dt><dd data-alma-geo-display="_alma_geo_primary_region"><?php echo esc_html($display_values['_alma_geo_primary_region']); ?></dd>
+                    <dt><?php esc_html_e('Città', 'affiliate-link-manager-ai'); ?></dt><dd data-alma-geo-display="_alma_geo_primary_city"><?php echo esc_html($display_values['_alma_geo_primary_city']); ?></dd>
+                    <dt><?php esc_html_e('Formatted address', 'affiliate-link-manager-ai'); ?></dt><dd data-alma-geo-display="_alma_geo_primary_formatted_address"><?php echo esc_html($formatted_address); ?></dd>
+                    <dt><?php esc_html_e('Coordinate', 'affiliate-link-manager-ai'); ?></dt><dd data-alma-geo-display="coordinates"><?php echo esc_html(trim((string) $lat . ', ' . (string) $lng, ', ')); ?></dd>
+                    <dt><?php esc_html_e('Place ID', 'affiliate-link-manager-ai'); ?></dt><dd data-alma-geo-display="_alma_geo_primary_place_id"><?php echo esc_html($place_id); ?></dd>
+                    <dt><?php esc_html_e('Provider', 'affiliate-link-manager-ai'); ?></dt><dd data-alma-geo-display="_alma_geo_provider"><?php echo esc_html($provider === 'google_maps' ? __('Google Maps', 'affiliate-link-manager-ai') : $provider); ?></dd>
+                </dl>
+                <div class="alma-geo-hidden-primary-fields">
+                    <?php $this->render_input('_alma_geo_primary_name', __('Nome località', 'affiliate-link-manager-ai'), $display_values, 'hidden'); ?>
+                    <?php $this->render_input('_alma_geo_primary_canonical_name', __('Nome canonico', 'affiliate-link-manager-ai'), $display_values, 'hidden'); ?>
+                    <?php $this->render_input('_alma_geo_primary_country', __('Paese', 'affiliate-link-manager-ai'), $display_values, 'hidden'); ?>
+                    <?php $this->render_input('_alma_geo_primary_country_code', __('Codice paese', 'affiliate-link-manager-ai'), $display_values, 'hidden'); ?>
+                    <?php $this->render_input('_alma_geo_primary_region', __('Regione', 'affiliate-link-manager-ai'), $display_values, 'hidden'); ?>
+                    <?php $this->render_input('_alma_geo_primary_city', __('Città', 'affiliate-link-manager-ai'), $display_values, 'hidden'); ?>
+                    <?php $this->render_input('_alma_geo_primary_area', __('Area', 'affiliate-link-manager-ai'), $display_values, 'hidden'); ?>
+                    <?php $this->render_input('_alma_geo_primary_poi', __('POI', 'affiliate-link-manager-ai'), $display_values, 'hidden'); ?>
+                    <?php $this->render_input('_alma_geo_primary_lat', __('Latitudine', 'affiliate-link-manager-ai'), $display_values, 'hidden'); ?>
+                    <?php $this->render_input('_alma_geo_primary_lng', __('Longitudine', 'affiliate-link-manager-ai'), $display_values, 'hidden'); ?>
+                    <?php $this->render_input('_alma_geo_primary_place_id', __('Place ID', 'affiliate-link-manager-ai'), $display_values, 'hidden'); ?>
+                    <?php $this->render_input('_alma_geo_provider', __('Provider geocoding', 'affiliate-link-manager-ai'), $display_values, 'hidden'); ?>
+                    <?php $this->render_input('_alma_geo_primary_provider', __('Provider primario', 'affiliate-link-manager-ai'), $display_values, 'hidden'); ?>
+                    <?php $this->render_input('_alma_geo_primary_formatted_address', __('Formatted address', 'affiliate-link-manager-ai'), $display_values, 'hidden'); ?>
                 </div>
             </div>
-            <?php $this->render_textarea('_alma_geo_quality_flags', __('Quality flags', 'affiliate-link-manager-ai'), $values, 3); ?>
-            <?php $this->render_textarea('_alma_geo_notes', __('Note interne', 'affiliate-link-manager-ai'), $values, 4); ?>
-        </details>
 
-        <details class="alma-geo-details">
-            <summary><?php esc_html_e('Località secondarie', 'affiliate-link-manager-ai'); ?></summary>
-            <?php $this->render_textarea('_alma_geo_locations_json', __('Località secondarie JSON', 'affiliate-link-manager-ai'), $values, 5); ?>
-        </details>
+            <details class="alma-geo-details">
+                <summary><?php esc_html_e('Campi avanzati', 'affiliate-link-manager-ai'); ?></summary>
+                <div class="alma-geo-grid">
+                    <?php $this->render_select('_alma_geo_content_type', __('Content type', 'affiliate-link-manager-ai'), $values, self::content_types()); ?>
+                    <?php $this->render_select('_alma_geo_commercial_intent', __('Commercial intent', 'affiliate-link-manager-ai'), $values, self::commercial_intents()); ?>
+                    <?php $this->render_select('_alma_geo_scope', __('Geo scope', 'affiliate-link-manager-ai'), $values, self::geo_scopes()); ?>
+                    <?php $this->render_input('_alma_geo_confidence', __('Confidence', 'affiliate-link-manager-ai'), $values, 'number', 'step="0.001" min="0" max="1"'); ?>
+                    <?php $this->render_input('_alma_geo_match_weight', __('Match weight', 'affiliate-link-manager-ai'), $values, 'number'); ?>
+                    <?php $this->render_input('_alma_geo_source', __('Fonte dati', 'affiliate-link-manager-ai'), $values); ?>
+                    <?php $this->render_select('_alma_geo_import_status', __('Stato import tecnico', 'affiliate-link-manager-ai'), $values, self::geo_import_statuses()); ?>
+                    <?php $this->render_select('_alma_geo_geocoding_status', __('Stato geocoding tecnico', 'affiliate-link-manager-ai'), array_merge($values, array('_alma_geo_geocoding_status' => $effective_geocoding_status)), self::geocoding_statuses()); ?>
+                    <?php $this->render_input('_alma_geo_primary_type', __('Tipo località tecnico', 'affiliate-link-manager-ai'), $display_values); ?>
+                    <?php $this->render_input('_alma_geo_updated_at', __('Ultimo aggiornamento', 'affiliate-link-manager-ai'), $values, 'text', 'readonly'); ?>
+                    <div class="alma-geo-field" style="grid-column:1/-1">
+                        <label for="alma_geo_suggested_geocoding_query"><?php esc_html_e('Query geocoding suggerita', 'affiliate-link-manager-ai'); ?></label>
+                        <input type="text" id="alma_geo_suggested_geocoding_query" name="alma_geo[suggested_geocoding_query]" value="<?php echo esc_attr($suggested_query); ?>">
+                    </div>
+                </div>
+                <?php $this->render_textarea('_alma_geo_quality_flags', __('Quality flags', 'affiliate-link-manager-ai'), $values, 3); ?>
+                <?php $this->render_textarea('_alma_geo_notes', __('Note interne', 'affiliate-link-manager-ai'), $values, 4); ?>
+                <?php $this->render_textarea('_alma_geo_locations_json', __('Località secondarie JSON', 'affiliate-link-manager-ai'), $values, 5); ?>
+            </details>
+        </div>
         <?php
     }
 
@@ -218,16 +285,17 @@ class ALMA_Geo_Index_Metabox {
                 'poi' => $data['_alma_geo_primary_poi'],
                 'lat' => $data['_alma_geo_primary_lat'],
                 'lng' => $data['_alma_geo_primary_lng'],
-                'geo_provider' => $data['_alma_geo_provider'],
+                'geo_provider' => $data['_alma_geo_provider'] ?: $data['_alma_geo_primary_provider'],
                 'geo_provider_place_id' => $data['_alma_geo_primary_place_id'],
                 'suggested_geocoding_query' => $data['suggested_geocoding_query'] ?? '',
                 'geocoding_status' => $data['_alma_geo_geocoding_status'],
+                'formatted_address' => $data['_alma_geo_primary_formatted_address'],
             ));
         }
 
         $this->store->upsert_content_index($post_id, $post_type, $location_id, array(
             'is_primary' => 1,
-            'role' => 'primary',
+            'role' => 'main_destination',
             'geo_scope' => $data['_alma_geo_scope'],
             'content_type' => $data['_alma_geo_content_type'],
             'commercial_intent' => $data['_alma_geo_commercial_intent'],
@@ -289,7 +357,7 @@ class ALMA_Geo_Index_Metabox {
     public static function primary_types() { return array('continent','country','region','city','area','island','poi','airport','port','route','unknown'); }
     public static function content_types() { return array('destination_guide','country_guide','region_guide','city_guide','area_guide','poi_guide','itinerary','itinerary_multi_location','cruise_ship','cruise_company','travel_advice','honeymoon','informational','generic_travel','non_travel','uncertain'); }
     public static function commercial_intents() { return array('high','medium','low','none'); }
-    public static function geo_import_statuses() { return array('active','ready','review','discard','needs_geocoding','geocoding_failed'); }
+    public static function geo_import_statuses() { return array('imported','active','ready','review','discard','needs_geocoding','geocoding_failed'); }
     public static function geocoding_statuses() { return array('pending','verified','ambiguous','manual_required','failed','not_required'); }
 
 
@@ -326,6 +394,35 @@ class ALMA_Geo_Index_Metabox {
     }
 
 
+
+    private function apply_new_post_defaults($post_id, $values) {
+        if (!metadata_exists('post', $post_id, '_alma_geo_enabled')) {
+            $values['_alma_geo_enabled'] = 'yes';
+        }
+        if (!metadata_exists('post', $post_id, '_alma_geo_widget_eligible')) {
+            $values['_alma_geo_widget_eligible'] = 'yes';
+        }
+        return $values;
+    }
+
+    private function primary_type_label($type) {
+        $labels = array(
+            'continent' => __('Continente', 'affiliate-link-manager-ai'),
+            'country' => __('Paese', 'affiliate-link-manager-ai'),
+            'region' => __('Regione', 'affiliate-link-manager-ai'),
+            'city' => __('Città', 'affiliate-link-manager-ai'),
+            'area' => __('Area', 'affiliate-link-manager-ai'),
+            'island' => __('Isola', 'affiliate-link-manager-ai'),
+            'poi' => __('Punto di interesse', 'affiliate-link-manager-ai'),
+            'airport' => __('Aeroporto', 'affiliate-link-manager-ai'),
+            'port' => __('Porto', 'affiliate-link-manager-ai'),
+            'route' => __('Itinerario', 'affiliate-link-manager-ai'),
+            'unknown' => __('Sconosciuto', 'affiliate-link-manager-ai'),
+        );
+        $type = sanitize_key($type);
+        return $labels[$type] ?? $type;
+    }
+
     private function render_record_status_badge($value) {
         $active = $this->is_yes($value);
         $label = $active ? __('Attivo', 'affiliate-link-manager-ai') : __('Non attivo', 'affiliate-link-manager-ai');
@@ -335,7 +432,7 @@ class ALMA_Geo_Index_Metabox {
 
     private function render_import_status_badge($status) {
         $status = sanitize_key($status);
-        $class = in_array($status, array('active', 'ready', 'needs_geocoding'), true) ? 'alma-geo-badge-active' : 'alma-geo-badge-inactive';
+        $class = in_array($status, array('imported', 'active', 'ready', 'needs_geocoding'), true) ? 'alma-geo-badge-active' : 'alma-geo-badge-inactive';
         return '<span class="alma-geo-badge ' . esc_attr($class) . '">' . esc_html(self::import_status_label($status)) . '</span>';
     }
 
@@ -376,6 +473,7 @@ class ALMA_Geo_Index_Metabox {
 
     public static function import_status_label($status) {
         $labels = array(
+            'imported' => __('Importato', 'affiliate-link-manager-ai'),
             'active' => __('Importato', 'affiliate-link-manager-ai'),
             'ready' => __('Importato', 'affiliate-link-manager-ai'),
             'needs_geocoding' => __('Importato', 'affiliate-link-manager-ai'),

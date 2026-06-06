@@ -1,4 +1,5 @@
 ## Unreleased
+- Il metabox **Geolocalizzazione contenuto** ora apre con **Cerca e associa località**, usa Google Maps server-side via AJAX admin protetto e compila automaticamente stato, località primaria, coordinate, Place ID e campi Geo Index al salvataggio.
 
 ### Indice Geografico — sincronizzazione geocoding
 - Le località `verified` sincronizzano i dati geocoding sui contenuti primari collegati tramite `alma_geo_content_index`, mantenendo compatibilità con i meta `_alma_geo_*` esistenti.
