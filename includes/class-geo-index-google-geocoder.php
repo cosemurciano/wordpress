@@ -58,7 +58,7 @@ class ALMA_Geo_Index_Google_Geocoder {
             return $result;
         }
         $results = array();
-        foreach (array_slice($result['results'] ?? array(), 0, 5) as $item) {
+        foreach (array_slice($result['results'] ?? array(), 0, 10) as $item) {
             $results[] = $this->normalize_location_result($item);
         }
         $result['results'] = $results;
@@ -128,9 +128,9 @@ class ALMA_Geo_Index_Google_Geocoder {
         }
 
         return array(
-            'success' => $status === 'OK',
+            'success' => in_array($status, array('OK', 'ZERO_RESULTS'), true),
             'status' => $status,
-            'message' => sanitize_text_field($data['error_message'] ?? ($status === 'OK' ? '' : sprintf(__('Google Geocoding status: %s.', 'affiliate-link-manager-ai'), $status))),
+            'message' => sanitize_text_field($data['error_message'] ?? ($status === 'ZERO_RESULTS' ? __('Nessun luogo trovato.', 'affiliate-link-manager-ai') : ($status === 'OK' ? '' : sprintf(__('Google Geocoding status: %s.', 'affiliate-link-manager-ai'), $status)))),
             'results' => $normalized_results,
             'raw_status' => $status,
         );
@@ -162,19 +162,25 @@ class ALMA_Geo_Index_Google_Geocoder {
         if (in_array('airport', $types, true)) {
             return 'airport';
         }
+        if (in_array('port', $types, true) || in_array('transit_station', $types, true)) {
+            return 'port';
+        }
         if (in_array('route', $types, true)) {
             return 'route';
         }
-        if (in_array('natural_feature', $types, true) || in_array('neighborhood', $types, true) || in_array('sublocality', $types, true)) {
-            return 'area';
-        }
-        if (in_array('tourist_attraction', $types, true) || in_array('point_of_interest', $types, true) || in_array('establishment', $types, true)) {
+        if (array_intersect($types, array('tourist_attraction', 'point_of_interest', 'establishment', 'museum', 'church', 'stadium'))) {
             return 'poi';
+        }
+        if (in_array('park', $types, true) || in_array('natural_feature', $types, true) || in_array('neighborhood', $types, true) || in_array('sublocality', $types, true)) {
+            return 'area';
         }
         return 'unknown';
     }
 
     private function default_geo_scope_for_type($type) {
+        if ($type === 'route') {
+            return 'itinerary_multi_location';
+        }
         return in_array($type, array('country', 'region', 'city', 'area', 'poi'), true) ? $type : 'uncertain';
     }
 
@@ -185,6 +191,7 @@ class ALMA_Geo_Index_Google_Geocoder {
             'city' => 'city_guide',
             'area' => 'area_guide',
             'poi' => 'poi_guide',
+            'route' => 'itinerary',
         );
         return $map[$type] ?? 'destination_guide';
     }
@@ -192,7 +199,7 @@ class ALMA_Geo_Index_Google_Geocoder {
     private function extract_name($components, $fallback) {
         foreach ($components as $component) {
             $types = is_array($component['types'] ?? null) ? $component['types'] : array();
-            if (in_array('point_of_interest', $types, true) || in_array('establishment', $types, true) || in_array('tourist_attraction', $types, true)) {
+            if (array_intersect($types, array('point_of_interest', 'establishment', 'tourist_attraction', 'museum', 'church', 'stadium'))) {
                 return sanitize_text_field($component['long_name'] ?? $fallback);
             }
         }

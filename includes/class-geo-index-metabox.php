@@ -56,7 +56,9 @@ class ALMA_Geo_Index_Metabox {
                     'emptyLocations' => __('Nessuna località associata.', 'affiliate-link-manager-ai'),
                     'remove' => __('Rimuovi', 'affiliate-link-manager-ai'),
                     'main' => __('Principale', 'affiliate-link-manager-ai'),
+                    'hideSearchResult' => __('Nascondi questo risultato di ricerca', 'affiliate-link-manager-ai'),
                 ),
+                'roleLabels' => ALMA_Geo_Index_Store::get_location_role_labels(),
                 'maxLocations' => self::MAX_ASSOCIATED_LOCATIONS,
             ));
         }
@@ -90,7 +92,7 @@ class ALMA_Geo_Index_Metabox {
         if (empty($result['success'])) {
             wp_send_json_error(array('message' => sanitize_text_field($result['message'] ?? __('Errore durante la ricerca località.', 'affiliate-link-manager-ai'))), 500);
         }
-        $results = array_slice(is_array($result['results'] ?? null) ? $result['results'] : array(), 0, 5);
+        $results = array_slice(is_array($result['results'] ?? null) ? $result['results'] : array(), 0, self::MAX_ASSOCIATED_LOCATIONS);
         if (empty($results)) {
             wp_send_json_success(array('results' => array(), 'message' => __('Nessun luogo trovato.', 'affiliate-link-manager-ai')));
         }
@@ -230,7 +232,7 @@ class ALMA_Geo_Index_Metabox {
                 </div>
                 <?php $this->render_textarea('_alma_geo_quality_flags', __('Quality flags', 'affiliate-link-manager-ai'), $values, 3); ?>
                 <?php $this->render_textarea('_alma_geo_notes', __('Note interne', 'affiliate-link-manager-ai'), $values, 4); ?>
-                <?php $this->render_textarea('_alma_geo_locations_json', __('JSON tecnico località', 'affiliate-link-manager-ai'), $values, 5); ?>
+                <?php $this->render_textarea('_alma_geo_locations_json', __('JSON tecnico località', 'affiliate-link-manager-ai'), $values, 5, 'readonly'); ?>
             </details>
         </div>
         <?php
@@ -282,6 +284,7 @@ class ALMA_Geo_Index_Metabox {
                 'content_type' => $data['_alma_geo_content_type'],
                 'commercial_intent' => $data['_alma_geo_commercial_intent'],
                 'widget_eligible' => $data['_alma_geo_widget_eligible'],
+                'derive_from_primary' => true,
             ), 'manual_google_search');
             foreach (self::meta_keys() as $key) {
                 if (!array_key_exists($key, $result['meta'] ?? array())) {
@@ -441,8 +444,23 @@ class ALMA_Geo_Index_Metabox {
     private function get_associated_locations($post_id, $post_type, $display_values) {
         $locations = $this->store->get_associated_locations_for_object($post_id, $post_type);
         if (!empty($locations)) {
-            return $locations;
+            return $this->store->normalize_associated_locations(array_slice($locations, 0, self::MAX_ASSOCIATED_LOCATIONS), 'manual_google_search');
         }
+
+        $decoded = json_decode((string) ($display_values['_alma_geo_locations_json'] ?? ''), true);
+        if (is_array($decoded) && !empty($decoded)) {
+            $json_locations = array();
+            foreach (array_slice($decoded, 0, self::MAX_ASSOCIATED_LOCATIONS) as $location) {
+                if (is_array($location)) {
+                    $json_locations[] = $this->store->format_location_for_json($location);
+                }
+            }
+            $json_locations = $this->store->normalize_associated_locations($json_locations, 'manual_google_search');
+            if (!empty($json_locations)) {
+                return $json_locations;
+            }
+        }
+
         $locations = array();
         if (!empty($display_values['_alma_geo_primary_name']) || !empty($display_values['_alma_geo_primary_place_id'])) {
             $locations[] = array(
@@ -469,17 +487,7 @@ class ALMA_Geo_Index_Metabox {
                 'match_weight' => 100,
             );
         }
-        $decoded = json_decode((string) ($display_values['_alma_geo_locations_json'] ?? ''), true);
-        if (is_array($decoded)) {
-            foreach ($decoded as $secondary) {
-                if (is_array($secondary)) {
-                    $secondary['is_primary'] = false;
-                    $secondary['role'] = sanitize_key($secondary['role'] ?? 'major_destination');
-                    $locations[] = $this->store->format_location_for_json($secondary);
-                }
-            }
-        }
-        return $this->store->normalize_associated_locations($locations, 'manual');
+        return $this->store->normalize_associated_locations($locations, 'manual_google_search');
     }
 
     private function sanitize_associated_locations($json) {
@@ -492,7 +500,7 @@ class ALMA_Geo_Index_Metabox {
             return array();
         }
         $locations = array();
-        foreach ($decoded as $location) {
+        foreach (array_slice($decoded, 0, self::MAX_ASSOCIATED_LOCATIONS) as $location) {
             if (is_array($location)) {
                 $locations[] = $this->store->format_location_for_json($location);
             }
@@ -609,8 +617,8 @@ class ALMA_Geo_Index_Metabox {
         printf('<div class="alma-geo-field"><label for="%1$s">%2$s</label><input type="%3$s" id="%1$s" name="alma_geo[%1$s]" value="%4$s" %5$s></div>', esc_attr($key), esc_html($label), esc_attr($type), esc_attr($values[$key] ?? ''), $attrs);
     }
 
-    private function render_textarea($key, $label, $values, $rows = 4) {
-        printf('<div class="alma-geo-field"><label for="%1$s">%2$s</label><textarea id="%1$s" name="alma_geo[%1$s]" rows="%3$d">%4$s</textarea></div>', esc_attr($key), esc_html($label), absint($rows), esc_textarea($values[$key] ?? ''));
+    private function render_textarea($key, $label, $values, $rows = 4, $attrs = '') {
+        printf('<div class="alma-geo-field"><label for="%1$s">%2$s</label><textarea id="%1$s" name="alma_geo[%1$s]" rows="%3$d" %5$s>%4$s</textarea></div>', esc_attr($key), esc_html($label), absint($rows), esc_textarea($values[$key] ?? ''), $attrs);
     }
 
     private function render_select($key, $label, $values, $options) {

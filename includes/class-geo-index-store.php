@@ -325,8 +325,9 @@ class ALMA_Geo_Index_Store {
             }
         }
 
-        $geo_scope = sanitize_key($geo_data['geo_scope'] ?? ($primary ? $this->default_geo_scope_for_type($primary['type']) : 'uncertain'));
-        $content_type = sanitize_key($geo_data['content_type'] ?? ($primary ? $this->default_content_type_for_type($primary['type']) : 'uncertain'));
+        $derive_from_primary = !empty($geo_data['derive_from_primary']);
+        $geo_scope = $derive_from_primary && $primary ? $this->default_geo_scope_for_type($primary['type']) : sanitize_key($geo_data['geo_scope'] ?? ($primary ? $this->default_geo_scope_for_type($primary['type']) : 'uncertain'));
+        $content_type = $derive_from_primary && $primary ? $this->default_content_type_for_type($primary['type']) : sanitize_key($geo_data['content_type'] ?? ($primary ? $this->default_content_type_for_type($primary['type']) : 'uncertain'));
         $commercial_intent = sanitize_key($geo_data['commercial_intent'] ?? 'none');
         $widget_eligible = !empty($geo_data['widget_eligible']) && !in_array((string) $geo_data['widget_eligible'], array('no', '0', 'false', 'off'), true);
         $now = current_time('mysql');
@@ -452,6 +453,7 @@ class ALMA_Geo_Index_Store {
         $place_id = sanitize_text_field($location['geo_provider_place_id'] ?? ($location['place_id'] ?? ''));
         $is_primary = !empty($location['is_primary']) && !in_array((string) $location['is_primary'], array('0', 'no', 'false', 'off'), true);
         return array(
+            'local_id' => sanitize_text_field($location['local_id'] ?? ''),
             'location_id' => absint($location['location_id'] ?? ($location['id'] ?? 0)),
             'name' => sanitize_text_field($location['name'] ?? ($location['canonical_name'] ?? '')),
             'canonical_name' => sanitize_text_field($location['canonical_name'] ?? ($location['name'] ?? '')),
@@ -476,6 +478,18 @@ class ALMA_Geo_Index_Store {
         );
     }
 
+    public static function get_location_role_labels() {
+        return array(
+            'main_destination' => __('Località principale', 'affiliate-link-manager-ai'),
+            'major_destination' => __('Località importante', 'affiliate-link-manager-ai'),
+            'mentioned_destination' => __('Località citata', 'affiliate-link-manager-ai'),
+            'excursion' => __('Escursione', 'affiliate-link-manager-ai'),
+            'nearby_place' => __('Luogo vicino', 'affiliate-link-manager-ai'),
+            'route_stop' => __('Tappa itinerario', 'affiliate-link-manager-ai'),
+            'context_only' => __('Solo contesto', 'affiliate-link-manager-ai'),
+        );
+    }
+
     private function default_match_weight_for_role($role) {
         $weights = array(
             'main_destination' => 100,
@@ -491,11 +505,14 @@ class ALMA_Geo_Index_Store {
     }
 
     private function default_geo_scope_for_type($type) {
+        if ($type === 'route') {
+            return 'itinerary_multi_location';
+        }
         return in_array($type, array('country', 'region', 'city', 'area', 'poi'), true) ? $type : 'uncertain';
     }
 
     private function default_content_type_for_type($type) {
-        $map = array('country' => 'country_guide', 'region' => 'region_guide', 'city' => 'city_guide', 'area' => 'area_guide', 'poi' => 'poi_guide');
+        $map = array('country' => 'country_guide', 'region' => 'region_guide', 'city' => 'city_guide', 'area' => 'area_guide', 'poi' => 'poi_guide', 'route' => 'itinerary');
         return $map[$type] ?? 'destination_guide';
     }
 

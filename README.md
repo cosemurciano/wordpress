@@ -1,4 +1,5 @@
 ## Unreleased
+- Il metabox **Geolocalizzazione contenuto** mantiene ora un JSON hidden sincronizzato dalla lista visuale, ripopola le località associate dopo il salvataggio, include POI come musei/attrazioni nei risultati Google, consente di nascondere singoli risultati ricerca e mostra ruoli località in italiano.
 - Il metabox **Geolocalizzazione contenuto** sostituisce il JSON visibile delle località con una lista visuale di località associate: ricerca Google Maps, pulsante **Associa luogo**, radio per una sola località principale, ruoli sulle secondarie e persistenza in `alma_geo_locations`, `alma_geo_content_index` e `_alma_geo_locations_json` tecnico.
 - Il metabox **Geolocalizzazione contenuto** ora apre con **Cerca e associa località**, usa Google Maps server-side via AJAX admin protetto e compila automaticamente stato, località primaria, coordinate, Place ID e campi Geo Index al salvataggio.
 
