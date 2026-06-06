@@ -1064,31 +1064,48 @@ class AffiliateManagerAI {
      * Mantiene il redirect standard di WordPress dopo aggiornamento Link Affiliato.
      */
     public function normalize_affiliate_link_update_redirect($location, $post_id) {
-        $post_id = absint($post_id ?: ($_POST['post_ID'] ?? 0));
-        if (!$post_id) {
+        if ((function_exists('wp_doing_ajax') && wp_doing_ajax()) || (defined('DOING_AUTOSAVE') && DOING_AUTOSAVE)) {
             return $location;
         }
-        $post = get_post($post_id);
-        if (!$post || $post->post_type !== 'affiliate_link') {
+
+        $post_id = absint($post_id);
+        if (!$post_id && isset($_POST['post_ID'])) {
+            $post_id = absint(wp_unslash($_POST['post_ID']));
+        }
+        if (!$post_id && isset($_REQUEST['post'])) {
+            $post_id = absint(wp_unslash($_REQUEST['post']));
+        }
+        if (!$post_id || wp_is_post_autosave($post_id) || wp_is_post_revision($post_id)) {
+            return $location;
+        }
+        if (get_post_type($post_id) !== 'affiliate_link') {
+            return $location;
+        }
+
+        $request_action = isset($_REQUEST['action']) ? sanitize_key(wp_unslash($_REQUEST['action'])) : '';
+        $request_action2 = isset($_REQUEST['action2']) ? sanitize_key(wp_unslash($_REQUEST['action2'])) : '';
+        $blocked_actions = array('trash', 'delete', 'delete_all', 'untrash', 'bulk_edit', 'inline-save');
+        if (in_array($request_action, $blocked_actions, true) || in_array($request_action2, $blocked_actions, true)) {
+            return $location;
+        }
+        if ($request_action !== '' && $request_action !== 'editpost') {
+            return $location;
+        }
+        if (!$this->is_affiliate_link_post_php_update_request()) {
             return $location;
         }
 
         $parts = wp_parse_url($location);
-        $path = isset($parts['path']) ? basename($parts['path']) : '';
-        if ($path !== 'edit.php') {
-            return $location;
-        }
-
         $query_args = array();
         if (!empty($parts['query'])) {
             wp_parse_str($parts['query'], $query_args);
         }
-        if (($query_args['post_type'] ?? '') === 'affiliate_link') {
-            return $location;
+        $message = isset($query_args['message']) ? absint($query_args['message']) : 1;
+        if (!$message) {
+            $message = 1;
         }
 
-        $message = isset($query_args['message']) ? absint($query_args['message']) : 1;
-        return add_query_arg(
+        $redirect = add_query_arg(
             array(
                 'post' => $post_id,
                 'action' => 'edit',
@@ -1096,6 +1113,68 @@ class AffiliateManagerAI {
             ),
             admin_url('post.php')
         );
+        if ($this->affiliate_link_update_requested_classic_editor() && strpos($redirect, 'classic-editor') === false) {
+            $redirect .= (strpos($redirect, '?') === false ? '?' : '&') . 'classic-editor';
+        }
+
+        // Diagnostic-only normalization: prevents Geo Index/admin hooks from sending affiliate_link updates to edit.php.
+        if (class_exists('ALMA_Logger')) {
+            ALMA_Logger::debug('Normalized affiliate_link update redirect.', array(
+                'post_id' => $post_id,
+                'from' => $location,
+                'to' => $redirect,
+                'request_action' => $request_action,
+            ));
+        }
+
+        return $redirect;
+    }
+
+    private function is_affiliate_link_post_php_update_request() {
+        $paths = array();
+        if (!empty($_SERVER['REQUEST_URI'])) {
+            $request_path = wp_parse_url(wp_unslash($_SERVER['REQUEST_URI']), PHP_URL_PATH);
+            if ($request_path) {
+                $paths[] = basename($request_path);
+            }
+        }
+        foreach (array('_wp_http_referer', 'HTTP_REFERER') as $key) {
+            $value = $key === 'HTTP_REFERER' ? ($_SERVER[$key] ?? '') : ($_REQUEST[$key] ?? '');
+            if ($value === '') {
+                continue;
+            }
+            $referer_path = wp_parse_url(wp_unslash($value), PHP_URL_PATH);
+            if ($referer_path) {
+                $paths[] = basename($referer_path);
+            }
+        }
+
+        return in_array('post.php', $paths, true);
+    }
+
+    private function affiliate_link_update_requested_classic_editor() {
+        if (isset($_REQUEST['classic-editor'])) {
+            return true;
+        }
+
+        foreach (array('_wp_http_referer', 'HTTP_REFERER') as $key) {
+            $value = $key === 'HTTP_REFERER' ? ($_SERVER[$key] ?? '') : ($_REQUEST[$key] ?? '');
+            if ($value === '') {
+                continue;
+            }
+            $value = wp_unslash($value);
+            $query = wp_parse_url($value, PHP_URL_QUERY);
+            if ($query === false || $query === null) {
+                continue;
+            }
+            $query_args = array();
+            wp_parse_str($query, $query_args);
+            if (array_key_exists('classic-editor', $query_args) || strpos($query, 'classic-editor') !== false) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function get_affiliate_link_export_counts() {
