@@ -220,10 +220,11 @@ class ALMA_Geo_Index_Store {
 
         $existing_id = $wpdb->get_var(
             $wpdb->prepare(
-                "SELECT id FROM {$this->table_content_index()} WHERE object_id = %d AND object_type = %s AND is_primary = %d LIMIT 1",
+                "SELECT id FROM {$this->table_content_index()} WHERE object_id = %d AND object_type = %s AND is_primary = %d AND (is_primary = 1 OR location_id <=> %d) LIMIT 1",
                 $object_id,
                 $object_type,
-                $row['is_primary']
+                $row['is_primary'],
+                $row['location_id']
             )
         );
 
@@ -238,93 +239,255 @@ class ALMA_Geo_Index_Store {
         return (int) $wpdb->insert_id;
     }
 
+    public function get_associated_locations_for_object($object_id, $object_type) {
+        global $wpdb;
+        $object_id = absint($object_id);
+        $object_type = sanitize_key($object_type);
+        if (!$object_id || $object_type === '' || !$this->tables_exist()) {
+            return array();
+        }
+        $rows = $wpdb->get_results(
+            $wpdb->prepare(
+                "SELECT ci.id AS content_index_id, ci.is_primary, ci.role, ci.geo_scope, ci.content_type, ci.commercial_intent, ci.widget_eligible, ci.confidence, ci.match_weight, ci.source, ci.raw_payload, l.*
+                 FROM {$this->table_content_index()} ci
+                 LEFT JOIN {$this->table_locations()} l ON l.id = ci.location_id
+                 WHERE ci.object_id = %d AND ci.object_type = %s
+                 ORDER BY ci.is_primary DESC, ci.id ASC",
+                $object_id,
+                $object_type
+            ),
+            ARRAY_A
+        );
+        $locations = array();
+        foreach ($rows as $row) {
+            $payload = json_decode((string) ($row['raw_payload'] ?? ''), true);
+            $payload_location = is_array($payload) && is_array($payload['location'] ?? null) ? $payload['location'] : array();
+            $locations[] = $this->format_location_for_json(array_merge($payload_location, array(
+                'location_id' => (int) ($row['id'] ?? 0),
+                'name' => $payload_location['name'] ?? ($row['canonical_name'] ?? ''),
+                'canonical_name' => $row['canonical_name'] ?? ($payload_location['canonical_name'] ?? ''),
+                'type' => $row['type'] ?? ($payload_location['type'] ?? 'unknown'),
+                'country' => $row['country'] ?? ($payload_location['country'] ?? ''),
+                'country_code' => $row['country_code'] ?? ($payload_location['country_code'] ?? ''),
+                'region' => $row['region'] ?? ($payload_location['region'] ?? ''),
+                'city' => $row['city'] ?? ($payload_location['city'] ?? ''),
+                'area' => $row['area'] ?? ($payload_location['area'] ?? ''),
+                'poi' => $row['poi'] ?? ($payload_location['poi'] ?? ''),
+                'lat' => $row['lat'] ?? ($payload_location['lat'] ?? ''),
+                'lng' => $row['lng'] ?? ($payload_location['lng'] ?? ''),
+                'geo_provider' => $row['geo_provider'] ?? ($payload_location['geo_provider'] ?? ''),
+                'geo_provider_place_id' => $row['geo_provider_place_id'] ?? ($payload_location['geo_provider_place_id'] ?? ''),
+                'formatted_address' => $row['formatted_address'] ?? ($payload_location['formatted_address'] ?? ''),
+                'geocoding_status' => $row['geocoding_status'] ?? ($payload_location['geocoding_status'] ?? 'pending'),
+                'role' => $row['is_primary'] ? 'main_destination' : sanitize_key($row['role'] ?? 'major_destination'),
+                'is_primary' => !empty($row['is_primary']),
+                'source' => $row['source'] ?? ($payload_location['source'] ?? ''),
+                'confidence' => $row['confidence'] ?? ($payload_location['confidence'] ?? ''),
+                'match_weight' => $row['match_weight'] ?? ($payload_location['match_weight'] ?? ''),
+            )));
+        }
+        return $locations;
+    }
+
     public function save_geo_meta_for_object($object_id, $object_type, $geo_data, $source = 'manual') {
+        global $wpdb;
         $object_id = absint($object_id);
         $object_type = sanitize_key($object_type);
         $geo_data = is_array($geo_data) ? $geo_data : array();
-        $primary = is_array($geo_data['primary_location'] ?? null) ? $geo_data['primary_location'] : array();
-        if (!$object_id || $object_type === '' || empty($primary)) {
-            return array('location_id' => 0, 'content_index_id' => 0);
+        if (!$object_id || $object_type === '') {
+            return array('location_id' => 0, 'content_index_id' => 0, 'locations' => array(), 'meta' => array());
         }
         if (!$this->tables_exist()) {
             $this->install_tables();
         }
 
-        $type = sanitize_key($primary['type'] ?? 'unknown');
-        $geo_scope = sanitize_key($geo_data['geo_scope'] ?? $this->default_geo_scope_for_type($type));
-        $content_type = sanitize_key($geo_data['content_type'] ?? $this->default_content_type_for_type($type));
-        $commercial_intent = sanitize_key($geo_data['commercial_intent'] ?? 'high');
-        $widget_eligible = !empty($geo_data['widget_eligible']) && !in_array((string) $geo_data['widget_eligible'], array('no', '0', 'false', 'off'), true);
-        $confidence = isset($geo_data['confidence']) ? (float) $geo_data['confidence'] : 1;
-        $match_weight = isset($geo_data['match_weight']) ? (int) $geo_data['match_weight'] : 100;
-        $geocoding_status = sanitize_key($geo_data['geocoding_status'] ?? ($primary['geocoding_status'] ?? 'verified'));
+        $locations = array();
+        if (!empty($geo_data['locations']) && is_array($geo_data['locations'])) {
+            $locations = $geo_data['locations'];
+        } elseif (!empty($geo_data['primary_location']) && is_array($geo_data['primary_location'])) {
+            $locations[] = array_merge($geo_data['primary_location'], array('is_primary' => true));
+            if (!empty($geo_data['secondary_locations']) && is_array($geo_data['secondary_locations'])) {
+                foreach ($geo_data['secondary_locations'] as $secondary) {
+                    if (is_array($secondary)) {
+                        $locations[] = array_merge($secondary, array('is_primary' => false));
+                    }
+                }
+            }
+        }
+
         $source = sanitize_text_field($source);
+        $locations = $this->normalize_associated_locations($locations, $source);
+        $primary = null;
+        foreach ($locations as $location) {
+            if (!empty($location['is_primary'])) {
+                $primary = $location;
+                break;
+            }
+        }
+
+        $geo_scope = sanitize_key($geo_data['geo_scope'] ?? ($primary ? $this->default_geo_scope_for_type($primary['type']) : 'uncertain'));
+        $content_type = sanitize_key($geo_data['content_type'] ?? ($primary ? $this->default_content_type_for_type($primary['type']) : 'uncertain'));
+        $commercial_intent = sanitize_key($geo_data['commercial_intent'] ?? 'none');
+        $widget_eligible = !empty($geo_data['widget_eligible']) && !in_array((string) $geo_data['widget_eligible'], array('no', '0', 'false', 'off'), true);
         $now = current_time('mysql');
+        $updated_locations = array();
+        $primary_location_id = 0;
+        $primary_content_index_id = 0;
+
+        $this->delete_content_index_for_object($object_id, $object_type);
+        foreach ($locations as $location) {
+            $location_id = $this->upsert_location(array(
+                'canonical_name' => $location['canonical_name'] ?: $location['name'],
+                'type' => $location['type'],
+                'country' => $location['country'],
+                'country_code' => $location['country_code'],
+                'region' => $location['region'],
+                'city' => $location['city'],
+                'area' => $location['area'],
+                'poi' => $location['poi'],
+                'lat' => $location['lat'],
+                'lng' => $location['lng'],
+                'geo_provider' => $location['geo_provider'],
+                'geo_provider_place_id' => $location['geo_provider_place_id'],
+                'suggested_geocoding_query' => $location['suggested_geocoding_query'] ?? '',
+                'geocoding_status' => $location['geocoding_status'],
+                'formatted_address' => $location['formatted_address'],
+                'address_components' => $location['address_components'] ?? null,
+                'geocoded_at' => $location['geocoding_status'] === 'verified' ? $now : '',
+            ));
+            $location['location_id'] = $location_id;
+            $location['match_weight'] = !empty($location['is_primary']) ? 100 : $this->default_match_weight_for_role($location['role']);
+            $content_index_id = $this->upsert_content_index($object_id, $object_type, $location_id, array(
+                'is_primary' => !empty($location['is_primary']) ? 1 : 0,
+                'role' => $location['role'],
+                'geo_scope' => $geo_scope,
+                'content_type' => $content_type,
+                'commercial_intent' => $commercial_intent,
+                'widget_eligible' => $widget_eligible,
+                'confidence' => $location['confidence'],
+                'match_weight' => $location['match_weight'],
+                'source' => $location['source'] ?: $source,
+                'raw_payload' => array('location' => $location),
+            ));
+            if (!empty($location['is_primary'])) {
+                $primary_location_id = $location_id;
+                $primary_content_index_id = $content_index_id;
+                $primary = $location;
+            }
+            $updated_locations[] = $this->format_location_for_json($location);
+        }
 
         $meta = array(
-            '_alma_geo_enabled' => 'yes',
+            '_alma_geo_enabled' => $primary ? 'yes' : 'no',
             '_alma_geo_widget_eligible' => $widget_eligible ? 'yes' : 'no',
-            '_alma_geo_import_status' => 'imported',
-            '_alma_geo_geocoding_status' => $geocoding_status,
+            '_alma_geo_import_status' => $primary ? 'imported' : 'review',
+            '_alma_geo_geocoding_status' => $primary ? $primary['geocoding_status'] : 'pending',
             '_alma_geo_scope' => $geo_scope,
             '_alma_geo_content_type' => $content_type,
             '_alma_geo_commercial_intent' => $commercial_intent,
-            '_alma_geo_primary_name' => sanitize_text_field($primary['name'] ?? ($primary['canonical_name'] ?? '')),
-            '_alma_geo_primary_canonical_name' => sanitize_text_field($primary['canonical_name'] ?? ($primary['name'] ?? '')),
-            '_alma_geo_primary_type' => $type,
-            '_alma_geo_primary_country' => sanitize_text_field($primary['country'] ?? ''),
-            '_alma_geo_primary_country_code' => strtoupper(sanitize_text_field($primary['country_code'] ?? '')),
-            '_alma_geo_primary_region' => sanitize_text_field($primary['region'] ?? ''),
-            '_alma_geo_primary_city' => sanitize_text_field($primary['city'] ?? ''),
-            '_alma_geo_primary_area' => sanitize_text_field($primary['area'] ?? ''),
-            '_alma_geo_primary_poi' => sanitize_text_field($primary['poi'] ?? ''),
-            '_alma_geo_primary_lat' => isset($primary['lat']) && $primary['lat'] !== '' ? (string) (float) $primary['lat'] : '',
-            '_alma_geo_primary_lng' => isset($primary['lng']) && $primary['lng'] !== '' ? (string) (float) $primary['lng'] : '',
-            '_alma_geo_primary_place_id' => sanitize_text_field($primary['place_id'] ?? ($primary['geo_provider_place_id'] ?? '')),
-            '_alma_geo_provider' => sanitize_key($primary['provider'] ?? ($primary['geo_provider'] ?? 'google_maps')),
-            '_alma_geo_primary_provider' => sanitize_key($primary['provider'] ?? ($primary['geo_provider'] ?? 'google_maps')),
-            '_alma_geo_primary_formatted_address' => sanitize_text_field($primary['formatted_address'] ?? ''),
-            '_alma_geo_confidence' => (string) min(1, max(0, $confidence)),
-            '_alma_geo_match_weight' => (string) $match_weight,
-            '_alma_geo_locations_json' => isset($geo_data['secondary_locations']) ? wp_json_encode($geo_data['secondary_locations']) : '',
-            '_alma_geo_source' => $source,
+            '_alma_geo_primary_name' => $primary['name'] ?? '',
+            '_alma_geo_primary_canonical_name' => $primary['canonical_name'] ?? ($primary['name'] ?? ''),
+            '_alma_geo_primary_type' => $primary['type'] ?? 'unknown',
+            '_alma_geo_primary_country' => $primary['country'] ?? '',
+            '_alma_geo_primary_country_code' => $primary['country_code'] ?? '',
+            '_alma_geo_primary_region' => $primary['region'] ?? '',
+            '_alma_geo_primary_city' => $primary['city'] ?? '',
+            '_alma_geo_primary_area' => $primary['area'] ?? '',
+            '_alma_geo_primary_poi' => $primary['poi'] ?? '',
+            '_alma_geo_primary_lat' => $primary['lat'] ?? '',
+            '_alma_geo_primary_lng' => $primary['lng'] ?? '',
+            '_alma_geo_primary_place_id' => $primary['geo_provider_place_id'] ?? '',
+            '_alma_geo_provider' => $primary['geo_provider'] ?? '',
+            '_alma_geo_primary_provider' => $primary['geo_provider'] ?? '',
+            '_alma_geo_primary_formatted_address' => $primary['formatted_address'] ?? '',
+            '_alma_geo_confidence' => $primary['confidence'] ?? '',
+            '_alma_geo_match_weight' => $primary['match_weight'] ?? '',
+            '_alma_geo_locations_json' => wp_json_encode($updated_locations),
+            '_alma_geo_source' => $primary['source'] ?? $source,
             '_alma_geo_updated_at' => $now,
         );
         foreach ($meta as $key => $value) {
             update_post_meta($object_id, $key, $value);
         }
+        return array('location_id' => $primary_location_id, 'content_index_id' => $primary_content_index_id, 'locations' => $updated_locations, 'meta' => $meta);
+    }
 
-        $location_id = $this->upsert_location(array(
-            'canonical_name' => $meta['_alma_geo_primary_canonical_name'] ?: $meta['_alma_geo_primary_name'],
-            'type' => $type,
-            'country' => $meta['_alma_geo_primary_country'],
-            'country_code' => $meta['_alma_geo_primary_country_code'],
-            'region' => $meta['_alma_geo_primary_region'],
-            'city' => $meta['_alma_geo_primary_city'],
-            'area' => $meta['_alma_geo_primary_area'],
-            'poi' => $meta['_alma_geo_primary_poi'],
-            'lat' => $meta['_alma_geo_primary_lat'],
-            'lng' => $meta['_alma_geo_primary_lng'],
-            'geo_provider' => $meta['_alma_geo_provider'],
-            'geo_provider_place_id' => $meta['_alma_geo_primary_place_id'],
-            'geocoding_status' => $geocoding_status,
-            'formatted_address' => $meta['_alma_geo_primary_formatted_address'],
-            'address_components' => $primary['address_components'] ?? null,
-            'geocoded_at' => $now,
-        ));
-        $content_index_id = $this->upsert_content_index($object_id, $object_type, $location_id, array(
-            'is_primary' => 1,
-            'role' => 'main_destination',
-            'geo_scope' => $geo_scope,
-            'content_type' => $content_type,
-            'commercial_intent' => $commercial_intent,
-            'widget_eligible' => $widget_eligible,
-            'confidence' => $confidence,
-            'match_weight' => $match_weight,
-            'source' => $source,
-            'raw_payload' => $geo_data,
-        ));
-        return array('location_id' => $location_id, 'content_index_id' => $content_index_id, 'meta' => $meta);
+    public function normalize_associated_locations($locations, $source = 'manual') {
+        $normalized = array();
+        $has_primary = false;
+        foreach (is_array($locations) ? $locations : array() as $location) {
+            if (!is_array($location)) {
+                continue;
+            }
+            $item = $this->format_location_for_json($location);
+            if ($item['name'] === '' && $item['canonical_name'] === '') {
+                continue;
+            }
+            $item['source'] = $item['source'] ?: sanitize_text_field($source);
+            if (!empty($item['is_primary']) && !$has_primary) {
+                $item['is_primary'] = true;
+                $item['role'] = 'main_destination';
+                $item['match_weight'] = 100;
+                $has_primary = true;
+            } else {
+                $item['is_primary'] = false;
+                if ($item['role'] === '' || $item['role'] === 'main_destination') {
+                    $item['role'] = 'major_destination';
+                }
+                $item['match_weight'] = $item['match_weight'] !== '' ? (int) $item['match_weight'] : $this->default_match_weight_for_role($item['role']);
+            }
+            $normalized[] = $item;
+        }
+        if (!$has_primary && !empty($normalized)) {
+            $normalized[0]['is_primary'] = true;
+            $normalized[0]['role'] = 'main_destination';
+            $normalized[0]['match_weight'] = 100;
+        }
+        return $normalized;
+    }
+
+    public function format_location_for_json($location) {
+        $location = is_array($location) ? $location : array();
+        $provider = sanitize_key($location['geo_provider'] ?? ($location['provider'] ?? ''));
+        $place_id = sanitize_text_field($location['geo_provider_place_id'] ?? ($location['place_id'] ?? ''));
+        $is_primary = !empty($location['is_primary']) && !in_array((string) $location['is_primary'], array('0', 'no', 'false', 'off'), true);
+        return array(
+            'location_id' => absint($location['location_id'] ?? ($location['id'] ?? 0)),
+            'name' => sanitize_text_field($location['name'] ?? ($location['canonical_name'] ?? '')),
+            'canonical_name' => sanitize_text_field($location['canonical_name'] ?? ($location['name'] ?? '')),
+            'type' => sanitize_key($location['type'] ?? 'unknown'),
+            'country' => sanitize_text_field($location['country'] ?? ''),
+            'country_code' => strtoupper(sanitize_text_field($location['country_code'] ?? '')),
+            'region' => sanitize_text_field($location['region'] ?? ''),
+            'city' => sanitize_text_field($location['city'] ?? ''),
+            'area' => sanitize_text_field($location['area'] ?? ''),
+            'poi' => sanitize_text_field($location['poi'] ?? ''),
+            'lat' => isset($location['lat']) && $location['lat'] !== '' && $location['lat'] !== null ? (string) (float) $location['lat'] : '',
+            'lng' => isset($location['lng']) && $location['lng'] !== '' && $location['lng'] !== null ? (string) (float) $location['lng'] : '',
+            'geo_provider' => $provider,
+            'geo_provider_place_id' => $place_id,
+            'formatted_address' => sanitize_text_field($location['formatted_address'] ?? ''),
+            'geocoding_status' => sanitize_key($location['geocoding_status'] ?? 'pending'),
+            'role' => sanitize_key($location['role'] ?? ($is_primary ? 'main_destination' : 'major_destination')),
+            'is_primary' => $is_primary,
+            'source' => sanitize_text_field($location['source'] ?? ''),
+            'confidence' => isset($location['confidence']) && $location['confidence'] !== '' ? (float) $location['confidence'] : 1,
+            'match_weight' => isset($location['match_weight']) && $location['match_weight'] !== '' ? (int) $location['match_weight'] : ($is_primary ? 100 : 70),
+        );
+    }
+
+    private function default_match_weight_for_role($role) {
+        $weights = array(
+            'main_destination' => 100,
+            'major_destination' => 70,
+            'excursion' => 60,
+            'nearby_place' => 60,
+            'mentioned_destination' => 40,
+            'route_stop' => 60,
+            'context_only' => 20,
+        );
+        $role = sanitize_key($role);
+        return $weights[$role] ?? 70;
     }
 
     private function default_geo_scope_for_type($type) {
@@ -608,8 +771,8 @@ class ALMA_Geo_Index_Store {
             'poi' => sanitize_text_field($data['poi'] ?? ''),
             'lat' => isset($data['lat']) && $data['lat'] !== '' ? (float) $data['lat'] : null,
             'lng' => isset($data['lng']) && $data['lng'] !== '' ? (float) $data['lng'] : null,
-            'geo_provider' => sanitize_key($data['geo_provider'] ?? ''),
-            'geo_provider_place_id' => sanitize_text_field($data['geo_provider_place_id'] ?? ''),
+            'geo_provider' => sanitize_key($data['geo_provider'] ?? ($data['provider'] ?? '')),
+            'geo_provider_place_id' => sanitize_text_field($data['geo_provider_place_id'] ?? ($data['place_id'] ?? '')),
             'suggested_geocoding_query' => sanitize_text_field($data['suggested_geocoding_query'] ?? ''),
             'geocoding_status' => sanitize_key($data['geocoding_status'] ?? 'pending'),
             'formatted_address' => sanitize_text_field($data['formatted_address'] ?? ''),
