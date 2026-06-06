@@ -1,4 +1,13 @@
 ## Unreleased
+
+## 2.41.0 - 2026-06-06
+- Aggiunta la fondazione di geocoding admin-only per **Indice Geografico**, con tab Geocoding, impostazioni Google Maps API key mascherata, batch controllati e report in `alma_geo_geocoding_last_report`.
+- Creati `includes/class-geo-index-geocoder.php` e `includes/class-geo-index-google-geocoder.php` per separare orchestrazione, provider Google, validazione risposta e salvataggio DB.
+- Estesa `alma_geo_locations` con `formatted_address`, `address_components`, `geocoded_at` e `geocoding_error`, preservando dati esistenti via routine `dbDelta` idempotente.
+- Gestiti gli stati `pending`, `verified`, `ambiguous`, `manual_required`, `failed` e `not_required`, senza sovrascrivere località già `verified` quando l’opzione è disattivata.
+- Aggiornate tab Località e metabox Geolocalizzazione per mostrare/modificare coordinate, provider, Place ID, formatted address, stato, ultimo geocoding ed errori.
+- Nessuna chiamata frontend, nessuna esposizione pubblica della API key, nessun uso AI e nessuna modifica a Widget Contestuale, shortcode, import, matching o tracking click.
+- Versione plugin aggiornata a `2.41.0`.
 - Chiarita la distinzione tra record Geo Index attivo e stato geocoding `pending`: i record importati correttamente vengono marcati come attivi e `pending` viene mostrato come “In attesa di geocoding”.
 
 ## 2.40.1 - 2026-06-06

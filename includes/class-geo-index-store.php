@@ -46,6 +46,10 @@ class ALMA_Geo_Index_Store {
             geo_provider_place_id VARCHAR(255) DEFAULT '',
             suggested_geocoding_query TEXT NULL,
             geocoding_status VARCHAR(50) DEFAULT 'pending',
+            formatted_address TEXT NULL,
+            address_components LONGTEXT NULL,
+            geocoded_at DATETIME NULL,
+            geocoding_error TEXT NULL,
             aliases LONGTEXT NULL,
             created_at DATETIME NOT NULL,
             updated_at DATETIME NOT NULL,
@@ -254,9 +258,9 @@ class ALMA_Geo_Index_Store {
             'affiliate_links_with_geo_meta' => (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(DISTINCT pm.post_id) FROM {$wpdb->postmeta} pm INNER JOIN {$wpdb->posts} p ON p.ID = pm.post_id WHERE pm.meta_key = '_alma_geo_enabled' AND pm.meta_value IN $enabled_values AND p.post_type = %s", self::OBJECT_TYPE_AFFILIATE_LINK)),
             'locations' => (int) $wpdb->get_var("SELECT COUNT(*) FROM {$this->table_locations()}"),
             'content_relations' => (int) $wpdb->get_var("SELECT COUNT(*) FROM {$this->table_content_index()}"),
-            'pending_geocoding' => (int) $wpdb->get_var("SELECT COUNT(DISTINCT pm.post_id) FROM {$wpdb->postmeta} pm INNER JOIN {$wpdb->posts} p ON p.ID = pm.post_id INNER JOIN {$wpdb->postmeta} enabled ON enabled.post_id = pm.post_id AND enabled.meta_key = '_alma_geo_enabled' AND enabled.meta_value IN $enabled_values WHERE pm.meta_key = '_alma_geo_geocoding_status' AND pm.meta_value = 'pending' AND p.post_type IN ('post','page')"),
-            'verified_geocoding' => (int) $wpdb->get_var("SELECT COUNT(DISTINCT post_id) FROM {$wpdb->postmeta} WHERE meta_key = '_alma_geo_geocoding_status' AND meta_value = 'verified'"),
-            'manual_review' => (int) $wpdb->get_var("SELECT COUNT(DISTINCT post_id) FROM {$wpdb->postmeta} WHERE (meta_key = '_alma_geo_geocoding_status' AND meta_value = 'manual_required') OR (meta_key = '_alma_geo_import_status' AND meta_value = 'review')"),
+            'pending_geocoding' => (int) $wpdb->get_var("SELECT COUNT(*) FROM {$this->table_locations()} WHERE geocoding_status = 'pending'"),
+            'verified_geocoding' => (int) $wpdb->get_var("SELECT COUNT(*) FROM {$this->table_locations()} WHERE geocoding_status = 'verified'"),
+            'manual_review' => (int) $wpdb->get_var("SELECT COUNT(*) FROM {$this->table_locations()} WHERE geocoding_status IN ('manual_required','ambiguous')"),
             'inactive_or_discarded' => (int) $wpdb->get_var("SELECT COUNT(DISTINCT post_id) FROM {$wpdb->postmeta} WHERE (meta_key = '_alma_geo_enabled' AND meta_value IN $inactive_values) OR (meta_key = '_alma_geo_import_status' AND meta_value IN ('discard','geocoding_failed'))"),
             'widget_eligible' => (int) $wpdb->get_var("SELECT COUNT(*) FROM {$this->table_content_index()} WHERE widget_eligible = 1"),
         );
@@ -279,6 +283,103 @@ class ALMA_Geo_Index_Store {
         );
     }
 
+    public function get_location($location_id) {
+        global $wpdb;
+        if (!$this->tables_exist()) {
+            return null;
+        }
+        return $wpdb->get_row(
+            $wpdb->prepare("SELECT * FROM {$this->table_locations()} WHERE id = %d LIMIT 1", absint($location_id)),
+            ARRAY_A
+        );
+    }
+
+    public function get_locations_by_geocoding_status($status = 'pending', $limit = 20) {
+        global $wpdb;
+        if (!$this->tables_exist()) {
+            return array();
+        }
+        $status = sanitize_key($status);
+        $limit = max(1, min(50, absint($limit)));
+        return $wpdb->get_results(
+            $wpdb->prepare(
+                "SELECT * FROM {$this->table_locations()} WHERE geocoding_status = %s ORDER BY updated_at ASC, id ASC LIMIT %d",
+                $status,
+                $limit
+            ),
+            ARRAY_A
+        );
+    }
+
+    public function get_geocoding_status_counts() {
+        global $wpdb;
+        $counts = array('pending' => 0, 'verified' => 0, 'ambiguous' => 0, 'manual_required' => 0, 'failed' => 0, 'not_required' => 0);
+        if (!$this->tables_exist()) {
+            return $counts;
+        }
+        $rows = $wpdb->get_results("SELECT geocoding_status, COUNT(*) AS total FROM {$this->table_locations()} GROUP BY geocoding_status", ARRAY_A);
+        foreach ($rows as $row) {
+            $status = sanitize_key($row['geocoding_status'] ?? '');
+            if (isset($counts[$status])) {
+                $counts[$status] = (int) $row['total'];
+            }
+        }
+        return $counts;
+    }
+
+    public function update_location_geocoding($location_id, $result) {
+        global $wpdb;
+        $location_id = absint($location_id);
+        if (!$location_id || !$this->tables_exist()) {
+            return false;
+        }
+        $status = sanitize_key($result['status'] ?? 'failed');
+        $allowed_statuses = array('pending', 'verified', 'ambiguous', 'manual_required', 'failed', 'not_required');
+        if (!in_array($status, $allowed_statuses, true)) {
+            $status = 'failed';
+        }
+
+        $row = array(
+            'geocoding_status' => $status,
+            'geocoding_error' => sanitize_textarea_field($result['message'] ?? ''),
+            'updated_at' => current_time('mysql'),
+        );
+        $formats = array('%s', '%s', '%s');
+
+        if (in_array($status, array('verified', 'ambiguous', 'manual_required'), true)) {
+            foreach (array('lat' => '%f', 'lng' => '%f') as $key => $format) {
+                if (isset($result[$key]) && $result[$key] !== null && $result[$key] !== '') {
+                    $row[$key] = (float) $result[$key];
+                    $formats[] = $format;
+                }
+            }
+            if (!empty($result['geo_provider'])) {
+                $row['geo_provider'] = sanitize_key($result['geo_provider']);
+                $formats[] = '%s';
+            }
+            if (!empty($result['place_id'])) {
+                $row['geo_provider_place_id'] = sanitize_text_field($result['place_id']);
+                $formats[] = '%s';
+            }
+            if (!empty($result['formatted_address'])) {
+                $row['formatted_address'] = sanitize_text_field($result['formatted_address']);
+                $formats[] = '%s';
+            }
+            if (!empty($result['address_components'])) {
+                $row['address_components'] = wp_json_encode($result['address_components']);
+                $formats[] = '%s';
+            }
+            $row['geocoded_at'] = current_time('mysql');
+            $formats[] = '%s';
+        }
+
+        if ($status === 'verified') {
+            $row['geocoding_error'] = '';
+        }
+
+        return false !== $wpdb->update($this->table_locations(), $row, array('id' => $location_id), $formats, array('%d'));
+    }
+
     public function sanitize_location_data($data) {
         $data = is_array($data) ? $data : array();
         return array(
@@ -296,6 +397,10 @@ class ALMA_Geo_Index_Store {
             'geo_provider_place_id' => sanitize_text_field($data['geo_provider_place_id'] ?? ''),
             'suggested_geocoding_query' => sanitize_text_field($data['suggested_geocoding_query'] ?? ''),
             'geocoding_status' => sanitize_key($data['geocoding_status'] ?? 'pending'),
+            'formatted_address' => sanitize_text_field($data['formatted_address'] ?? ''),
+            'address_components' => isset($data['address_components']) ? wp_json_encode($data['address_components']) : null,
+            'geocoded_at' => sanitize_text_field($data['geocoded_at'] ?? ''),
+            'geocoding_error' => sanitize_textarea_field($data['geocoding_error'] ?? ''),
             'aliases' => isset($data['aliases']) ? wp_json_encode($data['aliases']) : null,
         );
     }
