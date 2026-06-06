@@ -253,31 +253,65 @@ class ALMA_Geo_Index_Metabox {
             return;
         }
 
+        $nonce_present = isset($_POST[self::NONCE_NAME]);
+        $nonce_valid = false;
+        if ($nonce_present) {
+            $nonce_valid = (bool) wp_verify_nonce(sanitize_text_field(wp_unslash($_POST[self::NONCE_NAME])), self::NONCE_ACTION);
+        }
+        $capability_ok = current_user_can('edit_post', $post_id);
+        $raw_geo = (isset($_POST['alma_geo']) && is_array($_POST['alma_geo'])) ? wp_unslash($_POST['alma_geo']) : array();
+        $has_associated_payload = is_array($raw_geo) && array_key_exists('associated_locations_json', $raw_geo);
+        $locations = $has_associated_payload ? $this->sanitize_associated_locations($raw_geo['associated_locations_json'] ?? '') : array();
+        $diagnostic_context = array(
+            'post_id' => $post_id,
+            'post_type' => $post->post_type,
+            'update' => (bool) $update,
+            'nonce_present' => $nonce_present,
+            'nonce_valid' => $nonce_valid,
+            'capability_ok' => $capability_ok,
+            'post_post_id' => isset($_POST['post_ID']) ? absint(wp_unslash($_POST['post_ID'])) : 0,
+            'post_post_type' => isset($_POST['post_type']) ? sanitize_key(wp_unslash($_POST['post_type'])) : '',
+            'post_action' => isset($_POST['action']) ? sanitize_key(wp_unslash($_POST['action'])) : '',
+            'alma_geo_present' => isset($_POST['alma_geo']) && is_array($_POST['alma_geo']),
+            'associated_locations_json_present' => $has_associated_payload,
+            'decoded_locations_count' => count($locations),
+            'save_result' => 'not_started',
+            'object_type' => $post->post_type,
+        );
+
         if (defined('DOING_AUTOSAVE') && DOING_AUTOSAVE) {
+            $diagnostic_context['save_result'] = 'skipped_autosave';
+            $this->log_save_event('debug', 'Geo Index metabox save diagnostic.', $post_id, $post->post_type, $diagnostic_context);
             return;
         }
         if (wp_is_post_autosave($post_id) || wp_is_post_revision($post_id)) {
+            $diagnostic_context['save_result'] = 'skipped_autosave_or_revision';
+            $this->log_save_event('debug', 'Geo Index metabox save diagnostic.', $post_id, $post->post_type, $diagnostic_context);
             return;
         }
         if (!in_array($post->post_type, array('post', 'page', 'affiliate_link'), true)) {
-            $this->log_save_event('warning', 'Geo Index metabox save skipped: post type not allowed.', $post_id, $post->post_type);
+            $diagnostic_context['save_result'] = 'skipped_post_type_not_allowed';
+            $this->log_save_event('warning', 'Geo Index metabox save skipped: post type not allowed.', $post_id, $post->post_type, $diagnostic_context);
             return;
         }
-        if (!isset($_POST[self::NONCE_NAME])) {
-            $this->log_save_event('warning', 'Geo Index metabox save skipped: nonce missing.', $post_id, $post->post_type);
+        if (!$nonce_present) {
+            $diagnostic_context['save_result'] = 'skipped_nonce_missing';
+            $this->log_save_event('warning', 'Geo Index metabox save skipped: nonce missing.', $post_id, $post->post_type, $diagnostic_context);
             return;
         }
-        $nonce = sanitize_text_field(wp_unslash($_POST[self::NONCE_NAME]));
-        if (!wp_verify_nonce($nonce, self::NONCE_ACTION)) {
-            $this->log_save_event('warning', 'Geo Index metabox save skipped: nonce invalid.', $post_id, $post->post_type);
+        if (!$nonce_valid) {
+            $diagnostic_context['save_result'] = 'skipped_nonce_invalid';
+            $this->log_save_event('warning', 'Geo Index metabox save skipped: nonce invalid.', $post_id, $post->post_type, $diagnostic_context);
             return;
         }
-        if (!current_user_can('edit_post', $post_id)) {
-            $this->log_save_event('warning', 'Geo Index metabox save skipped: capability check failed.', $post_id, $post->post_type);
+        if (!$capability_ok) {
+            $diagnostic_context['save_result'] = 'skipped_capability_failed';
+            $this->log_save_event('warning', 'Geo Index metabox save skipped: capability check failed.', $post_id, $post->post_type, $diagnostic_context);
             return;
         }
-        if (!isset($_POST['alma_geo']) || !is_array($_POST['alma_geo'])) {
-            $this->log_save_event('warning', 'Geo Index metabox save skipped: Geo payload missing.', $post_id, $post->post_type);
+        if (empty($diagnostic_context['alma_geo_present'])) {
+            $diagnostic_context['save_result'] = 'skipped_geo_payload_missing';
+            $this->log_save_event('warning', 'Geo Index metabox save skipped: Geo payload missing.', $post_id, $post->post_type, $diagnostic_context);
             return;
         }
 
@@ -285,23 +319,28 @@ class ALMA_Geo_Index_Metabox {
             $primary_location = $this->store->get_primary_location_for_object($post_id, $post->post_type);
             if (!empty($primary_location['id']) && ($primary_location['geocoding_status'] ?? '') === 'verified') {
                 $this->store->sync_location_to_linked_objects((int) $primary_location['id']);
+                $diagnostic_context['save_result'] = 'resynced_linked_objects';
+            } else {
+                $diagnostic_context['save_result'] = 'resync_skipped_no_verified_primary';
             }
+            $this->log_save_event('debug', 'Geo Index metabox save diagnostic.', $post_id, $post->post_type, $diagnostic_context);
             return;
         }
 
-        $raw = wp_unslash($_POST['alma_geo']);
+        $raw = $raw_geo;
         $data = $this->sanitize_submitted_data($raw);
-        $has_associated_payload = array_key_exists('associated_locations_json', $raw);
-        $locations = $this->sanitize_associated_locations($raw['associated_locations_json'] ?? '');
         if ($has_associated_payload && trim((string) ($raw['associated_locations_json'] ?? '')) !== '' && empty($locations)) {
-            $this->log_save_event('warning', 'Geo Index metabox save received invalid or empty associated locations JSON.', $post_id, $post->post_type);
+            $diagnostic_context['save_result'] = 'invalid_or_empty_associated_locations_json';
+            $this->log_save_event('warning', 'Geo Index metabox save received invalid or empty associated locations JSON.', $post_id, $post->post_type, $diagnostic_context);
         }
         if (!$has_associated_payload && !$this->has_geo_payload($data) && !$this->has_existing_geo_meta($post_id)) {
+            $diagnostic_context['save_result'] = 'skipped_empty_payload_without_existing_meta';
+            $this->log_save_event('debug', 'Geo Index metabox save diagnostic.', $post_id, $post->post_type, $diagnostic_context);
             return;
         }
         if ($has_associated_payload) {
             if (empty($locations)) {
-                $this->log_save_event('info', 'Geo Index metabox save received no associated locations.', $post_id, $post->post_type);
+                $this->log_save_event('info', 'Geo Index metabox save received no associated locations.', $post_id, $post->post_type, $diagnostic_context);
             }
             $result = $this->store->save_geo_meta_for_object($post_id, $post->post_type, array(
                 'locations' => $locations,
@@ -317,6 +356,10 @@ class ALMA_Geo_Index_Metabox {
                 }
             }
             update_post_meta($post_id, '_alma_geo_locations_json', wp_json_encode($result['locations'] ?? $locations));
+            $diagnostic_context['save_result'] = 'saved_associated_locations';
+            $diagnostic_context['decoded_locations_count'] = count($result['locations'] ?? $locations);
+            $diagnostic_context['object_type'] = $post->post_type;
+            $this->log_save_event('debug', 'Geo Index metabox save diagnostic.', $post_id, $post->post_type, $diagnostic_context);
             return;
         }
 
@@ -326,6 +369,9 @@ class ALMA_Geo_Index_Metabox {
         update_post_meta($post_id, '_alma_geo_updated_at', current_time('mysql'));
 
         $this->sync_tables($post_id, $post->post_type, $data);
+        $diagnostic_context['save_result'] = 'saved_legacy_fields';
+        $diagnostic_context['object_type'] = $post->post_type;
+        $this->log_save_event('debug', 'Geo Index metabox save diagnostic.', $post_id, $post->post_type, $diagnostic_context);
     }
 
     public function sync_tables($post_id, $post_type, $data) {
@@ -533,22 +579,25 @@ class ALMA_Geo_Index_Metabox {
         return $this->store->normalize_associated_locations($locations, 'manual_google_search');
     }
 
-    private function log_save_event($level, $message, $post_id, $post_type = '') {
-        if (!class_exists('ALMA_Logger')) {
-            return;
-        }
-        $context = array(
+    private function log_save_event($level, $message, $post_id, $post_type = '', $context = array()) {
+        $context = array_merge(array(
             'post_id' => absint($post_id),
             'post_type' => sanitize_key($post_type),
-        );
-        if ($level === 'error') {
-            ALMA_Logger::error($message, $context);
-        } elseif ($level === 'warning') {
-            ALMA_Logger::warning($message, $context);
-        } elseif ($level === 'info') {
-            ALMA_Logger::info($message, $context);
-        } else {
-            ALMA_Logger::debug($message, $context);
+        ), is_array($context) ? $context : array());
+        if (class_exists('ALMA_Logger')) {
+            if ($level === 'error') {
+                ALMA_Logger::error($message, $context);
+            } elseif ($level === 'warning') {
+                ALMA_Logger::warning($message, $context);
+            } elseif ($level === 'info') {
+                ALMA_Logger::info($message, $context);
+            } else {
+                ALMA_Logger::debug($message, $context);
+            }
+            return;
+        }
+        if (defined('WP_DEBUG') && WP_DEBUG) {
+            error_log('[ALMA] [' . strtoupper((string) $level) . '] ' . $message . ' | context=' . wp_json_encode($context));
         }
     }
 
