@@ -1,3 +1,17 @@
+## 2.41.0 - 2026-06-06
+
+### Indice Geografico — Geocoding admin
+- Aggiunta la tab **Geocoding** nell’admin **Indice Geografico** per configurare Google Maps Geocoding API, verificare lo stato della chiave senza mostrarla completa e avviare batch controllati sulle località `pending`.
+- Introdotte le classi `ALMA_Geo_Index_Geocoder` e `ALMA_Geo_Index_Google_Geocoder`: il primo orchestra batch admin-only, validazione e salvataggio; il secondo chiama server-side l’endpoint Google Geocoding con WordPress HTTP API.
+- Estesa la tabella `alma_geo_locations` con `formatted_address`, `address_components`, `geocoded_at` e `geocoding_error`, mantenendo idempotente `dbDelta` e senza cancellare dati esistenti.
+- Il flusso conserva gli stati `pending`, `verified`, `ambiguous`, `manual_required`, `failed` e `not_required`; una località diventa `verified` solo se coordinate, Place ID e coerenza paese/tipo sono plausibili.
+- Il batch default è 20 località, massimo 50, non parte automaticamente e quindi non genera costi API senza azione esplicita dell’admin; le località già `verified` non vengono sovrascritte se l’opzione dedicata resta disattivata.
+- La tab **Località** ora mostra lat/lng, provider, Place ID, formatted address, stato, errore, data geocoding e azioni protette da nonce per geocodificare o riprovare singole località.
+- Il metabox **Geolocalizzazione contenuto** mostra i dettagli geocoding della località primaria e consente correzioni manuali di latitudine, longitudine, Place ID e stato; se lat/lng sono salvati manualmente come `verified`, il provider può essere `manual`.
+- Nessuna chiamata Google Maps viene eseguita sul frontend, nessuna API key viene esposta in JavaScript pubblico, non viene usata AI e il Widget Link Contestuale, gli shortcode, gli import e il tracking restano invariati.
+- Le fasi successive useranno eventualmente il Geo Index per Widget Contestuale, import/geocoding dei Link Affiliati e mappe Google interattive.
+- Versione plugin aggiornata a `2.41.0`.
+
 ## 2.40.0 - 2026-06-06
 
 ### Indice Geografico

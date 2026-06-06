@@ -3,7 +3,7 @@
  * Plugin Name: Affiliate Link Manager AI
  * Plugin URI: https://your-website.com
  * Description: Gestisce link affiliati con intelligenza artificiale per ottimizzazione e tracking automatico.
- * Version: 2.40.1
+ * Version: 2.41.0
  * Author: Cosè Murciano
  * License: GPL v2 or later
  * Text Domain: affiliate-link-manager-ai
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Definisci costanti del plugin
-define('ALMA_VERSION', '2.40.1');
+define('ALMA_VERSION', '2.41.0');
 define('ALMA_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('ALMA_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('ALMA_PLUGIN_FILE', __FILE__);
@@ -95,6 +95,8 @@ require_once ALMA_PLUGIN_DIR . 'includes/class-shortcodes.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-editor-ajax.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-ai-content-agent-dashboard-widget.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-geo-index-store.php';
+require_once ALMA_PLUGIN_DIR . 'includes/class-geo-index-google-geocoder.php';
+require_once ALMA_PLUGIN_DIR . 'includes/class-geo-index-geocoder.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-geo-index-metabox.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-geo-index-importer.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-geo-index-admin.php';
