@@ -1,3 +1,14 @@
+## 2.40.0 - 2026-06-06
+
+### Indice Geografico
+- Aggiunto il modulo admin **Indice Geografico** sotto il menu dei Link Affiliati, con dashboard, import CSV safe per articoli, elenco località e ultimo report import.
+- Introdotte le tabelle dedicate `alma_geo_locations` e `alma_geo_content_index` per salvare località uniche e relazioni contenuto/località senza modificare le tabelle esistenti.
+- Aggiunto il metabox **Geolocalizzazione contenuto** su `post`, `page` e `affiliate_link`, con salvataggio sicuro dei meta `_alma_geo_*` e sincronizzazione conservativa verso le nuove tabelle.
+- Implementato l’import del file `sothra_geo_article_index_safe_import.csv` per record sicuri di articoli/pagine: valida header, mostra preview dei primi 10 record, importa solo righe safe, rispetta il default “non sovrascrivere” e salva l’ultimo report in `alma_geo_index_last_import_report`.
+- In questa fase non viene chiamata Google Maps API, non viene eseguito geocoding automatico, non viene usata AI e il **Widget Link Contestuale** continua a usare la logica precedente.
+- La struttura è pronta per fasi successive: import Link Affiliati, geocoding Google Maps, uso del Geo Index nel Widget Contestuale e mappe interattive.
+- Versione plugin aggiornata a `2.40.0`.
+
 ## 2.39.1 - 2026-06-05
 
 ### Widget Link Contestuale

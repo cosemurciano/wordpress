@@ -1,5 +1,13 @@
 ## Unreleased
 
+## 2.40.0 - 2026-06-06
+- Aggiunto il modulo **Indice Geografico** come fondazione interna del plugin, con menu admin `alma-geo-index`, dashboard conteggi, import CSV safe, elenco località e log ultimo import.
+- Create via `dbDelta` le nuove tabelle `alma_geo_locations` e `alma_geo_content_index`, senza rimuovere o modificare dati/tabelle esistenti.
+- Aggiunto il metabox **Geolocalizzazione contenuto** su `post`, `page` e `affiliate_link`, con nonce, capability, check autosave/revision, sanitizzazione, post meta `_alma_geo_*` e sincronizzazione verso le tabelle Geo Index.
+- Implementato l’import conservativo di `sothra_geo_article_index_safe_import.csv` per `post` e `page`: validazione header, preview primi 10 record, import solo se `safe_for_auto_import` e `safe_for_auto_geocoding` sono veri, gestione no-overwrite default e report in option.
+- Nessun uso di AI, nessuna chiamata Google Maps API e nessuna modifica alla logica frontend del Widget Link Contestuale o agli shortcode esistenti.
+- Versione plugin aggiornata a `2.40.0`.
+
 ## 2.39.1 - 2026-06-05
 - Aggiunto il **Widget Link Contestuale** come widget WordPress opzionale per sidebar, attivo solo su singole `post`/`page` supportate e senza modifiche al contenuto degli articoli.
 - Introdotta la pagina **Widget Contestuale** sotto il menu `affiliate_link`, con impostazioni globali WordPress-native, nonce, sanitizzazione, messaggio di salvataggio e pulsante **Svuota cache Widget Contestuale**.
