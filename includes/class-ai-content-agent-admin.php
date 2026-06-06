@@ -818,6 +818,9 @@ class ALMA_AI_Content_Agent_Admin {
                     $pagination_args[sanitize_key($query_key)] = sanitize_text_field($query_value);
                 }
                 unset($pagination_args['ai_ideas_page']);
+                $pagination_args['post_type'] = 'affiliate_link';
+                $pagination_args['page'] = 'alma-ai-content-agent';
+                $pagination_args['tab'] = 'idee';
                 $prev_url = add_query_arg(array_merge($pagination_args, array('ai_ideas_page' => max(1, $current_ideas_page - 1))), admin_url('edit.php'));
                 $next_url = add_query_arg(array_merge($pagination_args, array('ai_ideas_page' => min($total_ideas_pages, $current_ideas_page + 1))), admin_url('edit.php'));
                 echo '<nav class="alma-ideas-pagination" aria-label="Paginazione idee create">';
