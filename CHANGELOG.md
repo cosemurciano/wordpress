@@ -1,5 +1,10 @@
 ## Unreleased
 
+- Corretto redirect dopo creazione e aggiornamento dei Link Affiliati.
+- Aggiunto marker temporaneo di salvataggio `affiliate_link` per fallback sicuro.
+- Rafforzata fallback admin solo per atterraggio immediato errato su `edit.php`.
+- Evitato redirect indesiderato su visite intenzionali alla lista Articoli.
+
 - Corretto il redirect dopo creazione e modifica dei Link Affiliati con un transient temporaneo per utente e redirect deterministico alla schermata `post.php` del CPT.
 - Aggiunta fallback guard `admin_init` per recuperare redirect errati verso la lista articoli standard dopo salvataggi di `affiliate_link`.
 - Migliorata la diagnostica controllata del salvataggio/redirect dei Link Affiliati, includendo transient, guard `admin_init`, `redirect_post_location` e `wp_redirect`.
