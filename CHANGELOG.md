@@ -1,5 +1,10 @@
 ## Unreleased
 
+- Corretto il redirect dopo creazione e modifica dei Link Affiliati con un transient temporaneo per utente e redirect deterministico alla schermata `post.php` del CPT.
+- Aggiunta fallback guard `admin_init` per recuperare redirect errati verso la lista articoli standard dopo salvataggi di `affiliate_link`.
+- Migliorata la diagnostica controllata del salvataggio/redirect dei Link Affiliati, includendo transient, guard `admin_init`, `redirect_post_location` e `wp_redirect`.
+- Verificata la compatibilità Geo Index sui Link Affiliati con salvataggio in `alma_geo_content_index` come `object_type=affiliate_link`.
+
 - Corretto il redirect dopo creazione e modifica dei Link Affiliati, forzando i salvataggi normali del CPT a rientrare in `post.php?post={ID}&action=edit` e preservando `classic-editor`.
 - Rafforzata la diagnostica controllata del flusso salvataggio/redirect dei Link Affiliati, includendo payload `redirect_post_location`, `save_post_affiliate_link` e Geo Index.
 - Verificato l’isolamento del metabox Geo Index dal form standard WordPress: nessun form annidato/campo di redirect e bottoni interni non-submit.
