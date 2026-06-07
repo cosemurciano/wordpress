@@ -95,10 +95,12 @@ require_once ALMA_PLUGIN_DIR . 'includes/class-shortcodes.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-editor-ajax.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-ai-content-agent-dashboard-widget.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-geo-index-store.php';
+require_once ALMA_PLUGIN_DIR . 'includes/class-geo-index-job-store.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-geo-index-google-geocoder.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-geo-index-geocoder.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-geo-index-metabox.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-geo-index-importer.php';
+require_once ALMA_PLUGIN_DIR . 'includes/class-geo-index-affiliate-link-importer.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-geo-index-admin.php';
 
 /**
@@ -3930,6 +3932,7 @@ class AffiliateManagerAI {
         ALMA_AI_Usage_Logger::create_table();
         ALMA_Affiliate_Source_Manager::create_tables();
         ALMA_Geo_Index_Store::create_tables();
+        ALMA_Geo_Index_Job_Store::create_tables();
         ALMA_Contextual_Affiliate_Widget::maybe_set_default_options();
         $this->create_default_categories();
         update_option('alma_db_schema_version', '4');
@@ -3978,6 +3981,7 @@ class AffiliateManagerAI {
             ALMA_AI_Usage_Logger::create_table();
             ALMA_Affiliate_Source_Manager::create_tables();
             ALMA_Geo_Index_Store::create_tables();
+            ALMA_Geo_Index_Job_Store::create_tables();
             ALMA_Contextual_Affiliate_Widget::maybe_set_default_options();
             update_option('alma_db_schema_version', '4');
             update_option('alma_plugin_version', ALMA_VERSION);

@@ -222,6 +222,7 @@ class ALMA_Geo_Index_Metabox {
                     <?php $this->render_input('_alma_geo_confidence', __('Confidence', 'affiliate-link-manager-ai'), $values, 'number', 'step="0.001" min="0" max="1"'); ?>
                     <?php $this->render_input('_alma_geo_match_weight', __('Match weight', 'affiliate-link-manager-ai'), $values, 'number'); ?>
                     <?php $this->render_input('_alma_geo_source', __('Fonte dati', 'affiliate-link-manager-ai'), $values); ?>
+                    <?php $this->render_input('_alma_geo_activity_type', __('Activity type', 'affiliate-link-manager-ai'), $values); ?>
                     <?php $this->render_select('_alma_geo_import_status', __('Stato import tecnico', 'affiliate-link-manager-ai'), $values, self::geo_import_statuses()); ?>
                     <?php $this->render_select('_alma_geo_geocoding_status', __('Stato geocoding tecnico', 'affiliate-link-manager-ai'), array_merge($values, array('_alma_geo_geocoding_status' => $effective_geocoding_status)), self::geocoding_statuses()); ?>
                     <?php $this->render_input('_alma_geo_primary_type', __('Tipo località tecnico', 'affiliate-link-manager-ai'), $display_values); ?>
@@ -433,7 +434,7 @@ class ALMA_Geo_Index_Metabox {
         $data['_alma_geo_import_status'] = $this->sanitize_allowed($raw['_alma_geo_import_status'] ?? '', self::geo_import_statuses(), 'review');
         $data['_alma_geo_geocoding_status'] = $this->sanitize_allowed($raw['_alma_geo_geocoding_status'] ?? '', self::geocoding_statuses(), 'pending');
 
-        foreach (array('_alma_geo_primary_name','_alma_geo_primary_canonical_name','_alma_geo_primary_country','_alma_geo_primary_country_code','_alma_geo_primary_region','_alma_geo_primary_city','_alma_geo_primary_area','_alma_geo_primary_poi','_alma_geo_primary_place_id','_alma_geo_provider','_alma_geo_primary_provider','_alma_geo_primary_formatted_address','_alma_geo_source') as $key) {
+        foreach (array('_alma_geo_primary_name','_alma_geo_primary_canonical_name','_alma_geo_primary_country','_alma_geo_primary_country_code','_alma_geo_primary_region','_alma_geo_primary_city','_alma_geo_primary_area','_alma_geo_primary_poi','_alma_geo_primary_place_id','_alma_geo_provider','_alma_geo_primary_provider','_alma_geo_primary_formatted_address','_alma_geo_source','_alma_geo_activity_type') as $key) {
             $data[$key] = sanitize_text_field($raw[$key] ?? '');
         }
         $data['_alma_geo_primary_country_code'] = strtoupper($data['_alma_geo_primary_country_code']);
@@ -456,13 +457,13 @@ class ALMA_Geo_Index_Metabox {
         return array(
             '_alma_geo_enabled','_alma_geo_scope','_alma_geo_content_type','_alma_geo_commercial_intent','_alma_geo_widget_eligible',
             '_alma_geo_primary_name','_alma_geo_primary_canonical_name','_alma_geo_primary_type','_alma_geo_primary_country','_alma_geo_primary_country_code','_alma_geo_primary_region','_alma_geo_primary_city','_alma_geo_primary_area','_alma_geo_primary_poi','_alma_geo_primary_lat','_alma_geo_primary_lng','_alma_geo_primary_place_id','_alma_geo_provider','_alma_geo_primary_provider','_alma_geo_primary_formatted_address',
-            '_alma_geo_confidence','_alma_geo_match_weight','_alma_geo_geocoding_status','_alma_geo_import_status','_alma_geo_locations_json','_alma_geo_quality_flags','_alma_geo_notes','_alma_geo_source','_alma_geo_updated_at'
+            '_alma_geo_confidence','_alma_geo_match_weight','_alma_geo_geocoding_status','_alma_geo_import_status','_alma_geo_locations_json','_alma_geo_quality_flags','_alma_geo_notes','_alma_geo_source','_alma_geo_activity_type','_alma_geo_updated_at'
         );
     }
 
     public static function geo_scopes() { return array('world','continent','country','region','city','area','poi','itinerary_multi_location','non_geo','uncertain'); }
     public static function primary_types() { return array('continent','country','region','city','area','island','poi','airport','port','route','unknown'); }
-    public static function content_types() { return array('destination_guide','country_guide','region_guide','city_guide','area_guide','poi_guide','itinerary','itinerary_multi_location','cruise_ship','cruise_company','travel_advice','honeymoon','informational','generic_travel','non_travel','uncertain'); }
+    public static function content_types() { return array('destination_guide','country_guide','region_guide','city_guide','area_guide','poi_guide','itinerary','itinerary_multi_location','cruise_ship','cruise_company','travel_advice','honeymoon','informational','generic_travel','affiliate_link','non_travel','uncertain'); }
     public static function commercial_intents() { return array('high','medium','low','none'); }
     public static function geo_import_statuses() { return array('imported','active','ready','review','discard','needs_geocoding','geocoding_failed'); }
     public static function geocoding_statuses() { return array('pending','verified','ambiguous','manual_required','failed','not_required'); }
@@ -475,7 +476,7 @@ class ALMA_Geo_Index_Metabox {
         if (($data['_alma_geo_scope'] ?? 'uncertain') !== 'uncertain' || ($data['_alma_geo_content_type'] ?? 'uncertain') !== 'uncertain' || ($data['_alma_geo_commercial_intent'] ?? 'none') !== 'none' || ($data['_alma_geo_import_status'] ?? 'review') !== 'review' || ($data['_alma_geo_geocoding_status'] ?? 'pending') !== 'pending' || ($data['_alma_geo_primary_type'] ?? 'unknown') !== 'unknown') {
             return true;
         }
-        foreach (array('_alma_geo_primary_name','_alma_geo_primary_canonical_name','_alma_geo_primary_country','_alma_geo_primary_country_code','_alma_geo_primary_region','_alma_geo_primary_city','_alma_geo_primary_area','_alma_geo_primary_poi','_alma_geo_primary_lat','_alma_geo_primary_lng','_alma_geo_primary_place_id','_alma_geo_confidence','_alma_geo_match_weight','_alma_geo_locations_json','_alma_geo_quality_flags','_alma_geo_notes','_alma_geo_source') as $key) {
+        foreach (array('_alma_geo_primary_name','_alma_geo_primary_canonical_name','_alma_geo_primary_country','_alma_geo_primary_country_code','_alma_geo_primary_region','_alma_geo_primary_city','_alma_geo_primary_area','_alma_geo_primary_poi','_alma_geo_primary_lat','_alma_geo_primary_lng','_alma_geo_primary_place_id','_alma_geo_confidence','_alma_geo_match_weight','_alma_geo_activity_type','_alma_geo_locations_json','_alma_geo_quality_flags','_alma_geo_notes','_alma_geo_source') as $key) {
             if (!empty($data[$key])) {
                 return true;
             }

@@ -382,7 +382,7 @@ class ALMA_Geo_Index_Store {
                 'confidence' => $location['confidence'],
                 'match_weight' => $location['match_weight'],
                 'source' => $location['source'] ?: $source,
-                'raw_payload' => array('location' => $location),
+                'raw_payload' => array('location' => $location, 'activity_type' => sanitize_key($geo_data['activity_type'] ?? ''), 'import_payload' => isset($geo_data['raw_payload']) ? $geo_data['raw_payload'] : array()),
             ));
             if (!$content_index_id) {
                 $this->log_geo_store_event('warning', 'Geo Index Store could not upsert content index relation.', $object_id, $object_type);
@@ -420,6 +420,9 @@ class ALMA_Geo_Index_Store {
             '_alma_geo_primary_formatted_address' => $primary['formatted_address'] ?? '',
             '_alma_geo_confidence' => $primary['confidence'] ?? '',
             '_alma_geo_match_weight' => $primary['match_weight'] ?? '',
+            '_alma_geo_quality_flags' => sanitize_textarea_field($geo_data['quality_flags'] ?? ''),
+            '_alma_geo_notes' => sanitize_textarea_field($geo_data['notes'] ?? ''),
+            '_alma_geo_activity_type' => sanitize_key($geo_data['activity_type'] ?? ''),
             '_alma_geo_locations_json' => wp_json_encode($updated_locations),
             '_alma_geo_source' => $primary['source'] ?? $source,
             '_alma_geo_updated_at' => $now,
@@ -740,6 +743,7 @@ class ALMA_Geo_Index_Store {
             update_post_meta($object_id, '_alma_geo_primary_provider', (string) ($location['geo_provider'] ?? ''));
             update_post_meta($object_id, '_alma_geo_primary_formatted_address', (string) ($location['formatted_address'] ?? ''));
             update_post_meta($object_id, '_alma_geo_updated_at', current_time('mysql'));
+            $this->sync_locations_json_for_object($object_id, $object_type);
             $report['objects_updated']++;
         }
 
@@ -783,6 +787,42 @@ class ALMA_Geo_Index_Store {
             }
         }
         return $counts;
+    }
+
+    public function get_geocoding_status_counts_by_object_type($object_type) {
+        global $wpdb;
+        $object_type = sanitize_key($object_type);
+        $counts = array('pending' => 0, 'verified' => 0, 'ambiguous' => 0, 'manual_required' => 0, 'failed' => 0, 'not_required' => 0);
+        if (!$this->tables_exist() || $object_type === '') {
+            return $counts;
+        }
+        $rows = $wpdb->get_results(
+            $wpdb->prepare(
+                "SELECT l.geocoding_status, COUNT(DISTINCT l.id) AS total
+                 FROM {$this->table_locations()} l
+                 INNER JOIN {$this->table_content_index()} ci ON ci.location_id = l.id
+                 WHERE ci.object_type = %s
+                 GROUP BY l.geocoding_status",
+                $object_type
+            ),
+            ARRAY_A
+        );
+        foreach ($rows as $row) {
+            $status = sanitize_key($row['geocoding_status'] ?? '');
+            if (isset($counts[$status])) {
+                $counts[$status] = (int) $row['total'];
+            }
+        }
+        return $counts;
+    }
+
+    public function sync_locations_json_for_object($object_id, $object_type) {
+        $locations = $this->get_associated_locations_for_object($object_id, $object_type);
+        if (empty($locations)) {
+            return false;
+        }
+        update_post_meta(absint($object_id), '_alma_geo_locations_json', wp_json_encode($locations));
+        return true;
     }
 
     public function update_location_geocoding($location_id, $result) {
