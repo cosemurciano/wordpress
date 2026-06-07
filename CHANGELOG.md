@@ -1,5 +1,10 @@
 ## Unreleased
 
+- Corretto processamento background dell’import Geo Link Affiliati.
+- Aggiunto processamento AJAX batch con progress bar reale.
+- Aggiunti log visibili per i job di import.
+- Migliorata gestione annulla/pausa/riprendi job.
+- Migliorata barra avanzamento con percentuale e conteggio record.
 - Corretto redirect persistente verso la lista Articoli dopo creazione/aggiornamento Link Affiliati.
 - Aggiunto recupero sicuro dell’atterraggio errato su `edit.php` tramite marker, referer e fallback controllata.
 - Evitato redirect indesiderato quando l’utente visita intenzionalmente la lista Articoli.
