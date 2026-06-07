@@ -1,3 +1,12 @@
+## 2.41.6 - 2026-06-07
+
+### Fix GEO schema repair for missing job items table
+- Fix repair schema GEO quando `alma_geo_import_jobs` esiste ma `alma_geo_import_job_items` manca: il repair verifica fisicamente le tabelle con `SHOW TABLES LIKE`, richiama `dbDelta` e ricontrolla lo stato dopo la migrazione.
+- Aggiunta diagnostica avanzata `dbDelta` negli strumenti avanzati con tabella richiesta, esistenza prima/dopo, risultato `dbDelta`, `wpdb->last_error`, eventuale errore MySQL/SQLSTATE, tabelle con nome diverso e messaggio operativo.
+- Aggiunto controllo fisico delle tabelle prima di “Prepara import GEO”: l’import tenta un solo repair automatico e blocca la prepare se `alma_geo_import_job_items` resta mancante, evitando falsi successi e insert massivi falliti.
+- Allineata la tabella staging GEO con `created_at`, `processed_at`, payload raw/normalizzato e indici su job, status, job/status, row lookup e creazione, senza drop e senza cancellare dati.
+- Versione plugin aggiornata a `2.41.6`.
+
 ## 2.41.5 - 2026-06-07
 
 ### Fix GEO import database schema and staging inserts
