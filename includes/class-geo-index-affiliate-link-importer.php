@@ -20,28 +20,59 @@ class ALMA_Geo_Index_Affiliate_Link_Importer {
     public static function required_headers() {
         return array(
             'affiliate_link_id',
+            'affiliate_url',
             'primary_name',
-            'primary_type',
-            'primary_country',
-            'primary_country_code',
-            'primary_suggested_geocoding_query',
-            'safe_for_auto_import',
-            'safe_for_auto_geocoding',
-            'final_bucket',
         );
     }
 
     public static function recommended_headers() {
-        return array('activity_type','geo_scope','commercial_intent','widget_eligible','secondary_locations_json','confidence','match_weight','review_reason_code','geo_quality_flags');
+        return array('post_title','provider','source_name','activity_type','geo_scope','commercial_intent','widget_eligible','primary_canonical_name','primary_region','primary_country','safe_for_auto_import','final_bucket','secondary_locations_json','confidence','match_weight','review_reason_code','geo_quality_flags');
     }
 
     public static function allowed_csv_mimes() {
         return ALMA_Geo_Index_Importer::allowed_csv_mimes();
     }
 
+    public static function normalize_header($header) {
+        $header = preg_replace('/^\xEF\xBB\xBF/', '', (string) $header);
+        $key = sanitize_key($header);
+        $aliases = array(
+            'id' => 'affiliate_link_id',
+            'post_id' => 'affiliate_link_id',
+            'link_id' => 'affiliate_link_id',
+            'title' => 'post_title',
+            'link_title' => 'post_title',
+            'url' => 'affiliate_url',
+            'link_url' => 'affiliate_url',
+            'safe_import' => 'safe_for_auto_import',
+            'is_safe_import' => 'safe_for_auto_import',
+            'safe_auto_import' => 'safe_for_auto_import',
+            'bucket' => 'final_bucket',
+            'import_bucket' => 'final_bucket',
+            'region' => 'primary_region',
+            'country' => 'primary_country',
+            'country_code' => 'primary_country_code',
+            'city' => 'primary_city',
+            'canonical_name' => 'primary_canonical_name',
+            'place_id' => 'primary_place_id',
+            'formatted_address' => 'primary_formatted_address',
+        );
+        return $aliases[$key] ?? $key;
+    }
+
+    public static function normalize_headers($headers) {
+        $normalized = array();
+        foreach ((array) $headers as $header) {
+            $key = self::normalize_header($header);
+            if ($key !== '') {
+                $normalized[] = $key;
+            }
+        }
+        return $normalized;
+    }
+
     public function validate_headers($headers) {
-        $headers = array_map('sanitize_key', (array) $headers);
-        $headers = array_values(array_filter($headers));
+        $headers = self::normalize_headers($headers);
         $missing = array();
         foreach (self::required_headers() as $required) {
             if (!in_array($required, $headers, true)) {
@@ -106,8 +137,7 @@ class ALMA_Geo_Index_Affiliate_Link_Importer {
         if (isset($headers[0])) {
             $headers[0] = preg_replace('/^\xEF\xBB\xBF/', '', $headers[0]);
         }
-        $headers = array_map('sanitize_key', (array) $headers);
-        $headers = array_values(array_filter($headers));
+        $headers = self::normalize_headers($headers);
         if (empty($headers) || count($headers) < 2) {
             return new WP_Error('geo_csv_missing_headers', __('CSV senza intestazioni.', 'affiliate-link-manager-ai'));
         }
@@ -132,7 +162,7 @@ class ALMA_Geo_Index_Affiliate_Link_Importer {
                 if (isset($data[0])) {
                     $data[0] = preg_replace('/^\xEF\xBB\xBF/', '', $data[0]);
                 }
-                $headers = array_map('sanitize_key', $data);
+                $headers = self::normalize_headers($data);
                 continue;
             }
             if ($this->is_empty_csv_row($data)) {
@@ -150,7 +180,7 @@ class ALMA_Geo_Index_Affiliate_Link_Importer {
     public function normalize_row($row) {
         $normalized = array();
         foreach ((array) $row as $key => $value) {
-            $key = sanitize_key($key);
+            $key = self::normalize_header($key);
             if (is_string($value)) {
                 $normalized[$key] = trim($value);
             } else {
@@ -161,11 +191,16 @@ class ALMA_Geo_Index_Affiliate_Link_Importer {
         $normalized['primary_type'] = sanitize_key($normalized['primary_type'] ?? 'unknown');
         $normalized['primary_country_code'] = strtoupper(sanitize_text_field($normalized['primary_country_code'] ?? ''));
         $normalized['final_bucket'] = sanitize_key($normalized['final_bucket'] ?? '');
+        if (empty($normalized['final_bucket']) && $this->to_bool($normalized['safe_for_auto_import'] ?? false)) {
+            $normalized['final_bucket'] = 'safe_import';
+        }
         return $normalized;
     }
 
     public function is_safe_row($row) {
-        return $this->to_bool($row['safe_for_auto_import'] ?? false) && sanitize_key($row['final_bucket'] ?? '') === 'safe_import';
+        $safe_flag = $this->to_bool($row['safe_for_auto_import'] ?? false);
+        $bucket = sanitize_key($row['final_bucket'] ?? '');
+        return $safe_flag || $bucket === 'safe_import';
     }
 
     public function create_job_from_csv($file_path, $args = array()) {
@@ -178,53 +213,147 @@ class ALMA_Geo_Index_Affiliate_Link_Importer {
         ));
         $job_store = new ALMA_Geo_Index_Job_Store();
         $delimiter = $args['delimiter'] ?: $this->detect_csv_delimiter($file_path);
-        $job_id = $job_store->create_job(ALMA_Geo_Index_Job_Store::JOB_TYPE_AFFILIATE_LINKS_GEO_IMPORT, $args['file_name'], array(
+        $options = array(
             'overwrite' => !empty($args['overwrite']),
             'safe_only' => !empty($args['safe_only']),
             'batch_size' => max(25, min(250, absint($args['batch_size']))),
             'delimiter' => $delimiter,
-        ), get_current_user_id());
+            'csv_headers' => array(),
+            'required_missing' => array(),
+            'rows_read' => 0,
+            'items_created' => 0,
+            'rows_discarded' => 0,
+            'discard_reasons' => array(),
+            'discard_examples' => array(),
+            'sql_errors' => array(),
+        );
+        $job_id = $job_store->create_job(ALMA_Geo_Index_Job_Store::JOB_TYPE_AFFILIATE_LINKS_GEO_IMPORT, $args['file_name'], $options, get_current_user_id());
 
         $handle = fopen($file_path, 'r');
         if (!$handle) {
-            $job_store->delete_job($job_id);
-            return new WP_Error('alma_geo_csv_open_failed', __('Impossibile riaprire il CSV per creare gli item di import.', 'affiliate-link-manager-ai'));
+            $job_store->update_job_status($job_id, 'failed', 'csv_open_failed');
+            return new WP_Error('alma_geo_csv_open_failed', __('Impossibile riaprire il CSV per creare gli item di import.', 'affiliate-link-manager-ai'), array('job_id' => $job_id));
         }
 
         $headers = array();
         $total = 0;
         $inserted = 0;
+        $discarded = 0;
         $row_number = 0;
+        $seen = array();
+        global $wpdb;
         while (($data = fgetcsv($handle, 0, $delimiter)) !== false) {
             $row_number++;
             if (empty($headers)) {
-                if (isset($data[0])) {
-                    $data[0] = preg_replace('/^\xEF\xBB\xBF/', '', $data[0]);
-                }
-                $headers = array_map('sanitize_key', $data);
+                $headers = self::normalize_headers($data);
+                $options['csv_headers'] = $headers;
+                $header_validation = $this->validate_headers($headers);
+                $options['required_missing'] = $header_validation['missing'];
                 continue;
             }
             if ($this->is_empty_csv_row($data)) {
                 continue;
             }
             $total++;
-            $row = $this->normalize_row(array_combine($headers, array_slice(array_pad($data, count($headers), ''), 0, count($headers))));
-            $item_id = $job_store->add_job_item($job_id, $row_number, $row, absint($row['affiliate_link_id'] ?? 0), ALMA_Geo_Index_Store::OBJECT_TYPE_AFFILIATE_LINK);
-            if ($item_id) {
+            $row = $this->normalize_row($this->combine_csv_row($headers, $data));
+            $reason = $this->staging_reject_reason($row, $args, $seen);
+            $status = $reason ? 'skipped' : 'queued';
+            $action = $reason ? 'staging_rejected' : '';
+            $message = $reason ? 'staging_' . $reason : '';
+            $item_id = $job_store->add_job_item($job_id, $row_number, $row, absint($row['affiliate_link_id'] ?? 0), ALMA_Geo_Index_Store::OBJECT_TYPE_AFFILIATE_LINK, $status, $action, $message);
+            if ($item_id && !$reason) {
                 $inserted++;
+            } elseif ($item_id && $reason) {
+                $discarded++;
+                $this->record_staging_discard($options, $row_number, $row, $reason);
+            } else {
+                $discarded++;
+                $reason = 'sql_insert_failed';
+                $this->record_staging_discard($options, $row_number, $row, $reason);
+                if (!empty($wpdb->last_error)) {
+                    $options['sql_errors'][] = sanitize_textarea_field($wpdb->last_error);
+                    $options['sql_errors'] = array_slice($options['sql_errors'], -10);
+                }
             }
         }
         fclose($handle);
 
+        $options['rows_read'] = $total;
+        $options['items_created'] = $inserted;
+        $options['rows_discarded'] = $discarded;
         $job_store->set_total_records($job_id, $total);
+        $job_store->update_job_options($job_id, $options);
         if ($total > 0 && $inserted === 0) {
-            $job_store->delete_job($job_id);
-            return new WP_Error('alma_geo_no_items_created', __('Nessun item creato dalla sessione GEO: il CSV è stato letto ma la tabella staging non ha accettato righe processabili.', 'affiliate-link-manager-ai'));
-        }
-        if ($inserted !== $total) {
-            $job_store->update_job_status($job_id, 'failed', sprintf('items_created_mismatch total=%d inserted=%d', $total, $inserted));
+            $message = __('Il CSV è stato letto, ma nessuna riga è stata accettata nella staging. Controlla mapping colonne, safe_import, link affiliati esistenti o log tecnico.', 'affiliate-link-manager-ai');
+            $job_store->update_job_status($job_id, 'needs_review', $message);
         }
         return $job_id;
+    }
+
+    private function combine_csv_row($headers, $data) {
+        $row = array();
+        $values = array_slice(array_pad((array) $data, count($headers), ''), 0, count($headers));
+        foreach ($headers as $index => $header) {
+            if ($header === '') {
+                continue;
+            }
+            $value = $values[$index] ?? '';
+            if (!isset($row[$header]) || $row[$header] === '') {
+                $row[$header] = $value;
+            }
+        }
+        return $row;
+    }
+
+    private function staging_reject_reason($row, $args, &$seen) {
+        $affiliate_link_id = absint($row['affiliate_link_id'] ?? 0);
+        if (empty($row['affiliate_link_id'])) {
+            return 'missing_affiliate_link_id';
+        }
+        if (!$affiliate_link_id) {
+            return 'invalid_affiliate_link_id';
+        }
+        $affiliate_url = trim((string) ($row['affiliate_url'] ?? ''));
+        if ($affiliate_url === '') {
+            return 'missing_affiliate_url';
+        }
+        if (!preg_match('#^https?://#i', $affiliate_url) || !filter_var($affiliate_url, FILTER_VALIDATE_URL)) {
+            return 'invalid_affiliate_url';
+        }
+        if (trim((string) ($row['primary_name'] ?? '')) === '' && trim((string) ($row['primary_canonical_name'] ?? '')) === '') {
+            return 'missing_primary_name';
+        }
+        $post = get_post($affiliate_link_id);
+        if (!$post) {
+            return 'affiliate_link_not_found';
+        }
+        if ($post->post_type !== ALMA_Geo_Index_Store::OBJECT_TYPE_AFFILIATE_LINK) {
+            return 'object_not_affiliate_link';
+        }
+        if (!empty($args['safe_only']) && !$this->is_safe_row($row)) {
+            return 'safe_import_false';
+        }
+        if ($this->has_existing_geo($affiliate_link_id) && empty($args['overwrite'])) {
+            return 'existing_geo_skipped';
+        }
+        $dedupe_key = $affiliate_link_id . '|' . sanitize_title((string) ($row['primary_canonical_name'] ?? ($row['primary_name'] ?? '')));
+        if (isset($seen[$dedupe_key])) {
+            return 'duplicate_staging_item';
+        }
+        $seen[$dedupe_key] = true;
+        return '';
+    }
+
+    private function record_staging_discard(&$options, $row_number, $row, $reason) {
+        $reason = sanitize_key($reason ?: 'unknown_error');
+        $options['discard_reasons'][$reason] = (int) ($options['discard_reasons'][$reason] ?? 0) + 1;
+        $options['discard_examples'][] = array(
+            'row_number' => absint($row_number),
+            'title' => sanitize_text_field($row['post_title'] ?? ($row['title'] ?? '')),
+            'affiliate_url' => esc_url_raw($row['affiliate_url'] ?? ''),
+            'reason' => $reason,
+        );
+        $options['discard_examples'] = array_slice($options['discard_examples'], -10);
     }
 
     public function process_job_batch($job_id, $batch_size = 50, $retry_errors = false) {
@@ -236,7 +365,7 @@ class ALMA_Geo_Index_Affiliate_Link_Importer {
         if (sanitize_key($job['job_type'] ?? '') !== ALMA_Geo_Index_Job_Store::JOB_TYPE_AFFILIATE_LINKS_GEO_IMPORT) {
             return new WP_Error('alma_geo_invalid_job_type', __('Tipo job non valido.', 'affiliate-link-manager-ai'));
         }
-        if (in_array($job['status'], array('cancelled','completed','failed'), true)) {
+        if (in_array($job['status'], array('cancelled','completed','failed','needs_review'), true)) {
             $counts = $job_store->get_item_status_counts($job_id);
             return array(
                 'processed' => 0,
@@ -364,7 +493,7 @@ class ALMA_Geo_Index_Affiliate_Link_Importer {
             return $this->row_result('error', 'object_not_affiliate_link', $affiliate_link_id);
         }
         if (!empty($args['safe_only']) && !$this->is_safe_row($row)) {
-            return $this->row_result('skipped', 'safe_import_skipped', $affiliate_link_id);
+            return $this->row_result('skipped', 'safe_import_false', $affiliate_link_id);
         }
         if ($this->has_existing_geo($affiliate_link_id) && empty($args['overwrite'])) {
             return $this->row_result('skipped', 'skipped_existing_geo existing_geo_skipped', $affiliate_link_id);
@@ -374,7 +503,7 @@ class ALMA_Geo_Index_Affiliate_Link_Importer {
         $before_relations = $this->count_relations($affiliate_link_id);
         $geo_data = $this->row_to_geo_data($row);
         if (empty($geo_data['primary_location']['canonical_name']) && empty($geo_data['primary_location']['name'])) {
-            return $this->row_result('error', 'missing_primary_location', $affiliate_link_id);
+            return $this->row_result('error', 'missing_primary_name', $affiliate_link_id);
         }
         $result = $this->store->save_geo_meta_for_object($affiliate_link_id, ALMA_Geo_Index_Store::OBJECT_TYPE_AFFILIATE_LINK, $geo_data, self::SOURCE);
         update_post_meta($affiliate_link_id, '_alma_geo_activity_type', sanitize_key($row['activity_type'] ?? 'unknown'));
@@ -620,7 +749,7 @@ class ALMA_Geo_Index_Affiliate_Link_Importer {
             return $value;
         }
         $value = strtolower(trim((string) $value));
-        return in_array($value, array('1','true','yes','y','si','sì','on'), true);
+        return in_array($value, array('1','true','yes','y','si','sì','on','safe','safe_import'), true);
     }
 
     private function float_or_empty($value) {

@@ -2,13 +2,16 @@
 
 ### Fix Import GEO Link Affiliati
 
-- **Import GEO Link Affiliati** ora usa in modo coerente la tabella staging degli item: durante la creazione della sessione viene creato un item `queued` per ogni riga CSV processabile e la sessione fallisce con messaggio operativo se il CSV viene letto ma non viene creato nessun item.
-- Il click **Importa prossimo batch** processa un solo batch manuale, rispetta il batch size selezionato (25, 50, 100 o 250) e salva la scelta nella sessione per i batch successivi; non avvia loop browser, auto-processing o job background visibili.
-- La UI è stata semplificata in blocchi: **Carica CSV**, **Importazione**, **Report**, **Geocoding Google** e **Strumenti avanzati**. La sezione principale mostra solo avanzamento e conteggi sintetici; diagnostica tecnica e ultimi log restano chiusi di default negli strumenti avanzati.
-- I download **Scarica report CSV** e **Scarica log JSON** usano un export dedicato paginato/controllato e non il limite operativo di 200 righe degli ultimi item, così le sessioni grandi includono tutti gli item necessari.
-- **Reset import** elimina solo la sessione/staging GEO; non cancella Link Affiliati o geografie già importate.
-- La sezione **Geocoding Google** resta separata: l’import salva campi predisposti per località sorgente, località normalizzata, regione, paese, lat/lng, Google Place ID, formatted address, stato/confidence geocoding, ultimo geocoding ed errore, ma non chiama Google API durante il batch.
-- Versione plugin aggiornata a `2.41.2`.
+- **Workflow snello**: la pagina Import GEO Link Affiliati è organizzata in **A. Carica CSV**, **B. Preview**, **C. Prepara import**, **D. Importazione**, **E. Report**, **F. Geocoding Google** e **G. Strumenti avanzati**.
+- **Preview vs prepare vs batch**: “Valida e mostra preview” carica il CSV e mostra al massimo 10 record con le colonne principali; “Prepara import GEO” crea gli item staging processabili; “Importa prossimo batch” claim-a solo item reali in stato `queued` e importa un batch manuale alla volta.
+- **Fix staging 0/2212**: preview e preparazione ora condividono la stessa normalizzazione header, incluse alias come `safe_import` → `safe_for_auto_import`, quindi colonne riconosciute in preview come `affiliate_link_id`, `post_title`, `affiliate_url`, `primary_name` vengono riconosciute anche dalla creazione staging.
+- **Zero item staging**: se il CSV viene letto ma nessuna riga viene accettata nella staging, la sessione passa a `needs_review` con messaggio operativo e diagnostica su mapping colonne, `safe_import`, Link Affiliati esistenti e log tecnico; non viene mostrato un successo improprio.
+- **Righe scartate tracciate**: il report mostra righe lette, item staging creati, righe scartate, motivi aggregati normalizzati e gli ultimi 10 esempi con riga CSV, titolo, URL e motivo.
+- **Batch size preservato**: il select mantiene 25, 50, 100 o 250 dalla sessione e ogni click invia il valore scelto dall’utente.
+- **Download completi**: “Scarica report CSV” e “Scarica log JSON” esportano in pagine controllate fino a esaurimento righe, senza troncamento silenzioso a 50.000 record.
+- **Pausa legacy**: l’endpoint AJAX legacy di pausa restituisce un errore controllato perché il nuovo workflow manuale non ha job automatici da mettere in pausa; il pulsante pausa non è nella UI principale.
+- **Geocoding Google separato**: l’import salva/predispone località sorgente, località normalizzata, regione, paese, lat/lng, Google Place ID, formatted address, stato/confidence geocoding, ultimo geocoding ed errore, ma non chiama Google API durante i batch.
+- Versione plugin aggiornata a `2.41.3`.
 
 ## 2.41.0 - 2026-06-06
 
