@@ -211,10 +211,13 @@ class ALMA_Geo_Index_Affiliate_Link_Importer {
                 'counts' => $counts,
                 'debug' => array('status_guard' => sanitize_key($job['status'])),
                 'diagnostic' => $job_store->get_job_diagnostic($job_id, array('last_ajax_message' => 'status_guard')),
+                'message' => __('Job in stato terminale: nessun batch processato.', 'affiliate-link-manager-ai'),
             );
         }
         $recovered = $job_store->recover_stale_processing_items($job_id, 10);
-        $job_store->update_job_status($job_id, 'running');
+        if ($job['status'] === 'queued') {
+            $job_store->update_job_status($job_id, 'running');
+        }
         $options = is_array($job['options']) ? $job['options'] : array();
         $batch_size = max(1, min(100, absint($batch_size ?: ($options['batch_size'] ?? 50))));
         $items = $job_store->claim_items($job_id, $batch_size, $retry_errors ? array('queued','error') : array('queued'));
@@ -227,7 +230,9 @@ class ALMA_Geo_Index_Affiliate_Link_Importer {
             try {
                 $row = $this->normalize_row($item['raw_payload'] ?? array());
                 $result = $this->import_row($row, $options);
-                if (!is_array($result) || empty($result['status'])) {
+                if (is_wp_error($result)) {
+                    $result = $this->row_result('error', $result->get_error_message(), absint($row['affiliate_link_id'] ?? $object_id));
+                } elseif (!is_array($result) || empty($result['status'])) {
                     $result = $this->row_result('error', 'invalid_import_row_result', absint($row['affiliate_link_id'] ?? $object_id));
                 }
             } catch (Throwable $e) {
@@ -255,6 +260,7 @@ class ALMA_Geo_Index_Affiliate_Link_Importer {
         }
         $counts = $job_store->recount_job($job_id);
         $job = $job_store->maybe_complete_job($job_id);
+        $counts = $job_store->get_item_status_counts($job_id);
         $debug = array(
             'batch_size' => $batch_size,
             'retry_errors' => (bool) $retry_errors,
@@ -262,6 +268,12 @@ class ALMA_Geo_Index_Affiliate_Link_Importer {
             'claim' => $job_store->get_last_claim_debug(),
             'item_results' => $item_results,
         );
+        if ($claimed === 0 && !empty($counts['queued'])) {
+            $debug['warning'] = 'claim_returned_zero_with_queued_items';
+        }
+        $message = $claimed === 0 && !empty($counts['queued'])
+            ? __('Nessun item claimato nonostante esistano item in coda: controlla diagnostica claim.', 'affiliate-link-manager-ai')
+            : sprintf(__('Batch processato: %1$d item claimati, %2$d processati.', 'affiliate-link-manager-ai'), $claimed, $processed);
         return array(
             'processed' => $processed,
             'claimed' => $claimed,
@@ -270,6 +282,7 @@ class ALMA_Geo_Index_Affiliate_Link_Importer {
             'items' => $job_store->get_items($job_id, 50),
             'debug' => $debug,
             'diagnostic' => $job_store->get_job_diagnostic($job_id, array('last_ajax_message' => 'batch_processed')),
+            'message' => $message,
         );
     }
 
@@ -280,15 +293,15 @@ class ALMA_Geo_Index_Affiliate_Link_Importer {
         if (!$affiliate_link_id) {
             return $this->row_result('error', 'invalid_affiliate_link_id', 0);
         }
-        if (!empty($args['safe_only']) && !$this->is_safe_row($row)) {
-            return $this->row_result('skipped', 'safe_import_skipped', $affiliate_link_id);
-        }
         $post = get_post($affiliate_link_id);
         if (!$post) {
             return $this->row_result('error', 'affiliate_link_not_found', $affiliate_link_id);
         }
         if ($post->post_type !== ALMA_Geo_Index_Store::OBJECT_TYPE_AFFILIATE_LINK) {
             return $this->row_result('error', 'object_not_affiliate_link', $affiliate_link_id);
+        }
+        if (!empty($args['safe_only']) && !$this->is_safe_row($row)) {
+            return $this->row_result('skipped', 'safe_import_skipped', $affiliate_link_id);
         }
         if ($this->has_existing_geo($affiliate_link_id) && empty($args['overwrite'])) {
             return $this->row_result('skipped', 'skipped_existing_geo existing_geo_skipped', $affiliate_link_id);

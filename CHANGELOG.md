@@ -1,5 +1,10 @@
 ## Unreleased
 
+- Corretto processamento batch dell’import Geo Link Affiliati con claim diagnostico, recupero item `processing` stantii e conteggio `processed_records = imported + updated + skipped + error`.
+- Aggiunta diagnostica dettagliata dei job di import e risposta AJAX con `claimed`, `processed`, `counts`, `items`, `debug` e `message`.
+- Aggiunto box persistente **Errore ultimo batch** e arresto dell’auto-processing in caso di errore AJAX.
+- Migliorata progress bar con X/Y, percentuale esatta e tacche 0–100 ogni 10%.
+- Corretto redirect fallback dei Link Affiliati per non intercettare visite intenzionali alla lista Articoli senza marker esplicito `needs_recovery`.
 - Corretto processamento background dell’import Geo Link Affiliati: gli item claimati avanzano da `queued` a esito finale e gli `skipped` contano come processati.
 - Aggiunti log diagnostici e messaggi errore persistenti per batch AJAX dell’import Geo Link Affiliati.
 - Migliorata progress bar dell’import Geo Link Affiliati con conteggio reale e marcatori 10%.
