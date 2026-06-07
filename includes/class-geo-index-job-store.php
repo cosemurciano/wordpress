@@ -25,7 +25,12 @@ class ALMA_Geo_Index_Job_Store {
     }
 
     public function install_tables() {
+        return $this->repair_tables();
+    }
+
+    public function repair_tables() {
         global $wpdb;
+        $before = $this->schema_status();
         $charset_collate = $wpdb->get_charset_collate();
         $jobs = $this->table_jobs();
         $items = $this->table_items();
@@ -63,21 +68,48 @@ class ALMA_Geo_Index_Job_Store {
             action varchar(40) DEFAULT '',
             message text NULL,
             raw_payload longtext NULL,
+            created_at datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
             processed_at datetime NULL,
             PRIMARY KEY  (id),
             KEY job_id (job_id),
             KEY status (status),
             KEY job_status (job_id, status),
             KEY object_lookup (object_id, object_type),
-            KEY row_lookup (job_id, row_number)
+            KEY row_lookup (job_id, row_number),
+            KEY created_at (created_at)
         ) $charset_collate;";
 
+        $wpdb->last_error = '';
         require_once ABSPATH . 'wp-admin/includes/upgrade.php';
-        dbDelta($sql_jobs);
-        dbDelta($sql_items);
-        update_option('alma_geo_import_schema_version', '2', false);
+        $dbdelta_jobs = dbDelta($sql_jobs);
+        $dbdelta_items = dbDelta($sql_items);
+        $last_error = (string) $wpdb->last_error;
+        $after = $this->schema_status();
+        $variant_tables = $this->find_variant_item_tables();
+        $success = !empty($after['jobs_exists']) && !empty($after['items_exists']);
+        $message = $success
+            ? __('Schema riparato correttamente.', 'affiliate-link-manager-ai')
+            : $this->repair_failure_message($before, $after, $dbdelta_items, $last_error, $variant_tables);
 
-        return $this->schema_status();
+        if ($success) {
+            update_option('alma_geo_import_schema_version', '3', false);
+        }
+
+        return array_merge($after, array(
+            'success' => $success,
+            'message' => $message,
+            'requested_tables' => array('jobs' => $jobs, 'items' => $items),
+            'before' => $before,
+            'after' => $after,
+            'dbdelta' => array(
+                'jobs' => is_array($dbdelta_jobs) ? array_map('sanitize_text_field', $dbdelta_jobs) : array(),
+                'items' => is_array($dbdelta_items) ? array_map('sanitize_text_field', $dbdelta_items) : array(),
+            ),
+            'last_error' => sanitize_textarea_field($last_error),
+            'mysql_error' => sanitize_textarea_field($this->mysql_error_message()),
+            'sqlstate' => sanitize_text_field($this->mysql_sqlstate()),
+            'variant_item_tables' => $variant_tables,
+        ));
     }
 
     public function schema_status() {
@@ -87,12 +119,75 @@ class ALMA_Geo_Index_Job_Store {
         return array(
             'jobs_table' => $jobs,
             'items_table' => $items,
-            'jobs_exists' => $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $jobs)) === $jobs,
-            'items_exists' => $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $items)) === $items,
+            'jobs_exists' => $this->table_exists($jobs),
+            'items_exists' => $this->table_exists($items),
             'schema_version' => (string) get_option('alma_geo_import_schema_version', ''),
             'last_error' => sanitize_textarea_field($wpdb->last_error),
         );
     }
+
+    private function table_exists($table) {
+        global $wpdb;
+        $like = method_exists($wpdb, 'esc_like') ? $wpdb->esc_like($table) : addcslashes($table, '_%\\');
+        return $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $like)) === $table;
+    }
+
+    private function find_variant_item_tables() {
+        global $wpdb;
+        $variant_suffixes = array(
+            'alma_geo_import' . '_items',
+            'alma_geo_index' . '_job_items',
+            'alma_geo_import' . '_job_item',
+        );
+        $variants = array('alma_geo_import' . '_job_items');
+        foreach ($variant_suffixes as $suffix) {
+            $variants[] = $wpdb->prefix . $suffix;
+            $variants[] = $suffix;
+        }
+        $found = array();
+        foreach (array_unique($variants) as $table) {
+            if ($table !== $this->table_items() && $this->table_exists($table)) {
+                $found[] = sanitize_text_field($table);
+            }
+        }
+        return $found;
+    }
+
+    private function repair_failure_message($before, $after, $dbdelta_items, $last_error, $variant_tables) {
+        if (!empty($variant_tables)) {
+            return __('La tabella esiste con nome diverso.', 'affiliate-link-manager-ai');
+        }
+        if ($last_error !== '') {
+            if (stripos($last_error, 'CREATE') !== false && (stripos($last_error, 'denied') !== false || stripos($last_error, 'command denied') !== false)) {
+                return __('Permessi database insufficienti per CREATE TABLE.', 'affiliate-link-manager-ai');
+            }
+            return sprintf(__('Errore SQL: %s', 'affiliate-link-manager-ai'), sanitize_textarea_field($last_error));
+        }
+        if (empty($after['items_exists']) && empty($dbdelta_items)) {
+            return __('La query di creazione non è stata applicata da dbDelta.', 'affiliate-link-manager-ai');
+        }
+        if (!empty($before['jobs_exists']) && empty($before['items_exists']) && empty($after['items_exists'])) {
+            return __('La tabella jobs esiste, ma la tabella staging job items non è stata creata.', 'affiliate-link-manager-ai');
+        }
+        return __('Riparazione schema GEO non completata: verifica i dettagli tecnici negli strumenti avanzati.', 'affiliate-link-manager-ai');
+    }
+
+    private function mysql_error_message() {
+        global $wpdb;
+        if (is_object($wpdb->dbh) && property_exists($wpdb->dbh, 'error')) {
+            return (string) $wpdb->dbh->error;
+        }
+        return '';
+    }
+
+    private function mysql_sqlstate() {
+        global $wpdb;
+        if (is_object($wpdb->dbh) && property_exists($wpdb->dbh, 'sqlstate')) {
+            return (string) $wpdb->dbh->sqlstate;
+        }
+        return '';
+    }
+
 
     public function tables_exist() {
         $status = $this->schema_status();
@@ -104,8 +199,10 @@ class ALMA_Geo_Index_Job_Store {
         if (!empty($status['jobs_exists']) && !empty($status['items_exists'])) {
             return true;
         }
+        $repair_status = array();
         if ($repair) {
-            $status = $this->install_tables();
+            $repair_status = $this->repair_tables();
+            $status = is_array($repair_status['after'] ?? null) ? $repair_status['after'] : $repair_status;
             if (!empty($status['jobs_exists']) && !empty($status['items_exists'])) {
                 return true;
             }
@@ -119,8 +216,10 @@ class ALMA_Geo_Index_Job_Store {
         }
         return new WP_Error(
             'alma_geo_import_schema_missing',
-            __('Le tabelle staging GEO non sono disponibili. Clicca Ripara tabelle GEO o disattiva/riattiva il plugin. Nessun Link Affiliato è stato modificato.', 'affiliate-link-manager-ai'),
-            array('missing_tables' => $missing, 'schema_status' => $status)
+            !empty($repair_status['message'])
+                ? sprintf(__('%s Nessun Link Affiliato è stato modificato.', 'affiliate-link-manager-ai'), $repair_status['message'])
+                : __('Le tabelle staging GEO non sono disponibili. Clicca Ripara tabelle GEO o disattiva/riattiva il plugin. Nessun Link Affiliato è stato modificato.', 'affiliate-link-manager-ai'),
+            array('missing_tables' => $missing, 'schema_status' => $status, 'repair_status' => $repair_status)
         );
     }
 
@@ -169,8 +268,9 @@ class ALMA_Geo_Index_Job_Store {
             'action' => sanitize_key($action),
             'message' => sanitize_textarea_field($message),
             'raw_payload' => wp_json_encode(is_array($payload) ? $payload : array()),
+            'created_at' => current_time('mysql'),
             'processed_at' => null,
-        ), array('%d','%d','%s','%d','%s','%s','%s','%s','%s'));
+        ), array('%d','%d','%s','%d','%s','%s','%s','%s','%s','%s'));
         return $inserted ? (int) $wpdb->insert_id : 0;
     }
 
@@ -610,7 +710,7 @@ class ALMA_Geo_Index_Job_Store {
                 if ($primary_reason === 'incomplete_record') { $report['incomplete_records']++; }
                 if (in_array($primary_reason, array('unknown_location','missing_primary_name','missing_primary_location'), true)) { $report['unknown_locations']++; }
                 if ($primary_reason === 'missing_region') { $report['missing_region']++; }
-                if (in_array($primary_reason, array('duplicate','duplicate_staging_item'), true)) { $report['duplicates']++; }
+                if ($primary_reason === 'duplicate') { $report['duplicates']++; }
                 if ($primary_reason === 'needs_review') { $report['needs_review']++; }
             }
             if (preg_match('/secondaries_imported=(\d+)/', $message, $m)) {

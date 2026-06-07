@@ -475,17 +475,23 @@ class ALMA_Geo_Index_Admin {
             return;
         }
         if ($action === 'repair_geo_import_tables') {
-            $status = $this->job_store->install_tables();
-            if (!empty($status['jobs_exists']) && !empty($status['items_exists'])) {
-                $this->notice_success(__('Tabelle GEO riparate/verificate correttamente. Nessun dato esistente è stato eliminato.', 'affiliate-link-manager-ai'));
+            $status = $this->job_store->repair_tables();
+            set_transient($this->geo_schema_repair_key(), $status, HOUR_IN_SECONDS);
+            if (!empty($status['success'])) {
+                $this->notice_success(__('Schema riparato correttamente. Nessun dato esistente è stato eliminato.', 'affiliate-link-manager-ai'));
             } else {
-                $this->notice_error(__('Riparazione tabelle GEO non riuscita. Verifica permessi database e riprova.', 'affiliate-link-manager-ai'));
+                $message = !empty($status['message']) ? $status['message'] : __('Riparazione schema GEO non completata: verifica i dettagli tecnici negli strumenti avanzati.', 'affiliate-link-manager-ai');
+                $this->notice_error($message . ' ' . __('Apri Strumenti avanzati per la diagnostica dbDelta.', 'affiliate-link-manager-ai'));
             }
             return;
         }
         if ($action === 'start_affiliate_import') {
             $schema_ready = $this->job_store->ensure_tables(true);
             if (is_wp_error($schema_ready)) {
+                $data = $schema_ready->get_error_data();
+                if (!empty($data['repair_status']) && is_array($data['repair_status'])) {
+                    set_transient($this->geo_schema_repair_key(), $data['repair_status'], HOUR_IN_SECONDS);
+                }
                 $this->notice_error($schema_ready->get_error_message());
                 return;
             }
@@ -967,11 +973,44 @@ class ALMA_Geo_Index_Admin {
         if (empty($status['items_exists'])) {
             echo '<div class="notice notice-warning inline"><p>' . esc_html(sprintf(__('La tabella staging GEO non esiste: %s. Clicca Ripara tabelle GEO o disattiva/riattiva il plugin. Nessun Link Affiliato è stato modificato.', 'affiliate-link-manager-ai'), $status['items_table'])) . '</p></div>';
         }
+        $repair = get_transient($this->geo_schema_repair_key());
+        if (is_array($repair)) {
+            $this->render_geo_schema_repair_diagnostic($repair);
+        }
         echo '<form method="post" style="display:inline-block;margin:0 8px 12px 0;">';
         wp_nonce_field('alma_geo_affiliate_import');
         echo '<input type="hidden" name="alma_geo_index_action" value="repair_geo_import_tables">';
         submit_button(__('Ripara tabelle GEO', 'affiliate-link-manager-ai'), 'secondary small', 'submit', false);
         echo '</form>';
+    }
+
+
+    private function render_geo_schema_repair_diagnostic($repair) {
+        $before = is_array($repair['before'] ?? null) ? $repair['before'] : array();
+        $after = is_array($repair['after'] ?? null) ? $repair['after'] : array();
+        $dbdelta = is_array($repair['dbdelta'] ?? null) ? $repair['dbdelta'] : array();
+        $rows = array(
+            __('Tabella jobs richiesta', 'affiliate-link-manager-ai') => $repair['jobs_table'] ?? ($repair['requested_tables']['jobs'] ?? ''),
+            __('Tabella job items richiesta', 'affiliate-link-manager-ai') => $repair['items_table'] ?? ($repair['requested_tables']['items'] ?? ''),
+            __('Jobs esisteva prima del repair', 'affiliate-link-manager-ai') => !empty($before['jobs_exists']) ? 'yes' : 'no',
+            __('Job items esisteva prima del repair', 'affiliate-link-manager-ai') => !empty($before['items_exists']) ? 'yes' : 'no',
+            __('Jobs esiste dopo il repair', 'affiliate-link-manager-ai') => !empty($after['jobs_exists']) ? 'yes' : 'no',
+            __('Job items esiste dopo il repair', 'affiliate-link-manager-ai') => !empty($after['items_exists']) ? 'yes' : 'no',
+            __('Risultato dbDelta jobs', 'affiliate-link-manager-ai') => implode(' | ', (array) ($dbdelta['jobs'] ?? array())),
+            __('Risultato dbDelta job items', 'affiliate-link-manager-ai') => implode(' | ', (array) ($dbdelta['items'] ?? array())),
+            __('wpdb last_error', 'affiliate-link-manager-ai') => sanitize_textarea_field($repair['last_error'] ?? ''),
+            __('MySQL error', 'affiliate-link-manager-ai') => sanitize_textarea_field($repair['mysql_error'] ?? ''),
+            __('SQLSTATE', 'affiliate-link-manager-ai') => sanitize_text_field($repair['sqlstate'] ?? ''),
+            __('Tabelle item con nome diverso', 'affiliate-link-manager-ai') => implode(', ', (array) ($repair['variant_item_tables'] ?? array())),
+            __('Messaggio operativo', 'affiliate-link-manager-ai') => sanitize_textarea_field($repair['message'] ?? ''),
+        );
+        echo '<details style="max-width:920px;margin:10px 0 14px;"><summary><strong>' . esc_html__('Diagnostica avanzata repair GEO', 'affiliate-link-manager-ai') . '</strong></summary>';
+        echo '<p>' . esc_html__('Dettagli tecnici sicuri per capire perché dbDelta ha creato o non ha creato la tabella staging. Non contiene SQL completo né path server.', 'affiliate-link-manager-ai') . '</p>';
+        echo '<table class="widefat striped"><tbody>';
+        foreach ($rows as $label => $value) {
+            echo '<tr><th>' . esc_html($label) . '</th><td>' . esc_html((string) $value) . '</td></tr>';
+        }
+        echo '</tbody></table></details>';
     }
 
     private function render_affiliate_job_diagnostic($job_id) {
@@ -1418,6 +1457,10 @@ class ALMA_Geo_Index_Admin {
 
     private function affiliate_preview_key() {
         return self::PREVIEW_TRANSIENT_PREFIX . 'affiliate_' . get_current_user_id();
+    }
+
+    private function geo_schema_repair_key() {
+        return self::PREVIEW_TRANSIENT_PREFIX . 'geo_schema_repair_' . get_current_user_id();
     }
 
     private function notice_success($message) {
