@@ -584,13 +584,18 @@ class ALMA_Geo_Index_Admin {
         $batch_size = max(1, min(100, absint($_POST['batch_size'] ?? ($job['options']['batch_size'] ?? 50))));
         $result = $this->affiliate_importer->process_job_batch($job_id, $batch_size, !empty($_POST['retry_errors']));
         if (is_wp_error($result)) {
-            wp_send_json_error(array('message' => $result->get_error_message()), 400);
+            wp_send_json_error(array(
+                'message' => $result->get_error_message(),
+                'job' => $this->format_affiliate_job_response($job)['job'] ?? null,
+                'counts' => $this->job_store->get_item_status_counts($job_id),
+                'debug' => is_array($result->get_error_data()) ? $result->get_error_data() : array(),
+            ), 400);
         }
         $job = $result['job'] ?? $this->job_store->get_job($job_id);
         $counts = $result['counts'] ?? $this->job_store->get_item_status_counts($job_id);
         $claimed = (int) ($result['claimed'] ?? 0);
         $processed = (int) ($result['processed'] ?? 0);
-        $message = __('Batch processato.', 'affiliate-link-manager-ai');
+        $message = !empty($result['message']) ? sanitize_text_field($result['message']) : __('Batch processato.', 'affiliate-link-manager-ai');
         $terminal = !empty($job['status']) && in_array($job['status'], array('completed','paused','cancelled','failed'), true);
         if ($claimed === 0 && !empty($counts['queued'])) {
             $message = __('Nessun item claimato nonostante esistano item in coda.', 'affiliate-link-manager-ai');
@@ -727,6 +732,7 @@ class ALMA_Geo_Index_Admin {
             echo '<tr><th>' . esc_html($key) . '</th><td>' . esc_html((string) $value) . '</td></tr>';
         }
         echo '</tbody></table>';
+        $this->render_affiliate_job_diagnostic((int) $job['id']);
         $this->render_affiliate_job_logs((int) $job['id']);
         echo '</div></div>';
     }
@@ -762,6 +768,35 @@ class ALMA_Geo_Index_Admin {
         echo '</tbody></table>';
     }
 
+
+    private function render_affiliate_job_diagnostic($job_id) {
+        $diagnostic = $this->job_store->get_job_diagnostic($job_id);
+        $job = $this->job_store->get_job($job_id);
+        $rows = array(
+            'total_records' => (int) ($job['total_records'] ?? 0),
+            'total items in DB' => (int) ($diagnostic['total_item_rows'] ?? 0),
+            'queued' => (int) ($diagnostic['queued'] ?? 0),
+            'processing' => (int) ($diagnostic['processing'] ?? 0),
+            'imported' => (int) ($diagnostic['imported'] ?? 0),
+            'updated' => (int) ($diagnostic['updated'] ?? 0),
+            'skipped' => (int) ($diagnostic['skipped'] ?? 0),
+            'error' => (int) ($diagnostic['error'] ?? 0),
+            'last_error' => sanitize_textarea_field($diagnostic['last_error'] ?? ''),
+            'batch_size' => (int) ($diagnostic['batch_size'] ?? 0),
+            'safe_only' => !empty($diagnostic['safe_only']) ? 'true' : 'false',
+            'overwrite' => !empty($diagnostic['overwrite']) ? 'true' : 'false',
+            'ultimo batch claimed' => '',
+            'ultimo batch processed' => '',
+            'ultimo errore AJAX' => '',
+        );
+        echo '<details data-alma-diagnostic-details style="margin:12px 0;max-width:920px;" open><summary><strong>' . esc_html__('Diagnostica job', 'affiliate-link-manager-ai') . '</strong></summary>';
+        echo '<table class="widefat striped" style="margin-top:8px;"><tbody data-alma-job-diagnostic>';
+        foreach ($rows as $key => $value) {
+            echo '<tr><th>' . esc_html($key) . '</th><td data-alma-diagnostic="' . esc_attr($key) . '">' . esc_html((string) $value) . '</td></tr>';
+        }
+        echo '</tbody></table></details>';
+    }
+
     private function render_affiliate_job_button($action, $label, $job) {
         echo '<form method="post" style="display:inline-block;margin:0;">';
         wp_nonce_field('alma_geo_affiliate_import');
@@ -775,7 +810,12 @@ class ALMA_Geo_Index_Admin {
         $items = $this->job_store->get_items($job_id, 50);
         echo '<h4>' . esc_html__('Ultimi 50 log item', 'affiliate-link-manager-ai') . '</h4><div style="max-width:100%;overflow:auto;"><table class="widefat striped"><thead><tr><th>Riga</th><th>affiliate_link_id</th><th>Status</th><th>Azione</th><th>Messaggio</th><th>Processato</th></tr></thead><tbody data-alma-job-logs>';
         if (empty($items)) {
-            echo '<tr><td colspan="6">' . esc_html__('Nessun log.', 'affiliate-link-manager-ai') . '</td></tr>';
+            $counts = $this->job_store->get_item_status_counts($job_id);
+            if (!empty($counts['queued'])) {
+                echo '<tr><td colspan="6">' . esc_html(sprintf(__('Item in coda: %d', 'affiliate-link-manager-ai'), (int) $counts['queued'])) . '</td></tr>';
+            } else {
+                echo '<tr><td colspan="6">' . esc_html__('Nessun log.', 'affiliate-link-manager-ai') . '</td></tr>';
+            }
         }
         foreach ($items as $item) {
             echo '<tr><td>' . esc_html((string) $item['row_number']) . '</td><td>' . esc_html((string) $item['object_id']) . '</td><td>' . esc_html($item['status']) . '</td><td>' . esc_html($item['action']) . '</td><td>' . esc_html($item['message']) . '</td><td>' . esc_html((string) $item['processed_at']) . '</td></tr>';
@@ -798,6 +838,7 @@ class ALMA_Geo_Index_Admin {
             var autoEnabled = <?php echo in_array($job['status'], array('queued','running'), true) ? 'true' : 'false'; ?>;
             var processButton = document.getElementById('alma-geo-affiliate-process-next');
             var lastBatchFailed = false;
+            var lastJob = <?php echo wp_json_encode(array('status' => sanitize_key($job['status'] ?? ''), 'total_records' => (int) ($job['total_records'] ?? 0), 'processed_records' => (int) ($job['processed_records'] ?? 0))); ?>;
 
             function text(value) {
                 return String(value == null ? '' : value).replace(/[&<>'"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#039;','"':'&quot;'}[c]; });
@@ -837,6 +878,7 @@ class ALMA_Geo_Index_Admin {
                 var progress = document.querySelector('[data-alma-progress-text]');
                 var message = document.querySelector('[data-alma-job-message]');
                 var logs = document.querySelector('[data-alma-job-logs]');
+                lastJob = j;
                 if (status) { status.textContent = j.status; }
                 if (bar) { bar.style.width = pct + '%'; }
                 if (label) { label.textContent = pct + '% — ' + j.processed_records + '/' + j.total_records + ' record'; }
@@ -855,6 +897,35 @@ class ALMA_Geo_Index_Admin {
                         return '<tr><td>' + text(item.row_number) + '</td><td>' + text(item.affiliate_link_id) + '</td><td>' + text(item.status) + '</td><td>' + text(item.action) + '</td><td>' + text(item.message) + '</td><td>' + text(item.processed_at) + '</td></tr>';
                     }).join('') : '<tr><td colspan="6"><?php echo esc_js(__('Nessun log.', 'affiliate-link-manager-ai')); ?></td></tr>';
                 }
+                updateDiagnostic(data);
+            }
+            function updateDiagnostic(data) {
+                var diagnostic = data && data.diagnostic ? data.diagnostic : {};
+                var counts = data && data.counts ? data.counts : {};
+                var values = {
+                    'total_records': data && data.job ? data.job.total_records : '',
+                    'total items in DB': diagnostic.total_item_rows || 0,
+                    'queued': counts.queued != null ? counts.queued : diagnostic.queued,
+                    'processing': counts.processing != null ? counts.processing : diagnostic.processing,
+                    'imported': counts.imported != null ? counts.imported : diagnostic.imported,
+                    'updated': counts.updated != null ? counts.updated : diagnostic.updated,
+                    'skipped': counts.skipped != null ? counts.skipped : diagnostic.skipped,
+                    'error': counts.error != null ? counts.error : diagnostic.error,
+                    'last_error': diagnostic.last_error || '',
+                    'batch_size': diagnostic.batch_size || '',
+                    'safe_only': diagnostic.safe_only ? 'true' : 'false',
+                    'overwrite': diagnostic.overwrite ? 'true' : 'false',
+                    'ultimo batch claimed': data && data.claimed != null ? data.claimed : '',
+                    'ultimo batch processed': data && data.processed != null ? data.processed : ''
+                };
+                Object.keys(values).forEach(function(key){
+                    var cell = document.querySelector('[data-alma-diagnostic="' + key + '"]');
+                    if (cell) { cell.textContent = values[key] == null ? '' : values[key]; }
+                });
+            }
+            function setAjaxErrorDiagnostic(value) {
+                var cell = document.querySelector('[data-alma-diagnostic="ultimo errore AJAX"]');
+                if (cell) { cell.textContent = value || ''; }
             }
             function clearError() {
                 var box = document.querySelector('[data-alma-last-batch-error]');
@@ -862,6 +933,7 @@ class ALMA_Geo_Index_Admin {
                 lastBatchFailed = false;
                 if (box) { box.style.display = 'none'; }
                 if (body) { body.innerHTML = ''; }
+                setAjaxErrorDiagnostic('');
             }
             function isTerminal(job) {
                 return job && ['completed','cancelled','paused','failed'].indexOf(job.status) !== -1;
@@ -895,6 +967,7 @@ class ALMA_Geo_Index_Admin {
                     message.textContent = '<?php echo esc_js(__('Il batch non è stato processato. Auto-processing fermato: usa “Riprova batch”.', 'affiliate-link-manager-ai')); ?> ' + msg;
                     message.style.color = '#b32d2e';
                 }
+                setAjaxErrorDiagnostic(now + ' — HTTP ' + (status || 'n/d') + ' — ' + msg);
                 if (box && body) {
                     box.style.display = 'block';
                     body.innerHTML = '<p><strong><?php echo esc_js(__('Messaggio:', 'affiliate-link-manager-ai')); ?></strong> ' + text(msg) + '</p>' +
@@ -907,21 +980,22 @@ class ALMA_Geo_Index_Admin {
             function processOnce(manual) {
                 if (running) { return Promise.resolve(); }
                 running = true;
-                updateButtonState(null, true);
+                updateButtonState(lastJob, true);
                 return post('alma_geo_process_affiliate_link_import_job').then(function(data){
                     render(data);
                     var j = data.job;
                     running = false;
                     updateButtonState(j, false);
                     if (!manual && autoEnabled && j && (j.status === 'queued' || j.status === 'running')) {
-                        window.setTimeout(function(){ processOnce(false); }, 700);
+                        window.setTimeout(function(){ processOnce(false); }, 850);
                     }
                 }).catch(function(error){
                     running = false;
-                    updateButtonState(null, false);
+                    updateButtonState(lastJob, false);
                     showError(error);
                 });
             }
+            updateButtonState(lastJob, false);
             if (processButton) {
                 processButton.addEventListener('click', function(){ processOnce(true); });
             }

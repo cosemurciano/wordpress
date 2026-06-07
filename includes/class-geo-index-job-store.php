@@ -166,45 +166,52 @@ class ALMA_Geo_Index_Job_Store {
     public function claim_items($job_id, $limit = 50, $statuses = array('queued')) {
         global $wpdb;
         $job_id = absint($job_id);
-        $this->last_claim_debug = array(
-            'job_id' => $job_id,
-            'requested_limit' => absint($limit),
-            'requested_statuses' => array_values(array_map('sanitize_key', (array) $statuses)),
-            'eligible_ids_found' => 0,
-            'eligible_ids' => array(),
-            'updated_to_processing' => 0,
-            'items_returned' => 0,
-            'wpdb_last_error' => '',
-        );
         $limit = max(1, min(100, absint($limit)));
         $statuses = array_map('sanitize_key', (array) $statuses);
         $statuses = array_values(array_intersect($statuses, array('queued','error')));
         if (empty($statuses)) {
             $statuses = array('queued');
         }
+        $this->last_claim_debug = array(
+            'job_id' => $job_id,
+            'requested_limit' => $limit,
+            'claim_requested_statuses' => $statuses,
+            'claim_ids_found' => array(),
+            'claim_ids_returned' => array(),
+            'queued_before' => 0,
+            'processing_before' => 0,
+            'queued_after' => 0,
+            'processing_after' => 0,
+            'updated_to_processing' => 0,
+            'wpdb_last_error' => '',
+        );
+        $before_counts = $this->get_item_status_counts($job_id);
+        $this->last_claim_debug['queued_before'] = (int) $before_counts['queued'];
+        $this->last_claim_debug['processing_before'] = (int) $before_counts['processing'];
         $placeholders = implode(',', array_fill(0, count($statuses), '%s'));
         $params = array_merge(array($job_id), $statuses, array($limit));
         $ids = $wpdb->get_col($wpdb->prepare("SELECT id FROM {$this->table_items()} WHERE job_id = %d AND status IN ($placeholders) ORDER BY id ASC LIMIT %d", $params));
         $ids = array_values(array_filter(array_map('absint', (array) $ids)));
-        $this->last_claim_debug['normalized_statuses'] = $statuses;
-        $this->last_claim_debug['eligible_ids_found'] = count($ids);
-        $this->last_claim_debug['eligible_ids'] = $ids;
-        if (empty($ids)) {
-            $this->last_claim_debug['wpdb_last_error'] = (string) $wpdb->last_error;
-            return array();
+        $this->last_claim_debug['claim_ids_found'] = $ids;
+        if (!empty($ids)) {
+            $id_placeholders = implode(',', array_fill(0, count($ids), '%d'));
+            $update_params = array_merge(array('processing', 'claimed_for_processing', current_time('mysql'), $job_id), $ids, $statuses);
+            $updated = $wpdb->query($wpdb->prepare("UPDATE {$this->table_items()} SET status = %s, action = %s, processed_at = %s WHERE job_id = %d AND id IN ($id_placeholders) AND status IN ($placeholders)", $update_params));
+            $this->last_claim_debug['updated_to_processing'] = (int) $updated;
+            $items = $wpdb->get_results($wpdb->prepare("SELECT * FROM {$this->table_items()} WHERE job_id = %d AND id IN ($id_placeholders) AND status = %s ORDER BY id ASC", array_merge(array($job_id), $ids, array('processing'))), ARRAY_A);
+        } else {
+            $items = array();
         }
-        $id_placeholders = implode(',', array_fill(0, count($ids), '%d'));
-        $update_params = array_merge(array('processing', 'claimed_for_processing', current_time('mysql'), $job_id), $ids);
-        $updated = $wpdb->query($wpdb->prepare("UPDATE {$this->table_items()} SET status = %s, action = %s, processed_at = %s WHERE job_id = %d AND id IN ($id_placeholders)", $update_params));
-        $this->last_claim_debug['updated_to_processing'] = (int) $updated;
-        $this->last_claim_debug['wpdb_last_error'] = (string) $wpdb->last_error;
-        $items = $wpdb->get_results($wpdb->prepare("SELECT * FROM {$this->table_items()} WHERE job_id = %d AND id IN ($id_placeholders) ORDER BY id ASC", array_merge(array($job_id), $ids)), ARRAY_A);
         foreach ($items as &$item) {
             $decoded_payload = json_decode((string) ($item['raw_payload'] ?? ''), true);
             $item['raw_payload'] = is_array($decoded_payload) ? $decoded_payload : array();
         }
         unset($item);
-        $this->last_claim_debug['items_returned'] = count($items ?: array());
+        $returned_ids = array_values(array_map('absint', wp_list_pluck($items ?: array(), 'id')));
+        $after_counts = $this->get_item_status_counts($job_id);
+        $this->last_claim_debug['claim_ids_returned'] = $returned_ids;
+        $this->last_claim_debug['queued_after'] = (int) $after_counts['queued'];
+        $this->last_claim_debug['processing_after'] = (int) $after_counts['processing'];
         $this->last_claim_debug['wpdb_last_error'] = (string) $wpdb->last_error;
         return $items ?: array();
     }

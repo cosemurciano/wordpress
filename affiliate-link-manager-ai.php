@@ -1250,7 +1250,7 @@ class AffiliateManagerAI {
         if (!empty($data['handled'])) {
             return array('bypass_reason' => 'handled_transient');
         }
-        if (empty($data['needs_recovery']) && empty($data['wrong_landing_expected'])) {
+        if (empty($data['needs_recovery'])) {
             return array('bypass_reason' => 'missing_explicit_recovery_signal');
         }
         global $pagenow;
