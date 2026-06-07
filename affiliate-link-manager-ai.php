@@ -1097,29 +1097,19 @@ class AffiliateManagerAI {
         }
 
         if ($bypass_reason !== '') {
-            $this->log_affiliate_link_save_diagnostic('Affiliate link editor save marker skipped.', array(
-                'post_id' => $post_id,
-                'post_type' => $post_type,
-                'update' => (bool) $update,
-                'action' => isset($_POST['action']) ? sanitize_key(wp_unslash($_POST['action'])) : '',
-                'transient_key' => $transient_key,
-                'transient_created' => false,
-                'bypass_reason' => $bypass_reason,
-            ));
+            $context = $this->get_affiliate_link_save_marker_diagnostic_context($post_id, $post_type, $update, false);
+            $context['transient_key'] = $transient_key;
+            $context['bypass_reason'] = $bypass_reason;
+            $this->log_affiliate_link_save_diagnostic('Affiliate link editor save marker skipped.', $context);
             return;
         }
 
         $user_id = get_current_user_id();
         if (!$user_id) {
-            $this->log_affiliate_link_save_diagnostic('Affiliate link editor save marker skipped.', array(
-                'post_id' => $post_id,
-                'post_type' => $post_type,
-                'update' => (bool) $update,
-                'action' => isset($_POST['action']) ? sanitize_key(wp_unslash($_POST['action'])) : '',
-                'transient_key' => $transient_key,
-                'transient_created' => false,
-                'bypass_reason' => 'missing_user',
-            ));
+            $context = $this->get_affiliate_link_save_marker_diagnostic_context($post_id, $post_type, $update, false);
+            $context['transient_key'] = $transient_key;
+            $context['bypass_reason'] = 'missing_user';
+            $this->log_affiliate_link_save_diagnostic('Affiliate link editor save marker skipped.', $context);
             return;
         }
 
@@ -1136,16 +1126,11 @@ class AffiliateManagerAI {
         );
         set_transient($transient_key, $payload, self::AFFILIATE_LINK_SAVE_TRANSIENT_TTL);
 
-        $this->log_affiliate_link_save_diagnostic('Affiliate link editor save marker created.', array(
-            'post_id' => $post_id,
-            'post_type' => $post_type,
-            'update' => (bool) $update,
-            'action' => isset($_POST['action']) ? sanitize_key(wp_unslash($_POST['action'])) : '',
-            'transient_key' => $transient_key,
-            'transient_created' => true,
-            'ttl' => self::AFFILIATE_LINK_SAVE_TRANSIENT_TTL,
-            'message' => $message,
-        ));
+        $context = $this->get_affiliate_link_save_marker_diagnostic_context($post_id, $post_type, $update, true);
+        $context['transient_key'] = $transient_key;
+        $context['ttl'] = self::AFFILIATE_LINK_SAVE_TRANSIENT_TTL;
+        $context['message'] = $message;
+        $this->log_affiliate_link_save_diagnostic('Affiliate link editor save marker created.', $context);
     }
 
     /**
@@ -1159,53 +1144,91 @@ class AffiliateManagerAI {
         $data = $transient_key ? get_transient($transient_key) : false;
         $created_at = is_array($data) && !empty($data['created_at']) ? absint($data['created_at']) : 0;
         $age = $created_at ? max(0, time() - $created_at) : null;
-        $post_id = is_array($data) && !empty($data['post_id']) ? absint($data['post_id']) : 0;
-        $post_type = $post_id ? get_post_type($post_id) : '';
-        $current_referer = wp_get_referer();
-        $saved_referer = is_array($data) && !empty($data['referer']) ? (string) $data['referer'] : '';
-        $redirect = $post_id ? $this->build_affiliate_link_edit_redirect_from_message(
-            $post_id,
-            is_array($data) && !empty($data['message']) ? absint($data['message']) : 1,
-            is_array($data) && !empty($data['classic_editor'])
-        ) : '';
+        $referer = wp_get_referer();
+        $method = '';
+        $post_id = 0;
+        $message = 1;
+        $classic_editor = false;
+        $bypass_reason = $this->get_affiliate_link_admin_edit_base_recovery_bypass_reason();
 
         $context = array(
             'guard' => 'admin_init',
             'pagenow' => isset($pagenow) ? $pagenow : '',
+            'request_uri' => isset($_SERVER['REQUEST_URI']) ? esc_url_raw(wp_unslash($_SERVER['REQUEST_URI'])) : '',
             'current_post_type_get' => isset($_GET['post_type']) ? sanitize_key(wp_unslash($_GET['post_type'])) : '',
             'request_action' => isset($_REQUEST['action']) ? sanitize_key(wp_unslash($_REQUEST['action'])) : '',
             'request_action2' => isset($_REQUEST['action2']) ? sanitize_key(wp_unslash($_REQUEST['action2'])) : '',
             'transient_key' => $transient_key,
             'transient_present' => is_array($data),
             'transient_age' => $age,
-            'post_id' => $post_id,
-            'post_type' => $post_type,
-            'referer' => $current_referer,
-            'saved_referer' => $saved_referer,
-            'final_redirect' => $redirect,
+            'post_id' => 0,
+            'post_type' => '',
+            'recovery_method' => '',
+            'referer' => $referer,
+            'final_redirect' => '',
             'activated' => false,
         );
 
-        $bypass_reason = $this->get_affiliate_link_admin_edit_recovery_bypass_reason($data, $age, $post_id, $post_type, $current_referer, $saved_referer);
-        if ($bypass_reason !== '') {
-            if ($transient_key && in_array($bypass_reason, array('stale_transient', 'invalid_transient_post'), true)) {
-                delete_transient($transient_key);
-                $context['transient_deleted'] = true;
+        if ($bypass_reason === '') {
+            $transient_result = $this->resolve_affiliate_link_recovery_from_transient($data, $age);
+            if (!empty($transient_result['post_id'])) {
+                $method = 'transient';
+                $post_id = absint($transient_result['post_id']);
+                $message = absint($transient_result['message'] ?? 1) ?: 1;
+                $classic_editor = !empty($transient_result['classic_editor']);
+            } else {
+                if ($transient_key && is_array($data) && in_array($transient_result['bypass_reason'] ?? '', array('stale_transient', 'invalid_transient_post'), true)) {
+                    delete_transient($transient_key);
+                    $context['transient_deleted'] = true;
+                }
+
+                $referer_result = $this->resolve_affiliate_link_recovery_from_post_php_referer($referer);
+                if (!empty($referer_result['post_id'])) {
+                    $method = 'referer_post_php';
+                    $post_id = absint($referer_result['post_id']);
+                    $message = 1;
+                    $classic_editor = !empty($referer_result['classic_editor']);
+                } else {
+                    $new_referer_result = $this->resolve_affiliate_link_recovery_from_post_new_referer($referer);
+                    if (!empty($new_referer_result['post_id'])) {
+                        $method = 'latest_affiliate_link_from_post_new_referer';
+                        $post_id = absint($new_referer_result['post_id']);
+                        $message = 6;
+                        $classic_editor = !empty($new_referer_result['classic_editor']);
+                    } else {
+                        $bypass_reason = $transient_result['bypass_reason'] ?? ($referer_result['bypass_reason'] ?? ($new_referer_result['bypass_reason'] ?? 'no_recovery_signal'));
+                    }
+                }
+            }
+        }
+
+        $post_type = $post_id ? get_post_type($post_id) : '';
+        $redirect = ($post_id && $post_type === 'affiliate_link') ? $this->build_affiliate_link_edit_redirect_from_message($post_id, $message, $classic_editor) : '';
+        $context['post_id'] = $post_id;
+        $context['post_type'] = $post_type;
+        $context['recovery_method'] = $method;
+        $context['final_redirect'] = $redirect;
+
+        if ($bypass_reason !== '' || !$redirect) {
+            if ($bypass_reason === '' && !$redirect) {
+                $bypass_reason = 'invalid_recovered_post';
             }
             $context['bypass_reason'] = $bypass_reason;
             $this->log_affiliate_link_save_diagnostic('Affiliate link admin_init fallback not activated.', $context);
             return;
         }
 
-        delete_transient($transient_key);
+        if ($transient_key) {
+            delete_transient($transient_key);
+            $context['transient_deleted'] = true;
+        }
         $context['activated'] = true;
-        $context['transient_deleted'] = true;
         $this->log_affiliate_link_save_diagnostic('Affiliate link admin_init fallback activated.', $context);
         wp_safe_redirect($redirect);
         exit;
     }
 
-    private function get_affiliate_link_admin_edit_recovery_bypass_reason($data, $age, $post_id, $post_type, $current_referer, $saved_referer) {
+    private function get_affiliate_link_admin_edit_base_recovery_bypass_reason() {
         if (!is_admin()) {
             return 'not_admin';
         }
@@ -1228,19 +1251,132 @@ class AffiliateManagerAI {
         if ($this->is_affiliate_link_blocked_admin_action($request_action) || $this->is_affiliate_link_blocked_admin_action($request_action2)) {
             return 'blocked_action';
         }
+        return '';
+    }
+
+    private function resolve_affiliate_link_recovery_from_transient($data, $age) {
         if (!is_array($data) || empty($data['post_id'])) {
-            return 'missing_transient';
+            return array('bypass_reason' => 'missing_transient');
         }
         if ($age === null || $age >= self::AFFILIATE_LINK_SAVE_FALLBACK_MAX_AGE) {
-            return 'stale_transient';
+            return array('bypass_reason' => 'stale_transient');
         }
-        if (!$post_id || $post_type !== 'affiliate_link') {
-            return 'invalid_transient_post';
+        $post_id = absint($data['post_id']);
+        if (!$post_id || get_post_type($post_id) !== 'affiliate_link') {
+            return array('bypass_reason' => 'invalid_transient_post');
         }
-        if (!$this->affiliate_link_referer_points_to_editor($current_referer) && !$this->affiliate_link_referer_points_to_editor($saved_referer)) {
-            return 'missing_editor_referer';
+        return array(
+            'post_id' => $post_id,
+            'message' => !empty($data['message']) ? absint($data['message']) : 1,
+            'classic_editor' => !empty($data['classic_editor']),
+        );
+    }
+
+    private function resolve_affiliate_link_recovery_from_post_php_referer($referer) {
+        $args = $this->parse_affiliate_link_referer_query($referer, 'post.php');
+        if (empty($args)) {
+            return array('bypass_reason' => 'referer_not_post_php');
         }
-        return '';
+        $post_id = isset($args['post']) ? absint($args['post']) : 0;
+        $action = isset($args['action']) ? sanitize_key($args['action']) : '';
+        if (!$post_id || $action !== 'edit') {
+            return array('bypass_reason' => 'referer_post_php_not_edit');
+        }
+        if (get_post_type($post_id) !== 'affiliate_link') {
+            return array('bypass_reason' => 'referer_post_php_not_affiliate_link');
+        }
+        if (!$this->affiliate_link_post_was_modified_recently($post_id)) {
+            return array('bypass_reason' => 'referer_post_php_not_recent_save');
+        }
+        return array(
+            'post_id' => $post_id,
+            'classic_editor' => array_key_exists('classic-editor', $args),
+        );
+    }
+
+    private function resolve_affiliate_link_recovery_from_post_new_referer($referer) {
+        $args = $this->parse_affiliate_link_referer_query($referer, 'post-new.php');
+        if (empty($args)) {
+            return array('bypass_reason' => 'referer_not_post_new_php');
+        }
+        $post_type = isset($args['post_type']) ? sanitize_key($args['post_type']) : '';
+        if ($post_type !== 'affiliate_link') {
+            return array('bypass_reason' => 'referer_post_new_not_affiliate_link');
+        }
+        $post_id = $this->get_latest_recent_affiliate_link_for_current_user();
+        if (!$post_id) {
+            return array('bypass_reason' => 'latest_affiliate_link_not_found');
+        }
+        return array(
+            'post_id' => $post_id,
+            'classic_editor' => array_key_exists('classic-editor', $args),
+        );
+    }
+
+    private function parse_affiliate_link_referer_query($referer, $expected_file) {
+        $referer = (string) $referer;
+        if ($referer === '') {
+            return array();
+        }
+        $path = wp_parse_url($referer, PHP_URL_PATH);
+        if (!$path || basename($path) !== $expected_file) {
+            return array();
+        }
+        $query = wp_parse_url($referer, PHP_URL_QUERY);
+        $args = array();
+        if ($query) {
+            wp_parse_str($query, $args);
+        }
+        return is_array($args) ? $args : array();
+    }
+
+    private function affiliate_link_post_was_modified_recently($post_id) {
+        $modified_time = get_post_modified_time('U', false, absint($post_id));
+        if (!$modified_time) {
+            return false;
+        }
+        return (current_time('timestamp') - absint($modified_time)) < self::AFFILIATE_LINK_SAVE_FALLBACK_MAX_AGE;
+    }
+
+    private function get_latest_recent_affiliate_link_for_current_user() {
+        $user_id = get_current_user_id();
+        if (!$user_id) {
+            return 0;
+        }
+        $posts = get_posts(array(
+            'post_type' => 'affiliate_link',
+            'post_status' => 'any',
+            'author' => $user_id,
+            'posts_per_page' => 1,
+            'orderby' => 'ID',
+            'order' => 'DESC',
+            'fields' => 'ids',
+            'date_query' => array(
+                array(
+                    'column' => 'post_date',
+                    'after' => date('Y-m-d H:i:s', current_time('timestamp') - 60),
+                    'inclusive' => true,
+                ),
+            ),
+            'suppress_filters' => true,
+            'no_found_rows' => true,
+        ));
+        return !empty($posts[0]) ? absint($posts[0]) : 0;
+    }
+
+    private function get_affiliate_link_save_marker_diagnostic_context($post_id, $post_type, $update, $transient_created) {
+        return array(
+            'post_id' => absint($post_id),
+            'post_type' => (string) $post_type,
+            'update' => (bool) $update,
+            'post_action' => isset($_POST['action']) ? sanitize_key(wp_unslash($_POST['action'])) : '',
+            'post_post_type' => isset($_POST['post_type']) ? sanitize_key(wp_unslash($_POST['post_type'])) : '',
+            'post_post_id' => isset($_POST['post_ID']) ? absint(wp_unslash($_POST['post_ID'])) : 0,
+            'link_nonce_present' => isset($_POST['affiliate_link_nonce']),
+            'request_uri' => isset($_SERVER['REQUEST_URI']) ? esc_url_raw(wp_unslash($_SERVER['REQUEST_URI'])) : '',
+            'referer' => wp_get_referer(),
+            'transient_created' => (bool) $transient_created,
+        );
     }
 
     private function get_affiliate_link_save_transient_key($user_id = 0) {
@@ -1268,6 +1404,7 @@ class AffiliateManagerAI {
         }
 
         $diagnostic_context['final_location'] = $final_location;
+        $diagnostic_context['forced_redirect'] = ($bypass_reason === '' && $final_location !== $location);
         $diagnostic_context['transient_deleted'] = $transient_deleted;
         $diagnostic_context['bypass_reason'] = $bypass_reason;
         $this->log_affiliate_link_save_diagnostic('Affiliate link redirect_post_location evaluated.', $diagnostic_context);
@@ -1305,6 +1442,7 @@ class AffiliateManagerAI {
         }
 
         $diagnostic_context['final_location'] = $final_location;
+        $diagnostic_context['forced_redirect'] = ($final_location !== $location);
         $diagnostic_context['bypass_reason'] = $bypass_reason;
         $this->log_affiliate_link_save_diagnostic('Affiliate link wp_redirect guard evaluated.', $diagnostic_context);
 
