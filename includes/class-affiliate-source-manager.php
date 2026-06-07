@@ -21,12 +21,9 @@ class ALMA_Affiliate_Source_Manager {
         add_action('wp_ajax_alma_gyg_csv_cancel_import_job', array($this, 'ajax_gyg_csv_cancel_import_job'));
         add_action('wp_ajax_alma_gyg_csv_save_activity_mapping', array($this, 'ajax_gyg_csv_save_activity_mapping'));
         add_action('wp_ajax_alma_gyg_csv_start_activity_import', array($this, 'ajax_gyg_csv_start_activity_import'));
-        add_action('wp_ajax_alma_gyg_csv_process_manual_batch', array($this, 'ajax_gyg_csv_process_manual_batch'));
         add_action('wp_ajax_alma_gyg_csv_get_activity_progress', array($this, 'ajax_gyg_csv_get_activity_progress'));
         add_action('wp_ajax_alma_gyg_csv_get_session_logs', array($this, 'ajax_gyg_csv_get_session_logs'));
         add_action('admin_post_alma_gyg_csv_download_session_file', array($this, 'handle_gyg_csv_download_session_file'));
-        add_action('admin_post_alma_gyg_csv_download_report_csv', array($this, 'handle_gyg_csv_download_report_csv'));
-        add_action('admin_post_alma_gyg_csv_download_log_json', array($this, 'handle_gyg_csv_download_log_json'));
         add_action(ALMA_Affiliate_Source_GYG_CSV_Import_Job_Service::CRON_HOOK, array($this, 'cron_run_gyg_csv_import_job_batch'));
         add_action('admin_post_alma_retry_affiliate_image', array($this, 'handle_single_image_retry'));
         add_action('admin_notices', array($this, 'render_image_retry_notice'));
@@ -215,7 +212,7 @@ class ALMA_Affiliate_Source_Manager {
     }
     private function render_gyg_csv_import_page($source){
         $source_id=(int)$source['id']; $settings=ALMA_Affiliate_Source_GYG_CSV_Importer::default_settings($this->decode_db_json($source['settings']??'{}')); $svc=new ALMA_Affiliate_Source_GYG_CSV_Importer(); $token=sanitize_key($_GET['gyg_csv_token']??'');
-        echo '<div class="notice notice-info"><p><strong>GetYourGuide CSV / Deep Link:</strong> importa CSV locali senza chiamate esterne. Il nuovo flusso è manuale: scegli il batch size e clicca Importa prossimo batch quando vuoi processare i record successivi.</p></div>';
+        echo '<div class="notice notice-info"><p><strong>GetYourGuide CSV / Deep Link:</strong> importa CSV locali senza chiamate esterne. Il mapping, l’avvio dei job background, i progressi e i log restano in questa pagina.</p></div>';
         if(isset($_GET['gyg_session_deleted'])) echo '<div class="notice notice-success"><p>Sessione CSV eliminata. I Link affiliati già importati non sono stati eliminati.</p></div>';
         if($token===''){
             echo '<div class="postbox"><h2 class="hndle"><span>Caricamento CSV</span></h2><div class="inside"><form method="post" enctype="multipart/form-data">'; wp_nonce_field('alma_gyg_csv_upload','alma_gyg_csv_nonce'); echo '<input type="hidden" name="action_type" value="gyg_csv_upload"/><input type="hidden" name="source_id" value="'.(int)$source_id.'"/><p><input type="file" name="gyg_csv_file" accept=".csv,text/csv" required/> <button class="button button-primary">Carica CSV</button></p><p class="description">Colonne obbligatorie: URL, Tipologia attività, Descrizione attività. Opzionali: Titolo Attività, Città, Regione di appartenenza. Il file originale resta disponibile per riprendere l’importazione.</p></form></div></div>';
@@ -224,7 +221,7 @@ class ALMA_Affiliate_Source_Manager {
         }
         $session=$svc->get_session($token,$source_id); if(is_wp_error($session)){ echo '<div class="notice notice-error"><p>'.esc_html($session->get_error_message()).'</p></div>'; return; }
         echo '<h2>Importazione GetYourGuide CSV — '.esc_html($session['name']??'CSV').'</h2><p><strong>Source:</strong> '.esc_html($source['name']??'').'</p>';
-        echo '<div class="postbox"><h2 class="hndle"><span>GetYourGuide CSV / Deep Link</span></h2><div class="inside"><p>Associa ogni <strong>Tipologia attività CSV</strong> a una o più <strong>Tipologie Link affiliati</strong>. L’importazione non usa più job background o auto-processing: ogni click processa un solo batch e aggiorna il report.</p></div></div>';
+        echo '<div class="postbox"><h2 class="hndle"><span>GetYourGuide CSV / Deep Link</span></h2><div class="inside"><p>Associa ogni <strong>Tipologia attività CSV</strong> a una o più <strong>Tipologie Link affiliati</strong> e avvia l’importazione background dalla stessa riga. La pagina può essere chiusa: WP-Cron continuerà i batch.</p></div></div>';
         $headers=$svc->get_headers($session['path']); if(is_wp_error($headers)){ echo '<div class="notice notice-error"><p>'.esc_html($headers->get_error_message()).'</p></div>'; return; }
         $det=$svc->detect_columns($headers);
         if(!$det['valid']){ echo '<div class="notice notice-error inline"><p>Mancano colonne obbligatorie: '.esc_html(implode(', ',$det['missing'])).'. Correggi il CSV e ricaricalo.</p></div>'; return; }
@@ -237,23 +234,17 @@ class ALMA_Affiliate_Source_Manager {
         foreach((array)($summary['types']??array()) as $type=>$count){
             $hash=ALMA_Affiliate_Source_GYG_CSV_Importer::activity_type_hash($type); $progress=is_array($progress_rows[$hash]??null)?$progress_rows[$hash]:array(); $job=is_array($job_rows[$hash]??null)?$job_rows[$hash]:array();
             $saved_terms=ALMA_Affiliate_Source_GYG_CSV_Importer::normalize_mapping_term_ids($progress['mapped_term_ids_json']??array()); $term_ids=!empty($saved_terms)?$saved_terms:ALMA_Affiliate_Source_GYG_CSV_Importer::normalize_mapping_term_ids($mappings[$type]??array()); if(empty($term_ids)) $term_ids=$source_fallback;
-            $total=absint($count); $processed=absint($progress['last_cursor']??0); $status=$processed>0?'partial':'ready'; if($processed>=$total&&$total>0)$status='completed'; if($job && in_array(sanitize_key($job['status']), array('queued','running','paused'), true)) $status='partial'; $percent=$total>0?min(100,round(($processed/$total)*100,1)):0;
-            $counts=array('imported'=>absint($progress['imported_count']??0),'updated'=>absint($progress['updated_count']??0),'existing'=>absint($progress['existing_count']??0),'skipped'=>absint($progress['skipped_count']??0),'errors'=>absint($progress['error_count']??0));
+            $status=$job?sanitize_key($job['status']):'not_started'; $total=$job?absint($job['total_records']):absint($count); $processed=$job?absint($job['processed_records']):0; $percent=$total>0?min(100,round(($processed/$total)*100,1)):0;
+            $counts=array('imported'=>absint($job['imported_count']??0),'updated'=>absint($job['updated_count']??0),'existing'=>absint($job['existing_count']??0),'skipped'=>absint($job['skipped_count']??0),'errors'=>absint($job['error_count']??0));
             $classes=array('alma-gyg-activity-row','status-'.$status); if(empty($term_ids)) $classes[]='no-mapping'; if($highlight!==''&&hash_equals($hash,$highlight)) $classes[]='is-highlighted';
             echo '<tr id="alma-gyg-activity-row-'.esc_attr($hash).'" class="'.esc_attr(implode(' ',$classes)).'" data-activity-type="'.esc_attr($type).'" data-activity-hash="'.esc_attr($hash).'">';
             echo '<td><strong>'.esc_html($type).'</strong><div class="row-message description"></div></td><td>'.(int)$count.'</td><td><select multiple class="alma-gyg-activity-mapping" size="5" aria-label="Mapping Sothra per '.esc_attr($type).'">';
             foreach($terms as $term){ echo '<option value="'.absint($term->term_id).'"'.(in_array((int)$term->term_id,$term_ids,true)?' selected':'').'>'.esc_html($term->name).'</option>'; }
             echo '</select>'; if(empty($term_ids)) echo '<p class="description alma-warning">Seleziona almeno una Tipologia Link prima di importare.</p>'; elseif(empty($saved_terms)&&empty($mappings[$type])) echo '<p class="description">Fallback dalla source applicato.</p>'; echo '</td>';
             echo $this->gyg_csv_activity_progress_cell_html($status, $total, $processed, $percent, $counts, (string)($job['updated_at'] ?? ''));
-            echo '<td><label class="description" for="alma-gyg-batch-size-'.esc_attr($hash).'">Batch size</label><br/><select id="alma-gyg-batch-size-'.esc_attr($hash).'" class="alma-gyg-batch-size"><option value="25">25</option><option value="50" selected>50</option><option value="100">100</option><option value="250">250</option></select><br/><button type="button" class="button button-primary alma-gyg-start-activity-import">Importa prossimo batch</button><br/><button type="button" class="button alma-gyg-retry-errors" disabled>Riprova errori</button></td></tr>';
+            echo '<td><button type="button" class="button button-primary alma-gyg-start-activity-import">Importa/continua</button></td></tr>';
         }
-        echo '</tbody></table><p class="description">Totale righe: '.(int)($summary['total']??0).' · URL non validi: '.(int)($summary['invalid_urls']??0).' · record senza città: '.(int)($summary['without_city']??0).' · record senza regione: '.(int)($summary['without_region']??0).'</p>';
-        $report_url=wp_nonce_url(admin_url('admin-post.php?action=alma_gyg_csv_download_report_csv&session_id='.absint($session['id']??0).'&source_id='.(int)$source_id), 'alma_gyg_csv_report_'.absint($session['id']??0));
-        $log_url=wp_nonce_url(admin_url('admin-post.php?action=alma_gyg_csv_download_log_json&session_id='.absint($session['id']??0).'&source_id='.(int)$source_id), 'alma_gyg_csv_log_'.absint($session['id']??0));
-        $back_url=add_query_arg(array('post_type'=>'affiliate_link','page'=>'alma-affiliate-sources','alma_view'=>'import_contents','source_id'=>(int)$source_id), admin_url('edit.php'));
-        echo '<p><a class="button" href="'.esc_url($report_url).'">Scarica report CSV</a> <a class="button" href="'.esc_url($log_url).'">Scarica log JSON</a> <a class="button" href="'.esc_url($back_url).'">Torna alla selezione file</a></p></div></div>';
-        $legacy_running=false; foreach($job_rows as $legacy_job){ if(in_array(sanitize_key($legacy_job['status']??''), array('queued','running','paused'), true)){ $legacy_running=true; break; } }
-        if($legacy_running) echo '<div class="notice notice-warning"><p><strong>Vecchio job background rilevato.</strong> Il nuovo import manuale non lo usa più. Se lo stato resta bloccato, usa Reset import nella lista sessioni e ricarica il CSV.</p></div>';
+        echo '</tbody></table><p class="description">Totale righe: '.(int)($summary['total']??0).' · URL non validi: '.(int)($summary['invalid_urls']??0).' · record senza città: '.(int)($summary['without_city']??0).' · record senza regione: '.(int)($summary['without_region']??0).'</p></div></div>';
         $this->render_gyg_csv_session_logs(absint($session['id']??0), $source_id);
     }
 
@@ -277,8 +268,6 @@ class ALMA_Affiliate_Source_Manager {
             'cancelled'=>__('Annullato', 'affiliate-link-manager-ai'),
             'paused'=>__('In pausa', 'affiliate-link-manager-ai'),
             'ready'=>__('Pronto', 'affiliate-link-manager-ai'),
-            'processing'=>__('In elaborazione', 'affiliate-link-manager-ai'),
-            'partial'=>__('Parziale', 'affiliate-link-manager-ai'),
         );
         $status = sanitize_key($status);
         if (isset($map[$status])) return $map[$status];
@@ -341,26 +330,25 @@ class ALMA_Affiliate_Source_Manager {
         $sessions=$svc->get_recent_sessions($source_id,10);
         echo '<div class="postbox"><h2 class="hndle"><span>Sessioni CSV recenti</span></h2><div class="inside">';
         if(empty($sessions)){ echo '<p class="description">Nessuna sessione CSV persistente per questa source.</p></div></div>'; return; }
-        global $wpdb;
+        $jobs = new ALMA_Affiliate_Source_GYG_CSV_Import_Job_Service();
         echo '<table class="widefat striped"><thead><tr><th>File</th><th>Caricamento</th><th>Ultimo aggiornamento</th><th>Record totali</th><th>Importati</th><th>Restanti</th><th>Stato importazione</th><th>Azioni</th></tr></thead><tbody>';
         foreach($sessions as $row){
             $resume=add_query_arg(array('post_type'=>'affiliate_link','page'=>'alma-affiliate-sources','alma_view'=>'import_contents','source_id'=>absint($source_id),'gyg_csv_token'=>sanitize_key($row['token'])),admin_url('edit.php'));
             $download=wp_nonce_url(admin_url('admin-post.php?action=alma_gyg_csv_download_session_file&session_id='.(int)$row['id']), 'alma_gyg_csv_download_'.(int)$row['id']);
-            $totals=$wpdb->get_row($wpdb->prepare("SELECT SUM(last_cursor) processed, SUM(imported_count) imported, SUM(updated_count) updated, SUM(existing_count) existing, SUM(skipped_count) skipped, SUM(error_count) errors, MAX(updated_at) updated_at FROM {$wpdb->prefix}alma_gyg_csv_import_progress WHERE session_id=%d", absint($row['id'])), ARRAY_A);
-            $processed=absint($totals['processed']??0);
-            $imported=absint($totals['imported']??0)+absint($totals['updated']??0)+absint($totals['existing']??0);
-            $remaining=max(0, absint($row['total_rows'])-$processed);
-            $status=$processed>0?'partial':(string)$row['status']; if($processed>=absint($row['total_rows'])&&absint($row['total_rows'])>0)$status='completed';
+            $totals=$jobs->get_session_job_totals(absint($row['id']));
+            $imported=absint($totals['imported'])+absint($totals['updated'])+absint($totals['existing']);
+            $remaining=max(0, absint($row['total_rows'])-$imported-absint($totals['skipped']));
+            $status=$totals['status'] !== 'ready' ? $totals['status'] : (string)$row['status'];
             $status_label=$this->gyg_csv_status_label($status);
             echo '<tr'.($active_token!=='' && hash_equals((string)$active_token,(string)$row['token'])?' class="is-active"':'').'>';
             echo '<td><a href="'.esc_url($download).'">'.esc_html($row['original_filename']?:'CSV').'</a><br/><span class="description">'.esc_html($row['stored_filename']).'</span></td>';
-            echo '<td>'.esc_html($row['created_at']).'</td><td>'.esc_html(($totals['updated_at'] ?? '') ?: $row['updated_at']).'</td><td>'.(int)$row['total_rows'].'</td><td>'.(int)$imported.'</td><td>'.(int)$remaining.'</td><td>'.esc_html($status_label).(!empty($row['last_error'])?'<br/><span class="description">'.esc_html(wp_trim_words((string)$row['last_error'],18,'…')).'</span>':'').'</td>';
+            echo '<td>'.esc_html($row['created_at']).'</td><td>'.esc_html($totals['updated_at'] ?: $row['updated_at']).'</td><td>'.(int)$row['total_rows'].'</td><td>'.(int)$imported.'</td><td>'.(int)$remaining.'</td><td>'.esc_html($status_label).(!empty($row['last_error'])?'<br/><span class="description">'.esc_html(wp_trim_words((string)$row['last_error'],18,'…')).'</span>':'').'</td>';
             echo '<td><a class="button button-small" href="'.esc_url($resume).'">Riprendi importazione</a> ';
             echo '<form method="post" style="display:inline" onsubmit="return confirm(\'Eliminare questa sessione CSV persistente? I Link affiliati già importati resteranno invariati.\');">';
             wp_nonce_field('alma_gyg_csv_delete_session_'.$row['id'],'alma_gyg_csv_delete_nonce');
-            echo '<input type="hidden" name="action_type" value="gyg_csv_delete_session"/><input type="hidden" name="source_id" value="'.(int)$source_id.'"/><input type="hidden" name="session_id" value="'.(int)$row['id'].'"/><input type="hidden" name="gyg_csv_token" value="'.esc_attr($row['token']).'"/><button class="button button-small" type="submit">Reset import</button></form></td></tr>';
+            echo '<input type="hidden" name="action_type" value="gyg_csv_delete_session"/><input type="hidden" name="source_id" value="'.(int)$source_id.'"/><input type="hidden" name="session_id" value="'.(int)$row['id'].'"/><input type="hidden" name="gyg_csv_token" value="'.esc_attr($row['token']).'"/><button class="button button-small" type="submit">Elimina sessione</button></form></td></tr>';
         }
-        echo '</tbody></table><p class="description">Reset import elimina solo sessione, progressi e file CSV, non i Link affiliati già importati.</p></div></div>';
+        echo '</tbody></table><p class="description">Le azioni eliminano solo sessione/progressi/file CSV, non i Link affiliati già importati.</p></div></div>';
     }
 
     private function handle_gyg_csv_delete_session(){
@@ -803,8 +791,7 @@ class ALMA_Affiliate_Source_Manager {
         $headers=$svc->get_headers($session['path']); if(is_wp_error($headers)) return $headers;
         $det=is_array($session['columns']??null)?$session['columns']:$svc->detect_columns($headers); if(empty($det['valid'])) return new WP_Error('missing_columns',__('Colonne obbligatorie mancanti nel CSV.', 'affiliate-link-manager-ai'));
         if($activity_hash!=='' && !hash_equals(ALMA_Affiliate_Source_GYG_CSV_Importer::activity_type_hash($type), $activity_hash)) return new WP_Error('invalid_activity_hash',__('Tipologia attività CSV non valida. Ricarica la pagina e riprova.', 'affiliate-link-manager-ai'));
-        $summary=is_array($session['summary']??null)?$session['summary']:$svc->summarize($session['path'],$det['columns']);
-        return array('source_id'=>$source_id,'token'=>$token,'activity_type'=>$type,'activity_type_hash'=>ALMA_Affiliate_Source_GYG_CSV_Importer::activity_type_hash($type),'source'=>$source,'svc'=>$svc,'session'=>$session,'columns'=>$det['columns'],'summary'=>$summary);
+        return array('source_id'=>$source_id,'token'=>$token,'activity_type'=>$type,'activity_type_hash'=>ALMA_Affiliate_Source_GYG_CSV_Importer::activity_type_hash($type),'source'=>$source,'svc'=>$svc,'session'=>$session,'columns'=>$det['columns']);
     }
 
 
@@ -953,96 +940,12 @@ class ALMA_Affiliate_Source_Manager {
         wp_send_json_success($status);
     }
 
-
-    private function gyg_csv_manual_batch_size_from_request() {
-        $raw = isset($_POST['batch_size']) ? wp_unslash($_POST['batch_size']) : 50;
-        if (!is_numeric($raw)) return new WP_Error('invalid_batch_size', __('Batch size non valido. Scegli 25, 50, 100 o 250.', 'affiliate-link-manager-ai'));
-        $size = absint($raw);
-        if ($size < 1) return new WP_Error('invalid_batch_size', __('Batch size non valido. Inserisci un numero positivo.', 'affiliate-link-manager-ai'));
-        if ($size < 10 || $size > 250) return new WP_Error('invalid_batch_size', __('Batch size fuori limite. Usa un valore tra 10 e 250 record.', 'affiliate-link-manager-ai'));
-        return $size;
-    }
-
-    private function gyg_csv_manual_status_payload($ctx, $batch_result = array(), $message = '') {
-        $progress = $ctx['svc']->get_progress(absint($ctx['session']['id'] ?? 0), $ctx['source_id'], $ctx['activity_type']);
-        $total = absint($ctx['summary']['types'][$ctx['activity_type']] ?? 0);
-        if ($total < 1) {
-            $counts = $ctx['svc']->count_existing_for_type($ctx['session']['path'], $ctx['columns'], $ctx['activity_type'], $ctx['source']);
-            $total = absint($counts['total'] ?? 0);
-        }
-        $processed = min($total, absint($progress['last_cursor'] ?? 0));
-        $remaining = max(0, $total - $processed);
-        $status = $processed > 0 ? 'partial' : 'ready';
-        if ($total > 0 && $remaining === 0) $status = 'completed';
-        if (is_array($batch_result) && isset($batch_result['status_override'])) $status = sanitize_key($batch_result['status_override']);
-        $percent = $total > 0 ? min(100, round(($processed / $total) * 100, 1)) : 0;
-        $last_report = json_decode((string)($progress['last_report_json'] ?? ''), true);
-        if (!is_array($last_report)) $last_report = array();
-        return $this->gyg_csv_normalize_status_payload(array(
-            'session_id'=>absint($ctx['session']['id'] ?? 0),
-            'source_id'=>$ctx['source_id'],
-            'activity_type_hash'=>$ctx['activity_type_hash'],
-            'status'=>$status,
-            'total_records'=>$total,
-            'processed_records'=>$processed,
-            'remaining_records'=>$remaining,
-            'imported_count'=>absint($progress['imported_count'] ?? 0),
-            'updated_count'=>absint($progress['updated_count'] ?? 0),
-            'existing_count'=>absint($progress['existing_count'] ?? 0),
-            'skipped_count'=>absint($progress['skipped_count'] ?? 0),
-            'error_count'=>absint($progress['error_count'] ?? 0),
-            'invalid_urls_count'=>absint($last_report['invalid_urls'] ?? 0),
-            'incomplete_records_count'=>absint($last_report['incomplete_records'] ?? 0),
-            'already_present_count'=>absint($last_report['already_present'] ?? ($last_report['existing'] ?? 0)),
-            'unprocessed_records'=>$remaining,
-            'percent'=>$percent,
-            'message'=>$message !== '' ? $message : ($remaining > 0 ? __('Batch completato. Puoi importare il prossimo batch quando vuoi.', 'affiliate-link-manager-ai') : __('Importazione completata.', 'affiliate-link-manager-ai')),
-            'updated_at'=>(string)($progress['updated_at'] ?? ''),
-            'batch_report'=>is_array($batch_result) ? $batch_result : array(),
-            'last_report'=>$last_report,
-        ));
-    }
-
-    public function ajax_gyg_csv_process_manual_batch() {
-        $ctx = $this->gyg_csv_activity_mapping_context_from_ajax(); if (is_wp_error($ctx)) $this->send_gyg_ajax_context_error($ctx);
-        $batch_size = $this->gyg_csv_manual_batch_size_from_request(); if (is_wp_error($batch_size)) wp_send_json_error(array('message'=>$batch_size->get_error_message(),'code'=>$batch_size->get_error_code()),400);
-        $term_ids = $this->gyg_csv_validate_activity_mapping_terms($_POST['term_ids'] ?? array()); if (is_wp_error($term_ids)) wp_send_json_error(array('message'=>$term_ids->get_error_message(),'code'=>$term_ids->get_error_code()),400);
-        if (empty($term_ids)) wp_send_json_error(array('message'=>__('Seleziona almeno una Tipologia Link affiliati per questa tipologia CSV.', 'affiliate-link-manager-ai'),'code'=>'missing_terms'),400);
-        $lock_key = 'alma_gyg_csv_manual_lock_' . absint($ctx['session']['id']) . '_' . $ctx['activity_type_hash'];
-        if (get_transient($lock_key)) wp_send_json_error(array('message'=>__('Un batch è già in corso per questa tipologia. Attendi il completamento e riprova.', 'affiliate-link-manager-ai'),'code'=>'batch_locked'),409);
-        set_transient($lock_key, 1, 5 * MINUTE_IN_SECONDS);
-        $jobs = new ALMA_Affiliate_Source_GYG_CSV_Import_Job_Service();
-        try {
-            $this->gyg_csv_save_activity_mapping_for_context($ctx, $term_ids, __('Mapping salvato prima del batch manuale.', 'affiliate-link-manager-ai'));
-            $progress = $ctx['svc']->get_progress(absint($ctx['session']['id']), $ctx['source_id'], $ctx['activity_type']);
-            $cursor = absint($progress['last_cursor'] ?? 0);
-            $total = absint($ctx['summary']['types'][$ctx['activity_type']] ?? 0);
-            $jobs->log_event(absint($ctx['session']['id']), $ctx['source_id'], $ctx['activity_type'], 'batch manuale avviato', sprintf(__('Batch manuale avviato: size %1$d, offset %2$d.', 'affiliate-link-manager-ai'), $batch_size, $cursor), array('batch_size'=>$batch_size,'offset'=>$cursor));
-            $result = $ctx['svc']->import_batch($ctx['session']['path'], $ctx['columns'], $ctx['activity_type'], $ctx['source'], $term_ids, max($total, $cursor + $batch_size), $cursor, !empty($_POST['update_existing']), $batch_size);
-            if (is_wp_error($result)) throw new Exception($result->get_error_message());
-            $result['batch_size'] = $batch_size;
-            $result['range'] = array('from'=>$cursor + 1, 'to'=>absint($result['next_cursor']));
-            $result['unprocessed'] = max(0, $total - absint($result['next_cursor']));
-            $ctx['svc']->upsert_progress(absint($ctx['session']['id']), $ctx['source_id'], $ctx['activity_type'], $term_ids, $result);
-            $message = !empty($result['done']) ? __('Batch completato. Se non restano record, l’importazione è completa.', 'affiliate-link-manager-ai') : __('Batch completato. Controlla il report e clicca di nuovo per continuare.', 'affiliate-link-manager-ai');
-            $jobs->log_event(absint($ctx['session']['id']), $ctx['source_id'], $ctx['activity_type'], 'batch manuale completato', $message, $result);
-            $payload = $this->gyg_csv_manual_status_payload($ctx, $result, $message);
-            $payload['logs'] = $jobs->get_logs(absint($ctx['session']['id']), $ctx['source_id'], $ctx['activity_type_hash'], 30);
-            delete_transient($lock_key);
-            wp_send_json_success($payload);
-        } catch (Exception $e) {
-            delete_transient($lock_key);
-            global $wpdb;
-            $wpdb->update($wpdb->prefix.'alma_gyg_csv_import_sessions', array('status'=>'failed','last_error'=>sanitize_text_field($e->getMessage()),'updated_at'=>current_time('mysql')), array('id'=>absint($ctx['session']['id'])));
-            $jobs->log_event(absint($ctx['session']['id']), $ctx['source_id'], $ctx['activity_type'], 'batch manuale fallito', __('Batch interrotto. Controlla il CSV o scarica il log JSON.', 'affiliate-link-manager-ai'), array('error'=>$e->getMessage()));
-            wp_send_json_error(array('message'=>__('Il batch non è stato completato. Controlla i dati e riprova; il pulsante è stato riabilitato.', 'affiliate-link-manager-ai'),'code'=>'batch_failed'),500);
-        }
-    }
-
     public function ajax_gyg_csv_get_activity_progress() {
         $ctx = $this->gyg_csv_activity_mapping_context_from_ajax(); if (is_wp_error($ctx)) $this->send_gyg_ajax_context_error($ctx);
         $jobs = new ALMA_Affiliate_Source_GYG_CSV_Import_Job_Service();
-        $status = $this->gyg_csv_manual_status_payload($ctx, array(), __('Stato import manuale aggiornato.', 'affiliate-link-manager-ai'));
+        $job = $jobs->get_latest_job_for_activity(absint($ctx['session']['id']), $ctx['source_id'], $ctx['activity_type_hash']);
+        $status = !empty($job) ? $jobs->format_status($job) : array('session_id'=>absint($ctx['session']['id']),'source_id'=>$ctx['source_id'],'activity_type_hash'=>$ctx['activity_type_hash'],'status'=>'not_started','total_records'=>absint($ctx['summary']['types'][$ctx['activity_type']] ?? 0),'processed_records'=>0,'remaining_records'=>absint($ctx['summary']['types'][$ctx['activity_type']] ?? 0),'imported_count'=>0,'updated_count'=>0,'existing_count'=>0,'skipped_count'=>0,'error_count'=>0,'percent'=>0,'message'=>__('Non importato.', 'affiliate-link-manager-ai'));
+        $status = $this->gyg_csv_normalize_status_payload($status);
         $status['logs'] = $jobs->get_logs(absint($ctx['session']['id']), $ctx['source_id'], $ctx['activity_type_hash'], 30);
         wp_send_json_success($status);
     }
@@ -1132,48 +1035,6 @@ class ALMA_Affiliate_Source_Manager {
         header('Content-Disposition: attachment; filename="' . sanitize_file_name($row['original_filename'] ?: 'getyourguide.csv') . '"');
         header('Content-Length: ' . filesize($row['file_path']));
         readfile($row['file_path']);
-        exit;
-    }
-
-
-    private function gyg_csv_validate_session_download($session_id, $source_id, $nonce_action) {
-        if (!current_user_can('manage_options')) wp_die(__('Permessi insufficienti.', 'affiliate-link-manager-ai'));
-        $session_id = absint($session_id); $source_id = absint($source_id);
-        if (!wp_verify_nonce($_GET['_wpnonce'] ?? '', $nonce_action.$session_id)) wp_die(__('Nonce non valido.', 'affiliate-link-manager-ai'));
-        global $wpdb;
-        $row = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}alma_gyg_csv_import_sessions WHERE id=%d AND source_id=%d", $session_id, $source_id), ARRAY_A);
-        if (!is_array($row)) wp_die(__('Sessione import non valida.', 'affiliate-link-manager-ai'));
-        return $row;
-    }
-
-    public function handle_gyg_csv_download_report_csv() {
-        $session_id = absint($_GET['session_id'] ?? 0); $source_id = absint($_GET['source_id'] ?? 0);
-        $row = $this->gyg_csv_validate_session_download($session_id, $source_id, 'alma_gyg_csv_report_');
-        global $wpdb;
-        $progress = $wpdb->get_results($wpdb->prepare("SELECT * FROM {$wpdb->prefix}alma_gyg_csv_import_progress WHERE session_id=%d AND source_id=%d ORDER BY updated_at DESC", $session_id, $source_id), ARRAY_A);
-        nocache_headers();
-        header('Content-Type: text/csv; charset=utf-8');
-        header('Content-Disposition: attachment; filename="alma-import-report-'.absint($session_id).'.csv"');
-        $out = fopen('php://output', 'w');
-        fputcsv($out, array('session_id','file','activity_type','status','processed','imported','updated','skipped','duplicates','invalid_urls','incomplete_records','errors','remaining','updated_at'));
-        $summary = json_decode((string)($row['summary_json'] ?? ''), true); if (!is_array($summary)) $summary = array('types'=>array());
-        foreach ((array)$progress as $pr) {
-            $report = json_decode((string)($pr['last_report_json'] ?? ''), true); if (!is_array($report)) $report = array();
-            $total = absint($summary['types'][$pr['activity_type']] ?? 0); $processed = absint($pr['last_cursor'] ?? 0); $remaining = max(0, $total - $processed); $status = ($total > 0 && $remaining === 0) ? 'completed' : ($processed > 0 ? 'partial' : 'ready');
-            fputcsv($out, array($session_id, sanitize_file_name($row['original_filename'] ?: 'CSV'), $pr['activity_type'], $status, $processed, absint($pr['imported_count']), absint($pr['updated_count']), absint($pr['skipped_count']), absint($pr['existing_count']), absint($report['invalid_urls'] ?? 0), absint($report['incomplete_records'] ?? 0), absint($pr['error_count']), $remaining, $pr['updated_at']));
-        }
-        fclose($out); exit;
-    }
-
-    public function handle_gyg_csv_download_log_json() {
-        $session_id = absint($_GET['session_id'] ?? 0); $source_id = absint($_GET['source_id'] ?? 0);
-        $row = $this->gyg_csv_validate_session_download($session_id, $source_id, 'alma_gyg_csv_log_');
-        $jobs = new ALMA_Affiliate_Source_GYG_CSV_Import_Job_Service();
-        $payload = array('generated_at'=>current_time('mysql'),'session'=>array('id'=>$session_id,'source_id'=>$source_id,'file'=>sanitize_file_name($row['original_filename'] ?: 'CSV'),'status'=>sanitize_key($row['status'] ?? 'ready'),'created_at'=>$row['created_at'] ?? '','updated_at'=>$row['updated_at'] ?? ''),'logs'=>$jobs->get_logs($session_id, $source_id, '', 200));
-        nocache_headers();
-        header('Content-Type: application/json; charset=utf-8');
-        header('Content-Disposition: attachment; filename="alma-import-log-'.absint($session_id).'.json"');
-        echo wp_json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
         exit;
     }
 

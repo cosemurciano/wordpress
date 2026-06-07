@@ -1,72 +1,12 @@
 ## Unreleased
 
-- Sostituito il flusso principale di import GetYourGuide CSV basato su job background con un import manuale a batch: batch size configurabile per esecuzione, nessun auto-loop JavaScript obbligatorio, report cumulativo e di batch, download report CSV/log JSON e avviso per vecchi job bloccati.
-
-- Corretto processamento batch dell’import Geo Link Affiliati con claim diagnostico, recupero item `processing` stantii e conteggio `processed_records = imported + updated + skipped + error`.
-- Aggiunta diagnostica dettagliata dei job di import e risposta AJAX con `claimed`, `processed`, `counts`, `items`, `debug` e `message`.
-- Aggiunto box persistente **Errore ultimo batch** e arresto dell’auto-processing in caso di errore AJAX.
-- Migliorata progress bar con X/Y, percentuale esatta e tacche 0–100 ogni 10%.
-- Corretto redirect fallback dei Link Affiliati per non intercettare visite intenzionali alla lista Articoli senza marker esplicito `needs_recovery`.
-- Corretto processamento background dell’import Geo Link Affiliati: gli item claimati avanzano da `queued` a esito finale e gli `skipped` contano come processati.
-- Aggiunti log diagnostici e messaggi errore persistenti per batch AJAX dell’import Geo Link Affiliati.
-- Migliorata progress bar dell’import Geo Link Affiliati con conteggio reale e marcatori 10%.
-- Corretta fallback redirect dei Link Affiliati per non intercettare visite intenzionali alla lista Articoli.
-- Corretto processamento background dell’import Geo Link Affiliati.
-- Aggiunto processamento AJAX batch con progress bar reale.
-- Aggiunti log visibili per i job di import.
-- Migliorata gestione annulla/pausa/riprendi job.
-- Migliorata barra avanzamento con percentuale e conteggio record.
-- Corretto redirect persistente verso la lista Articoli dopo creazione/aggiornamento Link Affiliati.
-- Aggiunto recupero sicuro dell’atterraggio errato su `edit.php` tramite marker, referer e fallback controllata.
-- Evitato redirect indesiderato quando l’utente visita intenzionalmente la lista Articoli.
-
-- Aggiunto import in background delle località per Link Affiliati da CSV.
-- Aggiunto job log per import Geo Link Affiliati.
-- Aggiunta associazione delle località ai Link Affiliati tramite affiliate_link_id.
-- Preparato secondo passaggio di geocoding Google per località importate.
-- Corretto redirect dopo creazione e aggiornamento dei Link Affiliati.
-- Aggiunto marker temporaneo di salvataggio `affiliate_link` per fallback sicuro.
-- Rafforzata fallback admin solo per atterraggio immediato errato su `edit.php`.
-- Evitato redirect indesiderato su visite intenzionali alla lista Articoli.
-
-- Corretto il redirect dopo creazione e modifica dei Link Affiliati con un transient temporaneo per utente e redirect deterministico alla schermata `post.php` del CPT.
-- Aggiunta fallback guard `admin_init` per recuperare redirect errati verso la lista articoli standard dopo salvataggi di `affiliate_link`.
-- Migliorata la diagnostica controllata del salvataggio/redirect dei Link Affiliati, includendo transient, guard `admin_init`, `redirect_post_location` e `wp_redirect`.
-- Verificata la compatibilità Geo Index sui Link Affiliati con salvataggio in `alma_geo_content_index` come `object_type=affiliate_link`.
-
-- Corretto il redirect dopo creazione e modifica dei Link Affiliati, forzando i salvataggi normali del CPT a rientrare in `post.php?post={ID}&action=edit` e preservando `classic-editor`.
-- Rafforzata la diagnostica controllata del flusso salvataggio/redirect dei Link Affiliati, includendo payload `redirect_post_location`, `save_post_affiliate_link` e Geo Index.
-- Verificato l’isolamento del metabox Geo Index dal form standard WordPress: nessun form annidato/campo di redirect e bottoni interni non-submit.
-- Corretto definitivamente il redirect dopo aggiornamento dei Link Affiliati con Geo Index attivo.
-- Rafforzato il salvataggio Geo Index sui Link Affiliati.
-- Aggiunta diagnostica controllata per il flusso di salvataggio Geo/redirect dei Link Affiliati.
-- Corretto il salvataggio del metabox Geo Index su Link Affiliati, preservando `object_type=affiliate_link` nelle tabelle Geo Index.
-- Corretto il redirect dopo aggiornamento Link Affiliato per restare in `post.php?post={ID}&action=edit`, preservando `classic-editor`.
-- Reso robusto il callback `save_post` del Geo Index con `accepted_args=3` e fallback difensivo a `get_post()`.
-- Rafforzato l’export CSV Link Affiliati contro formule CSV potenzialmente pericolose.
-- Verificata/corretta la deduplica località Geo Index con Place ID e formatted address nullable.
-- Corretto il redirect dopo aggiornamento di un Link Affiliato quando il metabox Geo Index è attivo, preservando la schermata standard di modifica del CPT.
-- Corretta la deduplica località Geo Index con fallback da Place ID a firma testuale quando il Place ID non trova record esistenti.
-- Corretta la deduplica località Geo Index con `formatted_address` nullable tramite confronto SQL compatibile con righe legacy.
-- Aggiunta esportazione CSV dei Link Affiliati dalle impostazioni del plugin per analisi esterne e preparazione di future geolocalizzazioni.
-- Corretto il nome specifico dei POI nei risultati Google e nelle località associate, preservando città, regione, paese e indirizzo formattato.
-- Corretta la deduplica delle località Geo Index usando prima il Google Place ID e solo in assenza una firma testuale completa.
-- Corretto il bug di sovrascrittura delle località associate durante aggiunte multiple e salvataggi bozza/post.
-- Preservate le modifiche manuali ai campi avanzati Geo Index senza ricalcolo forzato dalla località primaria.
-- Preservato lo stato salvato della checkbox Widget eligible al caricamento del metabox.
-- Migliorata la persistenza di tutte le località associate dopo salvataggio bozza/post.
-- Corretta la persistenza delle località associate al salvataggio bozza/post nel metabox Geo Index.
-- Migliorata la gestione dei POI nei risultati Google del Geo Index.
-- Aggiunta la rimozione dei risultati ricerca prima dell’associazione.
-- Tradotti i ruoli località nell’interfaccia admin mantenendo i valori tecnici salvati.
-- Corretto `ZERO_RESULTS` Google per mostrare “Nessun luogo trovato” invece di errore.
-- Aggiornati i campi derivati quando cambia la località principale.
-
-- Migliorata la gestione delle località nel metabox Geo Index: sostituito il JSON visibile con una lista di località associate, una località principale selezionabile e più località secondarie aggiungibili tramite ricerca Google.
-- Migliorato il metabox Geolocalizzazione contenuto con ricerca località tramite Google Maps, associazione guidata del luogo e autopopolazione dei campi geografici.
-- Corretto allineamento tra località geocodificate e stato geocoding dei contenuti collegati.
-- Aggiunta risincronizzazione manuale dei dati geocoding nei post.
-- Semplificato il metabox Geolocalizzazione contenuto con vista sintetica e sezioni avanzate.
+- Rinominata la sezione admin visibile **Indice Geografico — Import Link Affiliati** in **Import GEO Link Affiliati**, mantenendo gli slug interni compatibili.
+- Convertito il flusso GEO Link Affiliati in import manuale a batch: batch size 25/50/100/250, default 50, un solo batch per click e nessun auto-processing JavaScript/background come percorso principale.
+- Aggiunti report di batch e cumulativo persistente, download admin-only di report CSV e log tecnico JSON, dettaglio errori con suggerimenti operativi e reset sessione senza eliminare Link Affiliati già importati.
+- Aggiunta la predisposizione **Geocoding Google** nella pagina GEO con campi/metadati per futura associazione Google senza chiamare API esterne in questa PR.
+- Revertite le modifiche fuori target della PR precedente su Affiliate Sources/GetYourGuide CSV (`class-affiliate-source-manager.php`, `class-affiliate-source-gyg-csv-importer.php`, `assets/affiliate-sources.js`) per non alterare il flusso esistente.
+- Fix warning Codex Review: il marker di fallback redirect Link Affiliati imposta `needs_recovery`/`wrong_landing_expected`, e il report GEO usa contatori cumulativi persistenti invece dell’ultimo batch.
+- Versione plugin aggiornata a `2.41.1`.
 
 
 ## 2.41.0 - 2026-06-06

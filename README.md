@@ -1,34 +1,17 @@
 ## Unreleased
 
-### Affiliate Sources — import GetYourGuide CSV manuale a batch
+### Import GEO Link Affiliati
 
-- L’import GetYourGuide CSV / Deep Link non usa più il job background come flusso principale: l’admin sceglie una tipologia attività, imposta il **batch size** (25, 50, 100 o 250; default 50) e clicca **Importa prossimo batch**.
-- Ogni click processa solo i record successivi non ancora processati nella sessione persistente; la deduplica del plugin continua a evitare duplicazioni quando un record è già presente o quando un click viene ripetuto.
-- Dopo ogni batch la schermata mostra report di batch e cumulativo con processati, rimanenti, importati, aggiornati, saltati, duplicati/già presenti, URL non validi, record incompleti ed errori.
-- I pulsanti **Scarica report CSV** e **Scarica log JSON** producono file admin-only protetti da nonce; il log JSON è pensato per debug tecnico senza mostrare path server sensibili nell’interfaccia.
-- Per vecchi job bloccati in `running` la UI mostra un avviso operativo e consiglia **Reset import** dalla lista sessioni; i link già importati non vengono rimossi dal reset della sessione CSV.
-- Aggiunta la sezione **Export Link Affiliati** in **Impostazioni - Affiliate Link Manager AI**, con download CSV admin-only protetto da nonce per esportare URL, tipologie, provider/source, contesto AI, contenuti, immagine e meta Geo dei CPT `affiliate_link`; il file è pensato per analisi esterne e preparazione di un futuro CSV di geolocalizzazione.
-- L’export CSV dei Link Affiliati protegge ogni cella da formule potenzialmente eseguibili in fogli di calcolo, senza modificare i dati salvati nel database.
-- Il salvataggio del metabox **Geolocalizzazione contenuto** sui `affiliate_link` mantiene il redirect standard alla schermata di modifica del Link Affiliato e non forza più la lista dei Post.
-- La deduplica delle località Geo Index ora cerca prima per Place ID e poi per firma testuale, e gestisce `formatted_address` legacy `NULL` per evitare duplicati.
-- Il metabox **Geolocalizzazione contenuto** mantiene ora un JSON hidden sincronizzato dalla lista visuale, ripopola le località associate dopo il salvataggio, include POI come musei/attrazioni nei risultati Google, consente di nascondere singoli risultati ricerca e mostra ruoli località in italiano.
-- Il metabox **Geolocalizzazione contenuto** sostituisce il JSON visibile delle località con una lista visuale di località associate: ricerca Google Maps, pulsante **Associa luogo**, radio per una sola località principale, ruoli sulle secondarie e persistenza in `alma_geo_locations`, `alma_geo_content_index` e `_alma_geo_locations_json` tecnico.
-- Il metabox **Geolocalizzazione contenuto** ora apre con **Cerca e associa località**, usa Google Maps server-side via AJAX admin protetto e compila automaticamente stato, località primaria, coordinate, Place ID e campi Geo Index al salvataggio.
-
-
-### Indice Geografico — Import Link Affiliati
-
-- Aggiunta la tab **Import Link Affiliati** in **Indice Geografico** per caricare CSV AI come `sothra_geo_affiliate_links_index.csv`, validare gli header obbligatori e mostrare la preview dei primi 10 record.
-- L’import crea un job persistente `affiliate_links_geo_import`, salva le righe in `alma_geo_import_job_items` e processa batch AJAX da 50 righe (massimo 100), con pausa, ripresa, annullamento, retry errori, progress bar reale con marcatori al 10%, conteggio `imported/updated/skipped/error`, diagnostica JSON del job, diagnostica claim (`queued/processing` prima e dopo, ID claimati/restituiti) e ultimi log item anche per righe ancora in coda.
-- Ogni riga valida viene associata al CPT `affiliate_link` tramite `affiliate_link_id`, aggiorna i post meta `_alma_geo_*`, salva `_alma_geo_activity_type`, crea/riusa località primarie e secondarie e aggiorna `alma_geo_locations` e `alma_geo_content_index` con `object_type=affiliate_link`.
-- L’import non chiama Google Maps: le località restano `pending` e vengono geocodificate solo nel passaggio separato della tab **Geocoding**, che ora evidenzia anche le località pending provenienti dai Link Affiliati.
-- Con **Importa solo safe_import** attivo, le righe non sicure vengono marcate `skipped` e contate come processate, quindi il job può completare anche quando molte righe sono saltate.
-- Gli errori AJAX batch restano visibili nel box **Errore ultimo batch** con HTTP status, timestamp e risposta raw troncata; l’auto-processing si ferma e lascia il pulsante **Riprova batch**.
-
-### Indice Geografico — sincronizzazione geocoding
-- Le località `verified` sincronizzano i dati geocoding sui contenuti primari collegati tramite `alma_geo_content_index`, mantenendo compatibilità con i meta `_alma_geo_*` esistenti.
-- La tab **Geocoding** include il pulsante **Risincronizza geocoding nei contenuti**, che copia solo dati già salvati nelle località senza chiamare Google Maps.
-- Il metabox **Geolocalizzazione contenuto** separa indice, import e geocoding, mostra lo stato effettivo della località primaria verificata e sposta classificazione, campi tecnici e località secondarie in sezioni richiudibili.
+- La tab visibile **Indice Geografico — Import Link Affiliati** è stata rinominata in **Import GEO Link Affiliati**. Lo slug interno resta compatibile con gli URL admin esistenti.
+- **Import GEO Link Affiliati** usa ora un import manuale a batch: dopo il caricamento/preview del CSV `sothra_geo_affiliate_links_index.csv` l’admin crea una sessione e clicca **Importa prossimo batch** per processare un solo batch alla volta. Non esiste più un auto-loop browser che prova a completare tutti i batch in background.
+- Il campo **batch_size** accetta i valori 25, 50, 100 e 250, con default 50. L’admin può modificarlo prima di ogni click successivo; il server valida sempre il valore ricevuto.
+- Dopo ogni batch la pagina mostra un **Report ultimo batch** e un **Report cumulativo sessione** con totale record, processati, rimanenti, percentuale, importati, aggiornati, saltati, già presenti, duplicati, URL non validi, record incompleti, località non riconosciute, regione mancante, geografie assegnate, record da verificare ed errori. I conteggi cumulativi derivano dallo stato persistente della sessione, non dall’ultimo batch.
+- I pulsanti **Scarica report CSV** e **Scarica log JSON** sono admin-only e protetti dal nonce della pagina. Il CSV contiene dettagli per riga; il JSON include sessione, report cumulativo e payload tecnico utile al debug.
+- **Reset import** elimina solo stato/sessione e righe tecniche di import GEO; non elimina i Link Affiliati già creati o aggiornati. La UI avvisa quando trova sessioni legacy/incomplete in `queued`, `running` o `paused` e permette ripresa manuale o reset.
+- La sezione **Geocoding Google** è predisposta nella pagina: l’import non chiama Google API, ma conserva/mostra i campi necessari per una futura associazione (luogo sorgente, località normalizzata, regione, paese, latitudine, longitudine, Google Place ID, formatted address, geocoding status/confidence, ultimo aggiornamento e messaggio errore).
+- Le modifiche fuori target della precedente PR sull’import **Affiliate Sources / GetYourGuide CSV** sono state revertite per preservare il flusso esistente funzionante.
+- Risolti i warning Codex Review: il fallback admin-init dei Link Affiliati riceve ora un marker esplicito `needs_recovery`, mentre i conteggi cumulativi GEO sono calcolati dallo stato persistente del job/sessione.
+- Versione plugin aggiornata a `2.41.1`.
 
 ## 2.41.0 - 2026-06-06
 

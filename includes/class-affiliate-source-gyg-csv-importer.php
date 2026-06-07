@@ -3,7 +3,7 @@ if (!defined('ABSPATH')) { exit; }
 
 class ALMA_Affiliate_Source_GYG_CSV_Importer {
     const MAX_IMPORT_QUANTITY = 1000;
-    const AJAX_BATCH_SIZE = 250;
+    const AJAX_BATCH_SIZE = 100;
     const PREVIEW_LIMIT = 10;
     const TRANSIENT_PREFIX = 'alma_gyg_csv_';
 
@@ -103,7 +103,7 @@ class ALMA_Affiliate_Source_GYG_CSV_Importer {
         );
         $session_table = $this->sessions_table();
         if ($this->table_exists($session_table) && $session_id > 0) {
-            $wpdb->update($session_table, array('status'=>!empty($result['done'])?'completed':'partial','updated_at'=>$now,'last_error'=>''), array('id'=>$session_id));
+            $wpdb->update($session_table, array('status'=>!empty($result['done'])?'ready':'importing','updated_at'=>$now,'last_error'=>''), array('id'=>$session_id));
         }
         if (!empty($existing['id'])) {
             return $wpdb->update($table, $data, array('id'=>absint($existing['id'])));
@@ -745,9 +745,6 @@ class ALMA_Affiliate_Source_GYG_CSV_Importer {
             'skipped'=>0,
             'errors'=>0,
             'invalid_urls'=>0,
-            'incomplete_records'=>0,
-            'already_present'=>0,
-            'unprocessed'=>0,
             'without_city'=>0,
             'without_region'=>0,
             'titles_read'=>0,
@@ -763,7 +760,6 @@ class ALMA_Affiliate_Source_GYG_CSV_Importer {
             'requested'=>0,
             'duration'=>0,
             'logs'=>array(),
-            'error_details'=>array(),
             'next_cursor'=>0,
             'done'=>false,
         ), is_array($overrides) ? $overrides : array());
@@ -807,8 +803,7 @@ class ALMA_Affiliate_Source_GYG_CSV_Importer {
             if ($activity_type !== '' && $item['activity_type'] !== $activity_type) continue;
             if ($matched_index++ < $cursor) continue;
             if ($result['processed'] >= $batch_size || ($cursor + $result['processed']) >= $quantity) break;
-            $line_number = $matched_index + 1;
-            $this->process_import_item($item, $source_for_import, $term_ids, $term_names, $update_existing, $importer, $dedupe, $result, $line_number);
+            $this->process_import_item($item, $source_for_import, $term_ids, $term_names, $update_existing, $importer, $dedupe, $result);
             $result['next_cursor'] = $cursor + $result['processed'];
         }
         $eof = feof($handle);
@@ -822,19 +817,17 @@ class ALMA_Affiliate_Source_GYG_CSV_Importer {
         return $result;
     }
 
-    private function process_import_item($item, $source_for_import, $term_ids, $term_names, $update_existing, $importer, $dedupe, &$result, $line_number = 0) {
+    private function process_import_item($item, $source_for_import, $term_ids, $term_names, $update_existing, $importer, $dedupe, &$result) {
         $result['processed']++;
         $external_id = sanitize_text_field((string)($item['external_id'] ?? ''));
         if (($item['original_url'] ?? '') === '' || !wp_http_validate_url($item['original_url']) || ($item['affiliate_url'] ?? '') === '') {
             $result['invalid_urls']++; $result['errors']++; $result['skipped']++;
-            $this->append_error_detail($result, $line_number, $item, __('URL non valido o non trasformabile in link affiliato.', 'affiliate-link-manager-ai'), __('Correggi la colonna URL nel CSV e poi riprova il record.', 'affiliate-link-manager-ai'));
-            $result['logs'][] = sprintf(__('Riga %1$d saltata per URL non valido (external_id %2$s).', 'affiliate-link-manager-ai'), absint($line_number), substr($external_id, 0, 12));
+            $result['logs'][] = sprintf(__('Record saltato per URL non valido (external_id %s).', 'affiliate-link-manager-ai'), substr($external_id, 0, 12));
             return;
         }
         if (($item['description'] ?? '') === '') {
-            $result['skipped']++; $result['errors']++; $result['incomplete_records']++;
-            $this->append_error_detail($result, $line_number, $item, __('Descrizione attività mancante.', 'affiliate-link-manager-ai'), __('Completa la descrizione nel CSV prima di riprovare il record.', 'affiliate-link-manager-ai'));
-            $result['logs'][] = sprintf(__('Riga %1$d saltata per Descrizione attività mancante (external_id %2$s).', 'affiliate-link-manager-ai'), absint($line_number), substr($external_id, 0, 12));
+            $result['skipped']++; $result['errors']++;
+            $result['logs'][] = sprintf(__('Record saltato per Descrizione attività mancante (external_id %s).', 'affiliate-link-manager-ai'), substr($external_id, 0, 12));
             return;
         }
         if (($item['city'] ?? '') === '') $result['without_city']++;
@@ -851,15 +844,14 @@ class ALMA_Affiliate_Source_GYG_CSV_Importer {
             if ($existing_title !== '') $normalized['post_title'] = sanitize_text_field($existing_title);
         }
         if (!$update_existing && !empty($match['post_id'])) {
-            $result['existing']++; $result['already_present']++;
-            $result['logs'][] = sprintf(__('Riga %1$d già presente saltata (external_id %2$s, match %3$s).', 'affiliate-link-manager-ai'), absint($line_number), substr($external_id, 0, 12), sanitize_key((string)($match['match_type'] ?? '')));
+            $result['existing']++;
+            $result['logs'][] = sprintf(__('Record già presente saltato (external_id %s, match %s).', 'affiliate-link-manager-ai'), substr($external_id, 0, 12), sanitize_key((string)($match['match_type'] ?? '')));
             return;
         }
         $res = $importer->import_item($normalized, $source_for_import, array('build_ai_context'=>false, 'dry_run_featured_image'=>true));
         if (is_wp_error($res)) {
             $result['errors']++; $result['skipped']++;
-            $this->append_error_detail($result, $line_number, $item, $res->get_error_message(), __('Verifica i dati della riga e riprova. Se l’errore persiste scarica il log JSON per il debug.', 'affiliate-link-manager-ai'));
-            $result['logs'][] = sprintf(__('Riga %1$d: errore creazione/aggiornamento Link affiliato (external_id %2$s): %3$s', 'affiliate-link-manager-ai'), absint($line_number), substr($external_id, 0, 12), $res->get_error_message());
+            $result['logs'][] = sprintf(__('Errore creazione/aggiornamento Link affiliato (external_id %1$s): %2$s', 'affiliate-link-manager-ai'), substr($external_id, 0, 12), $res->get_error_message());
             return;
         }
         $status = (string)($res['status'] ?? '');
@@ -870,8 +862,8 @@ class ALMA_Affiliate_Source_GYG_CSV_Importer {
             $result['imported']++;
             $result['logs'][] = sprintf(__('Record creato (external_id %s).', 'affiliate-link-manager-ai'), substr($external_id, 0, 12));
         } elseif ($status === 'skipped') {
-            $result['existing']++; $result['already_present']++;
-            $result['logs'][] = sprintf(__('Riga %1$d già presente saltata dall’importer (external_id %2$s).', 'affiliate-link-manager-ai'), absint($line_number), substr($external_id, 0, 12));
+            $result['existing']++;
+            $result['logs'][] = sprintf(__('Record già presente saltato dall’importer (external_id %s).', 'affiliate-link-manager-ai'), substr($external_id, 0, 12));
             return;
         }
         if (($item['title'] ?? '') !== '' && in_array($status, array('imported', 'updated'), true)) $result['titles_saved']++;
@@ -885,21 +877,6 @@ class ALMA_Affiliate_Source_GYG_CSV_Importer {
             $result['ai_contexts_missing']++;
         }
         if (!empty($term_ids)) $result['link_types_associated']++;
-    }
-
-
-
-    private function append_error_detail(&$result, $line_number, $item, $reason, $suggested_action = '') {
-        if (!isset($result['error_details']) || !is_array($result['error_details'])) {
-            $result['error_details'] = array();
-        }
-        $result['error_details'][] = array(
-            'line' => absint($line_number),
-            'title' => sanitize_text_field((string)($item['title'] ?? '')),
-            'url' => esc_url_raw((string)($item['original_url'] ?? '')),
-            'reason' => sanitize_text_field(wp_strip_all_tags((string)$reason)),
-            'suggested_action' => sanitize_text_field(wp_strip_all_tags((string)$suggested_action)),
-        );
     }
 
 
@@ -968,7 +945,7 @@ class ALMA_Affiliate_Source_GYG_CSV_Importer {
             $source_for_record = $source_for_import;
             $source_for_record['destination_term_id'] = (int)($term_ids[0] ?? 0);
             $source_for_record['destination_term_ids'] = wp_json_encode($term_ids);
-            $this->process_import_item($item, $source_for_record, $term_ids, $term_names, $update_existing, $importer, $dedupe, $result, $result['next_cursor'] + $result['processed'] + 2);
+            $this->process_import_item($item, $source_for_record, $term_ids, $term_names, $update_existing, $importer, $dedupe, $result);
             $result['selected_external_ids_found']++;
             if ($result['processed'] >= $batch_size) break;
         }
@@ -1022,7 +999,7 @@ class ALMA_Affiliate_Source_GYG_CSV_Importer {
             if ($external_id === '' || empty($selected_map[$external_id])) continue;
             unset($selected_map[$external_id]);
             $result['selected_external_ids_found']++;
-            $this->process_import_item($item, $source_for_import, $term_ids, $term_names, $update_existing, $importer, $dedupe, $result, $result['processed'] + 2);
+            $this->process_import_item($item, $source_for_import, $term_ids, $term_names, $update_existing, $importer, $dedupe, $result);
             if ($result['selected_external_ids_found'] >= count($selected)) break;
         }
         fclose($handle);
