@@ -63,19 +63,19 @@ class ALMA_Geo_Index_Job_Store {
             job_id bigint(20) unsigned NOT NULL,
             object_id bigint(20) unsigned NULL,
             object_type varchar(50) DEFAULT '',
-            row_number int(11) NOT NULL,
+            csv_row_number int(11) NOT NULL,
             status varchar(40) NOT NULL DEFAULT 'queued',
             action varchar(40) DEFAULT '',
             message text NULL,
             raw_payload longtext NULL,
-            created_at datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
+            created_at datetime NOT NULL,
             processed_at datetime NULL,
             PRIMARY KEY  (id),
             KEY job_id (job_id),
             KEY status (status),
             KEY job_status (job_id, status),
             KEY object_lookup (object_id, object_type),
-            KEY row_lookup (job_id, row_number),
+            KEY row_lookup (job_id, csv_row_number),
             KEY created_at (created_at)
         ) $charset_collate;";
 
@@ -86,13 +86,13 @@ class ALMA_Geo_Index_Job_Store {
         $last_error = (string) $wpdb->last_error;
         $after = $this->schema_status();
         $variant_tables = $this->find_variant_item_tables();
-        $success = !empty($after['jobs_exists']) && !empty($after['items_exists']);
+        $success = !empty($after['jobs_exists']) && !empty($after['items_exists']) && $last_error === '';
         $message = $success
             ? __('Schema riparato correttamente.', 'affiliate-link-manager-ai')
             : $this->repair_failure_message($before, $after, $dbdelta_items, $last_error, $variant_tables);
 
         if ($success) {
-            update_option('alma_geo_import_schema_version', '3', false);
+            update_option('alma_geo_import_schema_version', '4', false);
         }
 
         return array_merge($after, array(
@@ -151,6 +151,44 @@ class ALMA_Geo_Index_Job_Store {
             }
         }
         return $found;
+    }
+
+
+    public function item_row_number_column() {
+        $columns = $this->item_table_columns();
+        if (isset($columns['csv_row_number'])) {
+            return 'csv_row_number';
+        }
+        if (isset($columns['row_number'])) {
+            return 'row_number';
+        }
+        return 'csv_row_number';
+    }
+
+    private function item_table_columns() {
+        global $wpdb;
+        if (!$this->table_exists($this->table_items())) {
+            return array();
+        }
+        $rows = $wpdb->get_results('SHOW COLUMNS FROM ' . $this->backtick_identifier($this->table_items()), ARRAY_A);
+        $columns = array();
+        foreach ((array) $rows as $row) {
+            if (!empty($row['Field'])) {
+                $columns[(string) $row['Field']] = true;
+            }
+        }
+        return $columns;
+    }
+
+    private function backtick_identifier($identifier) {
+        return '`' . str_replace('`', '``', (string) $identifier) . '`';
+    }
+
+    private function normalize_item_row_number($item) {
+        if (is_array($item) && !isset($item['row_number']) && isset($item['csv_row_number'])) {
+            $item['row_number'] = $item['csv_row_number'];
+        }
+        return $item;
     }
 
     private function repair_failure_message($before, $after, $dbdelta_items, $last_error, $variant_tables) {
@@ -259,18 +297,19 @@ class ALMA_Geo_Index_Job_Store {
         if (!in_array($status, array('queued','processing','imported','updated','skipped','error'), true)) {
             $status = 'error';
         }
-        $inserted = $wpdb->insert($this->table_items(), array(
+        $data = array(
             'job_id' => absint($job_id),
             'object_id' => $object_id ? absint($object_id) : null,
             'object_type' => sanitize_key($object_type),
-            'row_number' => absint($row_number),
+            $this->item_row_number_column() => absint($row_number),
             'status' => $status,
             'action' => sanitize_key($action),
             'message' => sanitize_textarea_field($message),
             'raw_payload' => wp_json_encode(is_array($payload) ? $payload : array()),
             'created_at' => current_time('mysql'),
             'processed_at' => null,
-        ), array('%d','%d','%s','%d','%s','%s','%s','%s','%s','%s'));
+        );
+        $inserted = $wpdb->insert($this->table_items(), $data, array('%d','%d','%s','%d','%s','%s','%s','%s','%s','%s'));
         return $inserted ? (int) $wpdb->insert_id : 0;
     }
 
@@ -369,6 +408,7 @@ class ALMA_Geo_Index_Job_Store {
             $items = array();
         }
         foreach ($items as &$item) {
+            $item = $this->normalize_item_row_number($item);
             $decoded_payload = json_decode((string) ($item['raw_payload'] ?? ''), true);
             $item['raw_payload'] = is_array($decoded_payload) ? $decoded_payload : array();
         }
@@ -479,7 +519,12 @@ class ALMA_Geo_Index_Job_Store {
         } else {
             $rows = $wpdb->get_results($wpdb->prepare("SELECT * FROM {$this->table_items()} WHERE job_id = %d ORDER BY id DESC LIMIT %d", absint($job_id), $limit), ARRAY_A);
         }
-        return $rows ?: array();
+        $rows = $rows ?: array();
+        foreach ($rows as &$row) {
+            $row = $this->normalize_item_row_number($row);
+        }
+        unset($row);
+        return $rows;
     }
 
 
@@ -488,7 +533,9 @@ class ALMA_Geo_Index_Job_Store {
         $job_id = absint($job_id);
         $job = $this->get_job($job_id);
         $counts = $this->get_item_status_counts($job_id);
-        $latest_item = $wpdb->get_row($wpdb->prepare("SELECT id, row_number, object_id, object_type, status, action, message, processed_at FROM {$this->table_items()} WHERE job_id = %d ORDER BY id DESC LIMIT 1", $job_id), ARRAY_A);
+        $row_number_column = $this->item_row_number_column();
+        $row_number_sql = $this->backtick_identifier($row_number_column);
+        $latest_item = $wpdb->get_row($wpdb->prepare("SELECT id, {$row_number_sql} AS row_number, object_id, object_type, status, action, message, processed_at FROM {$this->table_items()} WHERE job_id = %d ORDER BY id DESC LIMIT 1", $job_id), ARRAY_A);
         return array_merge(array(
             'job_id' => $job_id,
             'total_item_rows' => array_sum(array_map('intval', $counts)),
@@ -540,6 +587,7 @@ class ALMA_Geo_Index_Job_Store {
         $offset = max(0, absint($offset));
         $items = $wpdb->get_results($wpdb->prepare("SELECT * FROM {$this->table_items()} WHERE job_id = %d ORDER BY id ASC LIMIT %d OFFSET %d", $job_id, $limit, $offset), ARRAY_A) ?: array();
         foreach ($items as &$item) {
+            $item = $this->normalize_item_row_number($item);
             $payload = json_decode((string) ($item['raw_payload'] ?? ''), true);
             $item['raw_payload'] = is_array($payload) ? $payload : array();
         }
