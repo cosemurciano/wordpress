@@ -177,18 +177,53 @@ class ALMA_Geo_Index_Affiliate_Link_Importer {
             'batch_size' => 50,
         ));
         $job_store = new ALMA_Geo_Index_Job_Store();
+        $delimiter = $args['delimiter'] ?: $this->detect_csv_delimiter($file_path);
         $job_id = $job_store->create_job(ALMA_Geo_Index_Job_Store::JOB_TYPE_AFFILIATE_LINKS_GEO_IMPORT, $args['file_name'], array(
             'overwrite' => !empty($args['overwrite']),
             'safe_only' => !empty($args['safe_only']),
             'batch_size' => max(25, min(250, absint($args['batch_size']))),
+            'delimiter' => $delimiter,
         ), get_current_user_id());
-        $parsed = $this->parse_csv_file($file_path, 0, $args['delimiter']);
-        $row_number = 1;
-        foreach ($parsed['rows'] as $row) {
-            $row_number++;
-            $job_store->add_job_item($job_id, $row_number, $row, absint($row['affiliate_link_id'] ?? 0), ALMA_Geo_Index_Store::OBJECT_TYPE_AFFILIATE_LINK);
+
+        $handle = fopen($file_path, 'r');
+        if (!$handle) {
+            $job_store->delete_job($job_id);
+            return new WP_Error('alma_geo_csv_open_failed', __('Impossibile riaprire il CSV per creare gli item di import.', 'affiliate-link-manager-ai'));
         }
-        $job_store->set_total_records($job_id, (int) $parsed['total']);
+
+        $headers = array();
+        $total = 0;
+        $inserted = 0;
+        $row_number = 0;
+        while (($data = fgetcsv($handle, 0, $delimiter)) !== false) {
+            $row_number++;
+            if (empty($headers)) {
+                if (isset($data[0])) {
+                    $data[0] = preg_replace('/^\xEF\xBB\xBF/', '', $data[0]);
+                }
+                $headers = array_map('sanitize_key', $data);
+                continue;
+            }
+            if ($this->is_empty_csv_row($data)) {
+                continue;
+            }
+            $total++;
+            $row = $this->normalize_row(array_combine($headers, array_slice(array_pad($data, count($headers), ''), 0, count($headers))));
+            $item_id = $job_store->add_job_item($job_id, $row_number, $row, absint($row['affiliate_link_id'] ?? 0), ALMA_Geo_Index_Store::OBJECT_TYPE_AFFILIATE_LINK);
+            if ($item_id) {
+                $inserted++;
+            }
+        }
+        fclose($handle);
+
+        $job_store->set_total_records($job_id, $total);
+        if ($total > 0 && $inserted === 0) {
+            $job_store->delete_job($job_id);
+            return new WP_Error('alma_geo_no_items_created', __('Nessun item creato dalla sessione GEO: il CSV è stato letto ma la tabella staging non ha accettato righe processabili.', 'affiliate-link-manager-ai'));
+        }
+        if ($inserted !== $total) {
+            $job_store->update_job_status($job_id, 'failed', sprintf('items_created_mismatch total=%d inserted=%d', $total, $inserted));
+        }
         return $job_id;
     }
 
@@ -201,7 +236,7 @@ class ALMA_Geo_Index_Affiliate_Link_Importer {
         if (sanitize_key($job['job_type'] ?? '') !== ALMA_Geo_Index_Job_Store::JOB_TYPE_AFFILIATE_LINKS_GEO_IMPORT) {
             return new WP_Error('alma_geo_invalid_job_type', __('Tipo job non valido.', 'affiliate-link-manager-ai'));
         }
-        if (in_array($job['status'], array('paused','cancelled','completed','failed'), true)) {
+        if (in_array($job['status'], array('cancelled','completed','failed'), true)) {
             $counts = $job_store->get_item_status_counts($job_id);
             return array(
                 'processed' => 0,
@@ -211,13 +246,11 @@ class ALMA_Geo_Index_Affiliate_Link_Importer {
                 'counts' => $counts,
                 'debug' => array('status_guard' => sanitize_key($job['status'])),
                 'diagnostic' => $job_store->get_job_diagnostic($job_id, array('last_ajax_message' => 'status_guard')),
-                'message' => __('Job in stato terminale: nessun batch processato.', 'affiliate-link-manager-ai'),
+                'message' => __('Sessione in stato terminale: nessun batch processato.', 'affiliate-link-manager-ai'),
             );
         }
         $recovered = $job_store->recover_stale_processing_items($job_id, 10);
-        if ($job['status'] === 'queued') {
-            $job_store->update_job_status($job_id, 'running');
-        }
+        $job_store->update_job_status($job_id, 'processing');
         $options = is_array($job['options']) ? $job['options'] : array();
         $batch_size = max(25, min(250, absint($batch_size ?: ($options['batch_size'] ?? 50))));
         $options['batch_size'] = $batch_size;
@@ -261,6 +294,12 @@ class ALMA_Geo_Index_Affiliate_Link_Importer {
             );
         }
         $counts = $job_store->recount_job($job_id);
+        if ($claimed > 0) {
+            $remaining = (int) $counts['queued'] + (int) $counts['processing'];
+            $job_store->update_job_status($job_id, $remaining > 0 ? 'queued' : 'completed');
+        } else {
+            $job_store->update_job_status($job_id, 'queued');
+        }
         $job = $job_store->maybe_complete_job($job_id);
         $counts = $job_store->get_item_status_counts($job_id);
         $debug = array(
@@ -273,9 +312,7 @@ class ALMA_Geo_Index_Affiliate_Link_Importer {
         if ($claimed === 0 && !empty($counts['queued'])) {
             $debug['warning'] = 'claim_returned_zero_with_queued_items';
         }
-        $message = $claimed === 0 && !empty($counts['queued'])
-            ? __('Nessun item claimato nonostante esistano item in coda: controlla diagnostica claim.', 'affiliate-link-manager-ai')
-            : sprintf(__('Batch processato: %1$d item claimati, %2$d processati.', 'affiliate-link-manager-ai'), $claimed, $processed);
+        $message = $this->batch_message($job_id, $counts, $claimed, $processed, $options);
         return array(
             'processed' => $processed,
             'claimed' => $claimed,
@@ -287,6 +324,29 @@ class ALMA_Geo_Index_Affiliate_Link_Importer {
             'diagnostic' => $job_store->get_job_diagnostic($job_id, array('last_ajax_message' => 'batch_processed')),
             'message' => $message,
         );
+    }
+
+
+    private function batch_message($job_id, $counts, $claimed, $processed, $options) {
+        if ($processed > 0) {
+            return sprintf(__('Batch processato: %1$d item claimati, %2$d processati.', 'affiliate-link-manager-ai'), $claimed, $processed);
+        }
+        $total_items = array_sum(array_map('intval', (array) $counts));
+        if ($total_items === 0) {
+            return __('Nessun record processabile trovato: gli item non sono stati creati dalla sessione.', 'affiliate-link-manager-ai');
+        }
+        if (!empty($counts['queued'])) {
+            return __('Nessun record processabile trovato: gli item in coda non sono stati claimati dalla tabella staging.', 'affiliate-link-manager-ai');
+        }
+        if (!empty($counts['error'])) {
+            return __('Nessun record processabile trovato: restano solo record in errore nel log.', 'affiliate-link-manager-ai');
+        }
+        if (!empty($counts['skipped']) && empty($counts['imported']) && empty($counts['updated'])) {
+            return !empty($options['safe_only'])
+                ? __('Nessun record processabile trovato: il filtro safe-only o dati già importati hanno escluso tutti i record.', 'affiliate-link-manager-ai')
+                : __('Nessun record processabile trovato: tutti i record sono già importati o saltati.', 'affiliate-link-manager-ai');
+        }
+        return __('Nessun record processabile trovato: la sessione non contiene item queued.', 'affiliate-link-manager-ai');
     }
 
     public function import_row($row, $args = array()) {

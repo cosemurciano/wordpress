@@ -158,13 +158,13 @@ class ALMA_Geo_Index_Job_Store {
     public function update_job_status($job_id, $status, $last_error = '') {
         global $wpdb;
         $status = sanitize_key($status);
-        $allowed = array('queued','running','paused','completed','failed','cancelled');
+        $allowed = array('queued','processing','partial','completed','failed','cancelled');
         if (!in_array($status, $allowed, true)) {
             return false;
         }
         $row = array('status' => $status, 'last_error' => sanitize_textarea_field($last_error));
         $formats = array('%s','%s');
-        if ($status === 'running') {
+        if ($status === 'processing') {
             $row['started_at'] = current_time('mysql');
             $formats[] = '%s';
         }
@@ -276,7 +276,7 @@ class ALMA_Geo_Index_Job_Store {
 
     public function maybe_complete_job($job_id) {
         $job = $this->get_job($job_id);
-        if (!$job || in_array($job['status'], array('paused','cancelled','failed','completed'), true)) {
+        if (!$job || in_array($job['status'], array('cancelled','failed','completed'), true)) {
             return $job;
         }
         $this->recover_stale_processing_items($job_id);
@@ -379,13 +379,34 @@ class ALMA_Geo_Index_Job_Store {
         return (bool) $wpdb->delete($this->table_jobs(), array('id' => $job_id), array('%d'));
     }
 
-    public function get_items_with_payload($job_id, $limit = 5000) {
-        $items = $this->get_items($job_id, $limit);
+    public function get_items_with_payload($job_id, $limit = 5000, $offset = 0) {
+        global $wpdb;
+        $job_id = absint($job_id);
+        $limit = max(1, min(20000, absint($limit)));
+        $offset = max(0, absint($offset));
+        $items = $wpdb->get_results($wpdb->prepare("SELECT * FROM {$this->table_items()} WHERE job_id = %d ORDER BY id ASC LIMIT %d OFFSET %d", $job_id, $limit, $offset), ARRAY_A) ?: array();
         foreach ($items as &$item) {
             $payload = json_decode((string) ($item['raw_payload'] ?? ''), true);
             $item['raw_payload'] = is_array($payload) ? $payload : array();
         }
         unset($item);
+        return $items ?: array();
+    }
+
+    public function get_all_items_with_payload($job_id, $page_size = 1000, $max_items = 20000) {
+        $items = array();
+        $page_size = max(1, min(5000, absint($page_size)));
+        $max_items = max($page_size, min(50000, absint($max_items)));
+        for ($offset = 0; $offset < $max_items; $offset += $page_size) {
+            $page = $this->get_items_with_payload($job_id, $page_size, $offset);
+            if (empty($page)) {
+                break;
+            }
+            $items = array_merge($items, $page);
+            if (count($page) < $page_size) {
+                break;
+            }
+        }
         return $items;
     }
 
@@ -397,10 +418,10 @@ class ALMA_Geo_Index_Job_Store {
         if ($status === 'queued') {
             return ((int) ($job['processed_records'] ?? 0) > 0) ? 'partial' : 'ready';
         }
-        if ($status === 'running') {
-            return ((int) ($job['processed_records'] ?? 0) > 0) ? 'partial' : 'ready';
+        if ($status === 'processing') {
+            return 'processing';
         }
-        if ($status === 'paused') {
+        if ($status === 'partial') {
             return 'partial';
         }
         if (in_array($status, array('completed','failed','cancelled'), true)) {
@@ -414,7 +435,7 @@ class ALMA_Geo_Index_Job_Store {
         if (!$job) {
             return array();
         }
-        $items = $this->get_items($job_id, 5000);
+        $items = $this->get_all_items_with_payload($job_id, 1000, 50000);
         $report = array(
             'session_id' => (int) $job['id'],
             'date' => $job['finished_at'] ?: $job['created_at'],
