@@ -1,17 +1,14 @@
 ## Unreleased
 
-### Import GEO Link Affiliati
+### Fix Import GEO Link Affiliati
 
-- La tab visibile **Indice Geografico — Import Link Affiliati** è stata rinominata in **Import GEO Link Affiliati**. Lo slug interno resta compatibile con gli URL admin esistenti.
-- **Import GEO Link Affiliati** usa ora un import manuale a batch: dopo il caricamento/preview del CSV `sothra_geo_affiliate_links_index.csv` l’admin crea una sessione e clicca **Importa prossimo batch** per processare un solo batch alla volta. Non esiste più un auto-loop browser che prova a completare tutti i batch in background.
-- Il campo **batch_size** accetta i valori 25, 50, 100 e 250, con default 50. L’admin può modificarlo prima di ogni click successivo; il server valida sempre il valore ricevuto.
-- Dopo ogni batch la pagina mostra un **Report ultimo batch** e un **Report cumulativo sessione** con totale record, processati, rimanenti, percentuale, importati, aggiornati, saltati, già presenti, duplicati, URL non validi, record incompleti, località non riconosciute, regione mancante, geografie assegnate, record da verificare ed errori. I conteggi cumulativi derivano dallo stato persistente della sessione, non dall’ultimo batch.
-- I pulsanti **Scarica report CSV** e **Scarica log JSON** sono admin-only e protetti dal nonce della pagina. Il CSV contiene dettagli per riga; il JSON include sessione, report cumulativo e payload tecnico utile al debug.
-- **Reset import** elimina solo stato/sessione e righe tecniche di import GEO; non elimina i Link Affiliati già creati o aggiornati. La UI avvisa quando trova sessioni legacy/incomplete in `queued`, `running` o `paused` e permette ripresa manuale o reset.
-- La sezione **Geocoding Google** è predisposta nella pagina: l’import non chiama Google API, ma conserva/mostra i campi necessari per una futura associazione (luogo sorgente, località normalizzata, regione, paese, latitudine, longitudine, Google Place ID, formatted address, geocoding status/confidence, ultimo aggiornamento e messaggio errore).
-- Le modifiche fuori target della precedente PR sull’import **Affiliate Sources / GetYourGuide CSV** sono state revertite per preservare il flusso esistente funzionante.
-- Risolti i warning Codex Review: il fallback admin-init dei Link Affiliati riceve ora un marker esplicito `needs_recovery`, mentre i conteggi cumulativi GEO sono calcolati dallo stato persistente del job/sessione.
-- Versione plugin aggiornata a `2.41.1`.
+- **Import GEO Link Affiliati** ora usa in modo coerente la tabella staging degli item: durante la creazione della sessione viene creato un item `queued` per ogni riga CSV processabile e la sessione fallisce con messaggio operativo se il CSV viene letto ma non viene creato nessun item.
+- Il click **Importa prossimo batch** processa un solo batch manuale, rispetta il batch size selezionato (25, 50, 100 o 250) e salva la scelta nella sessione per i batch successivi; non avvia loop browser, auto-processing o job background visibili.
+- La UI è stata semplificata in blocchi: **Carica CSV**, **Importazione**, **Report**, **Geocoding Google** e **Strumenti avanzati**. La sezione principale mostra solo avanzamento e conteggi sintetici; diagnostica tecnica e ultimi log restano chiusi di default negli strumenti avanzati.
+- I download **Scarica report CSV** e **Scarica log JSON** usano un export dedicato paginato/controllato e non il limite operativo di 200 righe degli ultimi item, così le sessioni grandi includono tutti gli item necessari.
+- **Reset import** elimina solo la sessione/staging GEO; non cancella Link Affiliati o geografie già importate.
+- La sezione **Geocoding Google** resta separata: l’import salva campi predisposti per località sorgente, località normalizzata, regione, paese, lat/lng, Google Place ID, formatted address, stato/confidence geocoding, ultimo geocoding ed errore, ma non chiama Google API durante il batch.
+- Versione plugin aggiornata a `2.41.2`.
 
 ## 2.41.0 - 2026-06-06
 

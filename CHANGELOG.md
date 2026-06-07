@@ -1,13 +1,12 @@
 ## Unreleased
 
-- Rinominata la sezione admin visibile **Indice Geografico — Import Link Affiliati** in **Import GEO Link Affiliati**, mantenendo gli slug interni compatibili.
-- Convertito il flusso GEO Link Affiliati in import manuale a batch: batch size 25/50/100/250, default 50, un solo batch per click e nessun auto-processing JavaScript/background come percorso principale.
-- Aggiunti report di batch e cumulativo persistente, download admin-only di report CSV e log tecnico JSON, dettaglio errori con suggerimenti operativi e reset sessione senza eliminare Link Affiliati già importati.
-- Aggiunta la predisposizione **Geocoding Google** nella pagina GEO con campi/metadati per futura associazione Google senza chiamare API esterne in questa PR.
-- Revertite le modifiche fuori target della PR precedente su Affiliate Sources/GetYourGuide CSV (`class-affiliate-source-manager.php`, `class-affiliate-source-gyg-csv-importer.php`, `assets/affiliate-sources.js`) per non alterare il flusso esistente.
-- Fix warning Codex Review: il marker di fallback redirect Link Affiliati imposta `needs_recovery`/`wrong_landing_expected`, e il report GEO usa contatori cumulativi persistenti invece dell’ultimo batch.
-- Versione plugin aggiornata a `2.41.1`.
-
+- Fix import GEO Link Affiliati che poteva leggere il CSV e valorizzare `total_records` senza creare item staging processabili: la creazione sessione ora inserisce e verifica gli item `queued` prima di rendere disponibile il batch manuale.
+- UI Import GEO semplificata in blocchi Carica CSV, Importazione, Report, Geocoding Google e Strumenti avanzati, con diagnostica tecnica chiusa di default e senza JSON grezzo nella pagina principale.
+- Batch size preservato dalla sessione e aggiornato a ogni click manuale; il select non forza più sempre 50 nella UI principale.
+- Export report CSV/log JSON completo tramite metodo dedicato senza clamp operativo a 200 righe.
+- Rimossa dal flusso principale la logica visibile di job background/running: nessun auto-processing browser e un solo batch per click.
+- Migliorata la diagnostica dei batch a zero record con messaggi operativi basati sulla causa reale.
+- Versione plugin aggiornata a `2.41.2`.
 
 ## 2.41.0 - 2026-06-06
 - Aggiunta la fondazione di geocoding admin-only per **Indice Geografico**, con tab Geocoding, impostazioni Google Maps API key mascherata, batch controllati e report in `alma_geo_geocoding_last_report`.
