@@ -1,3 +1,12 @@
+## 2.41.7 - 2026-06-07
+
+### Fix GEO job items table SQL schema
+- Fix sintassi SQL tabella `alma_geo_import_job_items`: la colonna fisica `row_number` è stata sostituita con `csv_row_number` nella `CREATE TABLE` e nell’indice `row_lookup` per evitare errori MySQL/MariaDB vicino a `row_number`.
+- Fix falso positivo `dbDelta` “Created table”: il repair è riuscito solo se le tabelle esistono fisicamente dopo `SHOW TABLES LIKE` e non rimane un errore SQL bloccante in `$wpdb->last_error`.
+- Migliorata diagnostica repair negli Strumenti avanzati con tabella richiesta, esistenza prima/dopo, risultato `dbDelta`, `$wpdb->last_error`, MySQL/SQLSTATE, varianti e messaggio operativo.
+- Blocco prepare se lo schema GEO resta mancante dopo un repair difensivo, evitando insert staging destinati a fallire e senza toccare Affiliate Sources/GetYourGuide CSV.
+- Versione plugin aggiornata a `2.41.7`.
+
 ## 2.41.6 - 2026-06-07
 
 ### Fix GEO schema repair for missing job items table
