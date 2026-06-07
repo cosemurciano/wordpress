@@ -536,17 +536,20 @@ class ALMA_Geo_Index_Admin {
         header('Content-Type: text/csv; charset=utf-8');
         header('Content-Disposition: attachment; filename="alma-geo-affiliate-import-job-' . absint($job_id) . '-log.csv"');
         $out = fopen('php://output', 'w');
-        fputcsv($out, array('session_id','row_number','affiliate_link_id','titolo_link','affiliate_url','city','region','status','action','motivo','suggerimento','processed_at'));
+        fputcsv($out, array('session_id','row_number','affiliate_link_id','post_title','affiliate_url','primary_name','city','region','final_bucket','safe_for_auto_import','status','action','motivo','suggerimento','processed_at'));
         foreach ($this->job_store->get_all_items_with_payload($job_id, 1000, 0) as $item) {
             $payload = is_array($item['raw_payload'] ?? null) ? $item['raw_payload'] : array();
             fputcsv($out, array(
                 (int) $item['job_id'],
                 (int) $item['row_number'],
                 (int) $item['object_id'],
-                sanitize_text_field($payload['title'] ?? ($payload['link_title'] ?? ($payload['post_title'] ?? ''))),
+                sanitize_text_field($payload['post_title'] ?? ($payload['title'] ?? ($payload['link_title'] ?? ''))),
                 esc_url_raw($payload['affiliate_url'] ?? ($payload['url'] ?? '')),
+                sanitize_text_field($payload['primary_name'] ?? ''),
                 sanitize_text_field($payload['primary_city'] ?? ($payload['city'] ?? '')),
                 sanitize_text_field($payload['primary_region'] ?? ($payload['region'] ?? '')),
+                sanitize_key($payload['final_bucket'] ?? ''),
+                sanitize_text_field($payload['safe_for_auto_import'] ?? ''),
                 sanitize_key($item['status']),
                 sanitize_key($item['action']),
                 sanitize_textarea_field($item['message']),
@@ -573,10 +576,13 @@ class ALMA_Geo_Index_Admin {
             $items[] = array(
                 'row_number' => (int) $item['row_number'],
                 'affiliate_link_id' => (int) $item['object_id'],
-                'title' => sanitize_text_field($payload['title'] ?? ($payload['link_title'] ?? ($payload['post_title'] ?? ''))),
+                'post_title' => sanitize_text_field($payload['post_title'] ?? ($payload['title'] ?? ($payload['link_title'] ?? ''))),
                 'affiliate_url' => esc_url_raw($payload['affiliate_url'] ?? ($payload['url'] ?? '')),
+                'primary_name' => sanitize_text_field($payload['primary_name'] ?? ''),
                 'city' => sanitize_text_field($payload['primary_city'] ?? ($payload['city'] ?? '')),
                 'region' => sanitize_text_field($payload['primary_region'] ?? ($payload['region'] ?? '')),
+                'final_bucket' => sanitize_key($payload['final_bucket'] ?? ''),
+                'safe_for_auto_import' => sanitize_text_field($payload['safe_for_auto_import'] ?? ''),
                 'status' => sanitize_key($item['status']),
                 'action' => sanitize_key($item['action']),
                 'message' => sanitize_textarea_field($item['message']),
@@ -613,7 +619,7 @@ class ALMA_Geo_Index_Admin {
         if (strpos($message, 'object_not_affiliate_link') !== false) {
             return __('Correggi l’ID: il record deve puntare a un CPT affiliate_link.', 'affiliate-link-manager-ai');
         }
-        if (strpos($message, 'missing_primary_name') !== false || strpos($message, 'unknown_location') !== false) {
+        if (strpos($message, 'missing_primary_location') !== false || strpos($message, 'missing_primary_name') !== false || strpos($message, 'unknown_location') !== false) {
             return __('Completa località/città nel CSV prima di riprovare.', 'affiliate-link-manager-ai');
         }
         if (strpos($message, 'missing_region') !== false) {
@@ -708,7 +714,10 @@ class ALMA_Geo_Index_Admin {
             wp_send_json_error(array('message' => __('Tipo job non valido.', 'affiliate-link-manager-ai')), 400);
         }
         $this->job_store->recount_job($job_id);
-        $this->job_store->update_job_status($job_id, sanitize_key($status));
+        $updated = $this->job_store->update_job_status($job_id, sanitize_key($status));
+        if ($updated === false) {
+            wp_send_json_error(array('message' => __('Stato job non supportato nel workflow manuale GEO.', 'affiliate-link-manager-ai')), 400);
+        }
         $job = $this->job_store->get_job($job_id);
         wp_send_json_success($this->format_affiliate_job_response($job, 0, $this->affiliate_job_status_message($job)));
     }
@@ -887,9 +896,10 @@ class ALMA_Geo_Index_Admin {
             echo '</tbody></table>';
         }
         if (!empty($report['discard_examples'])) {
-            echo '<h4>' . esc_html__('Ultimi 10 esempi scartati', 'affiliate-link-manager-ai') . '</h4><div style="max-width:100%;overflow-x:auto;"><table class="widefat striped"><thead><tr><th>Riga CSV</th><th>Titolo</th><th>URL</th><th>Motivo</th></tr></thead><tbody data-alma-discard-examples>';
+            echo '<h4>' . esc_html__('Ultimi 10 esempi scartati', 'affiliate-link-manager-ai') . '</h4><div style="max-width:100%;overflow-x:auto;"><table class="widefat striped"><thead><tr><th>Riga CSV</th><th>affiliate_link_id</th><th>post_title</th><th>affiliate_url</th><th>primary_name</th><th>final_bucket</th><th>safe_for_auto_import</th><th>Motivo</th></tr></thead><tbody data-alma-discard-examples>';
             foreach ((array) $report['discard_examples'] as $example) {
-                echo '<tr><td>' . esc_html((string) ($example['row_number'] ?? '')) . '</td><td>' . esc_html($example['title'] ?? '') . '</td><td>' . esc_html($example['affiliate_url'] ?? '') . '</td><td>' . esc_html($example['reason'] ?? '') . '</td></tr>';
+                $title = $example['post_title'] ?? ($example['title'] ?? '');
+                echo '<tr><td>' . esc_html((string) ($example['row_number'] ?? '')) . '</td><td>' . esc_html((string) ($example['affiliate_link_id'] ?? '')) . '</td><td>' . esc_html($title) . '</td><td>' . esc_html($example['affiliate_url'] ?? '') . '</td><td>' . esc_html($example['primary_name'] ?? '') . '</td><td>' . esc_html($example['final_bucket'] ?? '') . '</td><td>' . esc_html($example['safe_for_auto_import'] ?? '') . '</td><td>' . esc_html($example['reason'] ?? '') . '</td></tr>';
             }
             echo '</tbody></table></div>';
         }
@@ -1293,7 +1303,8 @@ class ALMA_Geo_Index_Admin {
             return __('Sessione fallita. Controlla gli errori e il log item.', 'affiliate-link-manager-ai');
         }
         if ($status === 'needs_review') {
-            return __('Il CSV è stato letto, ma nessuna riga è stata accettata nella staging. Controlla mapping colonne, safe_import, link affiliati esistenti o log tecnico.', 'affiliate-link-manager-ai');
+            $last_error = trim(sanitize_textarea_field($job['last_error'] ?? ''));
+            return $last_error !== '' ? $last_error : __('Il CSV è stato letto, ma nessuna riga è stata accettata nella staging. Il report mostra il motivo prevalente.', 'affiliate-link-manager-ai');
         }
         if ($processed === 0) {
             return __('Sessione pronta: clicca Importa prossimo batch.', 'affiliate-link-manager-ai');
