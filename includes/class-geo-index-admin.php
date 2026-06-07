@@ -495,7 +495,13 @@ class ALMA_Geo_Index_Admin {
                 wp_delete_file($preview['file']);
             }
             delete_transient($this->affiliate_preview_key());
-            $this->notice_success(sprintf(__('Sessione GEO creata con %d record processabili. Usa Importa prossimo batch: non partirà nessun job automatico in background.', 'affiliate-link-manager-ai'), (int) ($preview['total'] ?? 0))); 
+            $created_job = $this->job_store->get_job($job_id);
+            $created_report = $this->job_store->get_report($job_id);
+            if (!empty($created_job['status']) && $created_job['status'] === 'needs_review') {
+                $this->notice_error($this->affiliate_job_status_message($created_job));
+            } else {
+                $this->notice_success(sprintf(__('Sessione GEO preparata con %1$d item staging processabili su %2$d righe lette. Usa Importa prossimo batch: non partirà nessun job automatico in background.', 'affiliate-link-manager-ai'), (int) ($created_report['items_created'] ?? 0), (int) ($created_report['records_read'] ?? 0)));
+            }
             return;
         }
         $job_id = absint($_POST['job_id'] ?? 0);
@@ -531,7 +537,7 @@ class ALMA_Geo_Index_Admin {
         header('Content-Disposition: attachment; filename="alma-geo-affiliate-import-job-' . absint($job_id) . '-log.csv"');
         $out = fopen('php://output', 'w');
         fputcsv($out, array('session_id','row_number','affiliate_link_id','titolo_link','affiliate_url','city','region','status','action','motivo','suggerimento','processed_at'));
-        foreach ($this->job_store->get_all_items_with_payload($job_id, 1000, 50000) as $item) {
+        foreach ($this->job_store->get_all_items_with_payload($job_id, 1000, 0) as $item) {
             $payload = is_array($item['raw_payload'] ?? null) ? $item['raw_payload'] : array();
             fputcsv($out, array(
                 (int) $item['job_id'],
@@ -562,7 +568,7 @@ class ALMA_Geo_Index_Admin {
             wp_die(esc_html__('Sessione non trovata.', 'affiliate-link-manager-ai'));
         }
         $items = array();
-        foreach ($this->job_store->get_all_items_with_payload($job_id, 1000, 50000) as $item) {
+        foreach ($this->job_store->get_all_items_with_payload($job_id, 1000, 0) as $item) {
             $payload = is_array($item['raw_payload'] ?? null) ? $item['raw_payload'] : array();
             $items[] = array(
                 'row_number' => (int) $item['row_number'],
@@ -607,19 +613,19 @@ class ALMA_Geo_Index_Admin {
         if (strpos($message, 'object_not_affiliate_link') !== false) {
             return __('Correggi l’ID: il record deve puntare a un CPT affiliate_link.', 'affiliate-link-manager-ai');
         }
-        if (strpos($message, 'missing_primary_location') !== false || strpos($message, 'unknown_location') !== false) {
+        if (strpos($message, 'missing_primary_name') !== false || strpos($message, 'unknown_location') !== false) {
             return __('Completa località/città nel CSV prima di riprovare.', 'affiliate-link-manager-ai');
         }
         if (strpos($message, 'missing_region') !== false) {
             return __('Aggiungi o normalizza la regione nel CSV.', 'affiliate-link-manager-ai');
         }
-        if (strpos($message, 'invalid_url') !== false) {
+        if (strpos($message, 'invalid_affiliate_url') !== false || strpos($message, 'invalid_url') !== false) {
             return __('Correggi l’URL affiliato e riprova il record.', 'affiliate-link-manager-ai');
         }
         if (strpos($message, 'existing_geo_skipped') !== false) {
             return __('Record già geolocalizzato: abilita sovrascrittura solo se necessario.', 'affiliate-link-manager-ai');
         }
-        if (strpos($message, 'safe_import_skipped') !== false) {
+        if (strpos($message, 'safe_import_false') !== false || strpos($message, 'safe_import_skipped') !== false) {
             return __('Rivedi final_bucket/safe_for_auto_import o disattiva safe_only con cautela.', 'affiliate-link-manager-ai');
         }
         return __('Rivedi il record CSV e riprova se necessario.', 'affiliate-link-manager-ai');
@@ -648,7 +654,7 @@ class ALMA_Geo_Index_Admin {
         if (!$this->is_affiliate_import_job($job)) {
             wp_send_json_error(array('message' => __('Tipo job non valido.', 'affiliate-link-manager-ai')), 400);
         }
-        if (in_array($job['status'], array('cancelled','completed','failed'), true)) {
+        if (in_array($job['status'], array('cancelled','completed','failed','needs_review'), true)) {
             wp_send_json_success($this->format_affiliate_job_response($job, 0, $this->affiliate_job_status_message($job)));
         }
         $batch_size = $this->sanitize_geo_affiliate_batch_size($_POST['batch_size'] ?? ($job['options']['batch_size'] ?? 50));
@@ -666,7 +672,7 @@ class ALMA_Geo_Index_Admin {
         $claimed = (int) ($result['claimed'] ?? 0);
         $processed = (int) ($result['processed'] ?? 0);
         $message = !empty($result['message']) ? sanitize_text_field($result['message']) : __('Batch processato.', 'affiliate-link-manager-ai');
-        $terminal = !empty($job['status']) && in_array($job['status'], array('completed','cancelled','failed'), true);
+        $terminal = !empty($job['status']) && in_array($job['status'], array('completed','cancelled','failed','needs_review'), true);
         if ($claimed === 0 && !empty($counts['queued'])) {
             $message = __('Nessun item claimato nonostante esistano item in coda.', 'affiliate-link-manager-ai');
         } elseif ($processed === 0 && !$terminal) {
@@ -680,7 +686,8 @@ class ALMA_Geo_Index_Admin {
     }
 
     public function ajax_pause_affiliate_import_job() {
-        $this->ajax_update_affiliate_import_job_status('paused');
+        $this->verify_affiliate_import_ajax_request();
+        wp_send_json_error(array('message' => __('La pausa non è supportata nel nuovo import manuale GEO. Usa Importa prossimo batch quando vuoi avanzare; nessun job automatico resta in esecuzione.', 'affiliate-link-manager-ai')), 400);
     }
 
     public function ajax_resume_affiliate_import_job() {
@@ -728,7 +735,7 @@ class ALMA_Geo_Index_Admin {
         <form method="post" enctype="multipart/form-data" class="postbox" style="padding:12px;">
             <?php wp_nonce_field('alma_geo_affiliate_import'); ?>
             <input type="hidden" name="alma_geo_index_action" value="preview_affiliate_csv">
-            <h3><?php esc_html_e('Upload CSV', 'affiliate-link-manager-ai'); ?></h3>
+            <h3><?php esc_html_e('A. Carica CSV', 'affiliate-link-manager-ai'); ?></h3>
             <input type="file" name="alma_geo_affiliate_csv" accept=".csv,text/csv,text/plain,application/csv,application/vnd.ms-excel" required>
             <?php submit_button(__('Valida e mostra preview', 'affiliate-link-manager-ai'), 'secondary', 'submit', false); ?>
         </form>
@@ -741,7 +748,7 @@ class ALMA_Geo_Index_Admin {
     }
 
     private function render_affiliate_preview($preview) {
-        echo '<div class="postbox"><div class="inside"><h3>' . esc_html__('Preview primi 10 record', 'affiliate-link-manager-ai') . '</h3>';
+        echo '<div class="postbox"><div class="inside"><h3>' . esc_html__('B. Preview', 'affiliate-link-manager-ai') . '</h3>';
         echo '<p><strong>' . esc_html__('File:', 'affiliate-link-manager-ai') . '</strong> ' . esc_html($preview['file_name']) . ' — <strong>' . esc_html__('Record totali:', 'affiliate-link-manager-ai') . '</strong> ' . esc_html((string) $preview['total']) . ' — <strong>' . esc_html__('Delimiter:', 'affiliate-link-manager-ai') . '</strong> ' . esc_html($preview['delimiter']) . '</p>';
         if (empty($preview['valid'])) {
             echo '<div class="notice notice-error inline"><p>' . esc_html__('Header mancanti:', 'affiliate-link-manager-ai') . ' ' . esc_html(implode(', ', $preview['missing'])) . '</p></div></div></div>';
@@ -750,14 +757,19 @@ class ALMA_Geo_Index_Admin {
         if (!empty($preview['recommended_missing'])) {
             echo '<div class="notice notice-warning inline"><p>' . esc_html__('Header consigliati mancanti:', 'affiliate-link-manager-ai') . ' ' . esc_html(implode(', ', $preview['recommended_missing'])) . '</p></div>';
         }
-        echo '<div style="max-width:100%;overflow:auto;"><table class="widefat striped"><thead><tr>';
-        foreach ($preview['headers'] as $header) {
+        $display_headers = array_values(array_intersect(array('affiliate_link_id','post_title','affiliate_url','provider','source_name','widget_eligible','commercial_intent','activity_type','geo_scope','primary_name','primary_canonical_name'), (array) $preview['headers']));
+        if (empty($display_headers)) {
+            $display_headers = array_slice((array) $preview['headers'], 0, 10);
+        }
+        echo '<p><strong>' . esc_html__('Colonne rilevate:', 'affiliate-link-manager-ai') . '</strong> ' . esc_html(implode(', ', (array) $preview['headers'])) . '</p>';
+        echo '<div style="max-width:100%;overflow-x:auto;"><table class="widefat striped"><thead><tr>';
+        foreach ($display_headers as $header) {
             echo '<th>' . esc_html($header) . '</th>';
         }
         echo '</tr></thead><tbody>';
-        foreach ($preview['rows'] as $row) {
+        foreach (array_slice((array) $preview['rows'], 0, 10) as $row) {
             echo '<tr>';
-            foreach ($preview['headers'] as $header) {
+            foreach ($display_headers as $header) {
                 echo '<td>' . esc_html(wp_trim_words((string) ($row[$header] ?? ''), 12, '…')) . '</td>';
             }
             echo '</tr>';
@@ -767,10 +779,10 @@ class ALMA_Geo_Index_Admin {
         <form method="post" style="margin-top:16px;">
             <?php wp_nonce_field('alma_geo_affiliate_import'); ?>
             <input type="hidden" name="alma_geo_index_action" value="start_affiliate_import">
-            <p><label><input type="checkbox" name="alma_geo_affiliate_overwrite" value="1"> <?php esc_html_e('Sovrascrivi dati Geo esistenti', 'affiliate-link-manager-ai'); ?></label></p>
+            <h3><?php esc_html_e('C. Prepara import', 'affiliate-link-manager-ai'); ?></h3><details><summary><?php esc_html_e('Opzioni avanzate', 'affiliate-link-manager-ai'); ?></summary><p><label><input type="checkbox" name="alma_geo_affiliate_overwrite" value="1"> <?php esc_html_e('Sovrascrivi dati Geo esistenti', 'affiliate-link-manager-ai'); ?></label></p>
             <p><label><input type="checkbox" name="alma_geo_affiliate_safe_only" value="1" checked> <?php esc_html_e('Importa solo safe_import', 'affiliate-link-manager-ai'); ?></label></p>
-            <p><label><?php esc_html_e('Batch size iniziale', 'affiliate-link-manager-ai'); ?> <select name="alma_geo_affiliate_batch_size"><option value="25">25</option><option value="50" selected>50</option><option value="100">100</option><option value="250">250</option></select></label></p>
-            <?php submit_button(__('Crea sessione import manuale', 'affiliate-link-manager-ai'), 'primary', 'submit', false); ?>
+            <p><label><?php esc_html_e('Batch size iniziale', 'affiliate-link-manager-ai'); ?> <select name="alma_geo_affiliate_batch_size"><option value="25">25</option><option value="50" selected>50</option><option value="100">100</option><option value="250">250</option></select></label></p></details>
+            <?php submit_button(__('Prepara import GEO', 'affiliate-link-manager-ai'), 'primary', 'submit', false); ?>
         </form>
         <?php
         echo '</div></div>';
@@ -790,14 +802,14 @@ class ALMA_Geo_Index_Admin {
         echo '<tr><th>' . esc_html__('Stato sessione', 'affiliate-link-manager-ai') . '</th><td><span data-alma-job-status>' . esc_html($this->job_store->get_public_session_status($job)) . '</span></td></tr>';
         echo '</tbody></table>';
 
-        echo '<hr><h3>' . esc_html__('B. Importazione', 'affiliate-link-manager-ai') . '</h3>';
+        echo '<hr><h3>' . esc_html__('D. Importazione', 'affiliate-link-manager-ai') . '</h3>';
         $this->render_affiliate_job_summary($job);
         echo '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:12px 0;">';
         echo '<label style="display:inline-flex;align-items:center;gap:6px;"><span>' . esc_html__('Batch size', 'affiliate-link-manager-ai') . '</span>' . $this->render_affiliate_batch_size_select($job, 'alma-geo-affiliate-batch-size') . '</label>';
         echo '<button type="button" class="button button-primary" id="alma-geo-affiliate-process-next">' . esc_html__('Importa prossimo batch', 'affiliate-link-manager-ai') . '</button>';
         echo '</div>';
 
-        echo '<hr><h3>' . esc_html__('C. Report', 'affiliate-link-manager-ai') . '</h3>';
+        echo '<hr><h3>' . esc_html__('E. Report', 'affiliate-link-manager-ai') . '</h3>';
         echo '<div id="alma-geo-affiliate-job-live"><p>' . esc_html__('Report ultimo batch non ancora disponibile.', 'affiliate-link-manager-ai') . '</p></div>';
         $this->render_affiliate_public_report((int) $job['id']);
         echo '<div style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0;">';
@@ -808,7 +820,7 @@ class ALMA_Geo_Index_Admin {
         echo '<hr>';
         $this->render_affiliate_geocoding_google_box();
 
-        echo '<hr><details style="margin-top:12px;"><summary><strong>' . esc_html__('E. Strumenti avanzati', 'affiliate-link-manager-ai') . '</strong></summary>';
+        echo '<hr><details style="margin-top:12px;"><summary><strong>' . esc_html__('G. Strumenti avanzati', 'affiliate-link-manager-ai') . '</strong></summary>';
         echo '<div style="margin-top:12px;">';
         $this->render_affiliate_job_button('reset_affiliate_import', __('Reset import', 'affiliate-link-manager-ai'), $job);
         $this->render_affiliate_job_diagnostic((int) $job['id']);
@@ -845,7 +857,9 @@ class ALMA_Geo_Index_Admin {
     private function render_affiliate_public_report($job_id) {
         $report = $this->job_store->get_report($job_id);
         $keys = array(
-            'records_read' => __('totale record', 'affiliate-link-manager-ai'),
+            'records_read' => __('righe lette', 'affiliate-link-manager-ai'),
+            'items_created' => __('item staging creati', 'affiliate-link-manager-ai'),
+            'rows_discarded' => __('righe scartate', 'affiliate-link-manager-ai'),
             'records_processed' => __('processati', 'affiliate-link-manager-ai'),
             'records_remaining' => __('rimanenti', 'affiliate-link-manager-ai'),
             'imported' => __('importati', 'affiliate-link-manager-ai'),
@@ -858,14 +872,32 @@ class ALMA_Geo_Index_Admin {
         echo '<h4>' . esc_html__('Report cumulativo', 'affiliate-link-manager-ai') . '</h4>';
         echo '<table class="widefat striped" style="max-width:720px;"><tbody data-alma-public-report>';
         foreach ($keys as $key => $label) {
-            echo '<tr><th>' . esc_html($label) . '</th><td data-alma-report="' . esc_attr($key) . '">' . esc_html((string) ($report[$key] ?? 0)) . '</td></tr>';
+            $value = $report[$key] ?? 0;
+            if (is_array($value)) {
+                $value = wp_json_encode($value);
+            }
+            echo '<tr><th>' . esc_html($label) . '</th><td data-alma-report="' . esc_attr($key) . '">' . esc_html((string) $value) . '</td></tr>';
         }
         echo '</tbody></table>';
+        if (!empty($report['discard_reasons'])) {
+            echo '<h4>' . esc_html__('Motivi righe scartate', 'affiliate-link-manager-ai') . '</h4><table class="widefat striped" style="max-width:720px;"><tbody data-alma-discard-reasons>';
+            foreach ((array) $report['discard_reasons'] as $reason => $count) {
+                echo '<tr><th>' . esc_html($reason) . '</th><td>' . esc_html((string) absint($count)) . '</td></tr>';
+            }
+            echo '</tbody></table>';
+        }
+        if (!empty($report['discard_examples'])) {
+            echo '<h4>' . esc_html__('Ultimi 10 esempi scartati', 'affiliate-link-manager-ai') . '</h4><div style="max-width:100%;overflow-x:auto;"><table class="widefat striped"><thead><tr><th>Riga CSV</th><th>Titolo</th><th>URL</th><th>Motivo</th></tr></thead><tbody data-alma-discard-examples>';
+            foreach ((array) $report['discard_examples'] as $example) {
+                echo '<tr><td>' . esc_html((string) ($example['row_number'] ?? '')) . '</td><td>' . esc_html($example['title'] ?? '') . '</td><td>' . esc_html($example['affiliate_url'] ?? '') . '</td><td>' . esc_html($example['reason'] ?? '') . '</td></tr>';
+            }
+            echo '</tbody></table></div>';
+        }
     }
 
     private function render_affiliate_geocoding_google_box() {
         $geocoding_url = add_query_arg(array('post_type' => 'affiliate_link', 'page' => self::MENU_SLUG, 'tab' => 'geocoding'), admin_url('edit.php'));
-        echo '<div class="postbox" style="margin-top:12px;"><div class="inside"><h3>' . esc_html__('D. Geocoding Google', 'affiliate-link-manager-ai') . '</h3>';
+        echo '<div class="postbox" style="margin-top:12px;"><div class="inside"><h3>' . esc_html__('F. Geocoding Google', 'affiliate-link-manager-ai') . '</h3>';
         echo '<p>' . esc_html__('Il geocoding non viene eseguito durante l’import batch. I dati importati possono alimentare la tab Geocoding/località pending in una fase separata e controllata.', 'affiliate-link-manager-ai') . '</p>';
         echo '<p><a href="' . esc_url($geocoding_url) . '#alma-geo-pending-locations">' . esc_html__('Apri Geocoding / località pending', 'affiliate-link-manager-ai') . '</a></p>';
         $fields = array(
@@ -892,7 +924,16 @@ class ALMA_Geo_Index_Admin {
     private function render_affiliate_job_diagnostic($job_id) {
         $diagnostic = $this->job_store->get_job_diagnostic($job_id);
         $job = $this->job_store->get_job($job_id);
+        $options = is_array($job['options'] ?? null) ? $job['options'] : array();
         $rows = array(
+            'colonne CSV rilevate' => implode(', ', (array) ($options['csv_headers'] ?? array())),
+            'colonne obbligatorie mancanti' => implode(', ', (array) ($options['required_missing'] ?? array())),
+            'numero righe lette' => (int) ($job['total_records'] ?? 0),
+            'item staging creati' => (int) ($options['items_created'] ?? 0),
+            'righe scartate' => (int) ($options['rows_discarded'] ?? 0),
+            'motivi di scarto' => wp_json_encode((array) ($options['discard_reasons'] ?? array())),
+            'ultimi errori SQL' => implode(' | ', (array) ($options['sql_errors'] ?? array())),
+            'stato interno' => sanitize_key($job['status'] ?? ''),
             'total_records' => (int) ($job['total_records'] ?? 0),
             'total items in DB' => (int) ($diagnostic['total_item_rows'] ?? 0),
             'queued' => (int) ($diagnostic['queued'] ?? 0),
@@ -1079,7 +1120,7 @@ class ALMA_Geo_Index_Admin {
                 setAjaxErrorDiagnostic('');
             }
             function isTerminal(job) {
-                return job && ['completed','cancelled','failed'].indexOf(job.status) !== -1;
+                return job && ['completed','cancelled','failed','needs_review'].indexOf(job.status) !== -1;
             }
             function updateButtonState(job, inFlight) {
                 if (!processButton) { return; }
@@ -1091,7 +1132,7 @@ class ALMA_Geo_Index_Admin {
                 processButton.textContent = isTerminal(job) ? '<?php echo esc_js(__('Batch non disponibile', 'affiliate-link-manager-ai')); ?>' : '<?php echo esc_js(__('Importa prossimo batch', 'affiliate-link-manager-ai')); ?>';
                 processButton.disabled = isTerminal(job);
                 if (isTerminal(job)) {
-                    processButton.title = '<?php echo esc_js(__('Sessione completata, annullata o fallita.', 'affiliate-link-manager-ai')); ?>';
+                    processButton.title = '<?php echo esc_js(__('Sessione completata, annullata, fallita o da verificare.', 'affiliate-link-manager-ai')); ?>';
                 } else {
                     processButton.title = '';
                 }
@@ -1100,8 +1141,7 @@ class ALMA_Geo_Index_Admin {
                 lastBatchFailed = true;
                 var msg = error && error.message ? error.message : '<?php echo esc_js(__('Errore sconosciuto.', 'affiliate-link-manager-ai')); ?>';
                 var status = error && error.httpStatus ? error.httpStatus : '';
-                var raw = error && error.raw ? String(error.raw).slice(0, 1200) : '';
-                var now = new Date().toLocaleString();
+                                var now = new Date().toLocaleString();
                 var message = document.querySelector('[data-alma-job-message]');
                 var box = document.querySelector('[data-alma-last-batch-error]');
                 var body = document.querySelector('[data-alma-last-batch-error-body]');
@@ -1115,8 +1155,7 @@ class ALMA_Geo_Index_Admin {
                     body.innerHTML = '<p><strong><?php echo esc_js(__('Messaggio:', 'affiliate-link-manager-ai')); ?></strong> ' + text(msg) + '</p>' +
                         '<p><strong>HTTP status:</strong> ' + text(status || '<?php echo esc_js(__('n/d', 'affiliate-link-manager-ai')); ?>') + '</p>' +
                         '<p><strong>Timestamp:</strong> ' + text(now) + '</p>' +
-                        (raw ? '<p><strong><?php echo esc_js(__('Risposta raw troncata:', 'affiliate-link-manager-ai')); ?></strong></p><pre style="white-space:pre-wrap;max-height:180px;overflow:auto;">' + text(raw) + '</pre>' : '') +
-                        '<p><?php echo esc_js(__('Suggerimento: apri console/network o scarica log.', 'affiliate-link-manager-ai')); ?></p>';
+                        '<p><?php echo esc_js(__('Suggerimento: consulta Strumenti avanzati o scarica log.', 'affiliate-link-manager-ai')); ?></p>';
                 }
             }
             function processOnce(manual) {
@@ -1227,9 +1266,9 @@ class ALMA_Geo_Index_Admin {
             }
             if (strpos($message, 'existing_geo_skipped') !== false) { $report['already_present']++; }
             if (strpos($message, 'duplicate') !== false) { $report['duplicates']++; }
-            if (strpos($message, 'invalid_url') !== false) { $report['invalid_urls']++; }
+            if (strpos($message, 'invalid_affiliate_url') !== false || strpos($message, 'invalid_url') !== false) { $report['invalid_urls']++; }
             if (strpos($message, 'incomplete_record') !== false) { $report['incomplete_records']++; }
-            if (strpos($message, 'unknown_location') !== false || strpos($message, 'missing_primary_location') !== false) { $report['unknown_locations']++; }
+            if (strpos($message, 'unknown_location') !== false || strpos($message, 'missing_primary_name') !== false) { $report['unknown_locations']++; }
             if (strpos($message, 'missing_region') !== false) { $report['missing_region']++; }
             if (strpos($message, 'needs_review') !== false) { $report['needs_review']++; }
         }
@@ -1252,6 +1291,9 @@ class ALMA_Geo_Index_Admin {
         }
         if ($status === 'failed') {
             return __('Sessione fallita. Controlla gli errori e il log item.', 'affiliate-link-manager-ai');
+        }
+        if ($status === 'needs_review') {
+            return __('Il CSV è stato letto, ma nessuna riga è stata accettata nella staging. Controlla mapping colonne, safe_import, link affiliati esistenti o log tecnico.', 'affiliate-link-manager-ai');
         }
         if ($processed === 0) {
             return __('Sessione pronta: clicca Importa prossimo batch.', 'affiliate-link-manager-ai');

@@ -104,16 +104,20 @@ class ALMA_Geo_Index_Job_Store {
         return (int) $wpdb->insert_id;
     }
 
-    public function add_job_item($job_id, $row_number, $payload, $object_id = 0, $object_type = '') {
+    public function add_job_item($job_id, $row_number, $payload, $object_id = 0, $object_type = '', $status = 'queued', $action = '', $message = '') {
         global $wpdb;
+        $status = sanitize_key($status ?: 'queued');
+        if (!in_array($status, array('queued','processing','imported','updated','skipped','error'), true)) {
+            $status = 'error';
+        }
         $wpdb->insert($this->table_items(), array(
             'job_id' => absint($job_id),
             'object_id' => $object_id ? absint($object_id) : null,
             'object_type' => sanitize_key($object_type),
             'row_number' => absint($row_number),
-            'status' => 'queued',
-            'action' => '',
-            'message' => '',
+            'status' => $status,
+            'action' => sanitize_key($action),
+            'message' => sanitize_textarea_field($message),
             'raw_payload' => wp_json_encode(is_array($payload) ? $payload : array()),
             'processed_at' => null,
         ), array('%d','%d','%s','%d','%s','%s','%s','%s','%s'));
@@ -158,7 +162,7 @@ class ALMA_Geo_Index_Job_Store {
     public function update_job_status($job_id, $status, $last_error = '') {
         global $wpdb;
         $status = sanitize_key($status);
-        $allowed = array('queued','processing','partial','completed','failed','cancelled');
+        $allowed = array('queued','processing','partial','completed','failed','cancelled','needs_review');
         if (!in_array($status, $allowed, true)) {
             return false;
         }
@@ -168,7 +172,7 @@ class ALMA_Geo_Index_Job_Store {
             $row['started_at'] = current_time('mysql');
             $formats[] = '%s';
         }
-        if (in_array($status, array('completed','failed','cancelled'), true)) {
+        if (in_array($status, array('completed','failed','cancelled','needs_review'), true)) {
             $row['finished_at'] = current_time('mysql');
             $formats[] = '%s';
         }
@@ -276,7 +280,7 @@ class ALMA_Geo_Index_Job_Store {
 
     public function maybe_complete_job($job_id) {
         $job = $this->get_job($job_id);
-        if (!$job || in_array($job['status'], array('cancelled','failed','completed'), true)) {
+        if (!$job || in_array($job['status'], array('cancelled','failed','completed','needs_review'), true)) {
             return $job;
         }
         $this->recover_stale_processing_items($job_id);
@@ -396,14 +400,21 @@ class ALMA_Geo_Index_Job_Store {
     public function get_all_items_with_payload($job_id, $page_size = 1000, $max_items = 20000) {
         $items = array();
         $page_size = max(1, min(5000, absint($page_size)));
-        $max_items = max($page_size, min(50000, absint($max_items)));
-        for ($offset = 0; $offset < $max_items; $offset += $page_size) {
+        $max_items = absint($max_items);
+        $unlimited = $max_items === 0;
+        if (!$unlimited) {
+            $max_items = max($page_size, $max_items);
+        }
+        for ($offset = 0; $unlimited || $offset < $max_items; $offset += $page_size) {
             $page = $this->get_items_with_payload($job_id, $page_size, $offset);
             if (empty($page)) {
                 break;
             }
+            if (!$unlimited && count($items) + count($page) > $max_items) {
+                $page = array_slice($page, 0, max(0, $max_items - count($items)));
+            }
             $items = array_merge($items, $page);
-            if (count($page) < $page_size) {
+            if (count($page) < $page_size || (!$unlimited && count($items) >= $max_items)) {
                 break;
             }
         }
@@ -424,7 +435,7 @@ class ALMA_Geo_Index_Job_Store {
         if ($status === 'partial') {
             return 'partial';
         }
-        if (in_array($status, array('completed','failed','cancelled'), true)) {
+        if (in_array($status, array('completed','failed','cancelled','needs_review'), true)) {
             return $status;
         }
         return 'ready';
@@ -435,7 +446,7 @@ class ALMA_Geo_Index_Job_Store {
         if (!$job) {
             return array();
         }
-        $items = $this->get_all_items_with_payload($job_id, 1000, 50000);
+        $items = $this->get_all_items_with_payload($job_id, 1000, 0);
         $report = array(
             'session_id' => (int) $job['id'],
             'date' => $job['finished_at'] ?: $job['created_at'],
@@ -446,6 +457,10 @@ class ALMA_Geo_Index_Job_Store {
             'records_read' => (int) $job['total_records'],
             'records_processed' => (int) $job['processed_records'],
             'records_remaining' => max(0, (int) $job['total_records'] - (int) $job['processed_records']),
+            'items_created' => 0,
+            'rows_discarded' => 0,
+            'discard_reasons' => array(),
+            'discard_examples' => array(),
             'percent' => (int) $job['total_records'] > 0 ? round(((int) $job['processed_records'] / (int) $job['total_records']) * 100, 1) : 0,
             'last_batch_size' => isset($job['options']['batch_size']) ? (int) $job['options']['batch_size'] : 50,
             'imported' => (int) $job['imported_records'],
@@ -473,15 +488,33 @@ class ALMA_Geo_Index_Job_Store {
         );
         foreach ($items as $item) {
             $message = (string) ($item['message'] ?? '');
-            foreach (array('affiliate_link_not_found','object_not_affiliate_link','safe_import_skipped','existing_geo_skipped','secondary_locations_json_invalid','invalid_url','incomplete_record','unknown_location','missing_region','duplicate','needs_review') as $needle) {
+            if (!(in_array(($item['status'] ?? ''), array('skipped','error'), true) && strpos($message, 'staging_') === 0)) {
+                $report['items_created']++;
+            }
+            if (in_array(($item['status'] ?? ''), array('skipped','error'), true) && strpos($message, 'staging_') === 0) {
+                $reason = sanitize_key(preg_replace('/^staging_/', '', strtok($message, ' ')));
+                $report['rows_discarded']++;
+                if ($reason) {
+                    $report['discard_reasons'][$reason] = ($report['discard_reasons'][$reason] ?? 0) + 1;
+                }
+                $payload = is_array($item['raw_payload'] ?? null) ? $item['raw_payload'] : array();
+                $report['discard_examples'][] = array(
+                    'row_number' => (int) ($item['row_number'] ?? 0),
+                    'title' => sanitize_text_field($payload['post_title'] ?? ($payload['title'] ?? '')),
+                    'affiliate_url' => esc_url_raw($payload['affiliate_url'] ?? ''),
+                    'reason' => $reason ?: 'unknown_error',
+                );
+                $report['discard_examples'] = array_slice($report['discard_examples'], -10);
+            }
+            foreach (array('affiliate_link_not_found','object_not_affiliate_link','safe_import_false','safe_import_skipped','existing_geo_skipped','secondary_locations_json_invalid','invalid_affiliate_url','invalid_url','incomplete_record','missing_primary_name','unknown_location','missing_region','duplicate_staging_item','duplicate','needs_review') as $needle) {
                 if (strpos($message, $needle) !== false) {
                     if (isset($report[$needle])) { $report[$needle]++; }
                     if ($needle === 'existing_geo_skipped') { $report['already_present']++; }
-                    if ($needle === 'invalid_url') { $report['invalid_urls']++; }
+                    if ($needle === 'invalid_url' || $needle === 'invalid_affiliate_url') { $report['invalid_urls']++; }
                     if ($needle === 'incomplete_record') { $report['incomplete_records']++; }
-                    if ($needle === 'unknown_location') { $report['unknown_locations']++; }
+                    if ($needle === 'unknown_location' || $needle === 'missing_primary_name') { $report['unknown_locations']++; }
                     if ($needle === 'missing_region') { $report['missing_region']++; }
-                    if ($needle === 'duplicate') { $report['duplicates']++; }
+                    if ($needle === 'duplicate' || $needle === 'duplicate_staging_item') { $report['duplicates']++; }
                     if ($needle === 'needs_review') { $report['needs_review']++; }
                 }
             }
@@ -493,6 +526,22 @@ class ALMA_Geo_Index_Job_Store {
                     $report[$metric] += (int) $m[1];
                 }
             }
+        }
+        $option_reasons = is_array($job['options']['discard_reasons'] ?? null) ? $job['options']['discard_reasons'] : array();
+        foreach ($option_reasons as $reason => $count) {
+            $reason = sanitize_key($reason);
+            if ($reason && empty($report['discard_reasons'][$reason])) {
+                $report['discard_reasons'][$reason] = absint($count);
+            }
+        }
+        if (!empty($job['options']['rows_discarded']) && (int) $job['options']['rows_discarded'] > $report['rows_discarded']) {
+            $report['rows_discarded'] = (int) $job['options']['rows_discarded'];
+        }
+        if (!empty($job['options']['discard_examples']) && count($report['discard_examples']) < 10) {
+            $report['discard_examples'] = array_slice(array_merge((array) $job['options']['discard_examples'], $report['discard_examples']), -10);
+        }
+        if (!empty($job['options']['items_created']) && (int) $job['options']['items_created'] > $report['items_created']) {
+            $report['items_created'] = (int) $job['options']['items_created'];
         }
         $report['geo_assigned'] = (int) $report['imported'] + (int) $report['updated'];
         return $report;

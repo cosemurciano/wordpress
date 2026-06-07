@@ -1,12 +1,13 @@
 ## Unreleased
 
-- Fix import GEO Link Affiliati che poteva leggere il CSV e valorizzare `total_records` senza creare item staging processabili: la creazione sessione ora inserisce e verifica gli item `queued` prima di rendere disponibile il batch manuale.
-- UI Import GEO semplificata in blocchi Carica CSV, Importazione, Report, Geocoding Google e Strumenti avanzati, con diagnostica tecnica chiusa di default e senza JSON grezzo nella pagina principale.
-- Batch size preservato dalla sessione e aggiornato a ogni click manuale; il select non forza più sempre 50 nella UI principale.
-- Export report CSV/log JSON completo tramite metodo dedicato senza clamp operativo a 200 righe.
-- Rimossa dal flusso principale la logica visibile di job background/running: nessun auto-processing browser e un solo batch per click.
-- Migliorata la diagnostica dei batch a zero record con messaggi operativi basati sulla causa reale.
-- Versione plugin aggiornata a `2.41.2`.
+- Fix creazione item staging GEO: preview e prepare import condividono normalizzazione header/alias CSV e la tabella staging riceve item `queued` per ogni riga processabile.
+- Fix import che restava a 0/2212: una sessione con righe lette ma zero item processabili passa a `needs_review` con messaggio operativo invece di apparire pronta/successo.
+- UI Import GEO semplificata in blocchi Carica CSV, Preview, Prepara import, Importazione, Report, Geocoding Google e Strumenti avanzati, con soli pulsanti principali necessari.
+- Diagnostica righe scartate con motivi normalizzati (`missing_affiliate_link_id`, `invalid_affiliate_link_id`, `missing_affiliate_url`, `invalid_affiliate_url`, `missing_primary_name`, `missing_region`, `affiliate_link_not_found`, `object_not_affiliate_link`, `safe_import_false`, `existing_geo_skipped`, `duplicate_staging_item`, `sql_insert_failed`, `unknown_error`) ed esempi recenti.
+- Export report CSV/log JSON completo senza troncamento silenzioso a 50.000 righe, usando paginazione controllata fino a esaurimento.
+- Gestione corretta pausa legacy: endpoint AJAX con errore controllato nel workflow manuale, senza falso successo.
+- Batch size preservato e inviato correttamente a ogni batch manuale.
+- Versione plugin aggiornata a `2.41.3`.
 
 ## 2.41.0 - 2026-06-06
 - Aggiunta la fondazione di geocoding admin-only per **Indice Geografico**, con tab Geocoding, impostazioni Google Maps API key mascherata, batch controllati e report in `alma_geo_geocoding_last_report`.
