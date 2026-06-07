@@ -180,7 +180,7 @@ class ALMA_Geo_Index_Affiliate_Link_Importer {
         $job_id = $job_store->create_job(ALMA_Geo_Index_Job_Store::JOB_TYPE_AFFILIATE_LINKS_GEO_IMPORT, $args['file_name'], array(
             'overwrite' => !empty($args['overwrite']),
             'safe_only' => !empty($args['safe_only']),
-            'batch_size' => max(1, min(100, absint($args['batch_size']))),
+            'batch_size' => max(25, min(250, absint($args['batch_size']))),
         ), get_current_user_id());
         $parsed = $this->parse_csv_file($file_path, 0, $args['delimiter']);
         $row_number = 1;
@@ -219,7 +219,9 @@ class ALMA_Geo_Index_Affiliate_Link_Importer {
             $job_store->update_job_status($job_id, 'running');
         }
         $options = is_array($job['options']) ? $job['options'] : array();
-        $batch_size = max(1, min(100, absint($batch_size ?: ($options['batch_size'] ?? 50))));
+        $batch_size = max(25, min(250, absint($batch_size ?: ($options['batch_size'] ?? 50))));
+        $options['batch_size'] = $batch_size;
+        $job_store->update_job_options($job_id, $options);
         $items = $job_store->claim_items($job_id, $batch_size, $retry_errors ? array('queued','error') : array('queued'));
         $claimed = count($items);
         $processed = 0;
@@ -281,6 +283,7 @@ class ALMA_Geo_Index_Affiliate_Link_Importer {
             'counts' => $counts,
             'items' => $job_store->get_items($job_id, 50),
             'debug' => $debug,
+            'item_results' => $item_results,
             'diagnostic' => $job_store->get_job_diagnostic($job_id, array('last_ajax_message' => 'batch_processed')),
             'message' => $message,
         );

@@ -2,7 +2,7 @@
 if (!defined('ABSPATH')) { exit; }
 
 /**
- * Persistent background job store for Geo Index imports.
+ * Persistent manual import session store for Geo Index imports.
  */
 class ALMA_Geo_Index_Job_Store {
     const JOB_TYPE_AFFILIATE_LINKS_GEO_IMPORT = 'affiliate_links_geo_import';
@@ -143,6 +143,18 @@ class ALMA_Geo_Index_Job_Store {
         return $job;
     }
 
+
+    public function update_job_options($job_id, $options) {
+        global $wpdb;
+        return $wpdb->update(
+            $this->table_jobs(),
+            array('options' => wp_json_encode(is_array($options) ? $options : array())),
+            array('id' => absint($job_id)),
+            array('%s'),
+            array('%d')
+        );
+    }
+
     public function update_job_status($job_id, $status, $last_error = '') {
         global $wpdb;
         $status = sanitize_key($status);
@@ -166,7 +178,7 @@ class ALMA_Geo_Index_Job_Store {
     public function claim_items($job_id, $limit = 50, $statuses = array('queued')) {
         global $wpdb;
         $job_id = absint($job_id);
-        $limit = max(1, min(100, absint($limit)));
+        $limit = max(1, min(250, absint($limit)));
         $statuses = array_map('sanitize_key', (array) $statuses);
         $statuses = array_values(array_intersect($statuses, array('queued','error')));
         if (empty($statuses)) {
@@ -356,6 +368,47 @@ class ALMA_Geo_Index_Job_Store {
         return $wpdb->update($this->table_items(), array('status' => 'queued', 'action' => 'retry', 'processed_at' => null), array('job_id' => absint($job_id), 'status' => 'error'), array('%s','%s','%s'), array('%d','%s'));
     }
 
+
+    public function delete_job($job_id) {
+        global $wpdb;
+        $job_id = absint($job_id);
+        if (!$job_id) {
+            return false;
+        }
+        $wpdb->delete($this->table_items(), array('job_id' => $job_id), array('%d'));
+        return (bool) $wpdb->delete($this->table_jobs(), array('id' => $job_id), array('%d'));
+    }
+
+    public function get_items_with_payload($job_id, $limit = 5000) {
+        $items = $this->get_items($job_id, $limit);
+        foreach ($items as &$item) {
+            $payload = json_decode((string) ($item['raw_payload'] ?? ''), true);
+            $item['raw_payload'] = is_array($payload) ? $payload : array();
+        }
+        unset($item);
+        return $items;
+    }
+
+    public function get_public_session_status($job) {
+        if (empty($job)) {
+            return 'ready';
+        }
+        $status = sanitize_key($job['status'] ?? 'queued');
+        if ($status === 'queued') {
+            return ((int) ($job['processed_records'] ?? 0) > 0) ? 'partial' : 'ready';
+        }
+        if ($status === 'running') {
+            return ((int) ($job['processed_records'] ?? 0) > 0) ? 'partial' : 'ready';
+        }
+        if ($status === 'paused') {
+            return 'partial';
+        }
+        if (in_array($status, array('completed','failed','cancelled'), true)) {
+            return $status;
+        }
+        return 'ready';
+    }
+
     public function get_report($job_id) {
         $job = $this->get_job($job_id);
         if (!$job) {
@@ -363,10 +416,17 @@ class ALMA_Geo_Index_Job_Store {
         }
         $items = $this->get_items($job_id, 5000);
         $report = array(
+            'session_id' => (int) $job['id'],
             'date' => $job['finished_at'] ?: $job['created_at'],
+            'created_at' => $job['created_at'],
+            'last_batch_at' => $job['started_at'] ?: $job['finished_at'],
             'file' => $job['file_name'],
+            'status' => $this->get_public_session_status($job),
             'records_read' => (int) $job['total_records'],
             'records_processed' => (int) $job['processed_records'],
+            'records_remaining' => max(0, (int) $job['total_records'] - (int) $job['processed_records']),
+            'percent' => (int) $job['total_records'] > 0 ? round(((int) $job['processed_records'] / (int) $job['total_records']) * 100, 1) : 0,
+            'last_batch_size' => isset($job['options']['batch_size']) ? (int) $job['options']['batch_size'] : 50,
             'imported' => (int) $job['imported_records'],
             'updated' => (int) $job['updated_records'],
             'skipped' => (int) $job['skipped_records'],
@@ -375,6 +435,14 @@ class ALMA_Geo_Index_Job_Store {
             'object_not_affiliate_link' => 0,
             'safe_import_skipped' => 0,
             'existing_geo_skipped' => 0,
+            'already_present' => 0,
+            'duplicates' => 0,
+            'invalid_urls' => 0,
+            'incomplete_records' => 0,
+            'unknown_locations' => 0,
+            'missing_region' => 0,
+            'geo_assigned' => 0,
+            'needs_review' => 0,
             'secondaries_imported' => 0,
             'secondary_locations_json_invalid' => 0,
             'locations_created' => 0,
@@ -384,9 +452,16 @@ class ALMA_Geo_Index_Job_Store {
         );
         foreach ($items as $item) {
             $message = (string) ($item['message'] ?? '');
-            foreach (array('affiliate_link_not_found','object_not_affiliate_link','safe_import_skipped','existing_geo_skipped','secondary_locations_json_invalid') as $needle) {
+            foreach (array('affiliate_link_not_found','object_not_affiliate_link','safe_import_skipped','existing_geo_skipped','secondary_locations_json_invalid','invalid_url','incomplete_record','unknown_location','missing_region','duplicate','needs_review') as $needle) {
                 if (strpos($message, $needle) !== false) {
-                    $report[$needle]++;
+                    if (isset($report[$needle])) { $report[$needle]++; }
+                    if ($needle === 'existing_geo_skipped') { $report['already_present']++; }
+                    if ($needle === 'invalid_url') { $report['invalid_urls']++; }
+                    if ($needle === 'incomplete_record') { $report['incomplete_records']++; }
+                    if ($needle === 'unknown_location') { $report['unknown_locations']++; }
+                    if ($needle === 'missing_region') { $report['missing_region']++; }
+                    if ($needle === 'duplicate') { $report['duplicates']++; }
+                    if ($needle === 'needs_review') { $report['needs_review']++; }
                 }
             }
             if (preg_match('/secondaries_imported=(\d+)/', $message, $m)) {
@@ -398,6 +473,7 @@ class ALMA_Geo_Index_Job_Store {
                 }
             }
         }
+        $report['geo_assigned'] = (int) $report['imported'] + (int) $report['updated'];
         return $report;
     }
 }
