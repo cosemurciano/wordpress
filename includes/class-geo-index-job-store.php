@@ -397,7 +397,7 @@ class ALMA_Geo_Index_Job_Store {
         return $items ?: array();
     }
 
-    public function get_all_items_with_payload($job_id, $page_size = 1000, $max_items = 20000) {
+    public function get_all_items_with_payload($job_id, $page_size = 1000, $max_items = 0) {
         $items = array();
         $page_size = max(1, min(5000, absint($page_size)));
         $max_items = absint($max_items);
@@ -500,19 +500,23 @@ class ALMA_Geo_Index_Job_Store {
                 $payload = is_array($item['raw_payload'] ?? null) ? $item['raw_payload'] : array();
                 $report['discard_examples'][] = array(
                     'row_number' => (int) ($item['row_number'] ?? 0),
-                    'title' => sanitize_text_field($payload['post_title'] ?? ($payload['title'] ?? '')),
+                    'affiliate_link_id' => absint($payload['affiliate_link_id'] ?? ($item['object_id'] ?? 0)),
+                    'post_title' => sanitize_text_field($payload['post_title'] ?? ($payload['title'] ?? '')),
                     'affiliate_url' => esc_url_raw($payload['affiliate_url'] ?? ''),
+                    'primary_name' => sanitize_text_field($payload['primary_name'] ?? ''),
+                    'final_bucket' => sanitize_key($payload['final_bucket'] ?? ''),
+                    'safe_for_auto_import' => sanitize_text_field($payload['safe_for_auto_import'] ?? ''),
                     'reason' => $reason ?: 'unknown_error',
                 );
                 $report['discard_examples'] = array_slice($report['discard_examples'], -10);
             }
-            foreach (array('affiliate_link_not_found','object_not_affiliate_link','safe_import_false','safe_import_skipped','existing_geo_skipped','secondary_locations_json_invalid','invalid_affiliate_url','invalid_url','incomplete_record','missing_primary_name','unknown_location','missing_region','duplicate_staging_item','duplicate','needs_review') as $needle) {
+            foreach (array('missing_affiliate_link_id','invalid_affiliate_link_id','missing_affiliate_url','affiliate_link_not_found','object_not_affiliate_link','safe_import_false','safe_import_skipped','final_bucket_discard','existing_geo_skipped','secondary_locations_json_invalid','invalid_affiliate_url','invalid_url','incomplete_record','missing_primary_location','missing_primary_name','unknown_location','missing_region','duplicate_staging_item','duplicate','sql_insert_failed','unknown_error','needs_review') as $needle) {
                 if (strpos($message, $needle) !== false) {
                     if (isset($report[$needle])) { $report[$needle]++; }
                     if ($needle === 'existing_geo_skipped') { $report['already_present']++; }
                     if ($needle === 'invalid_url' || $needle === 'invalid_affiliate_url') { $report['invalid_urls']++; }
                     if ($needle === 'incomplete_record') { $report['incomplete_records']++; }
-                    if ($needle === 'unknown_location' || $needle === 'missing_primary_name') { $report['unknown_locations']++; }
+                    if ($needle === 'unknown_location' || $needle === 'missing_primary_name' || $needle === 'missing_primary_location') { $report['unknown_locations']++; }
                     if ($needle === 'missing_region') { $report['missing_region']++; }
                     if ($needle === 'duplicate' || $needle === 'duplicate_staging_item') { $report['duplicates']++; }
                     if ($needle === 'needs_review') { $report['needs_review']++; }

@@ -1,13 +1,23 @@
+## 2.41.4 - 2026-06-07
+
+### Fix GEO CSV header normalization and staging creation
+- Fix BOM/header CSV: preview e preparazione staging condividono la normalizzazione header con rimozione BOM UTF-8, spazi e caratteri invisibili.
+- Fix creazione item staging GEO: il filtro safe import riconosce `safe_for_auto_import` boolean/stringa e `final_bucket=safe_import`, senza richiedere `primary_region`.
+- Aggiunta diagnostica motivi scarto con ragioni normalizzate e ultimi 10 esempi completi.
+- Fix export troncato: report CSV e log JSON usano export completo paginato fino a esaurimento righe.
+- Fix pausa legacy: l’endpoint AJAX di pausa restituisce errore controllato nel workflow manuale e non segnala falso successo.
+- Versione plugin aggiornata a `2.41.4`.
+
 ## Unreleased
 
 - Fix creazione item staging GEO: preview e prepare import condividono normalizzazione header/alias CSV e la tabella staging riceve item `queued` per ogni riga processabile.
 - Fix import che restava a 0/2212: una sessione con righe lette ma zero item processabili passa a `needs_review` con messaggio operativo invece di apparire pronta/successo.
 - UI Import GEO semplificata in blocchi Carica CSV, Preview, Prepara import, Importazione, Report, Geocoding Google e Strumenti avanzati, con soli pulsanti principali necessari.
-- Diagnostica righe scartate con motivi normalizzati (`missing_affiliate_link_id`, `invalid_affiliate_link_id`, `missing_affiliate_url`, `invalid_affiliate_url`, `missing_primary_name`, `missing_region`, `affiliate_link_not_found`, `object_not_affiliate_link`, `safe_import_false`, `existing_geo_skipped`, `duplicate_staging_item`, `sql_insert_failed`, `unknown_error`) ed esempi recenti.
+- Diagnostica righe scartate con motivi normalizzati (`missing_affiliate_link_id`, `invalid_affiliate_link_id`, `missing_affiliate_url`, `invalid_affiliate_url`, `missing_primary_location`, `missing_primary_name`, `missing_region`, `affiliate_link_not_found`, `object_not_affiliate_link`, `safe_import_false`, `existing_geo_skipped`, `duplicate_staging_item`, `sql_insert_failed`, `unknown_error`) ed esempi recenti.
 - Export report CSV/log JSON completo senza troncamento silenzioso a 50.000 righe, usando paginazione controllata fino a esaurimento.
 - Gestione corretta pausa legacy: endpoint AJAX con errore controllato nel workflow manuale, senza falso successo.
 - Batch size preservato e inviato correttamente a ogni batch manuale.
-- Versione plugin aggiornata a `2.41.3`.
+- Versione plugin aggiornata a `2.41.4`.
 
 ## 2.41.0 - 2026-06-06
 - Aggiunta la fondazione di geocoding admin-only per **Indice Geografico**, con tab Geocoding, impostazioni Google Maps API key mascherata, batch controllati e report in `alma_geo_geocoding_last_report`.

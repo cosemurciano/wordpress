@@ -4,14 +4,16 @@
 
 - **Workflow snello**: la pagina Import GEO Link Affiliati è organizzata in **A. Carica CSV**, **B. Preview**, **C. Prepara import**, **D. Importazione**, **E. Report**, **F. Geocoding Google** e **G. Strumenti avanzati**.
 - **Preview vs prepare vs batch**: “Valida e mostra preview” carica il CSV e mostra al massimo 10 record con le colonne principali; “Prepara import GEO” crea gli item staging processabili; “Importa prossimo batch” claim-a solo item reali in stato `queued` e importa un batch manuale alla volta.
-- **Fix staging 0/2212**: preview e preparazione ora condividono la stessa normalizzazione header, incluse alias come `safe_import` → `safe_for_auto_import`, quindi colonne riconosciute in preview come `affiliate_link_id`, `post_title`, `affiliate_url`, `primary_name` vengono riconosciute anche dalla creazione staging.
-- **Zero item staging**: se il CSV viene letto ma nessuna riga viene accettata nella staging, la sessione passa a `needs_review` con messaggio operativo e diagnostica su mapping colonne, `safe_import`, Link Affiliati esistenti e log tecnico; non viene mostrato un successo improprio.
-- **Righe scartate tracciate**: il report mostra righe lette, item staging creati, righe scartate, motivi aggregati normalizzati e gli ultimi 10 esempi con riga CSV, titolo, URL e motivo.
+- **Fix staging 0/2212**: preview e preparazione ora condividono la stessa normalizzazione header, rimuovono BOM UTF-8, spazi e caratteri invisibili, normalizzano in lowercase con underscore coerenti e applicano gli stessi alias; colonne come `affiliate_link_id`, `post_title`, `affiliate_url`, `primary_name`, `final_bucket` e `safe_for_auto_import` vengono quindi riconosciute anche dalla creazione staging.
+- **Requisiti minimi CSV**: per creare staging servono solo `affiliate_link_id`, `affiliate_url` e almeno una località primaria tra `primary_name`, `primary_canonical_name`, `primary_city`, `primary_area`, `primary_poi`, `primary_port`, `primary_airport`; `primary_region` e `primary_country` non bloccano righe altrimenti valide.
+- **Filtro safe_import**: con “Importa solo safe_import” attivo sono accettate righe con `safe_for_auto_import` boolean true o stringhe `True`, `true`, `1`, `yes`, `si`, `sì`, oppure con `final_bucket=safe_import`; non viene cercata una colonna inesistente `safe_import`.
+- **Zero item staging**: se il CSV viene letto ma nessuna riga viene accettata nella staging, la sessione passa a `needs_review` con motivo prevalente esplicito (header non riconosciuto, filtro safe_import, ID non presenti nel DB, errore SQL, ecc.). In caso di 0 item, controlla il report cumulativo, i motivi scarto aggregati, gli ultimi 10 esempi e verifica che gli ID del CSV corrispondano ai CPT `affiliate_link` del sito corrente; non viene mostrato un successo improprio.
+- **Righe scartate tracciate**: il report mostra righe lette, item staging creati, righe scartate, motivi aggregati normalizzati e gli ultimi 10 esempi con riga CSV, `affiliate_link_id`, `post_title`, `affiliate_url`, `primary_name`, `final_bucket`, `safe_for_auto_import` e motivo.
 - **Batch size preservato**: il select mantiene 25, 50, 100 o 250 dalla sessione e ogni click invia il valore scelto dall’utente.
 - **Download completi**: “Scarica report CSV” e “Scarica log JSON” esportano in pagine controllate fino a esaurimento righe, senza troncamento silenzioso a 50.000 record.
 - **Pausa legacy**: l’endpoint AJAX legacy di pausa restituisce un errore controllato perché il nuovo workflow manuale non ha job automatici da mettere in pausa; il pulsante pausa non è nella UI principale.
 - **Geocoding Google separato**: l’import salva/predispone località sorgente, località normalizzata, regione, paese, lat/lng, Google Place ID, formatted address, stato/confidence geocoding, ultimo geocoding ed errore, ma non chiama Google API durante i batch.
-- Versione plugin aggiornata a `2.41.3`.
+- Versione plugin aggiornata a `2.41.4`.
 
 ## 2.41.0 - 2026-06-06
 
