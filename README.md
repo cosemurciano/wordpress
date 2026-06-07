@@ -2,6 +2,13 @@
 
 ### Fix Import GEO Link Affiliati
 
+
+- **Controllo tabelle GEO**: l’import verifica le tabelle `alma_geo_import_jobs` e `alma_geo_import_job_items` in attivazione, upgrade, prima di “Prepara import GEO” e negli strumenti avanzati. La tabella `alma_geo_import_job_items` è obbligatoria perché contiene la staging dei record prima dei batch manuali.
+- **Ripara tabelle GEO**: in **G. Strumenti avanzati** sono mostrati stato tabella jobs e job items con il pulsante “Ripara tabelle GEO”. Il repair usa `dbDelta`, rispetta charset/collation WordPress, non elimina dati e può essere usato se appare “tabella staging mancante”.
+- **Errore staging mancante**: se la tabella `alma_geo_import_job_items` manca e l’auto-repair non riesce, “Prepara import GEO” si blocca prima degli insert e mostra che nessun Link Affiliato è stato modificato invece di generare migliaia di `sql_insert_failed`.
+- **Diagnostica SQL staging**: gli errori di insert staging salvano operazione, tabella e ultimo errore aggregato con esempi limitati negli strumenti avanzati.
+- **Fix duplicati staging**: i motivi di scarto sono conteggiati con matching prioritario mutualmente esclusivo, quindi `staging_duplicate_staging_item` non incrementa anche il contatore generico `duplicate`.
+- **Fix fallback località primaria**: l’import batch usa `primary_city`, `primary_area`, `primary_poi`, `primary_port` o `primary_airport` come nome/canonical quando `primary_name` e `primary_canonical_name` sono vuoti, mantenendo il tipo coerente.
 - **Workflow snello**: la pagina Import GEO Link Affiliati è organizzata in **A. Carica CSV**, **B. Preview**, **C. Prepara import**, **D. Importazione**, **E. Report**, **F. Geocoding Google** e **G. Strumenti avanzati**.
 - **Preview vs prepare vs batch**: “Valida e mostra preview” carica il CSV e mostra al massimo 10 record con le colonne principali; “Prepara import GEO” crea gli item staging processabili; “Importa prossimo batch” claim-a solo item reali in stato `queued` e importa un batch manuale alla volta.
 - **Fix staging 0/2212**: preview e preparazione ora condividono la stessa normalizzazione header, rimuovono BOM UTF-8, spazi e caratteri invisibili, normalizzano in lowercase con underscore coerenti e applicano gli stessi alias; colonne come `affiliate_link_id`, `post_title`, `affiliate_url`, `primary_name`, `final_bucket` e `safe_for_auto_import` vengono quindi riconosciute anche dalla creazione staging.
@@ -13,7 +20,7 @@
 - **Download completi**: “Scarica report CSV” e “Scarica log JSON” esportano in pagine controllate fino a esaurimento righe, senza troncamento silenzioso a 50.000 record.
 - **Pausa legacy**: l’endpoint AJAX legacy di pausa restituisce un errore controllato perché il nuovo workflow manuale non ha job automatici da mettere in pausa; il pulsante pausa non è nella UI principale.
 - **Geocoding Google separato**: l’import salva/predispone località sorgente, località normalizzata, regione, paese, lat/lng, Google Place ID, formatted address, stato/confidence geocoding, ultimo geocoding ed errore, ma non chiama Google API durante i batch.
-- Versione plugin aggiornata a `2.41.4`.
+- Versione plugin aggiornata a `2.41.5`.
 
 ## 2.41.0 - 2026-06-06
 

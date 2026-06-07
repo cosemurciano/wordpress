@@ -248,7 +248,16 @@ class ALMA_Geo_Index_Affiliate_Link_Importer {
             'discard_examples' => array(),
             'sql_errors' => array(),
         );
+
+        $schema_ready = $job_store->ensure_tables(true);
+        if (is_wp_error($schema_ready)) {
+            return $this->schema_missing_error($schema_ready);
+        }
+
         $job_id = $job_store->create_job(ALMA_Geo_Index_Job_Store::JOB_TYPE_AFFILIATE_LINKS_GEO_IMPORT, $args['file_name'], $options, get_current_user_id());
+        if (is_wp_error($job_id)) {
+            return $job_id;
+        }
 
         $handle = fopen($file_path, 'r');
         if (!$handle) {
@@ -292,8 +301,10 @@ class ALMA_Geo_Index_Affiliate_Link_Importer {
                 $reason = 'sql_insert_failed';
                 $this->record_staging_discard($options, $row_number, $row, $reason);
                 if (!empty($wpdb->last_error)) {
-                    $options['sql_errors'][] = sanitize_textarea_field($wpdb->last_error);
-                    $options['sql_errors'] = array_slice($options['sql_errors'], -10);
+                    $this->record_sql_error($options, $job_store->table_items(), 'insert_staging_item', $wpdb->last_error);
+                    if (stripos((string) $wpdb->last_error, $job_store->table_items()) !== false || stripos((string) $wpdb->last_error, 'doesn') !== false) {
+                        break;
+                    }
                 }
             }
         }
@@ -302,6 +313,7 @@ class ALMA_Geo_Index_Affiliate_Link_Importer {
         $options['rows_read'] = $total;
         $options['items_created'] = $inserted;
         $options['rows_discarded'] = $discarded;
+        unset($options['_sql_error_keys']);
         $job_store->set_total_records($job_id, $total);
         $job_store->update_job_options($job_id, $options);
         if ($total > 0 && $inserted === 0) {
@@ -309,6 +321,41 @@ class ALMA_Geo_Index_Affiliate_Link_Importer {
             $job_store->update_job_status($job_id, 'needs_review', $message);
         }
         return $job_id;
+    }
+
+    private function schema_missing_error($error) {
+        $data = is_wp_error($error) ? $error->get_error_data() : array();
+        $missing = array_map('sanitize_text_field', (array) ($data['missing_tables'] ?? array()));
+        $items_table = '';
+        foreach ($missing as $table) {
+            if (strpos($table, 'alma_geo_import_job_items') !== false) {
+                $items_table = $table;
+                break;
+            }
+        }
+        $message = $items_table
+            ? sprintf(__('La tabella staging GEO non esiste: %s. Clicca Ripara tabelle GEO o disattiva/riattiva il plugin. Nessun Link Affiliato è stato modificato.', 'affiliate-link-manager-ai'), $items_table)
+            : __('Le tabelle staging GEO non esistono. Clicca Ripara tabelle GEO o disattiva/riattiva il plugin. Nessun Link Affiliato è stato modificato.', 'affiliate-link-manager-ai');
+        return new WP_Error('alma_geo_import_schema_missing', $message, $data);
+    }
+
+    private function record_sql_error(&$options, $table, $operation, $error) {
+        $entry = array(
+            'table' => sanitize_text_field($table),
+            'operation' => sanitize_key($operation),
+            'error' => sanitize_textarea_field($error),
+        );
+        $key = md5(wp_json_encode($entry));
+        if (empty($options['_sql_error_keys']) || !is_array($options['_sql_error_keys'])) {
+            $options['_sql_error_keys'] = array();
+        }
+        if (isset($options['_sql_error_keys'][$key])) {
+            $options['_sql_error_keys'][$key]++;
+            return;
+        }
+        $options['_sql_error_keys'][$key] = 1;
+        $options['sql_errors'][] = sprintf('%1$s %2$s: %3$s', $entry['operation'], $entry['table'], $entry['error']);
+        $options['sql_errors'] = array_slice($options['sql_errors'], -5);
     }
 
     private function zero_staging_message($options) {
@@ -320,7 +367,7 @@ class ALMA_Geo_Index_Affiliate_Link_Importer {
             'safe_import_false' => __('Tutte le righe sono state scartate perché il filtro safe_import non riconosce righe processabili in safe_for_auto_import/final_bucket.', 'affiliate-link-manager-ai'),
             'affiliate_link_not_found' => __('Tutte le righe sono state scartate perché gli affiliate_link_id non esistono nel database del sito corrente.', 'affiliate-link-manager-ai'),
             'object_not_affiliate_link' => __('Tutte le righe sono state scartate perché gli ID trovati non sono CPT affiliate_link.', 'affiliate-link-manager-ai'),
-            'sql_insert_failed' => __('Tutte le righe sono state scartate per errore SQL durante l’inserimento staging.', 'affiliate-link-manager-ai'),
+            'sql_insert_failed' => __('La tabella staging GEO non è disponibile o l’inserimento staging è fallito. Clicca Ripara tabelle GEO o disattiva/riattiva il plugin. Nessun Link Affiliato è stato modificato.', 'affiliate-link-manager-ai'),
             'missing_affiliate_url' => __('Tutte le righe sono state scartate perché affiliate_url è vuoto.', 'affiliate-link-manager-ai'),
             'invalid_affiliate_url' => __('Tutte le righe sono state scartate perché affiliate_url non è valido.', 'affiliate-link-manager-ai'),
             'missing_primary_location' => __('Tutte le righe sono state scartate perché manca una località primaria riconosciuta.', 'affiliate-link-manager-ai'),
@@ -621,10 +668,21 @@ class ALMA_Geo_Index_Affiliate_Link_Importer {
     }
 
     private function row_to_geo_data($row) {
+        $fallback = $this->primary_location_fallback($row);
+        $primary_name = sanitize_text_field($row['primary_name'] ?? '');
+        $primary_canonical = sanitize_text_field($row['primary_canonical_name'] ?? ($row['primary_name'] ?? ''));
+        if ($primary_name === '' && $primary_canonical === '' && $fallback['value'] !== '') {
+            $primary_name = $fallback['value'];
+            $primary_canonical = $fallback['value'];
+        }
+        $primary_type = sanitize_key($row['primary_type'] ?? '');
+        if (($primary_type === '' || $primary_type === 'unknown') && $fallback['type'] !== '') {
+            $primary_type = $fallback['type'];
+        }
         $primary = array(
-            'name' => sanitize_text_field($row['primary_name'] ?? ''),
-            'canonical_name' => sanitize_text_field($row['primary_canonical_name'] ?? ($row['primary_name'] ?? '')),
-            'type' => $this->allowed_or_default($row['primary_type'] ?? '', ALMA_Geo_Index_Metabox::primary_types(), 'unknown'),
+            'name' => $primary_name,
+            'canonical_name' => $primary_canonical,
+            'type' => $this->allowed_or_default($primary_type, ALMA_Geo_Index_Metabox::primary_types(), 'unknown'),
             'country' => sanitize_text_field($row['primary_country'] ?? ''),
             'country_code' => strtoupper(sanitize_text_field($row['primary_country_code'] ?? '')),
             'region' => sanitize_text_field($row['primary_region'] ?? ''),
@@ -751,13 +809,27 @@ class ALMA_Geo_Index_Affiliate_Link_Importer {
     }
 
     private function primary_location_value($row) {
-        foreach (self::primary_location_headers() as $header) {
+        $fallback = $this->primary_location_fallback($row);
+        return $fallback['value'];
+    }
+
+    private function primary_location_fallback($row) {
+        $map = array(
+            'primary_name' => '',
+            'primary_canonical_name' => '',
+            'primary_city' => 'city',
+            'primary_area' => 'area',
+            'primary_poi' => 'poi',
+            'primary_port' => 'port',
+            'primary_airport' => 'airport',
+        );
+        foreach ($map as $header => $type) {
             $value = trim((string) ($row[$header] ?? ''));
             if ($value !== '') {
-                return $value;
+                return array('value' => sanitize_text_field($value), 'type' => $type);
             }
         }
-        return '';
+        return array('value' => '', 'type' => '');
     }
 
     private function has_existing_geo($affiliate_link_id) {

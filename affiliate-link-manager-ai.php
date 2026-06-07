@@ -3,7 +3,7 @@
  * Plugin Name: Affiliate Link Manager AI
  * Plugin URI: https://your-website.com
  * Description: Gestisce link affiliati con intelligenza artificiale per ottimizzazione e tracking automatico.
- * Version: 2.41.4
+ * Version: 2.41.5
  * Author: Cosè Murciano
  * License: GPL v2 or later
  * Text Domain: affiliate-link-manager-ai
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Definisci costanti del plugin
-define('ALMA_VERSION', '2.41.4');
+define('ALMA_VERSION', '2.41.5');
 define('ALMA_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('ALMA_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('ALMA_PLUGIN_FILE', __FILE__);
@@ -4087,7 +4087,7 @@ class AffiliateManagerAI {
         ALMA_Geo_Index_Job_Store::create_tables();
         ALMA_Contextual_Affiliate_Widget::maybe_set_default_options();
         $this->create_default_categories();
-        update_option('alma_db_schema_version', '4');
+        update_option('alma_db_schema_version', '5');
         update_option('alma_plugin_version', ALMA_VERSION);
         flush_rewrite_rules();
     }
@@ -4126,7 +4126,8 @@ class AffiliateManagerAI {
 
     public function maybe_run_update_tasks() {
         $installed_version = get_option('alma_plugin_version', '0.0.0');
-        if (version_compare($installed_version, ALMA_VERSION, '<')) {
+        $geo_import_schema_version = get_option('alma_geo_import_schema_version', '0');
+        if (version_compare($installed_version, ALMA_VERSION, '<') || version_compare((string) $geo_import_schema_version, '2', '<')) {
             ALMA_AI_Content_Agent_Store::install();
             $this->clear_deprecated_trend_cron_events();
             $this->create_analytics_table();
@@ -4135,7 +4136,7 @@ class AffiliateManagerAI {
             ALMA_Geo_Index_Store::create_tables();
             ALMA_Geo_Index_Job_Store::create_tables();
             ALMA_Contextual_Affiliate_Widget::maybe_set_default_options();
-            update_option('alma_db_schema_version', '4');
+            update_option('alma_db_schema_version', '5');
             update_option('alma_plugin_version', ALMA_VERSION);
         }
     }

@@ -21,7 +21,7 @@ class ALMA_Geo_Index_Job_Store {
 
     public static function create_tables() {
         $store = new self();
-        $store->install_tables();
+        return $store->install_tables();
     }
 
     public function install_tables() {
@@ -31,63 +31,106 @@ class ALMA_Geo_Index_Job_Store {
         $items = $this->table_items();
 
         $sql_jobs = "CREATE TABLE $jobs (
-            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-            job_type VARCHAR(80) NOT NULL,
-            status VARCHAR(40) NOT NULL DEFAULT 'queued',
-            file_name VARCHAR(255) DEFAULT '',
-            total_records INT NOT NULL DEFAULT 0,
-            processed_records INT NOT NULL DEFAULT 0,
-            imported_records INT NOT NULL DEFAULT 0,
-            updated_records INT NOT NULL DEFAULT 0,
-            skipped_records INT NOT NULL DEFAULT 0,
-            error_records INT NOT NULL DEFAULT 0,
-            options LONGTEXT NULL,
-            created_by BIGINT UNSIGNED NULL,
-            created_at DATETIME NOT NULL,
-            started_at DATETIME NULL,
-            finished_at DATETIME NULL,
-            last_error TEXT NULL,
+            id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+            job_type varchar(80) NOT NULL,
+            status varchar(40) NOT NULL DEFAULT 'queued',
+            file_name varchar(255) DEFAULT '',
+            total_records int(11) NOT NULL DEFAULT 0,
+            processed_records int(11) NOT NULL DEFAULT 0,
+            imported_records int(11) NOT NULL DEFAULT 0,
+            updated_records int(11) NOT NULL DEFAULT 0,
+            skipped_records int(11) NOT NULL DEFAULT 0,
+            error_records int(11) NOT NULL DEFAULT 0,
+            options longtext NULL,
+            created_by bigint(20) unsigned NULL,
+            created_at datetime NOT NULL,
+            started_at datetime NULL,
+            finished_at datetime NULL,
+            last_error text NULL,
             PRIMARY KEY  (id),
             KEY job_type (job_type),
-            KEY status (status)
+            KEY status (status),
+            KEY created_at (created_at)
         ) $charset_collate;";
 
         $sql_items = "CREATE TABLE $items (
-            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-            job_id BIGINT UNSIGNED NOT NULL,
-            object_id BIGINT UNSIGNED NULL,
-            object_type VARCHAR(50) DEFAULT '',
-            row_number INT NOT NULL,
-            status VARCHAR(40) NOT NULL DEFAULT 'queued',
-            action VARCHAR(40) DEFAULT '',
-            message TEXT NULL,
-            raw_payload LONGTEXT NULL,
-            processed_at DATETIME NULL,
+            id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+            job_id bigint(20) unsigned NOT NULL,
+            object_id bigint(20) unsigned NULL,
+            object_type varchar(50) DEFAULT '',
+            row_number int(11) NOT NULL,
+            status varchar(40) NOT NULL DEFAULT 'queued',
+            action varchar(40) DEFAULT '',
+            message text NULL,
+            raw_payload longtext NULL,
+            processed_at datetime NULL,
             PRIMARY KEY  (id),
             KEY job_id (job_id),
             KEY status (status),
-            KEY object_lookup (object_id, object_type)
+            KEY job_status (job_id, status),
+            KEY object_lookup (object_id, object_type),
+            KEY row_lookup (job_id, row_number)
         ) $charset_collate;";
 
         require_once ABSPATH . 'wp-admin/includes/upgrade.php';
         dbDelta($sql_jobs);
         dbDelta($sql_items);
+        update_option('alma_geo_import_schema_version', '2', false);
+
+        return $this->schema_status();
     }
 
-    public function tables_exist() {
+    public function schema_status() {
         global $wpdb;
         $jobs = $this->table_jobs();
         $items = $this->table_items();
-        return $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $jobs)) === $jobs
-            && $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $items)) === $items;
+        return array(
+            'jobs_table' => $jobs,
+            'items_table' => $items,
+            'jobs_exists' => $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $jobs)) === $jobs,
+            'items_exists' => $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $items)) === $items,
+            'schema_version' => (string) get_option('alma_geo_import_schema_version', ''),
+            'last_error' => sanitize_textarea_field($wpdb->last_error),
+        );
+    }
+
+    public function tables_exist() {
+        $status = $this->schema_status();
+        return !empty($status['jobs_exists']) && !empty($status['items_exists']);
+    }
+
+    public function ensure_tables($repair = true) {
+        $status = $this->schema_status();
+        if (!empty($status['jobs_exists']) && !empty($status['items_exists'])) {
+            return true;
+        }
+        if ($repair) {
+            $status = $this->install_tables();
+            if (!empty($status['jobs_exists']) && !empty($status['items_exists'])) {
+                return true;
+            }
+        }
+        $missing = array();
+        if (empty($status['jobs_exists'])) {
+            $missing[] = $this->table_jobs();
+        }
+        if (empty($status['items_exists'])) {
+            $missing[] = $this->table_items();
+        }
+        return new WP_Error(
+            'alma_geo_import_schema_missing',
+            __('Le tabelle staging GEO non sono disponibili. Clicca Ripara tabelle GEO o disattiva/riattiva il plugin. Nessun Link Affiliato è stato modificato.', 'affiliate-link-manager-ai'),
+            array('missing_tables' => $missing, 'schema_status' => $status)
+        );
     }
 
     public function create_job($job_type, $file_name, $options = array(), $created_by = 0) {
         global $wpdb;
-        if (!$this->tables_exist()) {
-            $this->install_tables();
+        $schema_ready = $this->ensure_tables(true);
+        if (is_wp_error($schema_ready)) {
+            return $schema_ready;
         }
-        $wpdb->insert($this->table_jobs(), array(
+        $inserted = $wpdb->insert($this->table_jobs(), array(
             'job_type' => sanitize_key($job_type),
             'status' => 'queued',
             'file_name' => sanitize_file_name($file_name),
@@ -101,6 +144,13 @@ class ALMA_Geo_Index_Job_Store {
             'created_by' => absint($created_by),
             'created_at' => current_time('mysql'),
         ), array('%s','%s','%s','%d','%d','%d','%d','%d','%d','%s','%d','%s'));
+        if (!$inserted) {
+            return new WP_Error('alma_geo_import_job_insert_failed', __('Impossibile creare la sessione staging GEO.', 'affiliate-link-manager-ai'), array(
+                'table' => $this->table_jobs(),
+                'operation' => 'insert_job',
+                'sql_error' => sanitize_textarea_field($wpdb->last_error),
+            ));
+        }
         return (int) $wpdb->insert_id;
     }
 
@@ -110,7 +160,7 @@ class ALMA_Geo_Index_Job_Store {
         if (!in_array($status, array('queued','processing','imported','updated','skipped','error'), true)) {
             $status = 'error';
         }
-        $wpdb->insert($this->table_items(), array(
+        $inserted = $wpdb->insert($this->table_items(), array(
             'job_id' => absint($job_id),
             'object_id' => $object_id ? absint($object_id) : null,
             'object_type' => sanitize_key($object_type),
@@ -121,7 +171,7 @@ class ALMA_Geo_Index_Job_Store {
             'raw_payload' => wp_json_encode(is_array($payload) ? $payload : array()),
             'processed_at' => null,
         ), array('%d','%d','%s','%d','%s','%s','%s','%s','%s'));
-        return (int) $wpdb->insert_id;
+        return $inserted ? (int) $wpdb->insert_id : 0;
     }
 
     public function set_total_records($job_id, $total) {
@@ -441,6 +491,44 @@ class ALMA_Geo_Index_Job_Store {
         return 'ready';
     }
 
+
+    private function primary_message_reason($message) {
+        $message = sanitize_textarea_field((string) $message);
+        if ($message === '') {
+            return '';
+        }
+        $reasons = array(
+            'duplicate_staging_item',
+            'missing_affiliate_link_id',
+            'invalid_affiliate_link_id',
+            'missing_affiliate_url',
+            'affiliate_link_not_found',
+            'object_not_affiliate_link',
+            'safe_import_false',
+            'safe_import_skipped',
+            'final_bucket_discard',
+            'existing_geo_skipped',
+            'secondary_locations_json_invalid',
+            'invalid_affiliate_url',
+            'invalid_url',
+            'incomplete_record',
+            'missing_primary_location',
+            'missing_primary_name',
+            'unknown_location',
+            'missing_region',
+            'duplicate',
+            'sql_insert_failed',
+            'unknown_error',
+            'needs_review',
+        );
+        foreach ($reasons as $reason) {
+            if (preg_match('/(^|[^a-z0-9_])' . preg_quote($reason, '/') . '($|[^a-z0-9_])/', $message)) {
+                return $reason;
+            }
+        }
+        return '';
+    }
+
     public function get_report($job_id) {
         $job = $this->get_job($job_id);
         if (!$job) {
@@ -473,6 +561,8 @@ class ALMA_Geo_Index_Job_Store {
             'existing_geo_skipped' => 0,
             'already_present' => 0,
             'duplicates' => 0,
+            'duplicate_staging_item' => 0,
+            'duplicate' => 0,
             'invalid_urls' => 0,
             'incomplete_records' => 0,
             'unknown_locations' => 0,
@@ -510,17 +600,18 @@ class ALMA_Geo_Index_Job_Store {
                 );
                 $report['discard_examples'] = array_slice($report['discard_examples'], -10);
             }
-            foreach (array('missing_affiliate_link_id','invalid_affiliate_link_id','missing_affiliate_url','affiliate_link_not_found','object_not_affiliate_link','safe_import_false','safe_import_skipped','final_bucket_discard','existing_geo_skipped','secondary_locations_json_invalid','invalid_affiliate_url','invalid_url','incomplete_record','missing_primary_location','missing_primary_name','unknown_location','missing_region','duplicate_staging_item','duplicate','sql_insert_failed','unknown_error','needs_review') as $needle) {
-                if (strpos($message, $needle) !== false) {
-                    if (isset($report[$needle])) { $report[$needle]++; }
-                    if ($needle === 'existing_geo_skipped') { $report['already_present']++; }
-                    if ($needle === 'invalid_url' || $needle === 'invalid_affiliate_url') { $report['invalid_urls']++; }
-                    if ($needle === 'incomplete_record') { $report['incomplete_records']++; }
-                    if ($needle === 'unknown_location' || $needle === 'missing_primary_name' || $needle === 'missing_primary_location') { $report['unknown_locations']++; }
-                    if ($needle === 'missing_region') { $report['missing_region']++; }
-                    if ($needle === 'duplicate' || $needle === 'duplicate_staging_item') { $report['duplicates']++; }
-                    if ($needle === 'needs_review') { $report['needs_review']++; }
+            $primary_reason = $this->primary_message_reason($message);
+            if ($primary_reason !== '') {
+                if (isset($report[$primary_reason])) {
+                    $report[$primary_reason]++;
                 }
+                if ($primary_reason === 'existing_geo_skipped') { $report['already_present']++; }
+                if (in_array($primary_reason, array('invalid_url','invalid_affiliate_url'), true)) { $report['invalid_urls']++; }
+                if ($primary_reason === 'incomplete_record') { $report['incomplete_records']++; }
+                if (in_array($primary_reason, array('unknown_location','missing_primary_name','missing_primary_location'), true)) { $report['unknown_locations']++; }
+                if ($primary_reason === 'missing_region') { $report['missing_region']++; }
+                if (in_array($primary_reason, array('duplicate','duplicate_staging_item'), true)) { $report['duplicates']++; }
+                if ($primary_reason === 'needs_review') { $report['needs_review']++; }
             }
             if (preg_match('/secondaries_imported=(\d+)/', $message, $m)) {
                 $report['secondaries_imported'] += (int) $m[1];
