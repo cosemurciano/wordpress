@@ -163,6 +163,7 @@ class ALMA_Geo_Index_Job_Store {
 
     public function claim_items($job_id, $limit = 50, $statuses = array('queued')) {
         global $wpdb;
+        $job_id = absint($job_id);
         $limit = max(1, min(100, absint($limit)));
         $statuses = array_map('sanitize_key', (array) $statuses);
         $statuses = array_values(array_intersect($statuses, array('queued','error')));
@@ -170,13 +171,20 @@ class ALMA_Geo_Index_Job_Store {
             $statuses = array('queued');
         }
         $placeholders = implode(',', array_fill(0, count($statuses), '%s'));
-        $params = array_merge(array(absint($job_id)), $statuses, array($limit));
-        $items = $wpdb->get_results($wpdb->prepare("SELECT * FROM {$this->table_items()} WHERE job_id = %d AND status IN ($placeholders) ORDER BY id ASC LIMIT %d", $params), ARRAY_A);
+        $params = array_merge(array($job_id), $statuses, array($limit));
+        $ids = $wpdb->get_col($wpdb->prepare("SELECT id FROM {$this->table_items()} WHERE job_id = %d AND status IN ($placeholders) ORDER BY id ASC LIMIT %d", $params));
+        $ids = array_values(array_filter(array_map('absint', (array) $ids)));
+        if (empty($ids)) {
+            return array();
+        }
+        $id_placeholders = implode(',', array_fill(0, count($ids), '%d'));
+        $update_params = array_merge(array('processing', 'claimed_for_processing', current_time('mysql'), $job_id), $ids);
+        $wpdb->query($wpdb->prepare("UPDATE {$this->table_items()} SET status = %s, action = %s, processed_at = %s WHERE job_id = %d AND id IN ($id_placeholders)", $update_params));
+        $items = $wpdb->get_results($wpdb->prepare("SELECT * FROM {$this->table_items()} WHERE job_id = %d AND id IN ($id_placeholders) ORDER BY id ASC", array_merge(array($job_id), $ids)), ARRAY_A);
         foreach ($items as &$item) {
-            $wpdb->update($this->table_items(), array('status' => 'processing'), array('id' => (int) $item['id']), array('%s'), array('%d'));
             $item['raw_payload'] = json_decode((string) ($item['raw_payload'] ?? ''), true) ?: array();
         }
-        return $items;
+        return $items ?: array();
     }
 
     public function update_item_result($item_id, $status, $action, $message, $object_id = 0, $object_type = '') {
@@ -226,11 +234,39 @@ class ALMA_Geo_Index_Job_Store {
         if (!$job || in_array($job['status'], array('paused','cancelled','failed','completed'), true)) {
             return $job;
         }
+        $this->recover_stale_processing_items($job_id);
         $counts = $this->recount_job($job_id);
-        if ($counts['queued'] === 0 && $counts['processing'] === 0) {
+        $total = (int) ($job['total_records'] ?? 0);
+        if ($counts['queued'] === 0 && $counts['processing'] === 0 && ($total === 0 || $counts['processed'] >= $total)) {
             $this->update_job_status($job_id, 'completed');
         }
         return $this->get_job($job_id);
+    }
+
+    public function recover_stale_processing_items($job_id, $minutes = 10) {
+        global $wpdb;
+        $threshold = date('Y-m-d H:i:s', current_time('timestamp') - (max(1, absint($minutes)) * MINUTE_IN_SECONDS));
+        return $wpdb->query($wpdb->prepare(
+            "UPDATE {$this->table_items()} SET status = %s, action = %s, message = %s, processed_at = NULL WHERE job_id = %d AND status = %s AND (processed_at IS NULL OR processed_at < %s)",
+            'queued',
+            'stale_processing_recovered',
+            'stale_processing_recovered',
+            absint($job_id),
+            'processing',
+            $threshold
+        ));
+    }
+
+    public function get_item_status_counts($job_id) {
+        $counts = $this->recount_job($job_id);
+        return array(
+            'queued' => (int) $counts['queued'],
+            'processing' => (int) $counts['processing'],
+            'imported' => (int) $counts['imported'],
+            'updated' => (int) $counts['updated'],
+            'skipped' => (int) $counts['skipped'],
+            'error' => (int) $counts['error'],
+        );
     }
 
     public function get_items($job_id, $limit = 50, $statuses = array()) {

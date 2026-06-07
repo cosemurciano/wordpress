@@ -198,6 +198,9 @@ class ALMA_Geo_Index_Affiliate_Link_Importer {
         if (!$job) {
             return new WP_Error('alma_geo_job_not_found', __('Job non trovato.', 'affiliate-link-manager-ai'));
         }
+        if (sanitize_key($job['job_type'] ?? '') !== ALMA_Geo_Index_Job_Store::JOB_TYPE_AFFILIATE_LINKS_GEO_IMPORT) {
+            return new WP_Error('alma_geo_invalid_job_type', __('Tipo job non valido.', 'affiliate-link-manager-ai'));
+        }
         if (in_array($job['status'], array('paused','cancelled','completed','failed'), true)) {
             return array('processed' => 0, 'job' => $job_store->get_job($job_id));
         }
