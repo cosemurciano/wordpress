@@ -1,5 +1,9 @@
 ## Unreleased
 
+- Corretto redirect persistente verso la lista Articoli dopo creazione/aggiornamento Link Affiliati.
+- Aggiunto recupero sicuro dell’atterraggio errato su `edit.php` tramite marker, referer e fallback controllata.
+- Evitato redirect indesiderato quando l’utente visita intenzionalmente la lista Articoli.
+
 - Aggiunto import in background delle località per Link Affiliati da CSV.
 - Aggiunto job log per import Geo Link Affiliati.
 - Aggiunta associazione delle località ai Link Affiliati tramite affiliate_link_id.
