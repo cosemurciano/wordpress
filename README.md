@@ -7,6 +7,14 @@
 - Il metabox **Geolocalizzazione contenuto** sostituisce il JSON visibile delle località con una lista visuale di località associate: ricerca Google Maps, pulsante **Associa luogo**, radio per una sola località principale, ruoli sulle secondarie e persistenza in `alma_geo_locations`, `alma_geo_content_index` e `_alma_geo_locations_json` tecnico.
 - Il metabox **Geolocalizzazione contenuto** ora apre con **Cerca e associa località**, usa Google Maps server-side via AJAX admin protetto e compila automaticamente stato, località primaria, coordinate, Place ID e campi Geo Index al salvataggio.
 
+
+### Indice Geografico — Import Link Affiliati
+
+- Aggiunta la tab **Import Link Affiliati** in **Indice Geografico** per caricare CSV AI come `sothra_geo_affiliate_links_index.csv`, validare gli header obbligatori e mostrare la preview dei primi 10 record.
+- L’import crea un job persistente `affiliate_links_geo_import`, salva le righe in `alma_geo_import_job_items` e processa batch AJAX da 50 righe (massimo 100), con pausa, ripresa, annullamento, retry errori, progress bar e ultimi log.
+- Ogni riga valida viene associata al CPT `affiliate_link` tramite `affiliate_link_id`, aggiorna i post meta `_alma_geo_*`, salva `_alma_geo_activity_type`, crea/riusa località primarie e secondarie e aggiorna `alma_geo_locations` e `alma_geo_content_index` con `object_type=affiliate_link`.
+- L’import non chiama Google Maps: le località restano `pending` e vengono geocodificate solo nel passaggio separato della tab **Geocoding**, che ora evidenzia anche le località pending provenienti dai Link Affiliati.
+
 ### Indice Geografico — sincronizzazione geocoding
 - Le località `verified` sincronizzano i dati geocoding sui contenuti primari collegati tramite `alma_geo_content_index`, mantenendo compatibilità con i meta `_alma_geo_*` esistenti.
 - La tab **Geocoding** include il pulsante **Risincronizza geocoding nei contenuti**, che copia solo dati già salvati nelle località senza chiamare Google Maps.

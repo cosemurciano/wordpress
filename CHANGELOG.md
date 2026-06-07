@@ -1,5 +1,9 @@
 ## Unreleased
 
+- Aggiunto import in background delle località per Link Affiliati da CSV.
+- Aggiunto job log per import Geo Link Affiliati.
+- Aggiunta associazione delle località ai Link Affiliati tramite affiliate_link_id.
+- Preparato secondo passaggio di geocoding Google per località importate.
 - Corretto redirect dopo creazione e aggiornamento dei Link Affiliati.
 - Aggiunto marker temporaneo di salvataggio `affiliate_link` per fallback sicuro.
 - Rafforzata fallback admin solo per atterraggio immediato errato su `edit.php`.
