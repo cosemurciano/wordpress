@@ -474,7 +474,21 @@ class ALMA_Geo_Index_Admin {
             $this->notice_success(__('CSV GEO Link Affiliati caricato e validato. Controlla la preview e crea una sessione di import manuale.', 'affiliate-link-manager-ai'));
             return;
         }
+        if ($action === 'repair_geo_import_tables') {
+            $status = $this->job_store->install_tables();
+            if (!empty($status['jobs_exists']) && !empty($status['items_exists'])) {
+                $this->notice_success(__('Tabelle GEO riparate/verificate correttamente. Nessun dato esistente è stato eliminato.', 'affiliate-link-manager-ai'));
+            } else {
+                $this->notice_error(__('Riparazione tabelle GEO non riuscita. Verifica permessi database e riprova.', 'affiliate-link-manager-ai'));
+            }
+            return;
+        }
         if ($action === 'start_affiliate_import') {
+            $schema_ready = $this->job_store->ensure_tables(true);
+            if (is_wp_error($schema_ready)) {
+                $this->notice_error($schema_ready->get_error_message());
+                return;
+            }
             $preview = get_transient($this->affiliate_preview_key());
             if (empty($preview['file']) || !file_exists($preview['file']) || empty($preview['valid'])) {
                 $this->notice_error(__('Preview non valida o scaduta. Ricarica il CSV Link Affiliati.', 'affiliate-link-manager-ai'));
@@ -737,10 +751,14 @@ class ALMA_Geo_Index_Admin {
 
     private function render_affiliate_import_tab() {
         $preview = get_transient($this->affiliate_preview_key());
-        $job = $this->job_store->get_latest_job();
+        $schema_status = $this->job_store->schema_status();
+        $job = (!empty($schema_status['jobs_exists']) && !empty($schema_status['items_exists'])) ? $this->job_store->get_latest_job() : array();
         ?>
         <h2><?php esc_html_e('Import GEO Link Affiliati', 'affiliate-link-manager-ai'); ?></h2>
         <p><?php esc_html_e('Importa manualmente a batch le località geografiche da CSV AI, ad esempio sothra_geo_affiliate_links_index.csv, e associa ogni riga al CPT affiliate_link tramite affiliate_link_id. Nessuna chiamata Google Maps viene eseguita durante l’import.', 'affiliate-link-manager-ai'); ?></p>
+        <?php if (empty($schema_status['items_exists'])) : ?>
+            <div class="notice notice-warning inline"><p><?php echo esc_html(sprintf(__('La tabella staging GEO non esiste: %s. Clicca Ripara tabelle GEO in Strumenti avanzati o disattiva/riattiva il plugin. Nessun Link Affiliato è stato modificato.', 'affiliate-link-manager-ai'), $schema_status['items_table'])); ?></p></div>
+        <?php endif; ?>
         <form method="post" enctype="multipart/form-data" class="postbox" style="padding:12px;">
             <?php wp_nonce_field('alma_geo_affiliate_import'); ?>
             <input type="hidden" name="alma_geo_index_action" value="preview_affiliate_csv">
@@ -801,7 +819,11 @@ class ALMA_Geo_Index_Admin {
         echo '<div class="postbox"><div class="inside" id="alma-geo-affiliate-job" data-job-id="' . esc_attr((string) absint($job['id'] ?? 0)) . '">';
         echo '<h3>' . esc_html__('A. Carica CSV', 'affiliate-link-manager-ai') . '</h3>';
         if (empty($job)) {
-            echo '<p>' . esc_html__('Nessuna sessione Import GEO Link Affiliati ancora creata.', 'affiliate-link-manager-ai') . '</p></div></div>';
+            echo '<p>' . esc_html__('Nessuna sessione Import GEO Link Affiliati ancora creata.', 'affiliate-link-manager-ai') . '</p>';
+            echo '<hr><details style="margin-top:12px;" open><summary><strong>' . esc_html__('G. Strumenti avanzati', 'affiliate-link-manager-ai') . '</strong></summary>';
+            echo '<div style="margin-top:12px;">';
+            $this->render_geo_import_schema_tools();
+            echo '</div></details></div></div>';
             return;
         }
         $total = (int) ($job['total_records'] ?? 0);
@@ -831,6 +853,7 @@ class ALMA_Geo_Index_Admin {
 
         echo '<hr><details style="margin-top:12px;"><summary><strong>' . esc_html__('G. Strumenti avanzati', 'affiliate-link-manager-ai') . '</strong></summary>';
         echo '<div style="margin-top:12px;">';
+        $this->render_geo_import_schema_tools();
         $this->render_affiliate_job_button('reset_affiliate_import', __('Reset import', 'affiliate-link-manager-ai'), $job);
         $this->render_affiliate_job_diagnostic((int) $job['id']);
         $this->render_affiliate_job_logs((int) $job['id']);
@@ -929,6 +952,26 @@ class ALMA_Geo_Index_Admin {
             echo '<li><code>' . esc_html($key) . '</code> — ' . esc_html($label) . '</li>';
         }
         echo '</ul></div></div>';
+    }
+
+
+    private function render_geo_import_schema_tools() {
+        $status = $this->job_store->schema_status();
+        $jobs_state = !empty($status['jobs_exists']) ? __('presente', 'affiliate-link-manager-ai') : __('mancante', 'affiliate-link-manager-ai');
+        $items_state = !empty($status['items_exists']) ? __('presente', 'affiliate-link-manager-ai') : __('mancante', 'affiliate-link-manager-ai');
+        echo '<h4>' . esc_html__('Stato tabelle GEO', 'affiliate-link-manager-ai') . '</h4>';
+        echo '<table class="widefat striped" style="max-width:720px;margin-bottom:10px;"><tbody>';
+        echo '<tr><th>' . esc_html__('Tabella jobs', 'affiliate-link-manager-ai') . '</th><td><code>' . esc_html($status['jobs_table']) . '</code> — ' . esc_html($jobs_state) . '</td></tr>';
+        echo '<tr><th>' . esc_html__('Tabella job items', 'affiliate-link-manager-ai') . '</th><td><code>' . esc_html($status['items_table']) . '</code> — ' . esc_html($items_state) . '</td></tr>';
+        echo '</tbody></table>';
+        if (empty($status['items_exists'])) {
+            echo '<div class="notice notice-warning inline"><p>' . esc_html(sprintf(__('La tabella staging GEO non esiste: %s. Clicca Ripara tabelle GEO o disattiva/riattiva il plugin. Nessun Link Affiliato è stato modificato.', 'affiliate-link-manager-ai'), $status['items_table'])) . '</p></div>';
+        }
+        echo '<form method="post" style="display:inline-block;margin:0 8px 12px 0;">';
+        wp_nonce_field('alma_geo_affiliate_import');
+        echo '<input type="hidden" name="alma_geo_index_action" value="repair_geo_import_tables">';
+        submit_button(__('Ripara tabelle GEO', 'affiliate-link-manager-ai'), 'secondary small', 'submit', false);
+        echo '</form>';
     }
 
     private function render_affiliate_job_diagnostic($job_id) {

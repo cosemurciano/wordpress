@@ -1,3 +1,14 @@
+## 2.41.5 - 2026-06-07
+
+### Fix GEO import database schema and staging inserts
+- Fix creazione tabella staging GEO `alma_geo_import_job_items` con migrazione `dbDelta` idempotente per jobs e job items, senza drop e senza cancellare dati.
+- Fix import GEO Link Affiliati che scartava tutte le righe per errore SQL quando la tabella staging mancava: ora lo schema viene verificato prima della prepare e l’import si blocca con messaggio chiaro se il repair fallisce.
+- Aggiunto repair schema GEO in **Strumenti avanzati** con stato tabella jobs/job items, nonce, capability admin e pulsante “Ripara tabelle GEO”.
+- Migliorata diagnostica SQL degli insert staging con tabella, operazione, ultimo errore aggregato ed esempi limitati.
+- Fix doppio conteggio duplicati: i motivi scarto usano matching prioritario mutualmente esclusivo e `staging_duplicate_staging_item` non incrementa anche `duplicate`.
+- Fix fallback località primaria: righe con `primary_city`, `primary_area`, `primary_poi`, `primary_port` o `primary_airport` ma senza `primary_name` non falliscono più con `missing_primary_name`.
+- Versione plugin aggiornata a `2.41.5`.
+
 ## 2.41.4 - 2026-06-07
 
 ### Fix GEO CSV header normalization and staging creation
