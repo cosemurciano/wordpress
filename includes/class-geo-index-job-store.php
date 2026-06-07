@@ -7,6 +7,8 @@ if (!defined('ABSPATH')) { exit; }
 class ALMA_Geo_Index_Job_Store {
     const JOB_TYPE_AFFILIATE_LINKS_GEO_IMPORT = 'affiliate_links_geo_import';
 
+    private $last_claim_debug = array();
+
     public function table_jobs() {
         global $wpdb;
         return $wpdb->prefix . 'alma_geo_import_jobs';
@@ -164,6 +166,16 @@ class ALMA_Geo_Index_Job_Store {
     public function claim_items($job_id, $limit = 50, $statuses = array('queued')) {
         global $wpdb;
         $job_id = absint($job_id);
+        $this->last_claim_debug = array(
+            'job_id' => $job_id,
+            'requested_limit' => absint($limit),
+            'requested_statuses' => array_values(array_map('sanitize_key', (array) $statuses)),
+            'eligible_ids_found' => 0,
+            'eligible_ids' => array(),
+            'updated_to_processing' => 0,
+            'items_returned' => 0,
+            'wpdb_last_error' => '',
+        );
         $limit = max(1, min(100, absint($limit)));
         $statuses = array_map('sanitize_key', (array) $statuses);
         $statuses = array_values(array_intersect($statuses, array('queued','error')));
@@ -174,17 +186,31 @@ class ALMA_Geo_Index_Job_Store {
         $params = array_merge(array($job_id), $statuses, array($limit));
         $ids = $wpdb->get_col($wpdb->prepare("SELECT id FROM {$this->table_items()} WHERE job_id = %d AND status IN ($placeholders) ORDER BY id ASC LIMIT %d", $params));
         $ids = array_values(array_filter(array_map('absint', (array) $ids)));
+        $this->last_claim_debug['normalized_statuses'] = $statuses;
+        $this->last_claim_debug['eligible_ids_found'] = count($ids);
+        $this->last_claim_debug['eligible_ids'] = $ids;
         if (empty($ids)) {
+            $this->last_claim_debug['wpdb_last_error'] = (string) $wpdb->last_error;
             return array();
         }
         $id_placeholders = implode(',', array_fill(0, count($ids), '%d'));
         $update_params = array_merge(array('processing', 'claimed_for_processing', current_time('mysql'), $job_id), $ids);
-        $wpdb->query($wpdb->prepare("UPDATE {$this->table_items()} SET status = %s, action = %s, processed_at = %s WHERE job_id = %d AND id IN ($id_placeholders)", $update_params));
+        $updated = $wpdb->query($wpdb->prepare("UPDATE {$this->table_items()} SET status = %s, action = %s, processed_at = %s WHERE job_id = %d AND id IN ($id_placeholders)", $update_params));
+        $this->last_claim_debug['updated_to_processing'] = (int) $updated;
+        $this->last_claim_debug['wpdb_last_error'] = (string) $wpdb->last_error;
         $items = $wpdb->get_results($wpdb->prepare("SELECT * FROM {$this->table_items()} WHERE job_id = %d AND id IN ($id_placeholders) ORDER BY id ASC", array_merge(array($job_id), $ids)), ARRAY_A);
         foreach ($items as &$item) {
-            $item['raw_payload'] = json_decode((string) ($item['raw_payload'] ?? ''), true) ?: array();
+            $decoded_payload = json_decode((string) ($item['raw_payload'] ?? ''), true);
+            $item['raw_payload'] = is_array($decoded_payload) ? $decoded_payload : array();
         }
+        unset($item);
+        $this->last_claim_debug['items_returned'] = count($items ?: array());
+        $this->last_claim_debug['wpdb_last_error'] = (string) $wpdb->last_error;
         return $items ?: array();
+    }
+
+    public function get_last_claim_debug() {
+        return $this->last_claim_debug;
     }
 
     public function update_item_result($item_id, $status, $action, $message, $object_id = 0, $object_type = '') {
@@ -281,6 +307,41 @@ class ALMA_Geo_Index_Job_Store {
             $rows = $wpdb->get_results($wpdb->prepare("SELECT * FROM {$this->table_items()} WHERE job_id = %d ORDER BY id DESC LIMIT %d", absint($job_id), $limit), ARRAY_A);
         }
         return $rows ?: array();
+    }
+
+
+    public function get_job_diagnostic($job_id, $extra = array()) {
+        global $wpdb;
+        $job_id = absint($job_id);
+        $job = $this->get_job($job_id);
+        $counts = $this->get_item_status_counts($job_id);
+        $latest_item = $wpdb->get_row($wpdb->prepare("SELECT id, row_number, object_id, object_type, status, action, message, processed_at FROM {$this->table_items()} WHERE job_id = %d ORDER BY id DESC LIMIT 1", $job_id), ARRAY_A);
+        return array_merge(array(
+            'job_id' => $job_id,
+            'total_item_rows' => array_sum(array_map('intval', $counts)),
+            'queued' => (int) $counts['queued'],
+            'processing' => (int) $counts['processing'],
+            'imported' => (int) $counts['imported'],
+            'updated' => (int) $counts['updated'],
+            'skipped' => (int) $counts['skipped'],
+            'error' => (int) $counts['error'],
+            'latest_item_status' => !empty($latest_item['status']) ? sanitize_key($latest_item['status']) : '',
+            'latest_item' => is_array($latest_item) ? array(
+                'id' => (int) $latest_item['id'],
+                'row_number' => (int) $latest_item['row_number'],
+                'affiliate_link_id' => (int) $latest_item['object_id'],
+                'object_type' => sanitize_key($latest_item['object_type']),
+                'status' => sanitize_key($latest_item['status']),
+                'action' => sanitize_key($latest_item['action']),
+                'message' => sanitize_textarea_field($latest_item['message']),
+                'processed_at' => sanitize_text_field($latest_item['processed_at']),
+            ) : array(),
+            'last_error' => sanitize_textarea_field($job['last_error'] ?? ''),
+            'batch_size' => isset($job['options']['batch_size']) ? (int) $job['options']['batch_size'] : 0,
+            'safe_only' => !empty($job['options']['safe_only']),
+            'overwrite' => !empty($job['options']['overwrite']),
+            'last_claim' => $this->get_last_claim_debug(),
+        ), is_array($extra) ? $extra : array());
     }
 
     public function reset_error_items($job_id) {
