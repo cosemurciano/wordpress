@@ -1,4 +1,12 @@
 ## Unreleased
+
+### Affiliate Sources — import GetYourGuide CSV manuale a batch
+
+- L’import GetYourGuide CSV / Deep Link non usa più il job background come flusso principale: l’admin sceglie una tipologia attività, imposta il **batch size** (25, 50, 100 o 250; default 50) e clicca **Importa prossimo batch**.
+- Ogni click processa solo i record successivi non ancora processati nella sessione persistente; la deduplica del plugin continua a evitare duplicazioni quando un record è già presente o quando un click viene ripetuto.
+- Dopo ogni batch la schermata mostra report di batch e cumulativo con processati, rimanenti, importati, aggiornati, saltati, duplicati/già presenti, URL non validi, record incompleti ed errori.
+- I pulsanti **Scarica report CSV** e **Scarica log JSON** producono file admin-only protetti da nonce; il log JSON è pensato per debug tecnico senza mostrare path server sensibili nell’interfaccia.
+- Per vecchi job bloccati in `running` la UI mostra un avviso operativo e consiglia **Reset import** dalla lista sessioni; i link già importati non vengono rimossi dal reset della sessione CSV.
 - Aggiunta la sezione **Export Link Affiliati** in **Impostazioni - Affiliate Link Manager AI**, con download CSV admin-only protetto da nonce per esportare URL, tipologie, provider/source, contesto AI, contenuti, immagine e meta Geo dei CPT `affiliate_link`; il file è pensato per analisi esterne e preparazione di un futuro CSV di geolocalizzazione.
 - L’export CSV dei Link Affiliati protegge ogni cella da formule potenzialmente eseguibili in fogli di calcolo, senza modificare i dati salvati nel database.
 - Il salvataggio del metabox **Geolocalizzazione contenuto** sui `affiliate_link` mantiene il redirect standard alla schermata di modifica del Link Affiliato e non forza più la lista dei Post.

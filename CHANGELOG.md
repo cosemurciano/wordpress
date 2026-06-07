@@ -1,5 +1,7 @@
 ## Unreleased
 
+- Sostituito il flusso principale di import GetYourGuide CSV basato su job background con un import manuale a batch: batch size configurabile per esecuzione, nessun auto-loop JavaScript obbligatorio, report cumulativo e di batch, download report CSV/log JSON e avviso per vecchi job bloccati.
+
 - Corretto processamento batch dell’import Geo Link Affiliati con claim diagnostico, recupero item `processing` stantii e conteggio `processed_records = imported + updated + skipped + error`.
 - Aggiunta diagnostica dettagliata dei job di import e risposta AJAX con `claimed`, `processed`, `counts`, `items`, `debug` e `message`.
 - Aggiunto box persistente **Errore ultimo batch** e arresto dell’auto-processing in caso di errore AJAX.
