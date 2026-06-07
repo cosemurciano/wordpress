@@ -1,5 +1,9 @@
 ## Unreleased
 
+- Corretto processamento background dell’import Geo Link Affiliati: gli item claimati avanzano da `queued` a esito finale e gli `skipped` contano come processati.
+- Aggiunti log diagnostici e messaggi errore persistenti per batch AJAX dell’import Geo Link Affiliati.
+- Migliorata progress bar dell’import Geo Link Affiliati con conteggio reale e marcatori 10%.
+- Corretta fallback redirect dei Link Affiliati per non intercettare visite intenzionali alla lista Articoli.
 - Corretto processamento background dell’import Geo Link Affiliati.
 - Aggiunto processamento AJAX batch con progress bar reale.
 - Aggiunti log visibili per i job di import.

@@ -586,7 +586,18 @@ class ALMA_Geo_Index_Admin {
         if (is_wp_error($result)) {
             wp_send_json_error(array('message' => $result->get_error_message()), 400);
         }
-        wp_send_json_success($this->format_affiliate_job_response($result['job'] ?? null, (int) ($result['processed'] ?? 0), __('Batch processato.', 'affiliate-link-manager-ai')));
+        $job = $result['job'] ?? $this->job_store->get_job($job_id);
+        $counts = $result['counts'] ?? $this->job_store->get_item_status_counts($job_id);
+        $claimed = (int) ($result['claimed'] ?? 0);
+        $processed = (int) ($result['processed'] ?? 0);
+        $message = __('Batch processato.', 'affiliate-link-manager-ai');
+        $terminal = !empty($job['status']) && in_array($job['status'], array('completed','paused','cancelled','failed'), true);
+        if ($claimed === 0 && !empty($counts['queued'])) {
+            $message = __('Nessun item claimato nonostante esistano item in coda.', 'affiliate-link-manager-ai');
+        } elseif ($processed === 0 && !$terminal) {
+            $message = __('Il batch non ha processato righe: verifica diagnostica e log item.', 'affiliate-link-manager-ai');
+        }
+        wp_send_json_success($this->format_affiliate_job_response($job, $processed, $message, $result));
     }
 
     public function ajax_cancel_affiliate_import_job() {
@@ -723,19 +734,20 @@ class ALMA_Geo_Index_Admin {
     private function render_affiliate_job_summary($job) {
         $total = (int) ($job['total_records'] ?? 0);
         $processed = (int) ($job['processed_records'] ?? 0);
-        $percent = $total > 0 ? min(100, (int) floor(($processed / $total) * 100)) : 0;
+        $percent = $total > 0 ? min(100, round(($processed / $total) * 100, 1)) : 0;
         echo '<div id="alma-geo-affiliate-summary" data-job-id="' . esc_attr((string) absint($job['id'] ?? 0)) . '">';
         echo '<p><strong>Job #' . esc_html((string) $job['id']) . '</strong> — <span data-alma-job-status>' . esc_html($job['status']) . '</span> — ' . esc_html($job['file_name']) . '</p>';
         echo '<div class="alma-geo-progress" style="position:relative;background:#f0f0f1;border:1px solid #c3c4c7;height:24px;max-width:720px;overflow:hidden;">';
         echo '<div data-alma-progress-bar style="background:#2271b1;height:24px;width:' . esc_attr((string) $percent) . '%;transition:width .2s ease;"></div>';
-        echo '<span data-alma-progress-label style="position:absolute;left:8px;top:3px;font-weight:600;color:#1d2327;">' . esc_html(sprintf(__('%1$d%% — %2$d/%3$d record', 'affiliate-link-manager-ai'), $percent, $processed, $total)) . '</span></div>';
+        echo '<span data-alma-progress-label style="position:absolute;left:8px;top:3px;font-weight:600;color:#1d2327;">' . esc_html(sprintf(__('%1$s%% — %2$d/%3$d record', 'affiliate-link-manager-ai'), (string) $percent, $processed, $total)) . '</span></div>';
         echo '<div style="display:flex;justify-content:space-between;max-width:720px;font-size:11px;color:#646970;margin-top:2px;" aria-hidden="true">';
         foreach (range(0, 100, 10) as $mark) {
             echo '<span>' . esc_html((string) $mark) . '</span>';
         }
         echo '</div>';
-        echo '<p data-alma-progress-text>' . esc_html(sprintf(__('Avanzamento: %1$d/%2$d (%3$d%%) — importati %4$d, aggiornati %5$d, saltati %6$d, errori %7$d.', 'affiliate-link-manager-ai'), $processed, $total, $percent, (int) $job['imported_records'], (int) $job['updated_records'], (int) $job['skipped_records'], (int) $job['error_records'])) . '</p>';
+        echo '<p data-alma-progress-text>' . esc_html(sprintf(__('Avanzamento: %1$d/%2$d (%3$s%%) — importati %4$d, aggiornati %5$d, saltati %6$d, errori %7$d.', 'affiliate-link-manager-ai'), $processed, $total, (string) $percent, (int) $job['imported_records'], (int) $job['updated_records'], (int) $job['skipped_records'], (int) $job['error_records'])) . '</p>';
         echo '<p data-alma-job-message>' . esc_html($this->affiliate_job_status_message($job)) . '</p>';
+        echo '<div data-alma-last-batch-error style="display:none;border-left:4px solid #b32d2e;background:#fcf0f1;padding:10px 12px;margin:12px 0;max-width:720px;"><strong>' . esc_html__('Errore ultimo batch', 'affiliate-link-manager-ai') . '</strong><div data-alma-last-batch-error-body></div></div>';
         echo '</div>';
         $this->render_affiliate_job_counts($job);
     }
@@ -785,21 +797,31 @@ class ALMA_Geo_Index_Admin {
             var running = false;
             var autoEnabled = <?php echo in_array($job['status'], array('queued','running'), true) ? 'true' : 'false'; ?>;
             var processButton = document.getElementById('alma-geo-affiliate-process-next');
+            var lastBatchFailed = false;
 
             function text(value) {
                 return String(value == null ? '' : value).replace(/[&<>'"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#039;','"':'&quot;'}[c]; });
             }
             function percent(job) {
-                return job && job.total_records > 0 ? Math.min(100, Math.floor((job.processed_records / job.total_records) * 100)) : 0;
+                return job && job.total_records > 0 ? Math.min(100, Math.round((job.processed_records / job.total_records) * 1000) / 10) : 0;
             }
             function post(action, data) {
                 var body = new URLSearchParams(Object.assign({action: action, nonce: nonce, job_id: jobId, batch_size: 50}, data || {}));
                 return fetch(ajaxUrl, {method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: body.toString()}).then(function(r){
                     return r.text().then(function(raw){
                         var parsed;
-                        try { parsed = JSON.parse(raw); } catch (e) { throw new Error('<?php echo esc_js(__('Risposta AJAX non valida.', 'affiliate-link-manager-ai')); ?>' + ' HTTP ' + r.status); }
+                        try { parsed = JSON.parse(raw); } catch (e) {
+                            var invalid = new Error('<?php echo esc_js(__('Risposta AJAX non valida.', 'affiliate-link-manager-ai')); ?>');
+                            invalid.httpStatus = r.status;
+                            invalid.raw = raw;
+                            throw invalid;
+                        }
                         if (!r.ok || !parsed.success) {
-                            throw new Error((parsed.data && parsed.data.message) ? parsed.data.message : ('HTTP ' + r.status));
+                            var ajaxError = new Error((parsed.data && parsed.data.message) ? parsed.data.message : ('HTTP ' + r.status));
+                            ajaxError.httpStatus = r.status;
+                            ajaxError.raw = raw;
+                            ajaxError.data = parsed.data || null;
+                            throw ajaxError;
                         }
                         return parsed.data;
                     });
@@ -819,7 +841,9 @@ class ALMA_Geo_Index_Admin {
                 if (bar) { bar.style.width = pct + '%'; }
                 if (label) { label.textContent = pct + '% — ' + j.processed_records + '/' + j.total_records + ' record'; }
                 if (progress) { progress.textContent = 'Avanzamento: ' + j.processed_records + '/' + j.total_records + ' (' + pct + '%) — importati ' + j.imported_records + ', aggiornati ' + j.updated_records + ', saltati ' + j.skipped_records + ', errori ' + j.error_records + '.'; }
-                if (message) { message.textContent = data.message || ''; }
+                clearError();
+                if (message) { message.textContent = data.message || ''; message.style.color = ''; }
+                updateButtonState(j, false);
                 if (data.counts) {
                     Object.keys(data.counts).forEach(function(key){
                         var cell = document.querySelector('[data-alma-count="' + key + '"]');
@@ -832,28 +856,69 @@ class ALMA_Geo_Index_Admin {
                     }).join('') : '<tr><td colspan="6"><?php echo esc_js(__('Nessun log.', 'affiliate-link-manager-ai')); ?></td></tr>';
                 }
             }
+            function clearError() {
+                var box = document.querySelector('[data-alma-last-batch-error]');
+                var body = document.querySelector('[data-alma-last-batch-error-body]');
+                lastBatchFailed = false;
+                if (box) { box.style.display = 'none'; }
+                if (body) { body.innerHTML = ''; }
+            }
+            function isTerminal(job) {
+                return job && ['completed','cancelled','paused','failed'].indexOf(job.status) !== -1;
+            }
+            function updateButtonState(job, inFlight) {
+                if (!processButton) { return; }
+                if (inFlight) {
+                    processButton.disabled = true;
+                    processButton.textContent = '<?php echo esc_js(__('Processamento…', 'affiliate-link-manager-ai')); ?>';
+                    return;
+                }
+                processButton.textContent = isTerminal(job) ? '<?php echo esc_js(__('Batch non disponibile', 'affiliate-link-manager-ai')); ?>' : (lastBatchFailed ? '<?php echo esc_js(__('Riprova batch', 'affiliate-link-manager-ai')); ?>' : '<?php echo esc_js(__('Processa prossimo batch', 'affiliate-link-manager-ai')); ?>');
+                processButton.disabled = isTerminal(job);
+                if (isTerminal(job)) {
+                    processButton.title = '<?php echo esc_js(__('Job completato, annullato, in pausa o fallito.', 'affiliate-link-manager-ai')); ?>';
+                } else {
+                    processButton.title = '';
+                }
+            }
             function showError(error) {
+                autoEnabled = false;
+                lastBatchFailed = true;
+                var msg = error && error.message ? error.message : '<?php echo esc_js(__('Errore sconosciuto.', 'affiliate-link-manager-ai')); ?>';
+                var status = error && error.httpStatus ? error.httpStatus : '';
+                var raw = error && error.raw ? String(error.raw).slice(0, 1200) : '';
+                var now = new Date().toLocaleString();
                 var message = document.querySelector('[data-alma-job-message]');
+                var box = document.querySelector('[data-alma-last-batch-error]');
+                var body = document.querySelector('[data-alma-last-batch-error-body]');
                 if (message) {
-                    message.textContent = '<?php echo esc_js(__('Il batch non è stato processato. Controlla i log del job o riprova.', 'affiliate-link-manager-ai')); ?> ' + (error && error.message ? error.message : '');
+                    message.textContent = '<?php echo esc_js(__('Il batch non è stato processato. Auto-processing fermato: usa “Riprova batch”.', 'affiliate-link-manager-ai')); ?> ' + msg;
                     message.style.color = '#b32d2e';
+                }
+                if (box && body) {
+                    box.style.display = 'block';
+                    body.innerHTML = '<p><strong><?php echo esc_js(__('Messaggio:', 'affiliate-link-manager-ai')); ?></strong> ' + text(msg) + '</p>' +
+                        '<p><strong>HTTP status:</strong> ' + text(status || '<?php echo esc_js(__('n/d', 'affiliate-link-manager-ai')); ?>') + '</p>' +
+                        '<p><strong>Timestamp:</strong> ' + text(now) + '</p>' +
+                        (raw ? '<p><strong><?php echo esc_js(__('Risposta raw troncata:', 'affiliate-link-manager-ai')); ?></strong></p><pre style="white-space:pre-wrap;max-height:180px;overflow:auto;">' + text(raw) + '</pre>' : '') +
+                        '<p><?php echo esc_js(__('Suggerimento: apri console/network o scarica log.', 'affiliate-link-manager-ai')); ?></p>';
                 }
             }
             function processOnce(manual) {
                 if (running) { return Promise.resolve(); }
                 running = true;
-                if (processButton) { processButton.disabled = true; }
+                updateButtonState(null, true);
                 return post('alma_geo_process_affiliate_link_import_job').then(function(data){
                     render(data);
                     var j = data.job;
                     running = false;
-                    if (processButton) { processButton.disabled = false; }
-                    if (!manual && j && (j.status === 'queued' || j.status === 'running')) {
+                    updateButtonState(j, false);
+                    if (!manual && autoEnabled && j && (j.status === 'queued' || j.status === 'running')) {
                         window.setTimeout(function(){ processOnce(false); }, 700);
                     }
                 }).catch(function(error){
                     running = false;
-                    if (processButton) { processButton.disabled = false; }
+                    updateButtonState(null, false);
                     showError(error);
                 });
             }
@@ -868,13 +933,13 @@ class ALMA_Geo_Index_Admin {
         <?php
     }
 
-    private function format_affiliate_job_response($job, $batch_processed = 0, $message = '') {
+    private function format_affiliate_job_response($job, $batch_processed = 0, $message = '', $batch_result = array()) {
         if (empty($job)) {
-            return array('job' => null, 'items' => array(), 'counts' => array(), 'report' => array(), 'message' => __('Job non trovato.', 'affiliate-link-manager-ai'));
+            return array('processed' => 0, 'claimed' => 0, 'job' => null, 'counts' => array(), 'items' => array(), 'report' => array(), 'debug' => array(), 'diagnostic' => array(), 'message' => __('Job non trovato.', 'affiliate-link-manager-ai'));
         }
         $total = (int) $job['total_records'];
         $processed = (int) $job['processed_records'];
-        $percent = $total > 0 ? min(100, (int) floor(($processed / $total) * 100)) : 0;
+        $percent = $total > 0 ? min(100, round(($processed / $total) * 100, 1)) : 0;
         $items = array();
         foreach ($this->job_store->get_items((int) $job['id'], 50) as $item) {
             $items[] = array(
@@ -888,6 +953,7 @@ class ALMA_Geo_Index_Admin {
         }
         return array(
             'processed' => (int) $batch_processed,
+            'claimed' => (int) ($batch_result['claimed'] ?? 0),
             'total_records' => $total,
             'processed_records' => $processed,
             'imported_records' => (int) $job['imported_records'],
@@ -909,9 +975,11 @@ class ALMA_Geo_Index_Admin {
                 'error_records' => (int) $job['error_records'],
                 'percent' => $percent,
             ),
-            'counts' => $this->job_store->get_item_status_counts((int) $job['id']),
+            'counts' => !empty($batch_result['counts']) && is_array($batch_result['counts']) ? $batch_result['counts'] : $this->job_store->get_item_status_counts((int) $job['id']),
             'items' => $items,
             'report' => $this->job_store->get_report((int) $job['id']),
+            'debug' => !empty($batch_result['debug']) && is_array($batch_result['debug']) ? $batch_result['debug'] : array(),
+            'diagnostic' => !empty($batch_result['diagnostic']) && is_array($batch_result['diagnostic']) ? $batch_result['diagnostic'] : $this->job_store->get_job_diagnostic((int) $job['id'], array('last_ajax_message' => $message)),
         );
     }
 

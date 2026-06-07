@@ -202,20 +202,75 @@ class ALMA_Geo_Index_Affiliate_Link_Importer {
             return new WP_Error('alma_geo_invalid_job_type', __('Tipo job non valido.', 'affiliate-link-manager-ai'));
         }
         if (in_array($job['status'], array('paused','cancelled','completed','failed'), true)) {
-            return array('processed' => 0, 'job' => $job_store->get_job($job_id));
+            $counts = $job_store->get_item_status_counts($job_id);
+            return array(
+                'processed' => 0,
+                'claimed' => 0,
+                'job' => $job_store->get_job($job_id),
+                'items' => $job_store->get_items($job_id, 50),
+                'counts' => $counts,
+                'debug' => array('status_guard' => sanitize_key($job['status'])),
+                'diagnostic' => $job_store->get_job_diagnostic($job_id, array('last_ajax_message' => 'status_guard')),
+            );
         }
+        $recovered = $job_store->recover_stale_processing_items($job_id, 10);
         $job_store->update_job_status($job_id, 'running');
         $options = is_array($job['options']) ? $job['options'] : array();
         $batch_size = max(1, min(100, absint($batch_size ?: ($options['batch_size'] ?? 50))));
         $items = $job_store->claim_items($job_id, $batch_size, $retry_errors ? array('queued','error') : array('queued'));
+        $claimed = count($items);
+        $processed = 0;
+        $item_results = array();
         foreach ($items as $item) {
-            $row = $this->normalize_row($item['raw_payload']);
-            $result = $this->import_row($row, $options);
-            $job_store->update_item_result((int) $item['id'], $result['status'], $result['action'], $result['message'], $result['object_id'], ALMA_Geo_Index_Store::OBJECT_TYPE_AFFILIATE_LINK);
+            $item_id = (int) ($item['id'] ?? 0);
+            $object_id = absint($item['object_id'] ?? 0);
+            try {
+                $row = $this->normalize_row($item['raw_payload'] ?? array());
+                $result = $this->import_row($row, $options);
+                if (!is_array($result) || empty($result['status'])) {
+                    $result = $this->row_result('error', 'invalid_import_row_result', absint($row['affiliate_link_id'] ?? $object_id));
+                }
+            } catch (Throwable $e) {
+                $result = $this->row_result('error', 'exception ' . $e->getMessage(), $object_id);
+            } catch (Exception $e) {
+                $result = $this->row_result('error', 'exception ' . $e->getMessage(), $object_id);
+            }
+
+            $status = sanitize_key($result['status'] ?? 'error');
+            if (!in_array($status, array('imported','updated','skipped','error'), true)) {
+                $status = 'error';
+                $result['message'] = trim((string) ($result['message'] ?? '') . ' invalid_final_status');
+            }
+            $result['status'] = $status;
+            $job_store->update_item_result($item_id, $result['status'], $result['action'] ?? $result['status'], $result['message'] ?? '', $result['object_id'] ?? $object_id, ALMA_Geo_Index_Store::OBJECT_TYPE_AFFILIATE_LINK);
+            $processed++;
+            $item_results[] = array(
+                'item_id' => $item_id,
+                'row_number' => (int) ($item['row_number'] ?? 0),
+                'affiliate_link_id' => absint($result['object_id'] ?? $object_id),
+                'status' => $result['status'],
+                'action' => sanitize_key($result['action'] ?? $result['status']),
+                'message' => sanitize_textarea_field($result['message'] ?? ''),
+            );
         }
-        $job_store->recount_job($job_id);
+        $counts = $job_store->recount_job($job_id);
         $job = $job_store->maybe_complete_job($job_id);
-        return array('processed' => count($items), 'job' => $job, 'items' => $job_store->get_items($job_id, 50));
+        $debug = array(
+            'batch_size' => $batch_size,
+            'retry_errors' => (bool) $retry_errors,
+            'stale_processing_recovered' => (int) $recovered,
+            'claim' => $job_store->get_last_claim_debug(),
+            'item_results' => $item_results,
+        );
+        return array(
+            'processed' => $processed,
+            'claimed' => $claimed,
+            'job' => $job,
+            'counts' => $counts,
+            'items' => $job_store->get_items($job_id, 50),
+            'debug' => $debug,
+            'diagnostic' => $job_store->get_job_diagnostic($job_id, array('last_ajax_message' => 'batch_processed')),
+        );
     }
 
     public function import_row($row, $args = array()) {
@@ -249,8 +304,9 @@ class ALMA_Geo_Index_Affiliate_Link_Importer {
         update_post_meta($affiliate_link_id, '_alma_geo_activity_type', sanitize_key($row['activity_type'] ?? 'unknown'));
         update_post_meta($affiliate_link_id, '_alma_geo_import_status', 'imported');
         update_post_meta($affiliate_link_id, '_alma_geo_source', self::SOURCE);
-        update_post_meta($affiliate_link_id, '_alma_geo_primary_provider', sanitize_text_field($row['primary_provider'] ?? ''));
-        update_post_meta($affiliate_link_id, '_alma_geo_provider', sanitize_text_field($row['primary_provider'] ?? ''));
+        $provider = sanitize_text_field($row['primary_provider'] ?? ($row['provider'] ?? ($row['source_name'] ?? '')));
+        update_post_meta($affiliate_link_id, '_alma_geo_primary_provider', $provider);
+        update_post_meta($affiliate_link_id, '_alma_geo_provider', $provider);
 
         $after_locations = $this->count_locations();
         $after_relations = $this->count_relations($affiliate_link_id);
@@ -325,7 +381,7 @@ class ALMA_Geo_Index_Affiliate_Link_Importer {
             'poi' => sanitize_text_field($row['primary_poi'] ?? ''),
             'lat' => isset($row['primary_lat']) ? $this->float_or_empty($row['primary_lat']) : '',
             'lng' => isset($row['primary_lng']) ? $this->float_or_empty($row['primary_lng']) : '',
-            'geo_provider' => sanitize_key($row['primary_provider'] ?? ''),
+            'geo_provider' => sanitize_key($row['primary_provider'] ?? ($row['provider'] ?? '')),
             'geo_provider_place_id' => sanitize_text_field($row['primary_place_id'] ?? ''),
             'suggested_geocoding_query' => sanitize_text_field($row['primary_suggested_geocoding_query'] ?? ''),
             'formatted_address' => sanitize_text_field($row['primary_formatted_address'] ?? ''),
