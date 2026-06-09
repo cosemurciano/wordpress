@@ -1,5 +1,17 @@
 ## Unreleased
 
+
+### Geocoding massivo Link Affiliati
+
+- **Geocoding Link Affiliati in batch**: nella tab **Geocoding** è disponibile la sezione dedicata alle località collegate ai CPT `affiliate_link`, con contatori `pending`, `verified`, `ambiguous` e `failed`, batch size consigliati 5/10/20/50 e timeout massimo server-side di 30 secondi.
+- **Elaborazione visibile e interrompibile**: “Geocodifica prossimo batch” processa una singola richiesta AJAX, mentre “Geocodifica tutte le pending da Link Affiliati” esegue batch successivi lato browser; “Interrompi elaborazione” ferma il ciclo dopo il batch corrente, senza job background invisibili.
+- **Stati geocoding**: `pending` indica località da processare, `verified` indica coordinate/Place ID/formatted address salvati, `ambiguous` richiede revisione perché più risultati o bassa coerenza, `failed` indica assenza di risultati o errore non temporaneo; `retry_later` viene usato per quota/rate limit temporanei.
+- **Opzioni conservative**: di default vengono processate solo località `pending`; le checkbox “Includi ambiguous” e “Riprova failed” sono disattivate e devono essere inviate esplicitamente. Le località già `verified` non vengono sovrascritte di default.
+- **Report e log**: dopo ogni batch la UI mostra report cumulativo della sessione corrente, ultimi esempi processati, errori API e pending rimanenti. I pulsanti “Scarica report geocoding CSV” e “Scarica log geocoding JSON” esportano l’ultimo batch/sessione senza stampare JSON grezzo nella UI principale.
+- **Protezione API key**: la chiave Google Maps resta mascherata in UI, non viene salvata nei report/log di geocoding e le risposte di errore non includono URL completi con `key`. In assenza di API key non viene chiamata Google.
+- **Compatibilità staging CSV**: su installazioni aggiornate dove coesistono `row_number` legacy e `csv_row_number`, gli insert staging popolano entrambe le colonne e i report continuano a mostrare la riga CSV logica.
+- Versione plugin aggiornata a `2.41.8`.
+
 ### Fix Import GEO Link Affiliati
 
 
@@ -21,7 +33,7 @@
 - **Pausa legacy**: l’endpoint AJAX legacy di pausa restituisce un errore controllato perché il nuovo workflow manuale non ha job automatici da mettere in pausa; il pulsante pausa non è nella UI principale.
 - **Geocoding Google separato**: l’import salva/predispone località sorgente, località normalizzata, regione, paese, lat/lng, Google Place ID, formatted address, stato/confidence geocoding, ultimo geocoding ed errore, ma non chiama Google API durante i batch.
 - **Fix SQL staging job items**: la colonna fisica del numero riga CSV è `csv_row_number`, evitando incompatibilità con host MySQL/MariaDB che trattano `row_number` come nome problematico; il codice mantiene `row_number` come dato logico nei report/UI.
-- Versione plugin aggiornata a `2.41.7`.
+- Versione plugin aggiornata a `2.41.8`.
 
 ## 2.41.0 - 2026-06-06
 

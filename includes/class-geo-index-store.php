@@ -684,6 +684,49 @@ class ALMA_Geo_Index_Store {
         );
     }
 
+    public function get_locations_by_geocoding_statuses_for_object_type($statuses, $object_type, $limit = 20) {
+        global $wpdb;
+        $statuses = array_values(array_filter(array_map('sanitize_key', is_array($statuses) ? $statuses : array($statuses))));
+        $object_type = sanitize_key($object_type);
+        if (!$this->tables_exist() || empty($statuses) || $object_type === '') {
+            return array();
+        }
+        $limit = max(1, min(50, absint($limit)));
+        $placeholders = implode(',', array_fill(0, count($statuses), '%s'));
+        $params = array_merge($statuses, array($object_type, $limit));
+        return $wpdb->get_results(
+            $wpdb->prepare(
+                "SELECT l.*, COUNT(DISTINCT ci.object_id) AS affiliate_link_count
+                 FROM {$this->table_locations()} l
+                 INNER JOIN {$this->table_content_index()} ci ON ci.location_id = l.id
+                 WHERE l.geocoding_status IN ($placeholders)
+                   AND ci.object_type = %s
+                   AND ci.is_primary = 1
+                 GROUP BY l.id
+                 ORDER BY l.updated_at ASC, l.id ASC
+                 LIMIT %d",
+                $params
+            ),
+            ARRAY_A
+        );
+    }
+
+    public function count_linked_objects_for_location($location_id, $object_type = '') {
+        global $wpdb;
+        if (!$this->tables_exist()) {
+            return 0;
+        }
+        $location_id = absint($location_id);
+        $object_type = sanitize_key($object_type);
+        if (!$location_id) {
+            return 0;
+        }
+        if ($object_type !== '') {
+            return (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(DISTINCT object_id) FROM {$this->table_content_index()} WHERE location_id = %d AND object_type = %s", $location_id, $object_type));
+        }
+        return (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(DISTINCT object_id) FROM {$this->table_content_index()} WHERE location_id = %d", $location_id));
+    }
+
     public function sync_location_to_linked_objects($location_id) {
         global $wpdb;
         $report = array(
@@ -775,7 +818,7 @@ class ALMA_Geo_Index_Store {
 
     public function get_geocoding_status_counts() {
         global $wpdb;
-        $counts = array('pending' => 0, 'verified' => 0, 'ambiguous' => 0, 'manual_required' => 0, 'failed' => 0, 'not_required' => 0);
+        $counts = array('pending' => 0, 'verified' => 0, 'ambiguous' => 0, 'manual_required' => 0, 'failed' => 0, 'retry_later' => 0, 'not_required' => 0);
         if (!$this->tables_exist()) {
             return $counts;
         }
@@ -792,7 +835,7 @@ class ALMA_Geo_Index_Store {
     public function get_geocoding_status_counts_by_object_type($object_type) {
         global $wpdb;
         $object_type = sanitize_key($object_type);
-        $counts = array('pending' => 0, 'verified' => 0, 'ambiguous' => 0, 'manual_required' => 0, 'failed' => 0, 'not_required' => 0);
+        $counts = array('pending' => 0, 'verified' => 0, 'ambiguous' => 0, 'manual_required' => 0, 'failed' => 0, 'retry_later' => 0, 'not_required' => 0);
         if (!$this->tables_exist() || $object_type === '') {
             return $counts;
         }
@@ -832,7 +875,7 @@ class ALMA_Geo_Index_Store {
             return false;
         }
         $status = sanitize_key($result['status'] ?? 'failed');
-        $allowed_statuses = array('pending', 'verified', 'ambiguous', 'manual_required', 'failed', 'not_required');
+        $allowed_statuses = array('pending', 'verified', 'ambiguous', 'manual_required', 'failed', 'retry_later', 'not_required');
         if (!in_array($status, $allowed_statuses, true)) {
             $status = 'failed';
         }
@@ -875,7 +918,17 @@ class ALMA_Geo_Index_Store {
             $row['geocoding_error'] = '';
         }
 
-        return false !== $wpdb->update($this->table_locations(), $row, array('id' => $location_id), $formats, array('%d'));
+        $updated = false !== $wpdb->update($this->table_locations(), $row, array('id' => $location_id), $formats, array('%d'));
+        if ($updated && isset($result['confidence']) && $result['confidence'] !== '') {
+            $wpdb->update(
+                $this->table_content_index(),
+                array('confidence' => (float) $result['confidence'], 'updated_at' => current_time('mysql')),
+                array('location_id' => $location_id),
+                array('%f', '%s'),
+                array('%d')
+            );
+        }
+        return $updated;
     }
 
     public function sanitize_location_data($data) {
