@@ -156,13 +156,25 @@ class ALMA_Geo_Index_Job_Store {
 
     public function item_row_number_column() {
         $columns = $this->item_table_columns();
-        if (isset($columns['csv_row_number'])) {
-            return 'csv_row_number';
-        }
         if (isset($columns['row_number'])) {
             return 'row_number';
         }
+        if (isset($columns['csv_row_number'])) {
+            return 'csv_row_number';
+        }
         return 'csv_row_number';
+    }
+
+    private function item_row_number_columns() {
+        $columns = $this->item_table_columns();
+        $row_columns = array();
+        if (isset($columns['row_number'])) {
+            $row_columns[] = 'row_number';
+        }
+        if (isset($columns['csv_row_number'])) {
+            $row_columns[] = 'csv_row_number';
+        }
+        return !empty($row_columns) ? $row_columns : array('csv_row_number');
     }
 
     private function item_table_columns() {
@@ -301,7 +313,6 @@ class ALMA_Geo_Index_Job_Store {
             'job_id' => absint($job_id),
             'object_id' => $object_id ? absint($object_id) : null,
             'object_type' => sanitize_key($object_type),
-            $this->item_row_number_column() => absint($row_number),
             'status' => $status,
             'action' => sanitize_key($action),
             'message' => sanitize_textarea_field($message),
@@ -309,7 +320,14 @@ class ALMA_Geo_Index_Job_Store {
             'created_at' => current_time('mysql'),
             'processed_at' => null,
         );
-        $inserted = $wpdb->insert($this->table_items(), $data, array('%d','%d','%s','%d','%s','%s','%s','%s','%s','%s'));
+        foreach ($this->item_row_number_columns() as $row_number_column) {
+            $data[$row_number_column] = absint($row_number);
+        }
+        $formats = array('%d','%d','%s','%s','%s','%s','%s','%s');
+        foreach ($this->item_row_number_columns() as $row_number_column) {
+            $formats[] = '%d';
+        }
+        $inserted = $wpdb->insert($this->table_items(), $data, $formats);
         return $inserted ? (int) $wpdb->insert_id : 0;
     }
 

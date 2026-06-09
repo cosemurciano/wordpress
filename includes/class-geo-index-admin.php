@@ -32,6 +32,9 @@ class ALMA_Geo_Index_Admin {
         add_action('wp_ajax_alma_geo_cancel_affiliate_link_import_job', array($this, 'ajax_cancel_affiliate_import_job'));
         add_action('wp_ajax_alma_geo_pause_affiliate_link_import_job', array($this, 'ajax_pause_affiliate_import_job'));
         add_action('wp_ajax_alma_geo_resume_affiliate_link_import_job', array($this, 'ajax_resume_affiliate_import_job'));
+        add_action('wp_ajax_alma_geo_geocode_affiliate_locations_batch', array($this, 'ajax_geocode_affiliate_locations_batch'));
+        add_action('admin_post_alma_geo_download_geocoding_csv', array($this, 'download_geocoding_csv'));
+        add_action('admin_post_alma_geo_download_geocoding_json', array($this, 'download_geocoding_json'));
     }
 
     public function add_menu() {
@@ -124,7 +127,7 @@ class ALMA_Geo_Index_Admin {
                 update_option('alma_geo_google_maps_api_key', $api_key, false);
             }
             update_option('alma_geo_geocoding_batch_size', max(1, min(50, absint($_POST['alma_geo_geocoding_batch_size'] ?? 20))), false);
-            update_option('alma_geo_geocoding_timeout', max(1, min(60, absint($_POST['alma_geo_geocoding_timeout'] ?? 15))), false);
+            update_option('alma_geo_geocoding_timeout', max(1, min(30, absint($_POST['alma_geo_geocoding_timeout'] ?? 15))), false);
             update_option('alma_geo_geocoding_delay_ms', max(0, min(5000, absint($_POST['alma_geo_geocoding_delay_ms'] ?? 200))), false);
             update_option('alma_geo_geocoding_overwrite_verified', !empty($_POST['alma_geo_geocoding_overwrite_verified']) ? 'yes' : 'no', false);
             update_option('alma_geo_geocoding_country_bias', sanitize_text_field(wp_unslash($_POST['alma_geo_geocoding_country_bias'] ?? '')), false);
@@ -367,7 +370,7 @@ class ALMA_Geo_Index_Admin {
 
         $last_report = get_option(ALMA_Geo_Index_Geocoder::LAST_REPORT_OPTION, array());
         if (!empty($last_report)) {
-            echo '<div class="postbox"><div class="inside"><h3>' . esc_html__('Ultimo report geocoding', 'affiliate-link-manager-ai') . '</h3><pre style="white-space:pre-wrap">' . esc_html(wp_json_encode($last_report, JSON_PRETTY_PRINT)) . '</pre></div></div>';
+            echo '<div class="postbox"><div class="inside"><h3>' . esc_html__('Ultimo batch geocoding', 'affiliate-link-manager-ai') . '</h3><p>' . esc_html(sprintf(__('Processate: %1$d, verified: %2$d, ambiguous: %3$d, failed: %4$d, retry later: %5$d, pending rimanenti: %6$d.', 'affiliate-link-manager-ai'), (int) ($last_report['processed'] ?? 0), (int) ($last_report['verified'] ?? 0), (int) ($last_report['ambiguous'] ?? 0), (int) ($last_report['failed'] ?? 0), (int) ($last_report['retry_later'] ?? 0), (int) ($last_report['remaining_pending'] ?? 0))) . '</p></div></div>';
         }
         $last_sync_report = get_option('alma_geo_geocoding_last_sync_report', array());
         if (!empty($last_sync_report)) {
@@ -382,7 +385,7 @@ class ALMA_Geo_Index_Admin {
                 <tr><th><label><?php esc_html_e('Provider geocoding', 'affiliate-link-manager-ai'); ?></label></th><td><select name="alma_geo_geocoding_provider"><option value="google">Google Maps</option></select></td></tr>
                 <tr><th><label for="alma_geo_google_maps_api_key"><?php esc_html_e('API key Google Maps', 'affiliate-link-manager-ai'); ?></label></th><td><input type="password" id="alma_geo_google_maps_api_key" name="alma_geo_google_maps_api_key" value="" class="regular-text" autocomplete="off"><p class="description"><?php echo esc_html($masked_key); ?>. <?php esc_html_e('Lascia vuoto per mantenere la chiave esistente.', 'affiliate-link-manager-ai'); ?></p></td></tr>
                 <tr><th><label for="alma_geo_geocoding_batch_size"><?php esc_html_e('Batch size', 'affiliate-link-manager-ai'); ?></label></th><td><input type="number" min="1" max="50" id="alma_geo_geocoding_batch_size" name="alma_geo_geocoding_batch_size" value="<?php echo esc_attr((string) $settings['batch_size']); ?>"></td></tr>
-                <tr><th><label for="alma_geo_geocoding_timeout"><?php esc_html_e('Timeout richiesta', 'affiliate-link-manager-ai'); ?></label></th><td><input type="number" min="1" max="60" id="alma_geo_geocoding_timeout" name="alma_geo_geocoding_timeout" value="<?php echo esc_attr((string) $settings['timeout']); ?>"></td></tr>
+                <tr><th><label for="alma_geo_geocoding_timeout"><?php esc_html_e('Timeout richiesta', 'affiliate-link-manager-ai'); ?></label></th><td><input type="number" min="1" max="30" id="alma_geo_geocoding_timeout" name="alma_geo_geocoding_timeout" value="<?php echo esc_attr((string) $settings['timeout']); ?>"></td></tr>
                 <tr><th><label for="alma_geo_geocoding_delay_ms"><?php esc_html_e('Pausa tra richieste (ms)', 'affiliate-link-manager-ai'); ?></label></th><td><input type="number" min="0" max="5000" id="alma_geo_geocoding_delay_ms" name="alma_geo_geocoding_delay_ms" value="<?php echo esc_attr((string) $settings['delay_ms']); ?>"></td></tr>
                 <tr><th><label for="alma_geo_geocoding_country_bias"><?php esc_html_e('Country bias opzionale', 'affiliate-link-manager-ai'); ?></label></th><td><input type="text" id="alma_geo_geocoding_country_bias" name="alma_geo_geocoding_country_bias" value="<?php echo esc_attr($settings['country_bias']); ?>" class="small-text" maxlength="10"></td></tr>
                 <tr><th><?php esc_html_e('Sovrascrittura', 'affiliate-link-manager-ai'); ?></th><td><label><input type="checkbox" name="alma_geo_geocoding_overwrite_verified" value="1" <?php checked($settings['overwrite_verified'], 'yes'); ?>> <?php esc_html_e('Permetti sovrascrittura località già verified', 'affiliate-link-manager-ai'); ?></label></td></tr>
@@ -396,8 +399,82 @@ class ALMA_Geo_Index_Admin {
             <?php $this->render_geocoding_button('sync_verified_locations', __('Risincronizza geocoding nei contenuti', 'affiliate-link-manager-ai')); ?>
         </div>
         <?php
+        $this->render_affiliate_geocoding_bulk_section($affiliate_counts, $settings);
         echo '<h3 id="alma-geo-pending-locations">' . esc_html__('Località pending/recenti', 'affiliate-link-manager-ai') . '</h3>';
         $this->render_locations_table($this->store->get_locations(50), false);
+    }
+
+
+    private function render_affiliate_geocoding_bulk_section($affiliate_counts, $settings) {
+        $nonce = wp_create_nonce('alma_geo_affiliate_geocoding');
+        $csv_url = wp_nonce_url(admin_url('admin-post.php?action=alma_geo_download_geocoding_csv'), 'alma_geo_download_geocoding_report');
+        $json_url = wp_nonce_url(admin_url('admin-post.php?action=alma_geo_download_geocoding_json'), 'alma_geo_download_geocoding_report');
+        ?>
+        <div class="postbox" id="alma-geo-affiliate-geocoding"><div class="inside">
+            <h3><?php esc_html_e('Geocoding Link Affiliati', 'affiliate-link-manager-ai'); ?></h3>
+            <p><?php esc_html_e('Processa le località primarie dei Link Affiliati in batch AJAX visibili e interrompibili. Le località già verified non vengono riprocessate.', 'affiliate-link-manager-ai'); ?></p>
+            <table class="widefat striped"><tbody>
+                <tr><th><?php esc_html_e('Pending da Link Affiliati', 'affiliate-link-manager-ai'); ?></th><td data-alma-affiliate-pending><?php echo esc_html((string) ($affiliate_counts['pending'] ?? 0)); ?></td></tr>
+                <tr><th><?php esc_html_e('Verified', 'affiliate-link-manager-ai'); ?></th><td><?php echo esc_html((string) ($affiliate_counts['verified'] ?? 0)); ?></td></tr>
+                <tr><th><?php esc_html_e('Ambiguous', 'affiliate-link-manager-ai'); ?></th><td><?php echo esc_html((string) ($affiliate_counts['ambiguous'] ?? 0)); ?></td></tr>
+                <tr><th><?php esc_html_e('Failed', 'affiliate-link-manager-ai'); ?></th><td><?php echo esc_html((string) ($affiliate_counts['failed'] ?? 0)); ?></td></tr>
+                <tr><th><?php esc_html_e('Batch size', 'affiliate-link-manager-ai'); ?></th><td><select id="alma-geo-affiliate-batch-size"><option value="5">5</option><option value="10">10</option><option value="20" selected>20</option><option value="50">50</option></select></td></tr>
+                <tr><th><?php esc_html_e('Timeout', 'affiliate-link-manager-ai'); ?></th><td><input type="number" min="1" max="30" id="alma-geo-affiliate-timeout" value="<?php echo esc_attr((string) ($settings['timeout'] ?? 15)); ?>"> <?php esc_html_e('secondi', 'affiliate-link-manager-ai'); ?></td></tr>
+                <tr><th><?php esc_html_e('Opzioni', 'affiliate-link-manager-ai'); ?></th><td><label><input type="checkbox" id="alma-geo-include-ambiguous" value="1"> <?php esc_html_e('Includi ambiguous', 'affiliate-link-manager-ai'); ?></label><br><label><input type="checkbox" id="alma-geo-retry-failed" value="1"> <?php esc_html_e('Riprova failed', 'affiliate-link-manager-ai'); ?></label></td></tr>
+            </tbody></table>
+            <p>
+                <button type="button" class="button" id="alma-geo-next-affiliate-batch"><?php esc_html_e('Geocodifica prossimo batch', 'affiliate-link-manager-ai'); ?></button>
+                <button type="button" class="button button-primary" id="alma-geo-all-affiliate-batches"><?php esc_html_e('Geocodifica tutte le pending da Link Affiliati', 'affiliate-link-manager-ai'); ?></button>
+                <button type="button" class="button" id="alma-geo-stop-affiliate-batches" disabled><?php esc_html_e('Interrompi elaborazione', 'affiliate-link-manager-ai'); ?></button>
+                <a class="button" href="<?php echo esc_url($csv_url); ?>"><?php esc_html_e('Scarica report geocoding CSV', 'affiliate-link-manager-ai'); ?></a>
+                <a class="button" href="<?php echo esc_url($json_url); ?>"><?php esc_html_e('Scarica log geocoding JSON', 'affiliate-link-manager-ai'); ?></a>
+            </p>
+            <div style="height:18px;background:#f0f0f1;border:1px solid #c3c4c7;max-width:520px;"><div id="alma-geo-affiliate-progress" style="height:18px;background:#2271b1;width:0%;"></div></div>
+            <p id="alma-geo-affiliate-status"><?php esc_html_e('Pronto.', 'affiliate-link-manager-ai'); ?></p>
+            <div id="alma-geo-affiliate-errors" class="notice notice-error inline" style="display:none;"><p></p></div>
+            <h4><?php esc_html_e('Report cumulativo sessione corrente', 'affiliate-link-manager-ai'); ?></h4>
+            <ul id="alma-geo-affiliate-session-report"><li><?php esc_html_e('Nessun batch eseguito in questa sessione.', 'affiliate-link-manager-ai'); ?></li></ul>
+            <h4><?php esc_html_e('Esempi ultimi record processati', 'affiliate-link-manager-ai'); ?></h4>
+            <table class="widefat striped"><thead><tr><th>ID</th><th><?php esc_html_e('Località', 'affiliate-link-manager-ai'); ?></th><th><?php esc_html_e('Query', 'affiliate-link-manager-ai'); ?></th><th><?php esc_html_e('Stato', 'affiliate-link-manager-ai'); ?></th><th>Lat/Lng</th><th>Place ID</th><th><?php esc_html_e('Messaggio', 'affiliate-link-manager-ai'); ?></th></tr></thead><tbody id="alma-geo-affiliate-examples"><tr><td colspan="7"><?php esc_html_e('Nessun dato.', 'affiliate-link-manager-ai'); ?></td></tr></tbody></table>
+        </div></div>
+        <script>
+        (function(){
+            var ajaxUrl = <?php echo wp_json_encode(admin_url('admin-ajax.php')); ?>;
+            var nonce = <?php echo wp_json_encode($nonce); ?>;
+            var runningAll = false;
+            var stopRequested = false;
+            var sessionId = String(Date.now()) + '-' + String(Math.random()).slice(2);
+            var totals = {processed:0, verified:0, ambiguous:0, failed:0, skipped:0, retry_later:0, api_errors:0};
+            var initialPending = parseInt(document.querySelector('[data-alma-affiliate-pending]').textContent, 10) || 0;
+            function el(id){ return document.getElementById(id); }
+            function setStatus(text){ el('alma-geo-affiliate-status').textContent = text; }
+            function setButtons(running){ el('alma-geo-next-affiliate-batch').disabled = running; el('alma-geo-all-affiliate-batches').disabled = running; el('alma-geo-stop-affiliate-batches').disabled = !running; }
+            function updateReport(data){
+                totals.processed += data.processed || 0; totals.verified += data.verified || 0; totals.ambiguous += data.ambiguous || 0; totals.failed += data.failed || 0; totals.skipped += data.skipped || 0; totals.retry_later += data.retry_later || 0; totals.api_errors += (data.api_errors || []).length;
+                el('alma-geo-affiliate-session-report').innerHTML = '<li>Processate: '+totals.processed+'</li><li>Verified: '+totals.verified+'</li><li>Ambiguous: '+totals.ambiguous+'</li><li>Failed: '+totals.failed+'</li><li>Skipped: '+totals.skipped+'</li><li>Retry later: '+totals.retry_later+'</li><li>Errori API: '+totals.api_errors+'</li><li>Pending rimanenti: '+(data.remaining_pending || 0)+'</li>';
+                var pendingCell = document.querySelector('[data-alma-affiliate-pending]'); if (pendingCell) { pendingCell.textContent = data.remaining_pending || 0; }
+                var done = initialPending > 0 ? Math.max(0, initialPending - (data.remaining_pending || 0)) : totals.processed;
+                var pct = initialPending > 0 ? Math.min(100, Math.round(done / initialPending * 100)) : 0; el('alma-geo-affiliate-progress').style.width = pct + '%';
+                if ((data.api_errors || []).length) { el('alma-geo-affiliate-errors').style.display='block'; el('alma-geo-affiliate-errors').querySelector('p').textContent = (data.api_errors || []).join(' | '); }
+                var rows = data.examples || []; var html = '';
+                rows.forEach(function(row){ html += '<tr><td>'+esc(row.location_id)+'</td><td>'+esc(row.name || row.canonical_name || '')+'</td><td>'+esc(row.query || '')+'</td><td>'+esc(row.new_status || '')+'</td><td>'+esc(((row.lat || '') && (row.lng || '')) ? (row.lat+', '+row.lng) : '')+'</td><td>'+esc(row.place_id || '')+'</td><td>'+esc(row.message || '')+'</td></tr>'; });
+                el('alma-geo-affiliate-examples').innerHTML = html || '<tr><td colspan="7">Nessun dato.</td></tr>';
+            }
+            function esc(v){ return String(v == null ? '' : v).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]; }); }
+            function requestBatch(){
+                var body = new URLSearchParams(); body.set('action','alma_geo_geocode_affiliate_locations_batch'); body.set('nonce', nonce); body.set('source_filter','affiliate_links'); body.set('batch_size', el('alma-geo-affiliate-batch-size').value); body.set('timeout', el('alma-geo-affiliate-timeout').value); body.set('include_ambiguous', el('alma-geo-include-ambiguous').checked ? '1' : '0'); body.set('retry_failed', el('alma-geo-retry-failed').checked ? '1' : '0'); body.set('session_id', sessionId);
+                return fetch(ajaxUrl,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:body.toString()}).then(function(r){ return r.json(); }).then(function(resp){ if(!resp || !resp.success){ throw new Error((resp && resp.data && resp.data.message) ? resp.data.message : 'Errore AJAX geocoding.'); } return resp.data; });
+            }
+            function runOne(continueAll){
+                setButtons(true); setStatus('Batch in corso...');
+                requestBatch().then(function(data){ updateReport(data); if (data.rate_limit_detected) { runningAll=false; stopRequested=true; setStatus('Elaborazione fermata: quota/rate limit Google rilevato.'); setButtons(false); return; } if (continueAll && !stopRequested && (data.remaining_pending || 0) > 0 && (data.processed || 0) > 0) { setStatus('Batch completato, avvio il successivo...'); window.setTimeout(function(){ runOne(true); }, 500); } else { runningAll=false; setButtons(false); setStatus(stopRequested ? 'Elaborazione interrotta dopo il batch corrente.' : 'Elaborazione completata o nessuna pending rimasta.'); } }).catch(function(err){ runningAll=false; setButtons(false); el('alma-geo-affiliate-errors').style.display='block'; el('alma-geo-affiliate-errors').querySelector('p').textContent=err.message; setStatus('Errore. Elaborazione fermata.'); });
+            }
+            el('alma-geo-next-affiliate-batch').addEventListener('click', function(){ stopRequested=false; runOne(false); });
+            el('alma-geo-all-affiliate-batches').addEventListener('click', function(){ stopRequested=false; runningAll=true; runOne(true); });
+            el('alma-geo-stop-affiliate-batches').addEventListener('click', function(){ stopRequested=true; runningAll=false; setStatus('Interruzione richiesta: il batch corrente terminerà, poi il processo si fermerà.'); });
+        }());
+        </script>
+        <?php
     }
 
     private function render_geocoding_button($action, $label, $location_id = 0) {
@@ -655,6 +732,102 @@ class ALMA_Geo_Index_Admin {
             return __('Rivedi final_bucket/safe_for_auto_import o disattiva safe_only con cautela.', 'affiliate-link-manager-ai');
         }
         return __('Rivedi il record CSV e riprova se necessario.', 'affiliate-link-manager-ai');
+    }
+
+
+    public function ajax_geocode_affiliate_locations_batch() {
+        if (check_ajax_referer('alma_geo_affiliate_geocoding', 'nonce', false) === false) {
+            wp_send_json_error(array('message' => __('Nonce non valido.', 'affiliate-link-manager-ai')), 403);
+        }
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(array('message' => __('Permessi insufficienti.', 'affiliate-link-manager-ai')), 403);
+        }
+        $source_filter = sanitize_key(wp_unslash($_POST['source_filter'] ?? 'affiliate_links'));
+        if ($source_filter !== 'affiliate_links') {
+            wp_send_json_error(array('message' => __('Filtro sorgente non supportato.', 'affiliate-link-manager-ai')), 400);
+        }
+        $session_id = sanitize_key(wp_unslash($_POST['session_id'] ?? ''));
+        $report = $this->geocoder->geocode_affiliate_locations_batch(array(
+            'batch_size' => max(1, min(50, absint(wp_unslash($_POST['batch_size'] ?? 20)))),
+            'timeout' => max(1, min(30, absint(wp_unslash($_POST['timeout'] ?? 15)))),
+            'include_ambiguous' => !empty($_POST['include_ambiguous']) && sanitize_key(wp_unslash($_POST['include_ambiguous'])) === '1',
+            'retry_failed' => !empty($_POST['retry_failed']) && sanitize_key(wp_unslash($_POST['retry_failed'])) === '1',
+        ));
+        $this->store_cumulative_geocoding_report($report, $session_id);
+        wp_send_json_success($report);
+    }
+
+
+    private function store_cumulative_geocoding_report($report, $session_id) {
+        $report = is_array($report) ? $report : array();
+        $session_id = sanitize_key($session_id ?: 'default');
+        $current = get_user_meta(get_current_user_id(), 'alma_geo_affiliate_geocoding_last_report', true);
+        if (empty($current) || !is_array($current) || sanitize_key($current['session_id'] ?? '') !== $session_id) {
+            $current = array_merge($report, array(
+                'session_id' => $session_id,
+                'processed' => 0,
+                'verified' => 0,
+                'ambiguous' => 0,
+                'failed' => 0,
+                'skipped' => 0,
+                'retry_later' => 0,
+                'api_errors' => array(),
+                'rows' => array(),
+                'examples' => array(),
+            ));
+        }
+        foreach (array('processed','verified','ambiguous','failed','skipped','retry_later') as $metric) {
+            $current[$metric] = (int) ($current[$metric] ?? 0) + (int) ($report[$metric] ?? 0);
+        }
+        $current['date'] = current_time('mysql');
+        $current['remaining_pending'] = (int) ($report['remaining_pending'] ?? ($current['remaining_pending'] ?? 0));
+        $current['rate_limit_detected'] = !empty($current['rate_limit_detected']) || !empty($report['rate_limit_detected']);
+        $current['api_errors'] = array_values(array_unique(array_merge((array) ($current['api_errors'] ?? array()), (array) ($report['api_errors'] ?? array()))));
+        $current['rows'] = array_merge((array) ($current['rows'] ?? array()), (array) ($report['rows'] ?? array()));
+        $current['examples'] = array_slice(array_merge((array) ($current['examples'] ?? array()), (array) ($report['examples'] ?? array())), -5);
+        $current['session_id'] = $session_id;
+        update_user_meta(get_current_user_id(), 'alma_geo_affiliate_geocoding_last_report', $current);
+    }
+
+    public function download_geocoding_csv() {
+        $this->verify_geocoding_download_request();
+        $report = $this->current_geocoding_download_report();
+        nocache_headers();
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename="alma-affiliate-geocoding-report.csv"');
+        $out = fopen('php://output', 'w');
+        fputcsv($out, array('ID località','nome località','canonical name','query usata','status precedente','status nuovo','lat','lng','place_id','formatted address','confidence','errore/messaggio','numero Link Affiliati collegati'));
+        foreach ((array) ($report['rows'] ?? array()) as $row) {
+            fputcsv($out, array((int) ($row['location_id'] ?? 0), (string) ($row['name'] ?? ''), (string) ($row['canonical_name'] ?? ''), (string) ($row['query'] ?? ''), (string) ($row['previous_status'] ?? ''), (string) ($row['new_status'] ?? ''), (string) ($row['lat'] ?? ''), (string) ($row['lng'] ?? ''), (string) ($row['place_id'] ?? ''), (string) ($row['formatted_address'] ?? ''), (string) ($row['confidence'] ?? ''), (string) ($row['message'] ?? ''), (int) ($row['affiliate_link_count'] ?? 0)));
+        }
+        fclose($out);
+        exit;
+    }
+
+    public function download_geocoding_json() {
+        $this->verify_geocoding_download_request();
+        $report = $this->current_geocoding_download_report();
+        unset($report['api_key'], $report['google_maps_api_key']);
+        nocache_headers();
+        header('Content-Type: application/json; charset=utf-8');
+        header('Content-Disposition: attachment; filename="alma-affiliate-geocoding-log.json"');
+        echo wp_json_encode($report, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    private function verify_geocoding_download_request() {
+        if (!current_user_can('manage_options')) {
+            wp_die(esc_html__('Permessi insufficienti.', 'affiliate-link-manager-ai'));
+        }
+        check_admin_referer('alma_geo_download_geocoding_report');
+    }
+
+    private function current_geocoding_download_report() {
+        $report = get_user_meta(get_current_user_id(), 'alma_geo_affiliate_geocoding_last_report', true);
+        if (empty($report) || !is_array($report)) {
+            $report = get_option(ALMA_Geo_Index_Geocoder::LAST_REPORT_OPTION, array());
+        }
+        return is_array($report) ? $report : array();
     }
 
     public function ajax_affiliate_import_status() {

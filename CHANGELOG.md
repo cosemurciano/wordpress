@@ -1,3 +1,13 @@
+## 2.41.8 - 2026-06-08
+
+- Aggiunto geocoding massivo delle località da Link Affiliati nella tab Geocoding, con sezione dedicata, progress bar, report cumulativo sessione corrente ed elaborazione interrompibile.
+- Aggiunto processing batch controllato via AJAX admin-only con nonce, filtro `affiliate_links`, batch size massimo 50, timeout massimo 30 secondi, opzioni esplicite “Includi ambiguous” e “Riprova failed”.
+- Aggiunti download protetti del report geocoding CSV e del log geocoding JSON, senza esporre la Google Maps API key.
+- Aggiunto stop del ciclo massivo su quota/rate limit Google (`OVER_QUERY_LIMIT`, `REQUEST_DENIED`, HTTP 429), evitando retry immediati infiniti.
+- Fix schema ibrido `row_number`/`csv_row_number`: gli insert staging popolano entrambe le colonne quando coesistono, mantenendo la riga CSV logica nei report/UI.
+- Migliorata l’associazione delle località geocodificate ai Link Affiliati sincronizzando coordinate, provider, Place ID e formatted address sui meta GEO dei CPT collegati.
+- Versione plugin aggiornata a `2.41.8`.
+
 ## 2.41.7 - 2026-06-07
 
 ### Fix GEO job items table SQL schema
