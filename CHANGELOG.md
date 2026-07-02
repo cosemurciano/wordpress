@@ -7,6 +7,11 @@
 - Auto-indicizzazione deterministica dei nuovi Link Affiliati importati e degli articoli pubblicati al salvataggio (elaborata a shutdown, dopo la scrittura dei meta provider).
 - Colonna "Geo" e filtro "senza località / con località / in revisione" nelle liste admin di articoli e Link Affiliati.
 
+### Widget Link Contestuale — fix matching geografico (matcher v3)
+- Fix del caso "stessa città, metadati diversi": un articolo su Copenaghen (località geocodificata con paese DK) e link su Copenaghen importati senza country code non facevano match e subivano perfino la penalità "località diverse", tenendo il widget sotto soglia. Ora le città si confrontano per nome con paesi "compatibili" (paese sconosciuto = jolly) e la penalità -15 scatta solo quando entrambe le parti dichiarano paesi noti e disgiunti.
+- I candidati geografici vengono trovati anche quando la stessa città esiste come righe località diverse (import differenti): il join confronta anche city/canonical_name, non solo il location_id.
+- Fix invalidazione cache: le associazioni geografiche scritte da import GEO, auto-indexer e metabox ora invalidano la cache del widget (meta `_alma_geo_updated_at` nell'hash per gli articoli, bump globale per i Link Affiliati); prima il widget poteva servire per giorni risultati calcolati prima dell'associazione.
+
 ### Widget Link Contestuale — matching contestuale reale
 - Il Geo Index è ora il segnale dominante del matching: località condivise tra articolo e Link Affiliato valgono fino a 45 punti (città/località), 20 (regione), 10 (paese), con penalità per località esplicitamente diverse; senza dati geo il segnale è neutro e vale il matching testuale.
 - I candidati sono selezionati per pertinenza (località condivise + keyword via indice affiliati AI + recenti come riempimento) invece dei soli ultimi 200 link per data.

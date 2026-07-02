@@ -18,7 +18,7 @@ class ALMA_Contextual_Affiliate_Matcher {
     const MAX_POOL_SIZE = 300;
     // Inclusa nell'hash della cache del widget: cambiarla invalida i risultati
     // calcolati con versioni precedenti dell'algoritmo.
-    const MATCHER_VERSION = 2;
+    const MATCHER_VERSION = 3;
 
     private $settings;
     private $geo_store = null;
@@ -183,23 +183,47 @@ class ALMA_Contextual_Affiliate_Matcher {
             return array();
         }
         $location_ids = array();
+        $location_names = array();
         foreach ($post_locations as $location) {
+            $location = (array) $location;
             $location_id = absint($location['location_id'] ?? 0);
             if ($location_id > 0) {
                 $location_ids[] = $location_id;
             }
+            foreach (array('city', 'canonical_name', 'name') as $field) {
+                $name = trim((string) ($location[$field] ?? ''));
+                if ($name !== '' && mb_strlen($name) >= 3) {
+                    $location_names[] = $name;
+                }
+            }
         }
         $location_ids = array_values(array_unique($location_ids));
-        if (empty($location_ids)) {
+        $location_names = array_slice(array_values(array_unique($location_names)), 0, 10);
+        if (empty($location_ids) && empty($location_names)) {
             return array();
         }
 
         global $wpdb;
         $store = $this->get_geo_store();
-        $placeholders = implode(',', array_fill(0, count($location_ids), '%d'));
-        $params = array_merge(array(ALMA_Geo_Index_Store::OBJECT_TYPE_AFFILIATE_LINK), $location_ids, array(max(1, absint($limit))));
+        $conditions = array();
+        $params = array(ALMA_Geo_Index_Store::OBJECT_TYPE_AFFILIATE_LINK);
+        if (!empty($location_ids)) {
+            $conditions[] = 'ci.location_id IN (' . implode(',', array_fill(0, count($location_ids), '%d')) . ')';
+            $params = array_merge($params, $location_ids);
+        }
+        if (!empty($location_names)) {
+            // Stesse città salvate come righe località diverse (import differenti,
+            // es. "Copenaghen" da CSV e da geocoding): match anche per nome.
+            $name_placeholders = implode(',', array_fill(0, count($location_names), '%s'));
+            $conditions[] = "l.city IN ($name_placeholders)";
+            $conditions[] = "l.canonical_name IN ($name_placeholders)";
+            $params = array_merge($params, $location_names, $location_names);
+        }
+        $params[] = max(1, absint($limit));
         $ids = $wpdb->get_col($wpdb->prepare(
-            "SELECT DISTINCT object_id FROM {$store->table_content_index()} WHERE object_type = %s AND location_id IN ($placeholders) LIMIT %d",
+            "SELECT DISTINCT ci.object_id FROM {$store->table_content_index()} ci
+             LEFT JOIN {$store->table_locations()} l ON l.id = ci.location_id
+             WHERE ci.object_type = %s AND (" . implode(' OR ', $conditions) . ') LIMIT %d',
             $params
         ));
         return array_map('absint', (array) $ids);
@@ -318,8 +342,11 @@ class ALMA_Contextual_Affiliate_Matcher {
      * Confronta le località dell'articolo con quelle del link.
      * Ritorna il punteggio migliore trovato (non additivo):
      * stessa località/città 40 (+5 se primaria per entrambi), stessa regione 20,
-     * stesso paese 10, nessuna sovrapposizione con dati presenti da entrambe
-     * le parti -15.
+     * stesso paese 10. La penalità -15 scatta SOLO quando entrambe le parti
+     * dichiarano paesi (non vuoti) e questi sono del tutto disgiunti: metadati
+     * incompleti (es. country_code mancante su un lato) non devono mai punire
+     * un match altrimenti valido — era il caso "Copenaghen (DK)" vs
+     * "Copenaghen (country vuoto)" che azzerava il segnale geografico.
      */
     private function geo_score($post_locations, $link_locations) {
         if (empty($post_locations) || empty($link_locations)) {
@@ -329,33 +356,68 @@ class ALMA_Contextual_Affiliate_Matcher {
         $post_index = $this->build_location_index($post_locations);
         $link_index = $this->build_location_index($link_locations);
 
-        if (!empty(array_intersect($post_index['location_ids'], $link_index['location_ids']))
-            || !empty(array_intersect($post_index['cities'], $link_index['cities']))) {
-            $primary_match = !empty(array_intersect($post_index['primary_cities'], $link_index['primary_cities']))
-                || !empty(array_intersect($post_index['primary_location_ids'], $link_index['primary_location_ids']));
+        if (!empty(array_intersect($post_index['location_ids'], $link_index['location_ids']))) {
+            $primary_match = !empty(array_intersect($post_index['primary_location_ids'], $link_index['primary_location_ids']));
             return $primary_match ? 45 : 40;
         }
 
-        if (!empty(array_intersect($post_index['regions'], $link_index['regions']))) {
-            return 20;
+        // Match per nome città: i paesi devono essere "compatibili" (uguali,
+        // oppure sconosciuti da almeno una parte), non necessariamente identici.
+        $city_match = false;
+        $city_primary_match = false;
+        foreach ($post_index['cities'] as $name => $post_entry) {
+            if (!isset($link_index['cities'][$name])) {
+                continue;
+            }
+            $link_entry = $link_index['cities'][$name];
+            if (!$this->countries_compatible($post_entry['countries'], $link_entry['countries'])) {
+                continue;
+            }
+            $city_match = true;
+            if ($post_entry['primary'] && $link_entry['primary']) {
+                $city_primary_match = true;
+                break;
+            }
+        }
+        if ($city_match) {
+            return $city_primary_match ? 45 : 40;
+        }
+
+        foreach ($post_index['regions'] as $name => $post_countries) {
+            if (isset($link_index['regions'][$name]) && $this->countries_compatible($post_countries, $link_index['regions'][$name])) {
+                return 20;
+            }
         }
 
         if (!empty(array_intersect($post_index['countries'], $link_index['countries']))) {
             return 10;
         }
 
-        // Entrambe le parti dichiarano località ma senza alcun punto in comune:
-        // è un segnale esplicito di non pertinenza geografica.
-        return -15;
+        // Penalità solo per disaccordo esplicito: entrambe le parti dichiarano
+        // paesi noti e non hanno nulla in comune.
+        if (!empty($post_index['countries']) && !empty($link_index['countries'])) {
+            return -15;
+        }
+        return 0;
+    }
+
+    /**
+     * Due insiemi di country code sono compatibili se almeno uno è vuoto
+     * (paese sconosciuto = jolly) o se hanno un codice in comune.
+     */
+    private function countries_compatible($left, $right) {
+        if (empty($left) || empty($right)) {
+            return true;
+        }
+        return !empty(array_intersect($left, $right));
     }
 
     private function build_location_index($locations) {
         $index = array(
             'location_ids' => array(),
             'primary_location_ids' => array(),
-            'cities' => array(),
-            'primary_cities' => array(),
-            'regions' => array(),
+            'cities' => array(),   // nome normalizzato => array('countries' => [], 'primary' => bool)
+            'regions' => array(),  // nome normalizzato => array di country code
             'countries' => array(),
         );
         foreach ((array) $locations as $location) {
@@ -377,21 +439,36 @@ class ALMA_Contextual_Affiliate_Matcher {
                 }
             }
             if ($city !== '') {
-                $city_key = $city . '|' . $country;
-                $index['cities'][] = $city_key;
+                if (!isset($index['cities'][$city])) {
+                    $index['cities'][$city] = array('countries' => array(), 'primary' => false);
+                }
+                if ($country !== '') {
+                    $index['cities'][$city]['countries'][] = $country;
+                }
                 if ($is_primary) {
-                    $index['primary_cities'][] = $city_key;
+                    $index['cities'][$city]['primary'] = true;
                 }
             }
             if ($region !== '') {
-                $index['regions'][] = $region . '|' . $country;
+                if (!isset($index['regions'][$region])) {
+                    $index['regions'][$region] = array();
+                }
+                if ($country !== '') {
+                    $index['regions'][$region][] = $country;
+                }
             }
             if ($country !== '') {
                 $index['countries'][] = $country;
             }
         }
-        foreach ($index as $key => $values) {
-            $index[$key] = array_values(array_unique($values));
+        $index['location_ids'] = array_values(array_unique($index['location_ids']));
+        $index['primary_location_ids'] = array_values(array_unique($index['primary_location_ids']));
+        $index['countries'] = array_values(array_unique($index['countries']));
+        foreach ($index['cities'] as $name => $entry) {
+            $index['cities'][$name]['countries'] = array_values(array_unique($entry['countries']));
+        }
+        foreach ($index['regions'] as $name => $countries) {
+            $index['regions'][$name] = array_values(array_unique($countries));
         }
         return $index;
     }

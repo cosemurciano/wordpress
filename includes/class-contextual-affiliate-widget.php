@@ -216,6 +216,10 @@ class ALMA_Contextual_Affiliate_Widget extends WP_Widget {
         // al suo salvataggio, senza azzerare la cache di tutto il sito.
         $hash_settings['matcher_version'] = ALMA_Contextual_Affiliate_Matcher::MATCHER_VERSION;
         $hash_settings['post_modified'] = (string) $post->post_modified_gmt;
+        // Le associazioni geografiche (import GEO, auto-indexer, metabox) scrivono
+        // _alma_geo_updated_at senza toccare post_modified: va incluso nell'hash,
+        // altrimenti il widget serve risultati calcolati prima dell'associazione.
+        $hash_settings['geo_updated'] = (string) get_post_meta($post->ID, '_alma_geo_updated_at', true);
         $hash = md5(wp_json_encode($hash_settings));
         $cache_key = 'alma_contextual_widget_' . absint($post->ID) . '_' . $hash;
         $cached = get_transient($cache_key);

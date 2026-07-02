@@ -430,6 +430,14 @@ class ALMA_Geo_Index_Store {
         foreach ($meta as $key => $value) {
             update_post_meta($object_id, $key, $value);
         }
+
+        // Le località di un Link Affiliato influenzano il matching del Widget
+        // Contestuale su tutte le pagine: la cache globale va invalidata anche
+        // quando l'associazione arriva da import/auto-indexer (nessun save_post).
+        if ($object_type === self::OBJECT_TYPE_AFFILIATE_LINK && class_exists('ALMA_Contextual_Affiliate_Widget')) {
+            ALMA_Contextual_Affiliate_Widget::bump_cache_version();
+        }
+
         return array('location_id' => $primary_location_id, 'content_index_id' => $primary_content_index_id, 'locations' => $updated_locations, 'meta' => $meta);
     }
 

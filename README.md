@@ -10,6 +10,12 @@
 - **Colonna e filtro "Geo"**: le liste admin di articoli e Link Affiliati mostrano la località primaria (o "In revisione") con filtro "senza località / con località / in revisione".
 - Le località nuove create dall'indicizzazione automatica entrano in stato `pending` geocoding e si processano con il batch Google esistente; l'uso AI è tracciato nel log usage con costo stimato reale.
 
+### Widget Link Contestuale — fix matching geografico (matcher v3)
+
+- **Città uguale, metadati diversi ora fanno match**: un articolo su Copenaghen (località geocodificata, paese DK) e link su Copenaghen importati senza country code non superavano la soglia — il confronto per `nome|paese` falliva e scattava perfino la penalità "località diverse". Ora le città si confrontano per nome con paesi compatibili (paese mancante = jolly) e la penalità vale solo per disaccordo esplicito tra paesi noti.
+- **Candidati anche tra righe località duplicate**: la stessa città creata da import diversi (righe distinte in `alma_geo_locations`) viene riconosciuta confrontando anche city/canonical name, non solo l'ID località.
+- **Cache invalidata dalle associazioni geografiche**: associare località a un articolo o a un Link Affiliato (metabox, import GEO, auto-indexer) ora invalida subito la cache del widget; prima i risultati pre-associazione restavano serviti fino a scadenza TTL (anche 7 giorni).
+
 ### Widget Link Contestuale — matching realmente contestuale alla pagina
 
 - **Geo Index come segnale dominante**: il widget ora confronta le località associate all'articolo (metabox Geolocalizzazione contenuto / import GEO) con quelle dei Link Affiliati. Stessa città o località: fino a 45 punti; stessa regione: 20; stesso paese: 10; località esplicitamente diverse: penalità. Senza dati geografici da una delle due parti il segnale è neutro e vale il matching testuale (retrocompatibile).
