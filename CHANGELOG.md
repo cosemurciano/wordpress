@@ -1,3 +1,12 @@
+## 2.45.0 - 2026-07-02
+
+### Geolocalizzazione completa dei link importati (Viator API e CSV)
+- **Risoluzione destinazioni Viator**: i prodotti Viator espongono solo ref numerici di destinazione (es. `684`); il nuovo resolver scarica una volta il catalogo `/destinations` (cachato 30 giorni in option), risale l'albero città→regione→paese e salva sul link i meta `_alma_destination`, `_alma_viator_destination_name/region/country`. I link importati da Viator API vengono così geolocalizzati e geocodificati automaticamente come quelli GYG.
+- **Fallback per i link Viator già importati**: durante l'indicizzazione automatica i ref nel `_alma_metadata_json` vengono risolti con il catalogo cachato, senza dover re-importare.
+- **Regione e paese nel geocoding**: la colonna Regione del CSV GetYourGuide (`_alma_gyg_csv_region`) e i dati Viator arricchiscono la località (regione, paese e query di geocoding suggerita), migliorando la disambiguazione delle città omonime e la qualità del geocoding Google.
+- `format_location_for_json` conserva ora `suggested_geocoding_query` lungo il flusso di salvataggio.
+- Versione plugin aggiornata a `2.45.0`.
+
 ## 2.44.0 - 2026-07-02
 
 ### Indice Geografico — geocoding automatico e interfaccia razionalizzata

@@ -563,6 +563,7 @@ class ALMA_Geo_Index_Store {
             'geo_provider' => $provider,
             'geo_provider_place_id' => $place_id,
             'formatted_address' => sanitize_text_field($location['formatted_address'] ?? ''),
+            'suggested_geocoding_query' => sanitize_text_field($location['suggested_geocoding_query'] ?? ''),
             'geocoding_status' => sanitize_key($location['geocoding_status'] ?? 'pending'),
             'role' => sanitize_key($location['role'] ?? ($is_primary ? 'main_destination' : 'major_destination')),
             'is_primary' => $is_primary,

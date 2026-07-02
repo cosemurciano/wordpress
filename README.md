@@ -1,3 +1,12 @@
+## 2.45.0 - 2026-07-02
+
+### Geolocalizzazione completa dei link importati (Viator API e CSV)
+
+- **Import Viator API ora geolocalizzato**: i prodotti Viator non contengono nomi di località ma solo ref numerici (es. `684`). Il nuovo resolver scarica il catalogo destinazioni Viator una sola volta (cache 30 giorni), risolve il ref primario in nome/regione/paese risalendo l'albero delle destinazioni e lo salva sul link al momento dell'import: da lì la catena automatica (associazione → geocoding Google) procede da sola come per gli import CSV.
+- **Link Viator già presenti**: l'indicizzazione automatica risolve i ref anche per i link importati in passato, leggendo il metadata JSON — senza re-import.
+- **Città omonime disambiguate**: la colonna Regione del CSV (opzionale) e regione/paese Viator entrano nella località e nella query di geocoding suggerita ("Copenaghen, Hovedstaden, Danimarca" invece di solo "Copenaghen").
+- Versione plugin aggiornata a `2.45.0`.
+
 ## 2.44.0 - 2026-07-02
 
 ### Indice Geografico — geocoding automatico e interfaccia razionalizzata

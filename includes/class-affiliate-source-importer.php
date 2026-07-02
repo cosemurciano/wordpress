@@ -23,6 +23,19 @@ class ALMA_Affiliate_Source_Importer {
         if (!empty($normalized['affiliate_url'])) { update_post_meta($post_id, '_affiliate_url', $normalized['affiliate_url']); update_post_meta($post_id, '_alma_affiliate_url', $normalized['affiliate_url']); }
         update_post_meta($post_id, '_alma_original_url', $normalized['original_url']); update_post_meta($post_id, '_alma_import_status', $status); update_post_meta($post_id, '_alma_last_sync_at', current_time('mysql')); update_post_meta($post_id, '_alma_import_mode', sanitize_text_field($mode));
         foreach ($normalized['meta'] as $key => $value) update_post_meta($post_id, $key, $value);
+        // Viator espone solo ref numerici di destinazione: risolti qui in nomi
+        // (catalogo /destinations cachato) così il link nasce con la località e
+        // la geolocalizzazione automatica può agganciarlo subito.
+        if ($provider === 'viator' && class_exists('ALMA_Affiliate_Source_Viator_Destination_Resolver')) {
+            $viator_location = ALMA_Affiliate_Source_Viator_Destination_Resolver::resolve_primary_location($normalized['raw_item'] ?? array(), $source);
+            if (!empty($viator_location['name'])) {
+                update_post_meta($post_id, '_alma_destination', sanitize_text_field($viator_location['name']));
+                update_post_meta($post_id, '_alma_viator_destination_name', sanitize_text_field($viator_location['name']));
+                update_post_meta($post_id, '_alma_viator_destination_type', sanitize_key($viator_location['type']));
+                update_post_meta($post_id, '_alma_viator_destination_region', sanitize_text_field($viator_location['region']));
+                update_post_meta($post_id, '_alma_viator_destination_country', sanitize_text_field($viator_location['country']));
+            }
+        }
         $image_result = $this->maybe_import_featured_image($post_id, $normalized, $source, $settings, $options);
         if ($build_ai_context) { $builder = new ALMA_Affiliate_Link_AI_Context_Builder(); $builder->maybe_build_and_store($post_id, $normalized, $source); }
         if (empty(get_post_meta($post_id, '_alma_ai_visibility', true))) update_post_meta($post_id, '_alma_ai_visibility', 'available');

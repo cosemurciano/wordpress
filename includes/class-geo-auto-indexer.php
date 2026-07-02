@@ -279,8 +279,16 @@ class ALMA_Geo_Auto_Indexer {
      * ------------------------------------------------------------------ */
 
     public function locations_from_provider_meta($post_id) {
+        // Contesto geografico aggiuntivo dichiarato dal provider: regione e paese
+        // migliorano il geocoding e la disambiguazione delle città omonime.
+        $provider_region = trim((string) get_post_meta($post_id, '_alma_gyg_csv_region', true));
+        if ($provider_region === '') {
+            $provider_region = trim((string) get_post_meta($post_id, '_alma_viator_destination_region', true));
+        }
+        $provider_country = trim((string) get_post_meta($post_id, '_alma_viator_destination_country', true));
+
         $names = array();
-        foreach (array('_alma_destination', '_alma_gyg_csv_city') as $meta_key) {
+        foreach (array('_alma_destination', '_alma_gyg_csv_city', '_alma_viator_destination_name') as $meta_key) {
             $value = trim((string) get_post_meta($post_id, $meta_key, true));
             if ($value !== '') {
                 $names[] = $value;
@@ -297,6 +305,22 @@ class ALMA_Geo_Auto_Indexer {
                     if (!empty($decoded[$field]) && is_scalar($decoded[$field])) {
                         $names[] = (string) $decoded[$field];
                     }
+                }
+            }
+        }
+
+        // Fallback per i link Viator importati prima della risoluzione automatica:
+        // i ref numerici nel metadata JSON vengono risolti in nomi tramite il
+        // catalogo destinazioni (cachato in option, una sola chiamata API).
+        if (empty($names)) {
+            $viator_location = $this->resolve_viator_refs_for_post($post_id);
+            if (!empty($viator_location['name'])) {
+                $names[] = $viator_location['name'];
+                if ($provider_region === '' && $viator_location['region'] !== '') {
+                    $provider_region = $viator_location['region'];
+                }
+                if ($provider_country === '' && $viator_location['country'] !== '') {
+                    $provider_country = $viator_location['country'];
                 }
             }
         }
@@ -322,9 +346,10 @@ class ALMA_Geo_Auto_Indexer {
                     'canonical_name' => $name,
                     'type' => 'city',
                     'city' => $name,
-                    'country' => '',
+                    'country' => $provider_country,
                     'country_code' => '',
-                    'region' => '',
+                    'region' => $provider_region,
+                    'suggested_geocoding_query' => trim(implode(', ', array_filter(array($name, $provider_region, $provider_country)))),
                     'geocoding_status' => 'pending',
                     'confidence' => self::CONFIDENCE_HIGH,
                     'source' => self::SOURCE_PROVIDER,
@@ -335,6 +360,32 @@ class ALMA_Geo_Auto_Indexer {
             $locations[0]['is_primary'] = true;
         }
         return $locations;
+    }
+
+    /**
+     * Risolve i ref destinazione Viator (metadata JSON) per link importati
+     * prima dell'introduzione della risoluzione in fase di import.
+     */
+    private function resolve_viator_refs_for_post($post_id) {
+        if (!class_exists('ALMA_Affiliate_Source_Viator_Destination_Resolver')) {
+            return array();
+        }
+        if (get_post_meta($post_id, '_alma_provider', true) !== 'viator') {
+            return array();
+        }
+        $raw = get_post_meta($post_id, '_alma_metadata_json', true);
+        $item = is_string($raw) && $raw !== '' ? json_decode($raw, true) : null;
+        if (!is_array($item) || empty($item['destinations'])) {
+            return array();
+        }
+        $source_id = absint(get_post_meta($post_id, '_alma_source_id', true));
+        $source = array();
+        if ($source_id > 0) {
+            global $wpdb;
+            $source = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}alma_affiliate_sources WHERE id = %d", $source_id), ARRAY_A) ?: array();
+        }
+        $location = ALMA_Affiliate_Source_Viator_Destination_Resolver::resolve_primary_location($item, $source);
+        return is_array($location) ? $location : array();
     }
 
     /* ---------------------------------------------------------------------
