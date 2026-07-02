@@ -101,6 +101,8 @@ require_once ALMA_PLUGIN_DIR . 'includes/class-geo-index-geocoder.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-geo-index-metabox.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-geo-index-importer.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-geo-index-affiliate-link-importer.php';
+require_once ALMA_PLUGIN_DIR . 'includes/class-geo-auto-indexer.php';
+require_once ALMA_PLUGIN_DIR . 'includes/class-geo-ai-location-extractor.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-geo-index-admin.php';
 
 /**
@@ -124,6 +126,7 @@ class AffiliateManagerAI {
     private $geo_index_store;
     private $geo_index_metabox;
     private $geo_index_admin;
+    private $geo_auto_indexer;
     
     public function __construct() {
         global $wpdb;
@@ -137,6 +140,8 @@ class AffiliateManagerAI {
         $this->geo_index_store = new ALMA_Geo_Index_Store();
         $this->geo_index_metabox = new ALMA_Geo_Index_Metabox($this->geo_index_store);
         $this->geo_index_admin = new ALMA_Geo_Index_Admin($this->geo_index_store);
+        $this->geo_auto_indexer = new ALMA_Geo_Auto_Indexer($this->geo_index_store);
+        $this->geo_auto_indexer->init_hooks();
         add_action('init', array($this, 'init'));
         add_action('widgets_init', array('ALMA_Contextual_Affiliate_Widget', 'register_widget'));
         // Registrato qui (prima che `widgets_init` scatti) perché ALMA_Shortcodes::init()

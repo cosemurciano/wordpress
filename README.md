@@ -1,5 +1,15 @@
 ## 2.42.0 - 2026-07-02
 
+### Indice Geografico — Copertura e indicizzazione automatica
+
+- **Tab Copertura**: nuova tab nell'Indice Geografico con lo stato dell'indicizzazione geografica (totale, indicizzati, non indicizzati, da rivedere, percentuale) per articoli pubblicati e Link Affiliati, aggiornata in tempo reale durante i batch.
+- **Indicizzazione automatica a livelli**: 1) la destinazione dichiarata dal provider (`_alma_destination`, GYG CSV, metadata JSON) viene applicata subito con confidenza alta; 2) le località conosciute della tabella `alma_geo_locations` (gazetteer con alias) trovate nel **titolo** con match univoco vengono applicate subito, mentre i match in slug/heading/contenuto o ambigui finiscono nella coda di revisione; 3) opzionale, l'**AI** estrae le località da titolo+estratto per i contenuti irrisolti — sempre in revisione, mai applicata da sola.
+- **Coda di revisione**: le proposte a confidenza media/bassa si confermano o scartano in blocco dalla tab Copertura; la prima località proposta diventa la primaria. Le associazioni manuali esistenti non vengono mai sovrascritte.
+- **Batch su migliaia di contenuti**: elaborazione AJAX iterativa interrompibile (batch 25/50/100) con cursore persistente, lock anti-concorrenza, report cumulativo ed esempi; opzioni "Riprova irrisolti" e retry dei rifiutati.
+- **Automatismo per i nuovi contenuti**: i Link Affiliati appena importati e gli articoli appena pubblicati vengono indicizzati automaticamente (solo livelli deterministici, mai AI) al salvataggio, così il backlog non si riforma.
+- **Colonna e filtro "Geo"**: le liste admin di articoli e Link Affiliati mostrano la località primaria (o "In revisione") con filtro "senza località / con località / in revisione".
+- Le località nuove create dall'indicizzazione automatica entrano in stato `pending` geocoding e si processano con il batch Google esistente; l'uso AI è tracciato nel log usage con costo stimato reale.
+
 ### Widget Link Contestuale — matching realmente contestuale alla pagina
 
 - **Geo Index come segnale dominante**: il widget ora confronta le località associate all'articolo (metabox Geolocalizzazione contenuto / import GEO) con quelle dei Link Affiliati. Stessa città o località: fino a 45 punti; stessa regione: 20; stesso paese: 10; località esplicitamente diverse: penalità. Senza dati geografici da una delle due parti il segnale è neutro e vale il matching testuale (retrocompatibile).
