@@ -3,7 +3,7 @@
  * Plugin Name: Affiliate Link Manager AI
  * Plugin URI: https://your-website.com
  * Description: Gestisce link affiliati con intelligenza artificiale per ottimizzazione e tracking automatico.
- * Version: 2.43.0
+ * Version: 2.44.0
  * Author: Cosè Murciano
  * License: GPL v2 or later
  * Text Domain: affiliate-link-manager-ai
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Definisci costanti del plugin
-define('ALMA_VERSION', '2.43.0');
+define('ALMA_VERSION', '2.44.0');
 define('ALMA_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('ALMA_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('ALMA_PLUGIN_FILE', __FILE__);
@@ -103,6 +103,7 @@ require_once ALMA_PLUGIN_DIR . 'includes/class-geo-index-importer.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-geo-index-affiliate-link-importer.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-geo-auto-indexer.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-geo-ai-location-extractor.php';
+require_once ALMA_PLUGIN_DIR . 'includes/class-geo-geocoding-queue.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-geo-index-admin.php';
 
 /**
@@ -142,6 +143,7 @@ class AffiliateManagerAI {
         $this->geo_index_admin = new ALMA_Geo_Index_Admin($this->geo_index_store);
         $this->geo_auto_indexer = new ALMA_Geo_Auto_Indexer($this->geo_index_store);
         $this->geo_auto_indexer->init_hooks();
+        ALMA_Geo_Geocoding_Queue::init();
         add_action('init', array($this, 'init'));
         add_action('widgets_init', array('ALMA_Contextual_Affiliate_Widget', 'register_widget'));
         // Registrato qui (prima che `widgets_init` scatti) perché ALMA_Shortcodes::init()
@@ -4297,6 +4299,7 @@ class AffiliateManagerAI {
     public function deactivate() {
         // Rimuovi cron jobs
         wp_clear_scheduled_hook('alma_daily_optimization');
+        ALMA_Geo_Geocoding_Queue::unschedule();
         $this->clear_deprecated_trend_cron_events();
         flush_rewrite_rules();
     }

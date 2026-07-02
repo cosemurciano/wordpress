@@ -1,3 +1,14 @@
+## 2.44.0 - 2026-07-02
+
+### Indice Geografico — geocoding automatico e interfaccia razionalizzata
+
+- **Geocoding contestuale all'associazione**: eliminato il doppio passaggio "associa località, poi lancia il geocoding". Ogni località `pending` — da import CSV massivi, import API, inserimento manuale di link, creazione di post o auto-indicizzazione — viene geocodificata automaticamente in background (coda WP-Cron a lotti di 20, lock condiviso con i batch manuali, attesa su rate limit, stop con messaggio chiaro su `REQUEST_DENIED`).
+- **Controllo e trasparenza**: toggle "Geocoding automatico" nelle impostazioni (attivo di default con API key configurata); la Panoramica mostra stato dell'automatismo, località in attesa, prossima esecuzione programmata e ultimo report. I batch manuali restano disponibili come fallback.
+- **Metabox senza attese**: le località scelte dalla ricerca Google arrivano già con coordinate e Place ID e vengono salvate direttamente come `verified`.
+- **Protezione dei dati geocodificati**: i re-import non degradano più le località già verificate (merge conservativo: stato e coordinate restano se il record in ingresso è meno completo).
+- **Interfaccia snellita da 7 a 4 tab**: **Panoramica** (geocoding automatico, copertura, coda di revisione, dashboard), **Import** (Link Affiliati e articoli con sotto-navigazione), **Località**, **Impostazioni & Log** (configurazione, strumenti manuali e tutti i log raggruppati). I vecchi indirizzi delle tab funzionano ancora (alias automatici).
+- Versione plugin aggiornata a `2.44.0`.
+
 ## 2.43.0 - 2026-07-02
 
 ### Indice Geografico — Copertura e indicizzazione automatica

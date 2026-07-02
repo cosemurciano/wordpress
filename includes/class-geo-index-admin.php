@@ -58,42 +58,128 @@ class ALMA_Geo_Index_Admin {
             wp_die(esc_html__('Permessi insufficienti.', 'affiliate-link-manager-ai'));
         }
 
-        $tab = isset($_GET['tab']) ? sanitize_key($_GET['tab']) : 'dashboard';
-        if (!in_array($tab, array('dashboard', 'coverage', 'import', 'affiliate_import', 'locations', 'geocoding', 'log'), true)) {
-            $tab = 'dashboard';
+        $tab = isset($_GET['tab']) ? sanitize_key($_GET['tab']) : 'overview';
+        // Alias dei vecchi slug: i link esistenti (bottoni, bookmark, form)
+        // continuano a funzionare dopo il raggruppamento delle tab.
+        $aliases = array(
+            'dashboard' => 'overview',
+            'coverage' => 'overview',
+            'affiliate_import' => 'import',
+            'geocoding' => 'settings',
+            'log' => 'settings',
+        );
+        if (isset($aliases[$tab])) {
+            $tab = $aliases[$tab];
+        }
+        if (!in_array($tab, array('overview', 'import', 'locations', 'settings'), true)) {
+            $tab = 'overview';
         }
         $this->handle_actions($tab);
         ?>
         <div class="wrap">
-            <h1><?php echo esc_html($tab === 'affiliate_import' ? __('Import GEO Link Affiliati', 'affiliate-link-manager-ai') : __('Indice Geografico', 'affiliate-link-manager-ai')); ?></h1>
-            <p><?php esc_html_e('Modulo di fondazione per collegare articoli, pagine e Link Affiliati a località geografiche. Il geocoding usa Google Maps API solo da admin e solo su azione esplicita.', 'affiliate-link-manager-ai'); ?></p>
+            <h1><?php esc_html_e('Indice Geografico', 'affiliate-link-manager-ai'); ?></h1>
+            <p><?php esc_html_e('Collega articoli, pagine e Link Affiliati a località geografiche. L\'associazione e il geocoding Google avvengono automaticamente all\'import e alla creazione dei contenuti; qui trovi copertura, revisione, località e configurazione.', 'affiliate-link-manager-ai'); ?></p>
             <?php echo $this->notice; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
             <nav class="nav-tab-wrapper">
-                <?php $this->tab_link('dashboard', __('Dashboard', 'affiliate-link-manager-ai'), $tab); ?>
-                <?php $this->tab_link('coverage', __('Copertura', 'affiliate-link-manager-ai'), $tab); ?>
-                <?php $this->tab_link('import', __('Importa record articoli', 'affiliate-link-manager-ai'), $tab); ?>
-                <?php $this->tab_link('affiliate_import', __('Import GEO Link Affiliati', 'affiliate-link-manager-ai'), $tab); ?>
+                <?php $this->tab_link('overview', __('Panoramica', 'affiliate-link-manager-ai'), $tab); ?>
+                <?php $this->tab_link('import', __('Import', 'affiliate-link-manager-ai'), $tab); ?>
                 <?php $this->tab_link('locations', __('Località', 'affiliate-link-manager-ai'), $tab); ?>
-                <?php $this->tab_link('geocoding', __('Geocoding', 'affiliate-link-manager-ai'), $tab); ?>
-                <?php $this->tab_link('log', __('Log / ultimi import', 'affiliate-link-manager-ai'), $tab); ?>
+                <?php $this->tab_link('settings', __('Impostazioni & Log', 'affiliate-link-manager-ai'), $tab); ?>
             </nav>
             <?php
-            if ($tab === 'coverage') {
-                $this->render_coverage_tab();
-            } elseif ($tab === 'import') {
-                $this->render_import_tab();
-            } elseif ($tab === 'affiliate_import') {
-                $this->render_affiliate_import_tab();
+            if ($tab === 'import') {
+                $this->render_import_group_tab();
             } elseif ($tab === 'locations') {
                 $this->render_locations_tab();
-            } elseif ($tab === 'geocoding') {
-                $this->render_geocoding_tab();
-            } elseif ($tab === 'log') {
-                $this->render_log_tab();
+            } elseif ($tab === 'settings') {
+                $this->render_settings_group_tab();
             } else {
-                $this->render_dashboard_tab();
+                $this->render_overview_tab();
             }
             ?>
+        </div>
+        <?php
+    }
+
+    /**
+     * Panoramica: stato geocoding automatico + dashboard + copertura/revisione.
+     * È il centro operativo del workflow quotidiano.
+     */
+    private function render_overview_tab() {
+        $this->render_auto_geocoding_status();
+        $this->render_coverage_tab();
+        $this->render_dashboard_tab();
+    }
+
+    /**
+     * Import: i due flussi (Link Affiliati e articoli) raggruppati in un'unica
+     * tab con sotto-navigazione.
+     */
+    private function render_import_group_tab() {
+        $flow = isset($_GET['flow']) ? sanitize_key($_GET['flow']) : 'links';
+        if (!in_array($flow, array('links', 'articles'), true)) {
+            $flow = 'links';
+        }
+        $base = admin_url('edit.php?post_type=affiliate_link&page=' . self::MENU_SLUG . '&tab=import');
+        ?>
+        <ul class="subsubsub" style="margin-bottom:12px;">
+            <li><a href="<?php echo esc_url($base . '&flow=links'); ?>" <?php echo $flow === 'links' ? 'class="current"' : ''; ?>><?php esc_html_e('Import GEO Link Affiliati', 'affiliate-link-manager-ai'); ?></a> |</li>
+            <li><a href="<?php echo esc_url($base . '&flow=articles'); ?>" <?php echo $flow === 'articles' ? 'class="current"' : ''; ?>><?php esc_html_e('Import record articoli', 'affiliate-link-manager-ai'); ?></a></li>
+        </ul>
+        <div style="clear:both;"></div>
+        <?php
+        if ($flow === 'articles') {
+            $this->render_import_tab();
+        } else {
+            $this->render_affiliate_import_tab();
+        }
+    }
+
+    /**
+     * Impostazioni & Log: configurazione geocoding (con automatismo), strumenti
+     * manuali di fallback e log/ultimi report raggruppati.
+     */
+    private function render_settings_group_tab() {
+        $this->render_geocoding_tab();
+        echo '<hr style="margin:24px 0;">';
+        echo '<h2>' . esc_html__('Log / ultimi import', 'affiliate-link-manager-ai') . '</h2>';
+        $this->render_log_tab();
+    }
+
+    /**
+     * Pannello stato del geocoding automatico in Panoramica.
+     */
+    private function render_auto_geocoding_status() {
+        $enabled = ALMA_Geo_Geocoding_Queue::is_enabled();
+        $pending = ALMA_Geo_Geocoding_Queue::count_pending();
+        $next = ALMA_Geo_Geocoding_Queue::next_run_timestamp();
+        $last = ALMA_Geo_Geocoding_Queue::get_last_run_report();
+        $api_key_missing = trim((string) get_option('alma_geo_google_maps_api_key', '')) === '';
+        $settings_url = admin_url('edit.php?post_type=affiliate_link&page=' . self::MENU_SLUG . '&tab=settings');
+        ?>
+        <div class="card" style="max-width:960px;">
+            <h2><?php esc_html_e('Geocoding automatico', 'affiliate-link-manager-ai'); ?></h2>
+            <?php if ($api_key_missing) : ?>
+                <p><span class="dashicons dashicons-warning" style="color:#d63638;"></span> <?php esc_html_e('API key Google Maps non configurata: le località restano in attesa finché non la salvi nelle impostazioni.', 'affiliate-link-manager-ai'); ?> <a href="<?php echo esc_url($settings_url); ?>"><?php esc_html_e('Vai alle impostazioni', 'affiliate-link-manager-ai'); ?></a></p>
+            <?php elseif (!$enabled) : ?>
+                <p><span class="dashicons dashicons-controls-pause" style="color:#996800;"></span> <?php esc_html_e('Geocoding automatico disattivato: le località nuove restano pending finché non lanci un batch manuale o riattivi l\'automatismo.', 'affiliate-link-manager-ai'); ?> <a href="<?php echo esc_url($settings_url); ?>"><?php esc_html_e('Vai alle impostazioni', 'affiliate-link-manager-ai'); ?></a></p>
+            <?php else : ?>
+                <p><span class="dashicons dashicons-yes-alt" style="color:#00a32a;"></span> <?php esc_html_e('Attivo: le località associate da import, API, metabox e auto-indicizzazione vengono geocodificate automaticamente in background.', 'affiliate-link-manager-ai'); ?></p>
+            <?php endif; ?>
+            <ul style="margin-left:1.4em;list-style:disc;">
+                <li><?php printf(esc_html__('Località in attesa di geocoding: %s', 'affiliate-link-manager-ai'), '<strong>' . esc_html(number_format_i18n($pending)) . '</strong>'); ?></li>
+                <?php if ($next) : ?>
+                    <li><?php printf(esc_html__('Prossima esecuzione automatica: %s', 'affiliate-link-manager-ai'), esc_html(get_date_from_gmt(gmdate('Y-m-d H:i:s', $next), 'd/m/Y H:i:s'))); ?></li>
+                <?php elseif ($enabled && $pending > 0) : ?>
+                    <li><?php esc_html_e('Prossima esecuzione: alla prossima associazione di località (o avvia un batch manuale dalle impostazioni).', 'affiliate-link-manager-ai'); ?></li>
+                <?php endif; ?>
+                <?php if (!empty($last['ran_at'])) : ?>
+                    <li><?php printf(esc_html__('Ultima esecuzione automatica: %1$s — %2$d processate, %3$d verificate, %4$d ambigue, %5$d fallite.', 'affiliate-link-manager-ai'), esc_html($last['ran_at']), (int) ($last['processed'] ?? 0), (int) ($last['verified'] ?? 0), (int) ($last['ambiguous'] ?? 0), (int) ($last['failed'] ?? 0)); ?></li>
+                <?php endif; ?>
+                <?php if (!empty($last['configuration_error'])) : ?>
+                    <li style="color:#d63638;"><?php esc_html_e('Ultimo run interrotto: Google ha rifiutato la richiesta (REQUEST_DENIED). Verifica API key e abilitazione della Geocoding API nelle impostazioni.', 'affiliate-link-manager-ai'); ?></li>
+                <?php endif; ?>
+            </ul>
         </div>
         <?php
     }
@@ -104,20 +190,22 @@ class ALMA_Geo_Index_Admin {
         }
         $action = sanitize_key(wp_unslash($_POST['alma_geo_index_action']));
         if ($tab === 'import') {
-            check_admin_referer('alma_geo_index_import');
-            if ($action === 'preview') {
-                $this->handle_preview_upload();
-            } elseif ($action === 'import') {
-                $this->handle_import_submit();
+            // I due flussi convivono nella stessa tab: le action articoli
+            // (preview/import) e quelle Link Affiliati hanno nomi disgiunti.
+            if (in_array($action, array('preview', 'import'), true)) {
+                check_admin_referer('alma_geo_index_import');
+                if ($action === 'preview') {
+                    $this->handle_preview_upload();
+                } else {
+                    $this->handle_import_submit();
+                }
+                return;
             }
-            return;
-        }
-        if ($tab === 'affiliate_import') {
             check_admin_referer('alma_geo_affiliate_import');
             $this->handle_affiliate_import_action($action);
             return;
         }
-        if (in_array($tab, array('geocoding', 'locations'), true)) {
+        if (in_array($tab, array('settings', 'locations', 'overview'), true)) {
             check_admin_referer('alma_geo_index_geocoding');
             $this->handle_geocoding_action($action);
         }
@@ -139,6 +227,11 @@ class ALMA_Geo_Index_Admin {
             update_option('alma_geo_geocoding_delay_ms', max(0, min(5000, absint($_POST['alma_geo_geocoding_delay_ms'] ?? 200))), false);
             update_option('alma_geo_geocoding_overwrite_verified', !empty($_POST['alma_geo_geocoding_overwrite_verified']) ? 'yes' : 'no', false);
             update_option('alma_geo_geocoding_country_bias', sanitize_text_field(wp_unslash($_POST['alma_geo_geocoding_country_bias'] ?? '')), false);
+            update_option(ALMA_Geo_Geocoding_Queue::ENABLED_OPTION, !empty($_POST['alma_geo_auto_geocoding']) ? 'yes' : 'no', false);
+            // Se l'automatismo è attivo e ci sono località in attesa, riparte subito.
+            if (ALMA_Geo_Geocoding_Queue::is_enabled() && ALMA_Geo_Geocoding_Queue::count_pending() > 0) {
+                ALMA_Geo_Geocoding_Queue::maybe_schedule(5);
+            }
             $this->notice_success($api_key === '' && get_option('alma_geo_google_maps_api_key', '') === '' ? __('Impostazioni salvate. API key non configurata.', 'affiliate-link-manager-ai') : __('Impostazioni geocoding salvate.', 'affiliate-link-manager-ai'));
             return;
         }
@@ -364,7 +457,7 @@ class ALMA_Geo_Index_Admin {
         $affiliate_counts = $this->store->get_geocoding_status_counts_by_object_type(ALMA_Geo_Index_Store::OBJECT_TYPE_AFFILIATE_LINK);
         $api_key = (string) get_option('alma_geo_google_maps_api_key', '');
         $masked_key = $api_key === '' ? __('Non configurata', 'affiliate-link-manager-ai') : sprintf(__('Configurata (termina con %s)', 'affiliate-link-manager-ai'), substr($api_key, -4));
-        echo '<h2>' . esc_html__('Geocoding', 'affiliate-link-manager-ai') . '</h2>';
+        echo '<h2>' . esc_html__('Configurazione geocoding', 'affiliate-link-manager-ai') . '</h2>';
         echo '<div class="postbox"><div class="inside"><h3>' . esc_html__('Stato configurazione', 'affiliate-link-manager-ai') . '</h3><table class="widefat striped"><tbody>';
         $rows = array(
             __('Provider attivo', 'affiliate-link-manager-ai') => 'Google Maps',
@@ -404,6 +497,7 @@ class ALMA_Geo_Index_Admin {
                 <tr><th><label for="alma_geo_geocoding_delay_ms"><?php esc_html_e('Pausa tra richieste (ms)', 'affiliate-link-manager-ai'); ?></label></th><td><input type="number" min="0" max="5000" id="alma_geo_geocoding_delay_ms" name="alma_geo_geocoding_delay_ms" value="<?php echo esc_attr((string) $settings['delay_ms']); ?>"></td></tr>
                 <tr><th><label for="alma_geo_geocoding_country_bias"><?php esc_html_e('Country bias opzionale', 'affiliate-link-manager-ai'); ?></label></th><td><input type="text" id="alma_geo_geocoding_country_bias" name="alma_geo_geocoding_country_bias" value="<?php echo esc_attr($settings['country_bias']); ?>" class="small-text" maxlength="10"></td></tr>
                 <tr><th><?php esc_html_e('Sovrascrittura', 'affiliate-link-manager-ai'); ?></th><td><label><input type="checkbox" name="alma_geo_geocoding_overwrite_verified" value="1" <?php checked($settings['overwrite_verified'], 'yes'); ?>> <?php esc_html_e('Permetti sovrascrittura località già verified', 'affiliate-link-manager-ai'); ?></label></td></tr>
+                <tr><th><?php esc_html_e('Geocoding automatico', 'affiliate-link-manager-ai'); ?></th><td><label><input type="checkbox" name="alma_geo_auto_geocoding" value="1" <?php checked(get_option(ALMA_Geo_Geocoding_Queue::ENABLED_OPTION, 'yes'), 'yes'); ?>> <?php esc_html_e('Geocodifica automaticamente in background le località associate da import, API, metabox e auto-indicizzazione (nessun secondo passaggio manuale).', 'affiliate-link-manager-ai'); ?></label><p class="description"><?php esc_html_e('Richiede la API key. Lo stato è visibile nella tab Panoramica; i batch manuali qui sotto restano disponibili come fallback.', 'affiliate-link-manager-ai'); ?></p></td></tr>
             </tbody></table>
             <?php submit_button(__('Salva impostazioni geocoding', 'affiliate-link-manager-ai'), 'primary', 'submit', false); ?>
         </form>
