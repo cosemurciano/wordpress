@@ -1,3 +1,19 @@
+## 2.42.0 - 2026-07-02
+
+### Affidabilità, sicurezza e concorrenza
+
+- **Tracking click affidabile**: incremento atomico del contatore (i click concorrenti non si perdono più), opzione "non tracciare utenti anonimi" applicata anche lato server, filtro bot sui crawler noti (personalizzabile via filtro `alma_is_bot_user_agent`), rate limit breve anti-doppio evento, parsing corretto di `X-Forwarded-For` multi-valore e niente più `SHOW TABLES` a ogni click. Lato frontend il tasto destro non viene più conteggiato, il middle-click usa `auxclick` e il deprecato `DOMNodeInserted` è stato sostituito da `MutationObserver`.
+- **Fix distruttivi**: la pulizia degli shortcode non rimuove più shortcode di link con ID più lunghi (12 vs 123); "Elimina per ID" e l'eliminazione idee AI verificano il post type prima della cancellazione definitiva.
+- **Widget `affiliate_links_widget` registrato correttamente**: l'aggancio arrivava a `widgets_init` già passato e il widget non risultava mai disponibile.
+- **Colonne ordinabili funzionanti**: "Click" e "AI Score" ordinano davvero l'elenco Link Affiliati, preservando il filtro Source attivo e mantenendo in lista i link mai cliccati.
+- **API key in wp-config.php**: `define('ALMA_OPENAI_API_KEY', '...')` e `define('ALMA_GEO_GOOGLE_MAPS_API_KEY', '...')` hanno priorità sulle option e tengono i segreti fuori dal database; la chiave OpenAI salvata via UI usa `autoload=no`.
+- **Sicurezza**: corretto XSS DOM nella dashboard admin, anti formula-injection nei CSV esportati dal modulo GEO, throttle e cache sulla ricerca località Google del metabox.
+- **Concorrenza GEO**: claim atomico con token univoco sugli item staging (niente doppio import), lock sui batch di geocoding (niente chiamate Google duplicate da elaborazioni parallele), `REQUEST_DENIED` segnalato come errore di configurazione con stop del batch invece di "riprova più tardi".
+- **Costi AI reali**: `estimated_cost` è ora in USD, calcolato da una tabella prezzi per modello estendibile con il filtro `alma_openai_model_prices`; i vecchi valori (conteggi token) vengono azzerati una tantum.
+- **Indici AI**: la cancellazione definitiva di un link rimuove la riga dall'affiliate index; il reindex della Knowledge Base copre progressivamente tutto il sito con un cursore persistente, continuando a rinfrescare i contenuti modificati di recente.
+- **Bot Affiliate**: lock anti-stampede sulla chiamata OpenAI in frontend; l'import GYG CSV non si conclude più in anticipo e i job rilasciano sempre il lock anche su errori fatali.
+- Versione plugin aggiornata a `2.42.0`.
+
 ## Unreleased
 
 

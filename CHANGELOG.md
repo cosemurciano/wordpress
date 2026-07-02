@@ -1,3 +1,41 @@
+## 2.42.0 - 2026-07-02
+
+### Tracking click affidabile
+- Incremento atomico del contatore `_click_count`: i click concorrenti non vengono più persi e le eventuali righe meta duplicate del primo click vengono ripulite automaticamente.
+- L'opzione "Non tracciare utenti anonimi" è ora applicata anche lato server, non solo in JavaScript.
+- Aggiunto filtro bot sullo user agent (mirato ai crawler noti, personalizzabile con il filtro `alma_is_bot_user_agent`) e rate limit breve per IP+user agent+link contro doppi eventi e replay.
+- Header `X-Forwarded-For` multi-valore ora parsato correttamente (primo IP pubblico valido).
+- La verifica della tabella analytics avviene una sola volta per versione (niente più `SHOW TABLES` a ogni click) e viene ritentata finché la creazione non riesce; gli insert falliti vengono loggati.
+- Frontend: rimosso il tracking del tasto destro (gonfiava i conteggi), middle-click tracciato via `auxclick`, `MutationObserver` al posto del deprecato `DOMNodeInserted`, eventi Google Analytics non inviati per click rifiutati dal server.
+
+### Fix bug
+- La rimozione degli shortcode alla cancellazione di un link non tocca più i link con ID più lunghi (eliminare il link 12 non rimuove più lo shortcode del link 123); stesso fix per i widget.
+- "Elimina per ID" nelle impostazioni ed eliminazione idee AI verificano il post type prima di `wp_delete_post`: non è più possibile cancellare definitivamente articoli o pagine per errore.
+- Il widget WordPress `affiliate_links_widget` viene ora registrato correttamente (l'aggancio arrivava a `widgets_init` già eseguito e il widget non compariva mai).
+- Rimosso l'evento cron giornaliero `alma_daily_optimization`, schedulato ma privo di handler; le occorrenze residue vengono ripulite automaticamente.
+- Le colonne "Click" e "AI Score" nell'elenco Link Affiliati ora ordinano davvero, preservando il filtro Source attivo e includendo i link mai cliccati.
+- Import GYG CSV: l'import non viene più marcato completato prima della fine del file; i job catturano anche errori fatali PHP e rilasciano sempre il lock.
+
+### Sicurezza
+- Le chiavi API possono essere definite in `wp-config.php` con `define('ALMA_OPENAI_API_KEY', '...')` e `define('ALMA_GEO_GOOGLE_MAPS_API_KEY', '...')`: hanno priorità sull'option e non passano dal database. La chiave OpenAI salvata via UI usa ora `autoload=no`.
+- Corretto XSS DOM nella dashboard admin (titoli dei link iniettati senza escaping).
+- Neutralizzata la formula injection (`=`, `+`, `-`, `@`) nei CSV esportati dal modulo GEO.
+- Rate limit per utente (15/minuto, finestra fissa) e cache breve dei risultati sulla ricerca località Google del metabox.
+
+### Modulo GEO — concorrenza e robustezza
+- Claim atomico degli item staging con token univoco: due batch concorrenti non processano più gli stessi record.
+- Lock anti-concorrenza sui batch di geocoding: elaborazioni parallele (due tab/utenti) non duplicano più le chiamate Google; la risposta bloccata riporta il numero reale di pending.
+- `REQUEST_DENIED` è ora trattato come errore permanente di configurazione (API key non valida / API non abilitata) con messaggio esplicito e interruzione del batch, invece di `retry_later` fuorviante.
+- Corretto il numero di format nell'insert degli item staging e il cap (ultime 500 righe) del report cumulativo di geocoding in user meta.
+
+### Sottosistema AI
+- `estimated_cost` è ora un costo reale in USD calcolato da una tabella prezzi per modello (estendibile con il filtro `alma_openai_model_prices`); i vecchi valori, che contenevano conteggi token, vengono azzerati una tantum per non falsare i totali.
+- L'indice affiliati elimina la riga alla cancellazione definitiva del link invece di reindicizzarla (niente più record orfani).
+- Il reindex della Knowledge Base rinfresca sempre i contenuti modificati di recente e in più avanza un cursore persistente di backfill sul resto del sito (prima indicizzava solo i 20 post più recenti per tipo).
+- Lock anti-stampede sulla chiamata OpenAI frontend del Bot Affiliate: visitatori simultanei sulla stessa pagina non generano più chiamate API multiple.
+- Whitelist dello stato documento TXT (`active`/`inactive`) nel toggle dell'AI Content Agent.
+- Versione plugin aggiornata a `2.42.0`.
+
 ## 2.41.8 - 2026-06-08
 
 - Aggiunto geocoding massivo delle località da Link Affiliati nella tab Geocoding, con sezione dedicata, progress bar, report cumulativo sessione corrente ed elaborazione interrompibile.
