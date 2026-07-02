@@ -211,6 +211,11 @@ class ALMA_Contextual_Affiliate_Widget extends WP_Widget {
         $hash_settings = $settings;
         unset($hash_settings['title'], $hash_settings['button_text']);
         $hash_settings['cache_version'] = absint(get_option(self::CACHE_VERSION_OPTION, 1));
+        // La versione del matcher invalida i risultati calcolati con l'algoritmo
+        // precedente; la data di modifica invalida la cache del singolo articolo
+        // al suo salvataggio, senza azzerare la cache di tutto il sito.
+        $hash_settings['matcher_version'] = ALMA_Contextual_Affiliate_Matcher::MATCHER_VERSION;
+        $hash_settings['post_modified'] = (string) $post->post_modified_gmt;
         $hash = md5(wp_json_encode($hash_settings));
         $cache_key = 'alma_contextual_widget_' . absint($post->ID) . '_' . $hash;
         $cached = get_transient($cache_key);
@@ -317,8 +322,9 @@ class ALMA_Contextual_Affiliate_Widget extends WP_Widget {
             <?php endif; ?>
             <div class="card">
                 <h2><?php esc_html_e('Matching locale senza AI', 'affiliate-link-manager-ai'); ?></h2>
-                <p><?php esc_html_e('Il widget legge titolo, slug, categorie, tag, contenuto e heading H2/H3 dell’articolo corrente, assegna uno score ai Link Affiliati pubblicati e mostra solo quelli sopra soglia. Non modifica gli articoli e non usa OpenAI.', 'affiliate-link-manager-ai'); ?></p>
-                <p><span class="alma-badge"><?php esc_html_e('Cache per post', 'affiliate-link-manager-ai'); ?></span> <?php esc_html_e('La cache usa una versione interna invalidata al salvataggio di articoli supportati, Link Affiliati e impostazioni.', 'affiliate-link-manager-ai'); ?></p>
+                <p><?php esc_html_e('Il widget seleziona i Link Affiliati pertinenti alla pagina corrente in tre passaggi: prima le località condivise tramite l’Indice Geografico (segnale dominante), poi le keyword in comune pesate per specificità (titolo, heading H2/H3, categorie, tag e contenuto), infine tipologie e contesto AI. Mostra solo i link sopra soglia. Non modifica gli articoli e non usa OpenAI.', 'affiliate-link-manager-ai'); ?></p>
+                <p><span class="alma-badge"><?php esc_html_e('Cache per post', 'affiliate-link-manager-ai'); ?></span> <?php esc_html_e('La cache del singolo articolo si invalida al suo salvataggio; la cache globale si invalida al salvataggio di Link Affiliati e impostazioni.', 'affiliate-link-manager-ai'); ?></p>
+                <p><span class="alma-badge"><?php esc_html_e('Suggerimento', 'affiliate-link-manager-ai'); ?></span> <?php esc_html_e('Per il matching geografico associa le località ad articoli e Link Affiliati dal metabox Geolocalizzazione contenuto o tramite gli import GEO; senza dati geografici il widget usa il solo matching testuale.', 'affiliate-link-manager-ai'); ?></p>
             </div>
             <form method="post" action="">
                 <?php wp_nonce_field('alma_contextual_widget_settings', 'alma_contextual_widget_nonce'); ?>
@@ -403,8 +409,11 @@ class ALMA_Contextual_Affiliate_Widget extends WP_Widget {
         if (wp_is_post_autosave($post_id) || wp_is_post_revision($post_id) || !$post instanceof WP_Post) {
             return;
         }
-        $settings = self::get_global_settings();
-        if ($post->post_type === 'affiliate_link' || in_array($post->post_type, $settings['post_types'], true)) {
+        // Bump globale solo quando cambia un Link Affiliato (influisce su tutte le
+        // pagine). Il salvataggio di un articolo invalida solo la propria cache,
+        // tramite post_modified nell'hash: prima ogni salvataggio azzerava la
+        // cache dell'intero sito, rendendola quasi sempre fredda.
+        if ($post->post_type === 'affiliate_link') {
             self::bump_cache_version();
         }
     }
