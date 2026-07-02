@@ -18,7 +18,7 @@ class ALMA_Contextual_Affiliate_Matcher {
     const MAX_POOL_SIZE = 300;
     // Inclusa nell'hash della cache del widget: cambiarla invalida i risultati
     // calcolati con versioni precedenti dell'algoritmo.
-    const MATCHER_VERSION = 4;
+    const MATCHER_VERSION = 5;
 
     private $settings;
     private $geo_store = null;
@@ -438,8 +438,14 @@ class ALMA_Contextual_Affiliate_Matcher {
         }
 
         // Penalità solo per disaccordo esplicito: entrambe le parti dichiarano
-        // paesi noti e non hanno nulla in comune.
+        // paesi noti e non hanno nulla in comune. Vale sia per i country code
+        // sia, in loro assenza, per i NOMI paese: una località "Parigi, Francia"
+        // non ancora geocodificata (senza codice) non deve sfuggire alla
+        // penalità su un articolo localizzato in Algeria.
         if (!empty($post_index['countries']) && !empty($link_index['countries'])) {
+            return -30;
+        }
+        if (!empty($post_index['country_names']) && !empty($link_index['country_names'])) {
             return -30;
         }
         return 0;
