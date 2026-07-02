@@ -18,7 +18,7 @@ class ALMA_Contextual_Affiliate_Matcher {
     const MAX_POOL_SIZE = 300;
     // Inclusa nell'hash della cache del widget: cambiarla invalida i risultati
     // calcolati con versioni precedenti dell'algoritmo.
-    const MATCHER_VERSION = 3;
+    const MATCHER_VERSION = 4;
 
     private $settings;
     private $geo_store = null;
@@ -184,6 +184,8 @@ class ALMA_Contextual_Affiliate_Matcher {
         }
         $location_ids = array();
         $location_names = array();
+        $country_codes = array();
+        $country_names = array();
         foreach ($post_locations as $location) {
             $location = (array) $location;
             $location_id = absint($location['location_id'] ?? 0);
@@ -196,10 +198,27 @@ class ALMA_Contextual_Affiliate_Matcher {
                     $location_names[] = $name;
                 }
             }
+            $code = strtoupper(trim((string) ($location['country_code'] ?? '')));
+            if ($code !== '') {
+                $country_codes[] = $code;
+            }
+            $country_name = trim((string) ($location['country'] ?? ''));
+            if ($country_name !== '') {
+                $country_names[] = $country_name;
+            }
+            // Articolo su un intero paese: il nome della località è il paese stesso.
+            if (sanitize_key((string) ($location['type'] ?? '')) === 'country') {
+                $canonical = trim((string) ($location['canonical_name'] ?? ($location['name'] ?? '')));
+                if ($canonical !== '') {
+                    $country_names[] = $canonical;
+                }
+            }
         }
         $location_ids = array_values(array_unique($location_ids));
         $location_names = array_slice(array_values(array_unique($location_names)), 0, 10);
-        if (empty($location_ids) && empty($location_names)) {
+        $country_codes = array_slice(array_values(array_unique($country_codes)), 0, 10);
+        $country_names = array_slice(array_values(array_unique($country_names)), 0, 10);
+        if (empty($location_ids) && empty($location_names) && empty($country_codes) && empty($country_names)) {
             return array();
         }
 
@@ -218,6 +237,18 @@ class ALMA_Contextual_Affiliate_Matcher {
             $conditions[] = "l.city IN ($name_placeholders)";
             $conditions[] = "l.canonical_name IN ($name_placeholders)";
             $params = array_merge($params, $location_names, $location_names);
+        }
+        if (!empty($country_codes)) {
+            // Articolo localizzato su interi paesi (es. "Maldive vs Seychelles"):
+            // candidati tutti i link con località in quei paesi.
+            $code_placeholders = implode(',', array_fill(0, count($country_codes), '%s'));
+            $conditions[] = "l.country_code IN ($code_placeholders)";
+            $params = array_merge($params, $country_codes);
+        }
+        if (!empty($country_names)) {
+            $cname_placeholders = implode(',', array_fill(0, count($country_names), '%s'));
+            $conditions[] = "l.country IN ($cname_placeholders)";
+            $params = array_merge($params, $country_names);
         }
         $params[] = max(1, absint($limit));
         $ids = $wpdb->get_col($wpdb->prepare(
@@ -340,13 +371,16 @@ class ALMA_Contextual_Affiliate_Matcher {
 
     /**
      * Confronta le località dell'articolo con quelle del link.
-     * Ritorna il punteggio migliore trovato (non additivo):
-     * stessa località/città 40 (+5 se primaria per entrambi), stessa regione 20,
-     * stesso paese 10. La penalità -15 scatta SOLO quando entrambe le parti
-     * dichiarano paesi (non vuoti) e questi sono del tutto disgiunti: metadati
-     * incompleti (es. country_code mancante su un lato) non devono mai punire
-     * un match altrimenti valido — era il caso "Copenaghen (DK)" vs
-     * "Copenaghen (country vuoto)" che azzerava il segnale geografico.
+     * Punteggio migliore trovato (non additivo):
+     * - stessa località/città: 40 (+5 se primaria per entrambi)
+     * - contenimento paese/regione: 35 — l'articolo parla di un intero paese
+     *   (es. confronto "Maldive vs Seychelles") e il link è in quel paese
+     *   (es. escursione a Malé). Senza questo livello i link corretti si
+     *   fermavano al generico +10 e non superavano la soglia.
+     * - stessa regione: 20; stesso paese tra due località puntuali: 10
+     * - paesi dichiarati da entrambe le parti e disgiunti: -30 (un link di
+     *   Parigi su un articolo sulle Maldive non deve poter risalire con i
+     *   soli segnali testuali generici). Metadati incompleti restano neutri.
      */
     private function geo_score($post_locations, $link_locations) {
         if (empty($post_locations) || empty($link_locations)) {
@@ -383,20 +417,30 @@ class ALMA_Contextual_Affiliate_Matcher {
             return $city_primary_match ? 45 : 40;
         }
 
+        // Contenimento: una delle due parti È un paese/regione e l'altra ha
+        // località in quel paese (per codice o, in mancanza, per nome).
+        if (!empty(array_intersect($post_index['scope_countries'], $link_index['countries']))
+            || !empty(array_intersect($post_index['countries'], $link_index['scope_countries']))
+            || !empty(array_intersect($post_index['scope_names'], $link_index['country_names']))
+            || !empty(array_intersect($post_index['country_names'], $link_index['scope_names']))) {
+            return 35;
+        }
+
         foreach ($post_index['regions'] as $name => $post_countries) {
             if (isset($link_index['regions'][$name]) && $this->countries_compatible($post_countries, $link_index['regions'][$name])) {
                 return 20;
             }
         }
 
-        if (!empty(array_intersect($post_index['countries'], $link_index['countries']))) {
+        if (!empty(array_intersect($post_index['countries'], $link_index['countries']))
+            || !empty(array_intersect($post_index['country_names'], $link_index['country_names']))) {
             return 10;
         }
 
         // Penalità solo per disaccordo esplicito: entrambe le parti dichiarano
         // paesi noti e non hanno nulla in comune.
         if (!empty($post_index['countries']) && !empty($link_index['countries'])) {
-            return -15;
+            return -30;
         }
         return 0;
     }
@@ -416,19 +460,25 @@ class ALMA_Contextual_Affiliate_Matcher {
         $index = array(
             'location_ids' => array(),
             'primary_location_ids' => array(),
-            'cities' => array(),   // nome normalizzato => array('countries' => [], 'primary' => bool)
-            'regions' => array(),  // nome normalizzato => array di country code
-            'countries' => array(),
+            'cities' => array(),          // nome normalizzato => array('countries' => [], 'primary' => bool)
+            'regions' => array(),         // nome normalizzato => array di country code
+            'countries' => array(),       // country code di tutte le località
+            'country_names' => array(),   // nomi paese normalizzati di tutte le località
+            'scope_countries' => array(), // country code delle località che SONO un paese/regione
+            'scope_names' => array(),     // nomi delle località paese/regione (fallback senza codice)
         );
         foreach ((array) $locations as $location) {
             $location = (array) $location;
             $location_id = absint($location['location_id'] ?? 0);
+            $type = sanitize_key((string) ($location['type'] ?? ''));
+            $canonical = $this->normalize_text((string) ($location['canonical_name'] ?? ($location['name'] ?? '')));
             $city = $this->normalize_text((string) ($location['city'] ?? ''));
             if ($city === '') {
                 // Per località non-città (POI, aree) usa il nome canonico come chiave.
-                $city = $this->normalize_text((string) ($location['canonical_name'] ?? ($location['name'] ?? '')));
+                $city = $canonical;
             }
             $country = $this->normalize_text((string) ($location['country_code'] ?? ''));
+            $country_name = $this->normalize_text((string) ($location['country'] ?? ''));
             $region = $this->normalize_text((string) ($location['region'] ?? ''));
             $is_primary = !empty($location['is_primary']) || (($location['role'] ?? '') === 'main_destination');
 
@@ -449,6 +499,22 @@ class ALMA_Contextual_Affiliate_Matcher {
                     $index['cities'][$city]['primary'] = true;
                 }
             }
+            if ($country_name !== '') {
+                $index['country_names'][] = $country_name;
+            }
+            if (in_array($type, array('country', 'region'), true)) {
+                // La località stessa è un paese/una regione: abilita il match di
+                // contenimento con le località puntuali dell'altra parte.
+                if ($country !== '') {
+                    $index['scope_countries'][] = $country;
+                }
+                if ($canonical !== '') {
+                    $index['scope_names'][] = $canonical;
+                }
+                if ($type === 'country' && $canonical !== '') {
+                    $index['country_names'][] = $canonical;
+                }
+            }
             if ($region !== '') {
                 if (!isset($index['regions'][$region])) {
                     $index['regions'][$region] = array();
@@ -464,6 +530,9 @@ class ALMA_Contextual_Affiliate_Matcher {
         $index['location_ids'] = array_values(array_unique($index['location_ids']));
         $index['primary_location_ids'] = array_values(array_unique($index['primary_location_ids']));
         $index['countries'] = array_values(array_unique($index['countries']));
+        $index['country_names'] = array_values(array_unique($index['country_names']));
+        $index['scope_countries'] = array_values(array_unique($index['scope_countries']));
+        $index['scope_names'] = array_values(array_unique($index['scope_names']));
         foreach ($index['cities'] as $name => $entry) {
             $index['cities'][$name]['countries'] = array_values(array_unique($entry['countries']));
         }
@@ -530,7 +599,7 @@ class ALMA_Contextual_Affiliate_Matcher {
         $placeholders = implode(',', array_fill(0, count($link_ids), '%d'));
         $params = array_merge(array(ALMA_Geo_Index_Store::OBJECT_TYPE_AFFILIATE_LINK), $link_ids);
         $rows = $wpdb->get_results($wpdb->prepare(
-            "SELECT ci.object_id, ci.is_primary, l.id AS location_id, l.canonical_name, l.city, l.region, l.country_code
+            "SELECT ci.object_id, ci.is_primary, l.id AS location_id, l.canonical_name, l.type, l.city, l.region, l.country, l.country_code
              FROM {$store->table_content_index()} ci
              LEFT JOIN {$store->table_locations()} l ON l.id = ci.location_id
              WHERE ci.object_type = %s AND ci.object_id IN ($placeholders)",
@@ -546,8 +615,10 @@ class ALMA_Contextual_Affiliate_Matcher {
             $map[$object_id][] = array(
                 'location_id' => absint($row['location_id'] ?? 0),
                 'canonical_name' => (string) ($row['canonical_name'] ?? ''),
+                'type' => (string) ($row['type'] ?? ''),
                 'city' => (string) ($row['city'] ?? ''),
                 'region' => (string) ($row['region'] ?? ''),
+                'country' => (string) ($row['country'] ?? ''),
                 'country_code' => (string) ($row['country_code'] ?? ''),
                 'is_primary' => !empty($row['is_primary']),
             );
