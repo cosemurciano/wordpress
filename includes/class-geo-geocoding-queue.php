@@ -26,6 +26,31 @@ class ALMA_Geo_Geocoding_Queue {
 
     public static function init() {
         add_action(self::CRON_HOOK, array(__CLASS__, 'drain'));
+        // Watchdog: se restano località pending senza un drain in programma
+        // (evento cron perso, sito a basso traffico), lo riarma a ogni visita
+        // admin, con throttle per non pesare sulle pageview.
+        add_action('admin_init', array(__CLASS__, 'watchdog'));
+    }
+
+    public static function watchdog() {
+        if (get_transient('alma_geo_queue_watchdog')) {
+            return;
+        }
+        set_transient('alma_geo_queue_watchdog', 1, 2 * MINUTE_IN_SECONDS);
+        if (!self::is_enabled()) {
+            return;
+        }
+        $next = wp_next_scheduled(self::CRON_HOOK);
+        if ($next) {
+            // Evento in ritardo (cron non partito): forza lo spawn.
+            if ($next <= time()) {
+                self::spawn_now_on_shutdown();
+            }
+            return;
+        }
+        if (self::count_pending() > 0) {
+            self::maybe_schedule();
+        }
     }
 
     public static function is_enabled() {
@@ -40,13 +65,44 @@ class ALMA_Geo_Geocoding_Queue {
      * unico di associazione località (store) e quindi coprente metabox,
      * import massivi CSV, import API, auto-indexer e creazione contenuti.
      */
-    public static function maybe_schedule($delay = 10) {
+    public static function maybe_schedule($delay = 0) {
         if (!self::is_enabled()) {
             return;
         }
         if (!wp_next_scheduled(self::CRON_HOOK)) {
-            wp_schedule_single_event(time() + max(5, absint($delay)), self::CRON_HOOK);
+            // L'evento nasce già scaduto: così lo spawn a fine richiesta lo
+            // esegue subito. Senza spawn immediato partirebbe solo alla
+            // prossima pageview e su siti a basso traffico le località
+            // restavano "In attesa di geocoding" a tempo indefinito.
+            $delay = absint($delay);
+            wp_schedule_single_event($delay > 0 ? time() + $delay : time() - 1, self::CRON_HOOK);
+            if ($delay === 0) {
+                self::spawn_now_on_shutdown();
+            }
         }
+    }
+
+    /**
+     * Esegue il cron a fine richiesta senza bloccarla (loopback non bloccante
+     * di WordPress). spawn_cron processa solo eventi già scaduti.
+     */
+    private static function spawn_now_on_shutdown() {
+        static $registered = false;
+        if ($registered) {
+            return;
+        }
+        if (defined('DISABLE_WP_CRON') && DISABLE_WP_CRON) {
+            return; // Il sito usa un cron di sistema: ci pensa lui.
+        }
+        if (!function_exists('spawn_cron')) {
+            return;
+        }
+        $registered = true;
+        // Su shutdown: lo spawn avviene dopo che l'evento è stato scritto e
+        // non allunga la logica della richiesta corrente.
+        add_action('shutdown', function () {
+            spawn_cron();
+        }, 999);
     }
 
     public static function next_run_timestamp() {
@@ -64,8 +120,13 @@ class ALMA_Geo_Geocoding_Queue {
      * finché la coda non è vuota. Riusa il lock del geocoder, quindi non può
      * sovrapporsi ai batch manuali lanciati dall'admin.
      */
-    public static function drain() {
-        if (!self::is_enabled()) {
+    public static function drain($force = false) {
+        // $force: azione manuale "Geocodifica ora" — richiede solo la API key,
+        // funziona anche con l'automatismo disattivato.
+        if (!$force && !self::is_enabled()) {
+            return;
+        }
+        if ($force && trim((string) get_option('alma_geo_google_maps_api_key', '')) === '') {
             return;
         }
         $geocoder = new ALMA_Geo_Index_Geocoder();

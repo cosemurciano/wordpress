@@ -179,7 +179,13 @@ class ALMA_Geo_Index_Admin {
                 <?php if (!empty($last['configuration_error'])) : ?>
                     <li style="color:#d63638;"><?php esc_html_e('Ultimo run interrotto: Google ha rifiutato la richiesta (REQUEST_DENIED). Verifica API key e abilitazione della Geocoding API nelle impostazioni.', 'affiliate-link-manager-ai'); ?></li>
                 <?php endif; ?>
+                <?php if (defined('DISABLE_WP_CRON') && DISABLE_WP_CRON && $pending > 0) : ?>
+                    <li style="color:#996800;"><?php esc_html_e('WP-Cron è disabilitato su questo sito (DISABLE_WP_CRON): assicurati che il cron di sistema chiami wp-cron.php, oppure usa il pulsante qui sotto.', 'affiliate-link-manager-ai'); ?></li>
+                <?php endif; ?>
             </ul>
+            <?php if (!$api_key_missing && $pending > 0) : ?>
+                <?php $this->render_geocoding_button('drain_geocoding_now', __('Geocodifica ora le località in attesa', 'affiliate-link-manager-ai')); ?>
+            <?php endif; ?>
         </div>
         <?php
     }
@@ -230,7 +236,7 @@ class ALMA_Geo_Index_Admin {
             update_option(ALMA_Geo_Geocoding_Queue::ENABLED_OPTION, !empty($_POST['alma_geo_auto_geocoding']) ? 'yes' : 'no', false);
             // Se l'automatismo è attivo e ci sono località in attesa, riparte subito.
             if (ALMA_Geo_Geocoding_Queue::is_enabled() && ALMA_Geo_Geocoding_Queue::count_pending() > 0) {
-                ALMA_Geo_Geocoding_Queue::maybe_schedule(5);
+                ALMA_Geo_Geocoding_Queue::maybe_schedule();
             }
             $this->notice_success($api_key === '' && get_option('alma_geo_google_maps_api_key', '') === '' ? __('Impostazioni salvate. API key non configurata.', 'affiliate-link-manager-ai') : __('Impostazioni geocoding salvate.', 'affiliate-link-manager-ai'));
             return;
@@ -264,6 +270,21 @@ class ALMA_Geo_Index_Admin {
                 $this->notice_error(__('Google ha rifiutato la richiesta (REQUEST_DENIED): verifica API key e abilitazione della Geocoding API. Il batch è stato interrotto.', 'affiliate-link-manager-ai'));
             }
             $this->notice_success(sprintf(__('Batch geocoding completato: %1$d processate, %2$d verified, %3$d ambiguous, %4$d manual_required, %5$d failed. Oggetti collegati sincronizzati: %6$d, errori sync: %7$d.', 'affiliate-link-manager-ai'), $report['processed'], $report['verified'], $report['ambiguous'], $report['manual_required'], $report['failed'], $report['linked_objects_synced'], $report['linked_objects_sync_errors']));
+            return;
+        }
+        if ($action === 'drain_geocoding_now') {
+            if (!$this->geocoder->is_enabled()) {
+                $this->notice_error(__('API key non configurata: impossibile geocodificare.', 'affiliate-link-manager-ai'));
+                return;
+            }
+            ALMA_Geo_Geocoding_Queue::drain(true);
+            $last = ALMA_Geo_Geocoding_Queue::get_last_run_report();
+            $remaining = ALMA_Geo_Geocoding_Queue::count_pending();
+            if (!empty($last['locked'])) {
+                $this->notice_error(__('Un\'altra elaborazione di geocoding è in corso: riprova tra qualche minuto.', 'affiliate-link-manager-ai'));
+                return;
+            }
+            $this->notice_success(sprintf(__('Geocoding eseguito ora: %1$d processate, %2$d verificate, %3$d ambigue, %4$d fallite. Località ancora in attesa: %5$d%6$s.', 'affiliate-link-manager-ai'), (int) ($last['processed'] ?? 0), (int) ($last['verified'] ?? 0), (int) ($last['ambiguous'] ?? 0), (int) ($last['failed'] ?? 0), $remaining, $remaining > 0 ? __(' (il resto prosegue in automatico)', 'affiliate-link-manager-ai') : ''));
             return;
         }
         if ($action === 'sync_verified_locations') {

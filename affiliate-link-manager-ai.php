@@ -3,7 +3,7 @@
  * Plugin Name: Affiliate Link Manager AI
  * Plugin URI: https://your-website.com
  * Description: Gestisce link affiliati con intelligenza artificiale per ottimizzazione e tracking automatico.
- * Version: 2.45.0
+ * Version: 2.46.0
  * Author: Cosè Murciano
  * License: GPL v2 or later
  * Text Domain: affiliate-link-manager-ai
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Definisci costanti del plugin
-define('ALMA_VERSION', '2.45.0');
+define('ALMA_VERSION', '2.46.0');
 define('ALMA_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('ALMA_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('ALMA_PLUGIN_FILE', __FILE__);
@@ -190,10 +190,6 @@ class AffiliateManagerAI {
      * Inizializza hooks
      */
     private function init_hooks() {
-        // Bot Affiliate per suggerire link tramite AI
-        require_once ALMA_PLUGIN_DIR . 'includes/class-bot-affiliate.php';
-        new ALMA_Bot_Affiliate();
-
         ALMA_AI_Content_Agent_Internal_Link_Index::init();
 
         // Shortcodes and editor AJAX are now routed through dedicated classes.
@@ -1094,16 +1090,6 @@ class AffiliateManagerAI {
             array($this, 'render_contextual_widget_page')
         );
 
-        // BotAffiliate Post settings
-        add_submenu_page(
-            'edit.php?post_type=affiliate_link',
-            __('BotAffiliate Post', 'affiliate-link-manager-ai'),
-            __('BotAffiliate Post', 'affiliate-link-manager-ai'),
-            'manage_options',
-            'alma-bot-affiliate-settings',
-            array($this, 'render_bot_affiliate_settings_page')
-        );
-
         // AI Content Agent
         add_submenu_page(
             self::AFFILIATE_LINK_PARENT_MENU,
@@ -1155,7 +1141,6 @@ class AffiliateManagerAI {
             'alma-create-widget',
             'affiliate-link-widgets',
             ALMA_Contextual_Affiliate_Widget::MENU_SLUG,
-            'alma-bot-affiliate-settings',
             ALMA_Geo_Index_Admin::MENU_SLUG,
             'alma-affiliate-sources',
             self::AI_CONTENT_AGENT_MENU_SLUG,
@@ -1188,9 +1173,6 @@ class AffiliateManagerAI {
                             break;
                         case ALMA_Contextual_Affiliate_Widget::MENU_SLUG:
                             $item[0] = __('Widget Contestuale', 'affiliate-link-manager-ai');
-                            break;
-                        case 'alma-bot-affiliate-settings':
-                            $item[0] = __('BotAffiliate Post', 'affiliate-link-manager-ai');
                             break;
                         case ALMA_Geo_Index_Admin::MENU_SLUG:
                             $item[0] = __('Indice Geografico', 'affiliate-link-manager-ai');
@@ -3417,128 +3399,6 @@ class AffiliateManagerAI {
                     </tbody>
                 </table>
             <?php endif; ?>
-        </div>
-        <?php
-    }
-
-    public function render_bot_affiliate_settings_page() {
-        if (!current_user_can('manage_options')) {
-            wp_die(__('Non hai i permessi per accedere a questa pagina.'));
-        }
-
-        wp_enqueue_media();
-        wp_enqueue_style('wp-color-picker');
-        wp_enqueue_script('wp-color-picker');
-
-        if (isset($_POST['alma_bot_affiliate_settings_nonce']) && wp_verify_nonce($_POST['alma_bot_affiliate_settings_nonce'], 'alma_bot_affiliate_settings')) {
-            $animation   = sanitize_text_field($_POST['alma_bot_affiliate_animation'] ?? 'fade');
-            $intro       = sanitize_textarea_field($_POST['alma_bot_affiliate_intro'] ?? '');
-            $num_links   = isset($_POST['alma_bot_affiliate_num_links']) ? (int) $_POST['alma_bot_affiliate_num_links'] : 3;
-            $intro_img   = esc_url_raw($_POST['alma_bot_affiliate_intro_img'] ?? '');
-            $intro_bg    = sanitize_hex_color($_POST['alma_bot_affiliate_intro_bg'] ?? '#ffffff');
-            $intro_color = sanitize_hex_color($_POST['alma_bot_affiliate_intro_color'] ?? '#000000');
-            if ($num_links < 1 || $num_links > 10) {
-                $num_links = 3;
-            }
-            update_option('alma_bot_affiliate_animation', $animation);
-            update_option('alma_bot_affiliate_intro', $intro);
-            update_option('alma_bot_affiliate_num_links', $num_links);
-            update_option('alma_bot_affiliate_intro_img', $intro_img);
-            update_option('alma_bot_affiliate_intro_bg', $intro_bg ?: '#ffffff');
-            update_option('alma_bot_affiliate_intro_color', $intro_color ?: '#000000');
-            echo '<div class="notice notice-success"><p>' . esc_html__('Impostazioni salvate.', 'affiliate-link-manager-ai') . '</p></div>';
-        }
-
-        $current_animation = get_option('alma_bot_affiliate_animation', 'fade');
-        $intro_text        = get_option('alma_bot_affiliate_intro', '');
-        $current_num_links = get_option('alma_bot_affiliate_num_links', 3);
-        $intro_img         = get_option('alma_bot_affiliate_intro_img', '');
-        $intro_bg          = get_option('alma_bot_affiliate_intro_bg', '#ffffff');
-        $intro_color       = get_option('alma_bot_affiliate_intro_color', '#000000');
-
-        ?>
-        <div class="wrap">
-            <h1><?php _e('BotAffiliate Post', 'affiliate-link-manager-ai'); ?></h1>
-            <form method="post">
-                <?php wp_nonce_field('alma_bot_affiliate_settings', 'alma_bot_affiliate_settings_nonce'); ?>
-                <table class="form-table">
-                    <tr>
-                        <th scope="row"><?php _e('Animazione popup', 'affiliate-link-manager-ai'); ?></th>
-                        <td>
-                            <select name="alma_bot_affiliate_animation">
-                                <option value="fade" <?php selected($current_animation, 'fade'); ?>><?php _e('Dissolvenza', 'affiliate-link-manager-ai'); ?></option>
-                                <option value="slide" <?php selected($current_animation, 'slide'); ?>><?php _e('Scorrimento', 'affiliate-link-manager-ai'); ?></option>
-                                <option value="zoom" <?php selected($current_animation, 'zoom'); ?>><?php _e('Zoom', 'affiliate-link-manager-ai'); ?></option>
-                                <option value="left" <?php selected($current_animation, 'left'); ?>><?php _e('Entrata da sinistra', 'affiliate-link-manager-ai'); ?></option>
-                            </select>
-                        </td>
-                    </tr>
-                    <tr>
-                        <th scope="row"><?php _e('Numero di link', 'affiliate-link-manager-ai'); ?></th>
-                        <td>
-                            <select name="alma_bot_affiliate_num_links">
-                                <?php for ($i = 1; $i <= 10; $i++): ?>
-                                    <option value="<?php echo $i; ?>" <?php selected($current_num_links, $i); ?>><?php echo $i; ?></option>
-                                <?php endfor; ?>
-                            </select>
-                            <p class="description"><?php _e('Quantità di link affiliati da mostrare.', 'affiliate-link-manager-ai'); ?></p>
-                        </td>
-                    </tr>
-                    <tr>
-                        <th scope="row"><?php _e('Immagine profilo', 'affiliate-link-manager-ai'); ?></th>
-                        <td>
-                            <input type="text" name="alma_bot_affiliate_intro_img" id="alma_bot_affiliate_intro_img" value="<?php echo esc_attr($intro_img); ?>" class="regular-text" />
-                            <button class="button" id="alma_bot_affiliate_intro_img_button"><?php _e('Scegli immagine', 'affiliate-link-manager-ai'); ?></button>
-                            <p class="description"><?php _e('Immagine mostrata accanto al testo introduttivo.', 'affiliate-link-manager-ai'); ?></p>
-                        </td>
-                    </tr>
-                    <tr>
-                        <th scope="row"><?php _e('Colore sfondo testo', 'affiliate-link-manager-ai'); ?></th>
-                        <td>
-                            <input type="text" name="alma_bot_affiliate_intro_bg" value="<?php echo esc_attr($intro_bg); ?>" class="alma-color-field" />
-                            <p class="description"><?php _e('Colore di sfondo del testo introduttivo.', 'affiliate-link-manager-ai'); ?></p>
-                        </td>
-                    </tr>
-                    <tr>
-                        <th scope="row"><?php _e('Colore testo', 'affiliate-link-manager-ai'); ?></th>
-                        <td>
-                            <input type="text" name="alma_bot_affiliate_intro_color" value="<?php echo esc_attr($intro_color); ?>" class="alma-color-field" />
-                            <p class="description"><?php _e('Colore del testo introduttivo.', 'affiliate-link-manager-ai'); ?></p>
-                        </td>
-                    </tr>
-                    <tr>
-                        <th scope="row"><?php _e('Testo introduttivo', 'affiliate-link-manager-ai'); ?></th>
-                        <td>
-                            <textarea name="alma_bot_affiliate_intro" rows="4" class="large-text"><?php echo esc_textarea($intro_text); ?></textarea>
-                            <p class="description"><?php _e('Testo mostrato prima dei link affiliati.', 'affiliate-link-manager-ai'); ?></p>
-                        </td>
-                    </tr>
-                </table>
-                <?php submit_button(); ?>
-            </form>
-            <script>
-            jQuery(document).ready(function($){
-                var frame;
-                $('#alma_bot_affiliate_intro_img_button').on('click', function(e){
-                    e.preventDefault();
-                    if(frame){
-                        frame.open();
-                        return;
-                    }
-                    frame = wp.media({
-                        title: '<?php echo esc_js(__('Seleziona immagine', 'affiliate-link-manager-ai')); ?>',
-                        button: { text: '<?php echo esc_js(__('Usa questa immagine', 'affiliate-link-manager-ai')); ?>' },
-                        multiple: false
-                    });
-                    frame.on('select', function(){
-                        var attachment = frame.state().get('selection').first().toJSON();
-                        $('#alma_bot_affiliate_intro_img').val(attachment.url);
-                    });
-                    frame.open();
-                });
-                $('.alma-color-field').wpColorPicker();
-            });
-            </script>
         </div>
         <?php
     }
