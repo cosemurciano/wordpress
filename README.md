@@ -1,4 +1,4 @@
-## 2.42.0 - 2026-07-02
+## 2.43.0 - 2026-07-02
 
 ### Indice Geografico — Copertura e indicizzazione automatica
 
@@ -15,6 +15,9 @@
 - **Città uguale, metadati diversi ora fanno match**: un articolo su Copenaghen (località geocodificata, paese DK) e link su Copenaghen importati senza country code non superavano la soglia — il confronto per `nome|paese` falliva e scattava perfino la penalità "località diverse". Ora le città si confrontano per nome con paesi compatibili (paese mancante = jolly) e la penalità vale solo per disaccordo esplicito tra paesi noti.
 - **Candidati anche tra righe località duplicate**: la stessa città creata da import diversi (righe distinte in `alma_geo_locations`) viene riconosciuta confrontando anche city/canonical name, non solo l'ID località.
 - **Cache invalidata dalle associazioni geografiche**: associare località a un articolo o a un Link Affiliato (metabox, import GEO, auto-indexer) ora invalida subito la cache del widget; prima i risultati pre-associazione restavano serviti fino a scadenza TTL (anche 7 giorni).
+- Versione plugin aggiornata a `2.43.0`.
+
+## 2.42.0 - 2026-07-02
 
 ### Widget Link Contestuale — matching realmente contestuale alla pagina
 
