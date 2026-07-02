@@ -1,3 +1,13 @@
+## 2.46.1 - 2026-07-02
+
+### Widget Link Contestuale — coerenza geografica (matcher v4)
+- Fix del caso segnalato: articolo "Maldive, Seychelles o Mauritius" (localizzato su interi paesi) mostrava esperienze di Parigi. Due cause: le località a livello paese non "contenevano" le città (un link su Malé prendeva solo il generico +10 e restava sotto soglia, e non entrava nemmeno tra i candidati), mentre i link geograficamente estranei risalivano con segnali testuali generici nonostante la penalità.
+- Nuovo punteggio di **contenimento** (35 punti): articolo localizzato su un paese/regione + link con località in quel paese (per country code o, in mancanza, per nome) — vale anche al contrario (articolo su una città, link sul paese intero).
+- **Penalità rafforzata a -30** per paesi dichiarati da entrambe le parti e disgiunti: un link di Parigi non può più superare la soglia 40 con soli segnali testuali generici (keyword+tipologia+contesto+click ≈ 48 − 30 = 18). I metadati incompleti restano neutri.
+- I **candidati geografici** includono ora tutti i link con località nei paesi dell'articolo (match per country code e nome paese), non solo per ID/nome città.
+- `MATCHER_VERSION=4`: i risultati in cache calcolati con la logica precedente vengono invalidati al deploy.
+- Versione plugin aggiornata a `2.46.1`.
+
 ## 2.46.0 - 2026-07-02
 
 ### Geocoding automatico immediato
