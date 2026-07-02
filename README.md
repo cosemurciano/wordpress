@@ -1,5 +1,15 @@
 ## 2.42.0 - 2026-07-02
 
+### Widget Link Contestuale — matching realmente contestuale alla pagina
+
+- **Geo Index come segnale dominante**: il widget ora confronta le località associate all'articolo (metabox Geolocalizzazione contenuto / import GEO) con quelle dei Link Affiliati. Stessa città o località: fino a 45 punti; stessa regione: 20; stesso paese: 10; località esplicitamente diverse: penalità. Senza dati geografici da una delle due parti il segnale è neutro e vale il matching testuale (retrocompatibile).
+- **Candidati selezionati per pertinenza, non per data**: la rosa dei candidati unisce i link che condividono località con l'articolo, quelli pertinenti per keyword secondo l'indice affiliati AI e, come riempimento, i più recenti (comportamento storico). Cade il limite pratico degli "ultimi 200 per data": un link pertinente ma importato tempo fa ora viene considerato.
+- **Scoring graduato per quantità e rarità**: le keyword in comune non danno più bonus fissi al primo match; ogni keyword pesa in base alla sua rarità sul pool di candidati (un nome di città vale molto, "tour" quasi nulla) e raddoppia se compare nel titolo o negli heading. Un link affine solo per tipologia non supera più la soglia di default.
+- **Match a parola intera**: eliminato il confronto per sottostringa che produceva falsi positivi sistematici ("roma" dentro "romantico").
+- **Cache per articolo**: il salvataggio di un articolo invalida solo la sua cache (via data di modifica nell'hash); il bump globale avviene solo per salvataggi di Link Affiliati e impostazioni. Prima ogni salvataggio azzerava la cache dell'intero sito.
+- **Fix opzione "Escludi link già presenti" = No**: i link già presenti nell'articolo ora possono comparire con una lieve penalità; prima la penalità di −100 li azzerava sempre, rendendo l'opzione inefficace.
+- La popolarità (click storici) contribuisce al massimo 3 punti: non domina più la contestualità a parità di pertinenza.
+
 ### Affidabilità, sicurezza e concorrenza
 
 - **Tracking click affidabile**: incremento atomico del contatore (i click concorrenti non si perdono più), opzione "non tracciare utenti anonimi" applicata anche lato server, filtro bot sui crawler noti (personalizzabile via filtro `alma_is_bot_user_agent`), rate limit breve anti-doppio evento, parsing corretto di `X-Forwarded-For` multi-valore e niente più `SHOW TABLES` a ogni click. Lato frontend il tasto destro non viene più conteggiato, il middle-click usa `auxclick` e il deprecato `DOMNodeInserted` è stato sostituito da `MutationObserver`.

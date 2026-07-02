@@ -1,5 +1,12 @@
 ## 2.42.0 - 2026-07-02
 
+### Widget Link Contestuale — matching contestuale reale
+- Il Geo Index è ora il segnale dominante del matching: località condivise tra articolo e Link Affiliato valgono fino a 45 punti (città/località), 20 (regione), 10 (paese), con penalità per località esplicitamente diverse; senza dati geo il segnale è neutro e vale il matching testuale.
+- I candidati sono selezionati per pertinenza (località condivise + keyword via indice affiliati AI + recenti come riempimento) invece dei soli ultimi 200 link per data.
+- Scoring keyword graduato per quantità e rarità sul pool di candidati, con raddoppio per match nel titolo/heading; match solo a parola intera (niente più "roma" dentro "romantico").
+- Cache invalidata per singolo articolo al salvataggio (bump globale solo per Link Affiliati e impostazioni); l'opzione "Escludi link già presenti = No" ora funziona (penalità lieve invece dell'azzeramento); i click storici pesano al massimo 3 punti.
+- Aggiornata la descrizione nella pagina admin del Widget Contestuale con il nuovo funzionamento e il suggerimento di associare le località.
+
 ### Tracking click affidabile
 - Incremento atomico del contatore `_click_count`: i click concorrenti non vengono più persi e le eventuali righe meta duplicate del primo click vengono ripulite automaticamente.
 - L'opzione "Non tracciare utenti anonimi" è ora applicata anche lato server, non solo in JavaScript.
