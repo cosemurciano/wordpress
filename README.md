@@ -1,3 +1,13 @@
+## 2.46.0 - 2026-07-02
+
+### Geocoding automatico immediato e rimozione BotAffiliate
+
+- **Il geocoding parte davvero subito**: i link importati via API/CSV restavano "In attesa di geocoding" perché l'evento in background partiva solo alla visita successiva del sito. Ora viene eseguito immediatamente a fine import (spawn non bloccante del cron), con un watchdog admin che riarma eventuali eventi persi.
+- **Pulsante "Geocodifica ora le località in attesa"** nella Panoramica: lotto immediato con report visibile, utile anche come verifica; funziona pure con l'automatismo disattivato.
+- Avviso dedicato se `DISABLE_WP_CRON` è attivo con località in attesa.
+- **Rimossa la sezione BotAffiliate Post** (pagina, metabox, popup frontend e asset): non correttamente sviluppata. I dati salvati restano nel database ma non vengono più utilizzati.
+- Versione plugin aggiornata a `2.46.0`.
+
 ## 2.45.0 - 2026-07-02
 
 ### Geolocalizzazione completa dei link importati (Viator API e CSV)
