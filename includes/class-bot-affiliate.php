@@ -376,6 +376,15 @@ class ALMA_Bot_Affiliate {
             return array_slice($links, 0, $num_links);
         }
 
+        // Lock anti-stampede: senza cache, N visitatori simultanei sulla stessa pagina
+        // genererebbero N chiamate OpenAI sincrone. Solo la prima richiesta chiama
+        // l'API; le altre non mostrano il popup finché la cache non è popolata.
+        $lock_key = 'alma_bot_ai_lock_' . absint($post_id);
+        if (get_transient($lock_key)) {
+            return array();
+        }
+        set_transient($lock_key, 1, 2 * MINUTE_IN_SECONDS);
+
         $content = get_post_field('post_content', $post_id);
 
         $posts = get_posts(array(
@@ -439,6 +448,7 @@ class ALMA_Bot_Affiliate {
         unset($link);
 
         update_post_meta($post_id, self::META_LINKS, $links);
+        delete_transient($lock_key);
         return array_slice($links, 0, $num_links);
     }
 }

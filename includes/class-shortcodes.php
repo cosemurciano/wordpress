@@ -8,18 +8,34 @@ if (!defined('ABSPATH')) {
 
 class ALMA_Shortcodes {
     public function init() {
+        $this->load_widget_dependencies();
+
+        add_shortcode('affiliate_link', array($this, 'display_affiliate_link'));
+        add_shortcode('affiliate_links_widget', array('ALMA_Affiliate_Links_Widget', 'shortcode'));
+        // init() viene eseguito su `init` (priorità 10), quando `widgets_init` (priorità 1)
+        // è già scattato: l'aggancio qui non verrebbe mai eseguito. La registrazione del
+        // widget è agganciata nel bootstrap del plugin; questo ramo resta solo per
+        // retrocompatibilità con chiamate a init() precedenti a `widgets_init`.
+        if (!did_action('widgets_init')) {
+            add_action('widgets_init', array($this, 'register_widget'));
+        }
+    }
+
+    public function register_widget() {
+        static $registered = false;
+        if ($registered) {
+            return;
+        }
+        $registered = true;
+        $this->load_widget_dependencies();
+        register_widget('ALMA_Affiliate_Links_Widget');
+    }
+
+    private function load_widget_dependencies() {
         if (file_exists(ALMA_PLUGIN_DIR . 'includes/class-affiliate-widget-layout-registry.php')) {
             require_once ALMA_PLUGIN_DIR . 'includes/class-affiliate-widget-layout-registry.php';
         }
         require_once ALMA_PLUGIN_DIR . 'includes/class-affiliate-links-widget.php';
-
-        add_shortcode('affiliate_link', array($this, 'display_affiliate_link'));
-        add_shortcode('affiliate_links_widget', array('ALMA_Affiliate_Links_Widget', 'shortcode'));
-        add_action('widgets_init', array($this, 'register_widget'));
-    }
-
-    public function register_widget() {
-        register_widget('ALMA_Affiliate_Links_Widget');
     }
 
     public function display_affiliate_link($atts) {

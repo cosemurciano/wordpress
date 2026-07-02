@@ -808,7 +808,10 @@ class ALMA_Affiliate_Source_GYG_CSV_Importer {
         }
         $eof = feof($handle);
         fclose($handle);
-        $result['done'] = $eof || $result['next_cursor'] >= $quantity || $result['processed'] < $batch_size;
+        // Il completamento è determinato solo da EOF o dal raggiungimento della quantità
+        // richiesta: usare "processed < batch_size" marcava l'import come concluso in
+        // anticipo quando la lettura si interrompeva prima della fine del file.
+        $result['done'] = $eof || $result['next_cursor'] >= $quantity;
         $result['duration'] = round(microtime(true) - $start, 2);
         $result['effective_processed'] = $result['processed'];
         $result['titles_populated'] = $result['titles_read'];

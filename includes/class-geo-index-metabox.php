@@ -87,12 +87,30 @@ class ALMA_Geo_Index_Metabox {
             wp_send_json_error(array('message' => __('Google Maps API key non configurata.', 'affiliate-link-manager-ai'), 'code' => 'api_key_missing'), 400);
         }
 
+        // Throttle per utente: ogni ricerca costa quota Google (fino a 2 chiamate).
+        // Massimo 15 ricerche al minuto per utente, con cache breve dei risultati identici.
+        $user_id = get_current_user_id();
+        $cache_key = 'alma_geo_search_' . md5(strtolower($query) . '|' . get_option('alma_geo_geocoding_country_bias', ''));
+        $cached = get_transient($cache_key);
+        if (is_array($cached)) {
+            wp_send_json_success(array('results' => $cached, 'cached' => true));
+        }
+        // Finestra fissa per minuto (la chiave include il minuto corrente): un
+        // contatore con TTL "scorrevole" non scadrebbe mai per chi cerca di continuo.
+        $rate_key = 'alma_geo_search_rate_' . $user_id . '_' . gmdate('YmdHi');
+        $rate = (int) get_transient($rate_key);
+        if ($rate >= 15) {
+            wp_send_json_error(array('message' => __('Troppe ricerche in poco tempo: attendi qualche secondo e riprova.', 'affiliate-link-manager-ai'), 'code' => 'rate_limited'), 429);
+        }
+        set_transient($rate_key, $rate + 1, 2 * MINUTE_IN_SECONDS);
+
         $provider = new ALMA_Geo_Index_Google_Geocoder($api_key, (int) get_option('alma_geo_geocoding_timeout', 15));
         $result = $provider->search_locations($query, array('region' => get_option('alma_geo_geocoding_country_bias', '')));
         if (empty($result['success'])) {
             wp_send_json_error(array('message' => sanitize_text_field($result['message'] ?? __('Errore durante la ricerca località.', 'affiliate-link-manager-ai'))), 500);
         }
         $results = array_slice(is_array($result['results'] ?? null) ? $result['results'] : array(), 0, self::MAX_ASSOCIATED_LOCATIONS);
+        set_transient($cache_key, $results, 10 * MINUTE_IN_SECONDS);
         if (empty($results)) {
             wp_send_json_success(array('results' => array(), 'message' => __('Nessun luogo trovato.', 'affiliate-link-manager-ai')));
         }

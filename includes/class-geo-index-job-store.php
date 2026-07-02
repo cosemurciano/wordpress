@@ -323,7 +323,10 @@ class ALMA_Geo_Index_Job_Store {
         foreach ($this->item_row_number_columns() as $row_number_column) {
             $data[$row_number_column] = absint($row_number);
         }
-        $formats = array('%d','%d','%s','%s','%s','%s','%s','%s');
+        // Un format per ciascuna delle 9 chiavi di $data (incluso processed_at, che
+        // wpdb inserisce come NULL): prima erano 8 e i %d delle colonne row_number
+        // risultavano sfalsati.
+        $formats = array('%d','%d','%s','%s','%s','%s','%s','%s','%s');
         foreach ($this->item_row_number_columns() as $row_number_column) {
             $formats[] = '%d';
         }
@@ -417,11 +420,16 @@ class ALMA_Geo_Index_Job_Store {
         $ids = array_values(array_filter(array_map('absint', (array) $ids)));
         $this->last_claim_debug['claim_ids_found'] = $ids;
         if (!empty($ids)) {
+            // Token univoco di claim: due richieste concorrenti possono selezionare gli
+            // stessi id, ma solo una vince l'UPDATE; ri-selezionando per token ognuna
+            // riceve esclusivamente le righe che ha effettivamente marcato, evitando
+            // il doppio processing dello stesso item.
+            $claim_token = 'claim_' . strtolower(wp_generate_password(16, false, false));
             $id_placeholders = implode(',', array_fill(0, count($ids), '%d'));
-            $update_params = array_merge(array('processing', 'claimed_for_processing', current_time('mysql'), $job_id), $ids, $statuses);
+            $update_params = array_merge(array('processing', $claim_token, current_time('mysql'), $job_id), $ids, $statuses);
             $updated = $wpdb->query($wpdb->prepare("UPDATE {$this->table_items()} SET status = %s, action = %s, processed_at = %s WHERE job_id = %d AND id IN ($id_placeholders) AND status IN ($placeholders)", $update_params));
             $this->last_claim_debug['updated_to_processing'] = (int) $updated;
-            $items = $wpdb->get_results($wpdb->prepare("SELECT * FROM {$this->table_items()} WHERE job_id = %d AND id IN ($id_placeholders) AND status = %s ORDER BY id ASC", array_merge(array($job_id), $ids, array('processing'))), ARRAY_A);
+            $items = $updated ? $wpdb->get_results($wpdb->prepare("SELECT * FROM {$this->table_items()} WHERE job_id = %d AND id IN ($id_placeholders) AND status = %s AND action = %s ORDER BY id ASC", array_merge(array($job_id), $ids, array('processing', $claim_token))), ARRAY_A) : array();
         } else {
             $items = array();
         }
