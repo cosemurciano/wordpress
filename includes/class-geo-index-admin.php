@@ -13,6 +13,7 @@ class ALMA_Geo_Index_Admin {
     private $geocoder;
     private $affiliate_importer;
     private $job_store;
+    private $auto_indexer;
     private $notice = '';
 
     public function __construct($store = null) {
@@ -21,6 +22,7 @@ class ALMA_Geo_Index_Admin {
         $this->geocoder = new ALMA_Geo_Index_Geocoder($this->store);
         $this->affiliate_importer = new ALMA_Geo_Index_Affiliate_Link_Importer($this->store);
         $this->job_store = new ALMA_Geo_Index_Job_Store();
+        $this->auto_indexer = new ALMA_Geo_Auto_Indexer($this->store);
     }
 
     public function init() {
@@ -33,6 +35,9 @@ class ALMA_Geo_Index_Admin {
         add_action('wp_ajax_alma_geo_pause_affiliate_link_import_job', array($this, 'ajax_pause_affiliate_import_job'));
         add_action('wp_ajax_alma_geo_resume_affiliate_link_import_job', array($this, 'ajax_resume_affiliate_import_job'));
         add_action('wp_ajax_alma_geo_geocode_affiliate_locations_batch', array($this, 'ajax_geocode_affiliate_locations_batch'));
+        add_action('wp_ajax_alma_geo_auto_index_batch', array($this, 'ajax_auto_index_batch'));
+        add_action('wp_ajax_alma_geo_auto_suggestions', array($this, 'ajax_auto_suggestions'));
+        add_action('wp_ajax_alma_geo_auto_suggestion_action', array($this, 'ajax_auto_suggestion_action'));
         add_action('admin_post_alma_geo_download_geocoding_csv', array($this, 'download_geocoding_csv'));
         add_action('admin_post_alma_geo_download_geocoding_json', array($this, 'download_geocoding_json'));
     }
@@ -54,7 +59,7 @@ class ALMA_Geo_Index_Admin {
         }
 
         $tab = isset($_GET['tab']) ? sanitize_key($_GET['tab']) : 'dashboard';
-        if (!in_array($tab, array('dashboard', 'import', 'affiliate_import', 'locations', 'geocoding', 'log'), true)) {
+        if (!in_array($tab, array('dashboard', 'coverage', 'import', 'affiliate_import', 'locations', 'geocoding', 'log'), true)) {
             $tab = 'dashboard';
         }
         $this->handle_actions($tab);
@@ -65,6 +70,7 @@ class ALMA_Geo_Index_Admin {
             <?php echo $this->notice; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
             <nav class="nav-tab-wrapper">
                 <?php $this->tab_link('dashboard', __('Dashboard', 'affiliate-link-manager-ai'), $tab); ?>
+                <?php $this->tab_link('coverage', __('Copertura', 'affiliate-link-manager-ai'), $tab); ?>
                 <?php $this->tab_link('import', __('Importa record articoli', 'affiliate-link-manager-ai'), $tab); ?>
                 <?php $this->tab_link('affiliate_import', __('Import GEO Link Affiliati', 'affiliate-link-manager-ai'), $tab); ?>
                 <?php $this->tab_link('locations', __('Località', 'affiliate-link-manager-ai'), $tab); ?>
@@ -72,7 +78,9 @@ class ALMA_Geo_Index_Admin {
                 <?php $this->tab_link('log', __('Log / ultimi import', 'affiliate-link-manager-ai'), $tab); ?>
             </nav>
             <?php
-            if ($tab === 'import') {
+            if ($tab === 'coverage') {
+                $this->render_coverage_tab();
+            } elseif ($tab === 'import') {
                 $this->render_import_tab();
             } elseif ($tab === 'affiliate_import') {
                 $this->render_affiliate_import_tab();
@@ -779,6 +787,283 @@ class ALMA_Geo_Index_Admin {
         wp_send_json_success($report);
     }
 
+
+    public function ajax_auto_index_batch() {
+        if (check_ajax_referer('alma_geo_auto_index', 'nonce', false) === false) {
+            wp_send_json_error(array('message' => __('Nonce non valido.', 'affiliate-link-manager-ai')), 403);
+        }
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(array('message' => __('Permessi insufficienti.', 'affiliate-link-manager-ai')), 403);
+        }
+        $report = $this->auto_indexer->process_batch(array(
+            'target' => sanitize_key(wp_unslash($_POST['target'] ?? 'affiliate_links')),
+            'batch_size' => max(1, min(100, absint(wp_unslash($_POST['batch_size'] ?? 50)))),
+            'use_ai' => !empty($_POST['use_ai']) && sanitize_key(wp_unslash($_POST['use_ai'])) === '1',
+            'retry_unresolved' => !empty($_POST['retry_unresolved']) && sanitize_key(wp_unslash($_POST['retry_unresolved'])) === '1',
+            'retry_rejected' => !empty($_POST['retry_rejected']) && sanitize_key(wp_unslash($_POST['retry_rejected'])) === '1',
+        ));
+        if (empty($report['success'])) {
+            wp_send_json_error($report, !empty($report['locked']) ? 409 : 400);
+        }
+        wp_send_json_success($report);
+    }
+
+    public function ajax_auto_suggestions() {
+        if (check_ajax_referer('alma_geo_auto_index', 'nonce', false) === false) {
+            wp_send_json_error(array('message' => __('Nonce non valido.', 'affiliate-link-manager-ai')), 403);
+        }
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(array('message' => __('Permessi insufficienti.', 'affiliate-link-manager-ai')), 403);
+        }
+        $offset = max(0, absint(wp_unslash($_POST['offset'] ?? 0)));
+        wp_send_json_success($this->auto_indexer->get_pending_suggestions(50, $offset));
+    }
+
+    public function ajax_auto_suggestion_action() {
+        if (check_ajax_referer('alma_geo_auto_index', 'nonce', false) === false) {
+            wp_send_json_error(array('message' => __('Nonce non valido.', 'affiliate-link-manager-ai')), 403);
+        }
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(array('message' => __('Permessi insufficienti.', 'affiliate-link-manager-ai')), 403);
+        }
+        $action = sanitize_key(wp_unslash($_POST['suggestion_action'] ?? ''));
+        if (!in_array($action, array('approve', 'reject'), true)) {
+            wp_send_json_error(array('message' => __('Azione non valida.', 'affiliate-link-manager-ai')), 400);
+        }
+        $ids = array_values(array_filter(array_map('absint', (array) ($_POST['ids'] ?? array()))));
+        if (empty($ids) || count($ids) > 100) {
+            wp_send_json_error(array('message' => __('Seleziona da 1 a 100 elementi.', 'affiliate-link-manager-ai')), 400);
+        }
+        $ok = 0;
+        $failed = 0;
+        foreach ($ids as $post_id) {
+            $result = $action === 'approve' ? $this->auto_indexer->approve_suggestion($post_id) : $this->auto_indexer->reject_suggestion($post_id);
+            if ($result) {
+                $ok++;
+            } else {
+                $failed++;
+            }
+        }
+        wp_send_json_success(array('action' => $action, 'ok' => $ok, 'failed' => $failed));
+    }
+
+    private function render_coverage_tab() {
+        $coverage = $this->auto_indexer->get_coverage();
+        if (empty($coverage)) {
+            echo '<div class="notice notice-warning"><p>' . esc_html__('Tabelle GEO non disponibili: esegui la riparazione dagli Strumenti avanzati.', 'affiliate-link-manager-ai') . '</p></div>';
+            return;
+        }
+        $nonce = wp_create_nonce('alma_geo_auto_index');
+        $labels = array(
+            'posts' => __('Articoli pubblicati', 'affiliate-link-manager-ai'),
+            'affiliate_links' => __('Link Affiliati pubblicati', 'affiliate-link-manager-ai'),
+        );
+        $openai_ready = trim((string) get_option('alma_openai_api_key', '')) !== '';
+        ?>
+        <div class="card" style="max-width:960px;">
+            <h2><?php esc_html_e('Copertura geografica', 'affiliate-link-manager-ai'); ?></h2>
+            <p><?php esc_html_e('Stato dell\'indicizzazione geografica dei contenuti pubblicati. Gli oggetti "da rivedere" hanno proposte automatiche in attesa di conferma.', 'affiliate-link-manager-ai'); ?></p>
+            <table class="widefat striped" style="max-width:760px;">
+                <thead><tr>
+                    <th><?php esc_html_e('Contenuto', 'affiliate-link-manager-ai'); ?></th>
+                    <th><?php esc_html_e('Totale', 'affiliate-link-manager-ai'); ?></th>
+                    <th><?php esc_html_e('Indicizzati', 'affiliate-link-manager-ai'); ?></th>
+                    <th><?php esc_html_e('Non indicizzati', 'affiliate-link-manager-ai'); ?></th>
+                    <th><?php esc_html_e('Da rivedere', 'affiliate-link-manager-ai'); ?></th>
+                    <th><?php esc_html_e('Copertura', 'affiliate-link-manager-ai'); ?></th>
+                </tr></thead>
+                <tbody>
+                <?php foreach ($coverage as $key => $row) :
+                    $pct = $row['total'] > 0 ? round($row['indexed'] / $row['total'] * 100) : 0; ?>
+                    <tr>
+                        <td><strong><?php echo esc_html($labels[$key] ?? $key); ?></strong></td>
+                        <td><?php echo esc_html(number_format_i18n($row['total'])); ?></td>
+                        <td><?php echo esc_html(number_format_i18n($row['indexed'])); ?></td>
+                        <td data-alma-unindexed="<?php echo esc_attr($key); ?>"><?php echo esc_html(number_format_i18n($row['unindexed'])); ?></td>
+                        <td data-alma-suggested="<?php echo esc_attr($key); ?>"><?php echo esc_html(number_format_i18n($row['suggested'])); ?></td>
+                        <td><?php echo esc_html($pct); ?>%</td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="card" style="max-width:960px;">
+            <h2><?php esc_html_e('Indicizzazione automatica', 'affiliate-link-manager-ai'); ?></h2>
+            <p><?php esc_html_e('Associa automaticamente le località: 1) destinazione dichiarata dal provider (link importati, applicata subito); 2) località conosciute trovate nel titolo (applicata subito) o in slug/heading/contenuto (in revisione); 3) opzionale, estrazione AI per i contenuti irrisolti (sempre in revisione, mai applicata da sola). Le associazioni manuali non vengono mai modificate.', 'affiliate-link-manager-ai'); ?></p>
+            <p>
+                <label><?php esc_html_e('Contenuto:', 'affiliate-link-manager-ai'); ?>
+                    <select id="alma-geo-auto-target">
+                        <option value="affiliate_links"><?php esc_html_e('Link Affiliati', 'affiliate-link-manager-ai'); ?></option>
+                        <option value="posts"><?php esc_html_e('Articoli', 'affiliate-link-manager-ai'); ?></option>
+                    </select>
+                </label>
+                <label style="margin-left:12px;"><?php esc_html_e('Batch:', 'affiliate-link-manager-ai'); ?>
+                    <select id="alma-geo-auto-batch-size">
+                        <option value="25">25</option>
+                        <option value="50" selected>50</option>
+                        <option value="100">100</option>
+                    </select>
+                </label>
+                <label style="margin-left:12px;"><input type="checkbox" id="alma-geo-auto-use-ai" <?php disabled(!$openai_ready); ?> /> <?php esc_html_e('Usa AI per i contenuti irrisolti', 'affiliate-link-manager-ai'); ?><?php if (!$openai_ready) { echo ' <em>(' . esc_html__('OpenAI non configurata', 'affiliate-link-manager-ai') . ')</em>'; } ?></label>
+                <label style="margin-left:12px;"><input type="checkbox" id="alma-geo-auto-retry-unresolved" /> <?php esc_html_e('Riprova irrisolti', 'affiliate-link-manager-ai'); ?></label>
+            </p>
+            <p>
+                <button type="button" class="button button-primary" id="alma-geo-auto-run-one"><?php esc_html_e('Elabora prossimo batch', 'affiliate-link-manager-ai'); ?></button>
+                <button type="button" class="button" id="alma-geo-auto-run-all"><?php esc_html_e('Elabora tutto', 'affiliate-link-manager-ai'); ?></button>
+                <button type="button" class="button" id="alma-geo-auto-stop" disabled><?php esc_html_e('Interrompi', 'affiliate-link-manager-ai'); ?></button>
+            </p>
+            <p id="alma-geo-auto-status" style="font-weight:600;"></p>
+            <ul id="alma-geo-auto-report"></ul>
+            <table class="widefat striped" style="display:none;" id="alma-geo-auto-examples-wrap">
+                <thead><tr><th>ID</th><th><?php esc_html_e('Titolo', 'affiliate-link-manager-ai'); ?></th><th><?php esc_html_e('Esito', 'affiliate-link-manager-ai'); ?></th><th><?php esc_html_e('Metodo', 'affiliate-link-manager-ai'); ?></th><th><?php esc_html_e('Località', 'affiliate-link-manager-ai'); ?></th></tr></thead>
+                <tbody id="alma-geo-auto-examples"></tbody>
+            </table>
+        </div>
+
+        <div class="card" style="max-width:960px;">
+            <h2><?php esc_html_e('Coda di revisione', 'affiliate-link-manager-ai'); ?></h2>
+            <p><?php esc_html_e('Proposte a confidenza media/bassa (gazetteer su slug/heading/contenuto, ambiguità, AI). Conferma o scarta in blocco; la prima località elencata diventa la primaria.', 'affiliate-link-manager-ai'); ?></p>
+            <p>
+                <button type="button" class="button" id="alma-geo-suggestions-load"><?php esc_html_e('Carica proposte', 'affiliate-link-manager-ai'); ?></button>
+                <button type="button" class="button button-primary" id="alma-geo-suggestions-approve" disabled><?php esc_html_e('Conferma selezionate', 'affiliate-link-manager-ai'); ?></button>
+                <button type="button" class="button" id="alma-geo-suggestions-reject" disabled><?php esc_html_e('Scarta selezionate', 'affiliate-link-manager-ai'); ?></button>
+                <span id="alma-geo-suggestions-count"></span>
+            </p>
+            <table class="widefat striped">
+                <thead><tr>
+                    <th style="width:28px;"><input type="checkbox" id="alma-geo-suggestions-all" /></th>
+                    <th><?php esc_html_e('Contenuto', 'affiliate-link-manager-ai'); ?></th>
+                    <th><?php esc_html_e('Tipo', 'affiliate-link-manager-ai'); ?></th>
+                    <th><?php esc_html_e('Località proposte', 'affiliate-link-manager-ai'); ?></th>
+                    <th><?php esc_html_e('Metodo', 'affiliate-link-manager-ai'); ?></th>
+                    <th><?php esc_html_e('Confidenza', 'affiliate-link-manager-ai'); ?></th>
+                </tr></thead>
+                <tbody id="alma-geo-suggestions-body"><tr><td colspan="6"><?php esc_html_e('Premi "Carica proposte" per vedere la coda.', 'affiliate-link-manager-ai'); ?></td></tr></tbody>
+            </table>
+        </div>
+
+        <script>
+        (function(){
+            var ajaxUrl = <?php echo wp_json_encode(admin_url('admin-ajax.php')); ?>;
+            var nonce = <?php echo wp_json_encode($nonce); ?>;
+            var runningAll = false, stopRequested = false;
+            var totals = {processed:0, auto_applied:0, suggested:0, unresolved:0, errors:0};
+            function el(id){ return document.getElementById(id); }
+            function esc(v){ return String(v == null ? '' : v).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]; }); }
+            function post(data){
+                var body = new URLSearchParams(); Object.keys(data).forEach(function(k){
+                    if (Array.isArray(data[k])) { data[k].forEach(function(v){ body.append(k + '[]', v); }); } else { body.set(k, data[k]); }
+                });
+                body.set('nonce', nonce);
+                return fetch(ajaxUrl, {method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: body.toString()})
+                    .then(function(r){ return r.json(); })
+                    .then(function(resp){ if (!resp || !resp.success) { throw new Error((resp && resp.data && resp.data.message) ? resp.data.message : 'Errore AJAX.'); } return resp.data; });
+            }
+            function setButtons(running){ el('alma-geo-auto-run-one').disabled = running; el('alma-geo-auto-run-all').disabled = running; el('alma-geo-auto-stop').disabled = !running; }
+            function updateReport(data){
+                ['processed','auto_applied','suggested','unresolved','errors'].forEach(function(k){ totals[k] += data[k] || 0; });
+                el('alma-geo-auto-report').innerHTML =
+                    '<li>Processati: ' + totals.processed + '</li>' +
+                    '<li>Associati automaticamente: ' + totals.auto_applied + '</li>' +
+                    '<li>In revisione: ' + totals.suggested + '</li>' +
+                    '<li>Irrisolti: ' + totals.unresolved + '</li>' +
+                    '<li>Errori: ' + totals.errors + '</li>' +
+                    '<li>Non indicizzati rimanenti: ' + (data.remaining != null ? data.remaining : '–') + '</li>';
+                var target = el('alma-geo-auto-target').value;
+                var unindexedCell = document.querySelector('[data-alma-unindexed="' + target + '"]');
+                if (unindexedCell && data.remaining != null) { unindexedCell.textContent = data.remaining; }
+                var suggestedCell = document.querySelector('[data-alma-suggested="' + target + '"]');
+                if (suggestedCell && data.suggested_total != null) { suggestedCell.textContent = data.suggested_total; }
+                var rows = data.examples || [];
+                if (rows.length) {
+                    el('alma-geo-auto-examples-wrap').style.display = '';
+                    el('alma-geo-auto-examples').innerHTML = rows.map(function(r){
+                        return '<tr><td>' + esc(r.id) + '</td><td>' + esc(r.title) + '</td><td>' + esc(r.outcome) + '</td><td>' + esc(r.method) + '</td><td>' + esc(r.location) + '</td></tr>';
+                    }).join('');
+                }
+            }
+            function runOne(continueAll){
+                setButtons(true);
+                el('alma-geo-auto-status').textContent = 'Batch in corso...';
+                post({
+                    action: 'alma_geo_auto_index_batch',
+                    target: el('alma-geo-auto-target').value,
+                    batch_size: el('alma-geo-auto-batch-size').value,
+                    use_ai: el('alma-geo-auto-use-ai').checked ? '1' : '0',
+                    retry_unresolved: el('alma-geo-auto-retry-unresolved').checked ? '1' : '0'
+                }).then(function(data){
+                    updateReport(data);
+                    if (continueAll && !stopRequested && !data.done && (data.processed || 0) > 0) {
+                        el('alma-geo-auto-status').textContent = 'Batch completato, avvio il successivo...';
+                        window.setTimeout(function(){ runOne(true); }, 400);
+                        return;
+                    }
+                    runningAll = false; setButtons(false);
+                    el('alma-geo-auto-status').textContent = stopRequested ? 'Elaborazione interrotta.' : (data.done ? 'Coda completata.' : 'Batch completato.');
+                }).catch(function(err){
+                    runningAll = false; setButtons(false);
+                    el('alma-geo-auto-status').textContent = 'Errore: ' + err.message;
+                });
+            }
+            el('alma-geo-auto-run-one').addEventListener('click', function(){ stopRequested = false; totals = {processed:0, auto_applied:0, suggested:0, unresolved:0, errors:0}; runOne(false); });
+            el('alma-geo-auto-run-all').addEventListener('click', function(){ stopRequested = false; runningAll = true; totals = {processed:0, auto_applied:0, suggested:0, unresolved:0, errors:0}; runOne(true); });
+            el('alma-geo-auto-stop').addEventListener('click', function(){ stopRequested = true; runningAll = false; el('alma-geo-auto-status').textContent = 'Interruzione richiesta: il batch corrente terminerà, poi il processo si fermerà.'; });
+
+            function selectedIds(){
+                return Array.prototype.slice.call(document.querySelectorAll('.alma-geo-suggestion-check:checked')).map(function(c){ return c.value; });
+            }
+            function refreshBulkButtons(){
+                var any = selectedIds().length > 0;
+                el('alma-geo-suggestions-approve').disabled = !any;
+                el('alma-geo-suggestions-reject').disabled = !any;
+            }
+            function locationLabel(loc){
+                var parts = [loc.name || loc.canonical_name || ''];
+                if (loc.region) { parts.push(loc.region); }
+                if (loc.country || loc.country_code) { parts.push(loc.country || loc.country_code); }
+                return parts.filter(Boolean).join(', ');
+            }
+            function loadSuggestions(){
+                el('alma-geo-suggestions-body').innerHTML = '<tr><td colspan="6">Caricamento…</td></tr>';
+                post({action: 'alma_geo_auto_suggestions', offset: 0}).then(function(data){
+                    var items = data.items || [];
+                    el('alma-geo-suggestions-count').textContent = ' Totale in coda: ' + (data.total || 0);
+                    if (!items.length) {
+                        el('alma-geo-suggestions-body').innerHTML = '<tr><td colspan="6">Nessuna proposta in attesa.</td></tr>';
+                        refreshBulkButtons();
+                        return;
+                    }
+                    el('alma-geo-suggestions-body').innerHTML = items.map(function(item){
+                        var locs = (item.locations || []).map(locationLabel).map(esc).join('<br>');
+                        var title = '<a href="' + esc(item.edit_url) + '">' + esc(item.title || ('#' + item.id)) + '</a>';
+                        return '<tr><td><input type="checkbox" class="alma-geo-suggestion-check" value="' + esc(item.id) + '"></td><td>' + title + '</td><td>' + esc(item.post_type) + '</td><td>' + locs + '</td><td>' + esc(item.method) + '</td><td>' + esc(item.confidence) + '</td></tr>';
+                    }).join('');
+                    Array.prototype.slice.call(document.querySelectorAll('.alma-geo-suggestion-check')).forEach(function(c){ c.addEventListener('change', refreshBulkButtons); });
+                    refreshBulkButtons();
+                }).catch(function(err){
+                    el('alma-geo-suggestions-body').innerHTML = '<tr><td colspan="6">' + esc(err.message) + '</td></tr>';
+                });
+            }
+            function suggestionAction(action){
+                var ids = selectedIds();
+                if (!ids.length) { return; }
+                post({action: 'alma_geo_auto_suggestion_action', suggestion_action: action, ids: ids}).then(function(){
+                    loadSuggestions();
+                }).catch(function(err){ window.alert(err.message); });
+            }
+            el('alma-geo-suggestions-load').addEventListener('click', loadSuggestions);
+            el('alma-geo-suggestions-approve').addEventListener('click', function(){ suggestionAction('approve'); });
+            el('alma-geo-suggestions-reject').addEventListener('click', function(){ suggestionAction('reject'); });
+            el('alma-geo-suggestions-all').addEventListener('change', function(){
+                var checked = this.checked;
+                Array.prototype.slice.call(document.querySelectorAll('.alma-geo-suggestion-check')).forEach(function(c){ c.checked = checked; });
+                refreshBulkButtons();
+            });
+        }());
+        </script>
+        <?php
+    }
 
     private function store_cumulative_geocoding_report($report, $session_id) {
         $report = is_array($report) ? $report : array();

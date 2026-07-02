@@ -1,5 +1,12 @@
 ## 2.42.0 - 2026-07-02
 
+### Indice Geografico — Copertura e indicizzazione automatica
+- Nuova tab **Copertura** con contatori di indicizzazione geografica per articoli e Link Affiliati pubblicati (totale/indicizzati/non indicizzati/da rivedere) ed elaborazione batch AJAX interrompibile con cursore persistente e lock.
+- Pipeline di associazione automatica a 3 livelli: meta provider (auto, confidenza alta), gazetteer sulle località conosciute (titolo univoco = auto; slug/heading/contenuto o ambigui = coda revisione), AI opzionale sui contenuti irrisolti (sempre in revisione, mai auto-applicata, costo tracciato nel log usage).
+- Coda di revisione con conferma/scarto in blocco; le associazioni manuali non vengono mai sovrascritte; le località nuove nascono in `pending` geocoding.
+- Auto-indicizzazione deterministica dei nuovi Link Affiliati importati e degli articoli pubblicati al salvataggio (elaborata a shutdown, dopo la scrittura dei meta provider).
+- Colonna "Geo" e filtro "senza località / con località / in revisione" nelle liste admin di articoli e Link Affiliati.
+
 ### Widget Link Contestuale — matching contestuale reale
 - Il Geo Index è ora il segnale dominante del matching: località condivise tra articolo e Link Affiliato valgono fino a 45 punti (città/località), 20 (regione), 10 (paese), con penalità per località esplicitamente diverse; senza dati geo il segnale è neutro e vale il matching testuale.
 - I candidati sono selezionati per pertinenza (località condivise + keyword via indice affiliati AI + recenti come riempimento) invece dei soli ultimi 200 link per data.
