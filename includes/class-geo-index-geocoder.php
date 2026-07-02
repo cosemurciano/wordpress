@@ -7,6 +7,8 @@ if (!defined('ABSPATH')) { exit; }
 class ALMA_Geo_Index_Geocoder {
     const PROVIDER_GOOGLE = 'google';
     const LAST_REPORT_OPTION = 'alma_geo_geocoding_last_report';
+    const BATCH_LOCK_OPTION = 'alma_geo_geocoding_batch_lock';
+    const BATCH_LOCK_TTL = 600;
 
     private $store;
     private $provider;
@@ -36,6 +38,46 @@ class ALMA_Geo_Index_Geocoder {
         return $this->store->get_locations_by_geocoding_status('pending', $limit);
     }
 
+    /**
+     * Lock anti-concorrenza per i batch: due tab/utenti che avviano il geocoding
+     * in parallelo processerebbero le stesse località duplicando le chiamate Google.
+     * add_option è atomica (indice UNIQUE su option_name); il TTL evita lock orfani.
+     */
+    private function acquire_batch_lock() {
+        $now = time();
+        if (add_option(self::BATCH_LOCK_OPTION, $now, '', 'no')) {
+            return true;
+        }
+        $existing = (int) get_option(self::BATCH_LOCK_OPTION, 0);
+        if ($existing && ($now - $existing) > self::BATCH_LOCK_TTL) {
+            update_option(self::BATCH_LOCK_OPTION, $now, false);
+            return true;
+        }
+        return false;
+    }
+
+    private function release_batch_lock() {
+        delete_option(self::BATCH_LOCK_OPTION);
+    }
+
+    private function locked_report_stub($report, $errors_key = 'api_errors') {
+        $message = __('Un\'altra elaborazione di geocoding è già in corso: riprova tra qualche minuto.', 'affiliate-link-manager-ai');
+        if ($errors_key === 'errors') {
+            // Il report generico usa righe-array {location_id, status, message}.
+            $report[$errors_key][] = array('location_id' => 0, 'status' => 'locked', 'message' => $message);
+        } else {
+            $report[$errors_key][] = $message;
+        }
+        $report['locked'] = true;
+        if (array_key_exists('remaining_pending', $report)) {
+            // Senza il valore reale la UI mostrerebbe 0 pending e progresso 100%
+            // mentre l'altra elaborazione è ancora in corso.
+            $remaining = $this->store->get_geocoding_status_counts_by_object_type(ALMA_Geo_Index_Store::OBJECT_TYPE_AFFILIATE_LINK);
+            $report['remaining_pending'] = (int) ($remaining['pending'] ?? 0);
+        }
+        return $report;
+    }
+
     public function geocode_batch($limit = 20, $status = 'pending') {
         $limit = max(1, min(50, absint($limit)));
         $status = sanitize_key($status);
@@ -56,25 +98,42 @@ class ALMA_Geo_Index_Geocoder {
             'errors' => array(),
         );
 
-        foreach ($locations as $location) {
-            $result = $this->geocode_location((int) $location['id']);
-            if (!empty($result['skipped_verified'])) {
-                $report['skipped_verified']++;
-            } else {
-                $report['processed']++;
-                $result_status = sanitize_key($result['status'] ?? 'failed');
-                if (isset($report[$result_status])) {
-                    $report[$result_status]++;
+        if (!$this->acquire_batch_lock()) {
+            return $this->locked_report_stub($report, 'errors');
+        }
+
+        try {
+            foreach ($locations as $location) {
+                $result = $this->geocode_location((int) $location['id']);
+                if (!empty($result['configuration_error'])) {
+                    // API key non valida / API non abilitata: continuare marcherebbe
+                    // failed l'intero batch per un errore permanente di configurazione.
+                    $report['processed']++;
+                    $report['failed']++;
+                    $report['errors'][] = array('location_id' => (int) $location['id'], 'status' => 'failed', 'message' => sanitize_text_field($result['message'] ?? ''));
+                    $report['configuration_error'] = true;
+                    break;
                 }
-                if (!empty($result['message']) && $result_status !== 'verified') {
-                    $report['errors'][] = array('location_id' => (int) $location['id'], 'status' => $result_status, 'message' => sanitize_text_field($result['message']));
+                if (!empty($result['skipped_verified'])) {
+                    $report['skipped_verified']++;
+                } else {
+                    $report['processed']++;
+                    $result_status = sanitize_key($result['status'] ?? 'failed');
+                    if (isset($report[$result_status])) {
+                        $report[$result_status]++;
+                    }
+                    if (!empty($result['message']) && $result_status !== 'verified') {
+                        $report['errors'][] = array('location_id' => (int) $location['id'], 'status' => $result_status, 'message' => sanitize_text_field($result['message']));
+                    }
+                    $report['linked_objects_synced'] += (int) ($result['linked_objects_synced'] ?? 0);
+                    $report['linked_objects_sync_errors'] += (int) ($result['linked_objects_sync_errors'] ?? 0);
                 }
-                $report['linked_objects_synced'] += (int) ($result['linked_objects_synced'] ?? 0);
-                $report['linked_objects_sync_errors'] += (int) ($result['linked_objects_sync_errors'] ?? 0);
+                if ($settings['delay_ms'] > 0) {
+                    usleep($settings['delay_ms'] * 1000);
+                }
             }
-            if ($settings['delay_ms'] > 0) {
-                usleep($settings['delay_ms'] * 1000);
-            }
+        } finally {
+            $this->release_batch_lock();
         }
 
         update_option(self::LAST_REPORT_OPTION, $report, false);
@@ -106,6 +165,7 @@ class ALMA_Geo_Index_Geocoder {
         $validated['query'] = $query;
         $validated['provider_status'] = sanitize_text_field($provider_result['status'] ?? '');
         $validated['rate_limit_detected'] = $this->is_rate_limit_result($provider_result);
+        $validated['configuration_error'] = $this->is_configuration_error_result($provider_result);
         $this->log_result($location['id'], $query, $validated, $provider_result);
         return $validated;
     }
@@ -149,6 +209,10 @@ class ALMA_Geo_Index_Geocoder {
             update_option(self::LAST_REPORT_OPTION, $report, false);
             return $report;
         }
+        if (!$this->acquire_batch_lock()) {
+            return $this->locked_report_stub($report);
+        }
+        try {
         $provider = new ALMA_Geo_Index_Google_Geocoder($settings['google_maps_api_key'], $timeout);
         foreach ($locations as $location) {
             $previous_status = sanitize_key($location['geocoding_status'] ?? 'pending');
@@ -197,9 +261,19 @@ class ALMA_Geo_Index_Geocoder {
                 $report['rate_limit_detected'] = true;
                 break;
             }
+            if (!empty($result['configuration_error'])) {
+                // Errore permanente (API key non valida / API non abilitata): inutile
+                // continuare il batch. rate_limit_detected ferma anche il loop client.
+                $report['configuration_error'] = true;
+                $report['rate_limit_detected'] = true;
+                break;
+            }
             if ($settings['delay_ms'] > 0) {
                 usleep($settings['delay_ms'] * 1000);
             }
+        }
+        } finally {
+            $this->release_batch_lock();
         }
         $remaining = $this->store->get_geocoding_status_counts_by_object_type(ALMA_Geo_Index_Store::OBJECT_TYPE_AFFILIATE_LINK);
         $report['remaining_pending'] = (int) ($remaining['pending'] ?? 0);
@@ -208,6 +282,9 @@ class ALMA_Geo_Index_Geocoder {
     }
 
     public function validate_result($location, $result) {
+        if ($this->is_configuration_error_result($result)) {
+            return array('status' => 'failed', 'message' => __('Google ha rifiutato la richiesta (REQUEST_DENIED): verifica che la API key sia valida e che la Geocoding API sia abilitata.', 'affiliate-link-manager-ai'));
+        }
         if ($this->is_rate_limit_result($result)) {
             return array('status' => 'retry_later', 'message' => sanitize_text_field($result['message'] ?? $result['status'] ?? __('Quota o rate limit Google rilevato.', 'affiliate-link-manager-ai')));
         }
@@ -298,9 +375,16 @@ class ALMA_Geo_Index_Geocoder {
     }
 
     private function is_rate_limit_result($result) {
+        // REQUEST_DENIED non è un rate limit: indica API key non valida o API non
+        // abilitata, un errore permanente di configurazione (vedi is_configuration_error_result).
         $status = strtoupper(sanitize_text_field($result['status'] ?? $result['raw_status'] ?? ''));
         $code = absint($result['response_code'] ?? 0);
-        return in_array($status, array('OVER_QUERY_LIMIT', 'REQUEST_DENIED', 'RESOURCE_EXHAUSTED'), true) || $code === 429;
+        return in_array($status, array('OVER_QUERY_LIMIT', 'RESOURCE_EXHAUSTED'), true) || $code === 429;
+    }
+
+    private function is_configuration_error_result($result) {
+        $status = strtoupper(sanitize_text_field($result['status'] ?? $result['raw_status'] ?? ''));
+        return $status === 'REQUEST_DENIED';
     }
 
     private function google_types_match_location_type($type, $types) {

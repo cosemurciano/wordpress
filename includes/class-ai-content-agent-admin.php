@@ -195,7 +195,9 @@ class ALMA_AI_Content_Agent_Admin {
             }
             $result = array('success' => $ok, 'message' => $ok ? 'Idea salvata.' : 'Errore salvataggio idea.');
         } elseif ($do === 'delete_content_idea') {
-            $idea_id = absint($_POST['idea_id'] ?? 0); $ok = $idea_id > 0 ? (bool)wp_delete_post($idea_id, true) : false;
+            $idea_id = absint($_POST['idea_id'] ?? 0);
+            // Solo idee contenuto: senza questo check un idea_id manipolato eliminerebbe qualunque post.
+            $ok = ($idea_id > 0 && get_post_type($idea_id) === 'alma_content_idea') ? (bool)wp_delete_post($idea_id, true) : false;
             if ($ok) { delete_user_meta(get_current_user_id(), '_alma_active_idea_id'); ALMA_AI_Content_Agent_Selection_Session::clear(); }
             $result = array('success' => $ok, 'message' => $ok ? 'Idea eliminata.' : 'Impossibile eliminare idea.');
         } elseif ($do === 'add_result_to_idea') {
@@ -218,6 +220,7 @@ class ALMA_AI_Content_Agent_Admin {
             $result = array('success'=>(bool)$ok,'message'=>$ok?'Documento TXT aggiornato.':'Errore aggiornamento documento TXT.');
         } elseif ($do === 'toggle_txt_document') {
             global $wpdb; $id = absint($_POST['document_id'] ?? 0); $status = sanitize_key($_POST['status'] ?? 'inactive');
+            if (!in_array($status, array('active', 'inactive'), true)) { $status = 'inactive'; }
             $ok = $wpdb->update(ALMA_AI_Content_Agent_Store::table('knowledge_items'), array('status'=>$status,'updated_at'=>current_time('mysql')), array('id'=>$id,'source_type'=>'document_txt'));
             $result = array('success'=>(bool)$ok,'message'=>$ok?($status==='active'?'Documento TXT riabilitato.':'Documento TXT disabilitato.'):'Errore cambio stato documento TXT.');
         } elseif ($do === 'delete_txt_document') {

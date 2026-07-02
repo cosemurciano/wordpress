@@ -108,7 +108,71 @@ class ALMA_OpenAI_Service {
             ALMA_Logger::warning('OpenAI empty response', array('model' => $data['model'] ?? $model, 'response_time' => $rt, 'raw_response' => $data));
             return array('success'=>false,'error'=>__('Risposta AI vuota', 'affiliate-link-manager-ai'),'error_code'=>'empty_response','error_category'=>'api','response_time'=>$rt,'model'=>$data['model'] ?? $model,'max_output_tokens'=>$max_output_tokens,'response_format_used'=>$response_format_used,'warnings'=>$warnings,'raw_response'=>$data);
         }
-        return array('success'=>true,'response'=>$text,'model'=>$data['model'] ?? $model,'response_time'=>$rt,'usage'=>$data['usage'] ?? null,'max_output_tokens'=>$max_output_tokens,'response_format_used'=>$response_format_used,'raw_response'=>$data,'warnings'=>$warnings);
+        $usage = $data['usage'] ?? null;
+        return array('success'=>true,'response'=>$text,'model'=>$data['model'] ?? $model,'response_time'=>$rt,'usage'=>$usage,'estimated_cost'=>self::estimate_cost_usd($data['model'] ?? $model, $usage),'max_output_tokens'=>$max_output_tokens,'response_format_used'=>$response_format_used,'raw_response'=>$data,'warnings'=>$warnings);
+    }
+
+    /**
+     * Stima il costo in USD di una chiamata a partire dai token di usage.
+     * Ritorna null se il prezzo del modello non è noto (meglio nessun dato che
+     * un dato sbagliato: in precedenza veniva salvato il numero di token come costo).
+     */
+    public static function estimate_cost_usd($model, $usage) {
+        if (!is_array($usage)) { return null; }
+        $input_tokens = absint($usage['input_tokens'] ?? ($usage['prompt_tokens'] ?? 0));
+        $output_tokens = absint($usage['output_tokens'] ?? ($usage['completion_tokens'] ?? 0));
+        if ($input_tokens === 0 && $output_tokens === 0) { return null; }
+        $prices = self::get_model_prices();
+        $price = self::match_model_price(strtolower(trim((string)$model)), $prices);
+        if (!$price) { return null; }
+        $cost = ($input_tokens * $price['input'] + $output_tokens * $price['output']) / 1000000;
+        return round($cost, 6);
+    }
+
+    /**
+     * Prezzi USD per 1M token (input/output). Estendibili o sovrascrivibili con il
+     * filtro `alma_openai_model_prices` (chiave = modello o prefisso di famiglia).
+     */
+    private static function get_model_prices() {
+        $prices = array(
+            'gpt-5-nano'   => array('input' => 0.05, 'output' => 0.40),
+            'gpt-5-mini'   => array('input' => 0.25, 'output' => 2.00),
+            'gpt-5'        => array('input' => 1.25, 'output' => 10.00),
+            'gpt-4.1-nano' => array('input' => 0.10, 'output' => 0.40),
+            'gpt-4.1-mini' => array('input' => 0.40, 'output' => 1.60),
+            'gpt-4.1'      => array('input' => 2.00, 'output' => 8.00),
+            'gpt-4o-mini'  => array('input' => 0.15, 'output' => 0.60),
+            'gpt-4o'       => array('input' => 2.50, 'output' => 10.00),
+            'o4-mini'      => array('input' => 1.10, 'output' => 4.40),
+            'o3'           => array('input' => 2.00, 'output' => 8.00),
+        );
+        $filtered = apply_filters('alma_openai_model_prices', $prices);
+        return is_array($filtered) ? $filtered : $prices;
+    }
+
+    private static function match_model_price($model, $prices) {
+        if ($model === '') { return null; }
+        if (isset($prices[$model])) { return $prices[$model]; }
+        // Match per famiglia: la chiave più lunga che è prefisso del modello e ne
+        // condivide la variante (mini/nano), così "gpt-5.4-mini" usa i prezzi "gpt-5-mini".
+        $model_variant = self::model_variant($model);
+        $best = null;
+        $best_len = 0;
+        foreach ($prices as $key => $price) {
+            if (self::model_variant($key) !== $model_variant) { continue; }
+            $family = (string) preg_replace('/-(mini|nano)$/', '', $key);
+            if (strpos($model, $family) === 0 && strlen($family) > $best_len) {
+                $best = $price;
+                $best_len = strlen($family);
+            }
+        }
+        return $best;
+    }
+
+    private static function model_variant($model) {
+        if (substr($model, -5) === '-mini' || strpos($model, '-mini-') !== false) { return 'mini'; }
+        if (substr($model, -5) === '-nano' || strpos($model, '-nano-') !== false) { return 'nano'; }
+        return '';
     }
 
     public static function normalize_responses_text_format($format) {

@@ -209,11 +209,14 @@ class ALMA_Affiliate_Source_GYG_CSV_Import_Job_Service {
             if (absint($result['existing'] ?? 0) > 0) $this->log_event(absint($session['id']), absint($source['id']), (string)$job['activity_type'], 'record saltati per dedupe', sprintf(__('%d record già presenti sono stati saltati.', 'affiliate-link-manager-ai'), absint($result['existing'] ?? 0)), $result, absint($job_id));
             if (absint($result['invalid_urls'] ?? 0) > 0 || absint($result['errors'] ?? 0) > 0) $this->log_event(absint($session['id']), absint($source['id']), (string)$job['activity_type'], 'record non validi', sprintf(__('%d record richiedono verifica perché non validi o in errore.', 'affiliate-link-manager-ai'), absint($result['errors'] ?? 0)), $result, absint($job_id));
             if (!$done) $this->schedule_job($job_id);
-        } catch (Exception $e) {
+        } catch (Throwable $e) {
+            // Throwable e non solo Exception: un fatal PHP (es. memoria) lasciava il job
+            // in stato "running" con il lock attivo, bloccando i batch successivi.
             $this->log_event(absint($job['session_id'] ?? 0), absint($job['source_id'] ?? 0), (string)($job['activity_type'] ?? ''), 'errore import', __('Importazione interrotta da un errore. Controlla configurazione e CSV.', 'affiliate-link-manager-ai'), array(), absint($job_id));
             $wpdb->update($this->jobs_table(), array('status'=>'failed','last_error'=>$e->getMessage(),'last_message'=>__('Importazione in errore.', 'affiliate-link-manager-ai'),'updated_at'=>current_time('mysql')), array('id'=>absint($job_id)));
+        } finally {
+            delete_transient($lock_key);
         }
-        delete_transient($lock_key);
         return $this->format_status($this->get_job($job_id));
     }
 

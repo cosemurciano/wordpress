@@ -139,6 +139,13 @@ class AffiliateManagerAI {
         $this->geo_index_admin = new ALMA_Geo_Index_Admin($this->geo_index_store);
         add_action('init', array($this, 'init'));
         add_action('widgets_init', array('ALMA_Contextual_Affiliate_Widget', 'register_widget'));
+        // Registrato qui (prima che `widgets_init` scatti) perché ALMA_Shortcodes::init()
+        // gira su `init` priorità 10, quando l'hook è già passato.
+        add_action('widgets_init', array($this->shortcodes, 'register_widget'));
+        // Consente di definire le chiavi API in wp-config.php senza salvarle nel database:
+        // define('ALMA_OPENAI_API_KEY', '...'); define('ALMA_GEO_GOOGLE_MAPS_API_KEY', '...');
+        add_filter('pre_option_alma_openai_api_key', array(__CLASS__, 'filter_openai_api_key_constant'));
+        add_filter('pre_option_alma_geo_google_maps_api_key', array(__CLASS__, 'filter_google_maps_api_key_constant'));
         register_activation_hook(__FILE__, array($this, 'activate'));
         register_deactivation_hook(__FILE__, array($this, 'deactivate'));
         add_action('plugins_loaded', array($this, 'maybe_run_update_tasks'));
@@ -195,15 +202,32 @@ class AffiliateManagerAI {
         add_action('wp_ajax_alma_get_chart_data', array($this, 'ajax_get_chart_data'));
         add_action('wp_ajax_alma_get_link_stats', array($this, 'ajax_get_link_stats'));
         
-        // Cron job per ottimizzazioni automatiche
-        if (!wp_next_scheduled('alma_daily_optimization')) {
-            wp_schedule_event(time(), 'daily', 'alma_daily_optimization');
-        }
-        
+        // L'evento giornaliero alma_daily_optimization non aveva alcun handler registrato
+        // e girava a vuoto: non viene più schedulato e le occorrenze residue vengono
+        // rimosse una sola volta (vedi maybe_run_update_tasks / deactivate).
+
         add_action('save_post', array($this, 'invalidate_dashboard_cache'));
         add_action('deleted_post', array($this, 'invalidate_dashboard_cache'));
         add_action('trashed_post', array($this, 'invalidate_dashboard_cache'));
         add_action('untrashed_post', array($this, 'invalidate_dashboard_cache'));
+    }
+
+    /**
+     * Se definita in wp-config.php, la costante ha priorità sull'option nel DB.
+     * Ritornare $pre (false) lascia la normale lettura dal database.
+     */
+    public static function filter_openai_api_key_constant($pre) {
+        if (defined('ALMA_OPENAI_API_KEY') && ALMA_OPENAI_API_KEY !== '') {
+            return ALMA_OPENAI_API_KEY;
+        }
+        return $pre;
+    }
+
+    public static function filter_google_maps_api_key_constant($pre) {
+        if (defined('ALMA_GEO_GOOGLE_MAPS_API_KEY') && ALMA_GEO_GOOGLE_MAPS_API_KEY !== '') {
+            return ALMA_GEO_GOOGLE_MAPS_API_KEY;
+        }
+        return $pre;
     }
 
     private function ajax_require_nonce($action, $field = 'nonce') {
@@ -232,52 +256,158 @@ class AffiliateManagerAI {
         
         $link_id = isset($_POST['link_id']) ? intval($_POST['link_id']) : 0;
         $source  = sanitize_key($_POST['source'] ?? 'unknown');
-        
+
         if (!$link_id) {
             wp_send_json_error('Invalid link ID');
             return;
         }
-        
+
         // Verifica che il link esista
         $post = get_post($link_id);
         if (!$post || $post->post_type !== 'affiliate_link') {
             wp_send_json_error('Link not found');
             return;
         }
-        
-        // Registra il click
-        $current_count = get_post_meta($link_id, '_click_count', true) ?: 0;
-        update_post_meta($link_id, '_click_count', $current_count + 1);
+
+        // L'opzione "non tracciare utenti anonimi" era applicata solo in JavaScript:
+        // va rispettata anche qui, altrimenti l'endpoint accetta click comunque.
+        if (!is_user_logged_in() && get_option('alma_track_logged_out', 'yes') !== 'yes') {
+            wp_send_json_success(array('link_id' => $link_id, 'tracked' => false, 'message' => 'Tracking disabled for logged out users'));
+            return;
+        }
+
+        $user_agent = isset($_SERVER['HTTP_USER_AGENT']) ? sanitize_text_field(wp_unslash($_SERVER['HTTP_USER_AGENT'])) : '';
+        if ($this->is_bot_user_agent($user_agent)) {
+            wp_send_json_success(array('link_id' => $link_id, 'tracked' => false, 'message' => 'Bot traffic ignored'));
+            return;
+        }
+
+        // Rate limit breve per IP+UA+link: assorbe doppi eventi (click+middle-click)
+        // e replay. Lo user agent nel key riduce le collisioni tra utenti diversi
+        // dietro lo stesso IP (CDN, NAT aziendali).
+        $user_ip = $this->get_user_ip();
+        $rate_key = 'alma_click_rl_' . md5($user_ip . '|' . $user_agent . '|' . $link_id);
+        if (get_transient($rate_key)) {
+            wp_send_json_success(array('link_id' => $link_id, 'tracked' => false, 'message' => 'Duplicate click ignored'));
+            return;
+        }
+        set_transient($rate_key, 1, 3);
+
+        // Registra il click con incremento atomico: il read-modify-write precedente
+        // perdeva click concorrenti.
+        $new_count = $this->increment_click_count($link_id);
         update_post_meta($link_id, '_last_click', current_time('mysql'));
-        
-        // 🤖 Aggiorna dati per training AI
-        $this->update_ai_training_data($link_id);
-        
+
+        // 🤖 Aggiorna dati per training AI (al massimo una volta l'ora per link:
+        // la ricostruzione delle statistiche di utilizzo è costosa e i dati storici
+        // sono comunque aggregati per giorno).
+        if (!get_transient('alma_ai_training_' . $link_id)) {
+            set_transient('alma_ai_training_' . $link_id, 1, HOUR_IN_SECONDS);
+            $this->update_ai_training_data($link_id);
+        }
+
         // Registra dati analytics dettagliati
         global $wpdb;
         $table_name = $wpdb->prefix . 'alma_analytics';
 
-        // Crea la tabella se non esiste
-        if ($wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $table_name)) != $table_name) {
-            $this->create_analytics_table();
-        ALMA_AI_Usage_Logger::create_table();
-        ALMA_Affiliate_Source_Manager::create_tables();
+        // Verifica la presenza delle tabelle una sola volta per versione,
+        // non con una SHOW TABLES a ogni click.
+        if (get_option('alma_analytics_tables_verified') !== ALMA_VERSION) {
+            if ($wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $table_name)) != $table_name) {
+                $this->create_analytics_table();
+                ALMA_AI_Usage_Logger::create_table();
+                ALMA_Affiliate_Source_Manager::create_tables();
+            }
+            // Marca come verificato solo se la tabella esiste davvero, così un
+            // fallimento di creazione (es. permessi CREATE mancanti) viene ritentato.
+            if ($wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $table_name)) == $table_name) {
+                update_option('alma_analytics_tables_verified', ALMA_VERSION, false);
+            }
         }
 
-        $wpdb->insert($table_name, array(
+        $inserted = $wpdb->insert($table_name, array(
             'link_id' => $link_id,
             'click_time' => current_time('mysql'),
-            'user_ip' => $this->get_user_ip(),
-            'user_agent' => isset($_SERVER['HTTP_USER_AGENT']) ? sanitize_text_field($_SERVER['HTTP_USER_AGENT']) : '',
-            'referrer' => isset($_POST['referrer']) ? esc_url_raw($_POST['referrer']) : '',
+            'user_ip' => $user_ip,
+            'user_agent' => $user_agent,
+            'referrer' => isset($_POST['referrer']) ? esc_url_raw(wp_unslash($_POST['referrer'])) : '',
             'source' => $source
         ));
-        
+        if (false === $inserted) {
+            ALMA_Logger::warning('Insert click analytics fallito', array('link_id' => $link_id, 'db_error' => $wpdb->last_error));
+        }
+
         wp_send_json_success(array(
             'link_id' => $link_id,
-            'new_count' => $current_count + 1,
+            'new_count' => $new_count,
+            'tracked' => true,
             'message' => 'Click tracked successfully'
         ));
+    }
+
+    /**
+     * Incrementa _click_count in modo atomico direttamente su postmeta.
+     * Ritorna il nuovo valore del contatore.
+     */
+    private function increment_click_count($link_id) {
+        global $wpdb;
+        $increment_sql = $wpdb->prepare(
+            "UPDATE {$wpdb->postmeta} SET meta_value = CAST(meta_value AS UNSIGNED) + 1 WHERE post_id = %d AND meta_key = '_click_count'",
+            $link_id
+        );
+        $updated = $wpdb->query($increment_sql);
+        if (!$updated) {
+            // Primo click: crea la riga; se una richiesta concorrente l'ha appena
+            // creata, add_post_meta(unique) fallisce e si riprova con l'UPDATE.
+            if (!add_post_meta($link_id, '_click_count', 1, true)) {
+                $wpdb->query($increment_sql);
+            } else {
+                // add_post_meta(unique) è check-then-insert, non atomico: due primi
+                // click simultanei possono creare due righe che poi verrebbero
+                // incrementate entrambe. Teniamo solo la riga più vecchia.
+                $wpdb->query($wpdb->prepare(
+                    "DELETE pm1 FROM {$wpdb->postmeta} pm1 INNER JOIN {$wpdb->postmeta} pm2 ON pm1.post_id = pm2.post_id AND pm1.meta_key = pm2.meta_key AND pm1.meta_id > pm2.meta_id WHERE pm1.post_id = %d AND pm1.meta_key = '_click_count'",
+                    $link_id
+                ));
+            }
+        }
+        wp_cache_delete($link_id, 'post_meta');
+        return (int) get_post_meta($link_id, '_click_count', true);
+    }
+
+    /**
+     * Riconoscimento euristico dei bot più comuni dallo user agent.
+     * Il risultato passa sempre dal filtro, quindi un sito può sia estendere
+     * sia annullare la classificazione (es. UA legittimi che contengono "bot").
+     */
+    private function is_bot_user_agent($user_agent) {
+        $ua = strtolower(trim((string) $user_agent));
+        $is_bot = ($ua === '');
+        if (!$is_bot) {
+            // Pattern mirati ai crawler noti: un generico "bot" matcherebbe anche
+            // device reali come i telefoni Cubot.
+            $patterns = array(
+                'googlebot', 'bingbot', 'yandex', 'baiduspider', 'duckduckbot',
+                'applebot', 'petalbot', 'ahrefsbot', 'semrushbot', 'mj12bot',
+                'crawl', 'spider', 'slurp', 'facebookexternalhit', 'headless',
+                'curl/', 'wget/', 'python-requests', 'python-urllib', 'go-http-client',
+                'okhttp', 'httpclient', 'java/', 'libwww-perl', 'phantomjs', 'lighthouse',
+                'bot/', 'bot;', '+http',
+            );
+            foreach ($patterns as $pattern) {
+                if (strpos($ua, $pattern) !== false) {
+                    $is_bot = true;
+                    break;
+                }
+            }
+        }
+        /**
+         * Consente di estendere o annullare il riconoscimento bot.
+         *
+         * @param bool   $is_bot     Esito dell'euristica interna.
+         * @param string $user_agent User agent grezzo.
+         */
+        return (bool) apply_filters('alma_is_bot_user_agent', $is_bot, $user_agent);
     }
     
     /**
@@ -286,8 +416,13 @@ class AffiliateManagerAI {
     private function get_user_ip() {
         $ip_keys = array('HTTP_CLIENT_IP', 'HTTP_X_FORWARDED_FOR', 'REMOTE_ADDR');
         foreach ($ip_keys as $key) {
-            if (!empty($_SERVER[$key])) {
-                $ip = filter_var($_SERVER[$key], FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE);
+            if (empty($_SERVER[$key])) {
+                continue;
+            }
+            // X-Forwarded-For può contenere una lista "client, proxy1, proxy2":
+            // senza lo split la validazione falliva e si ricadeva sull'IP del proxy.
+            foreach (explode(',', (string) $_SERVER[$key]) as $candidate) {
+                $ip = filter_var(trim($candidate), FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE);
                 if ($ip !== false) {
                     return $ip;
                 }
@@ -395,6 +530,10 @@ class AffiliateManagerAI {
         add_filter('manage_affiliate_link_posts_columns', array($this, 'set_custom_columns'));
         add_action('manage_affiliate_link_posts_custom_column', array($this, 'custom_column_content'), 10, 2);
         add_filter('manage_edit-affiliate_link_sortable_columns', array($this, 'sortable_columns'));
+        // Priorità 20: deve girare dopo ALMA_Affiliate_Links_Source_Filter (priorità 10),
+        // che appende la propria clausola alla meta_query esistente; qui la si ingloba
+        // in un gruppo AND insieme alla clausola di ordinamento.
+        add_action('pre_get_posts', array($this, 'handle_sortable_columns_orderby'), 20);
         
         // Menu pages
         add_action('admin_menu', array($this, 'add_admin_pages'));
@@ -839,6 +978,40 @@ class AffiliateManagerAI {
         $columns['ai_score'] = 'ai_score';
         return $columns;
     }
+
+    /**
+     * Applica l'ordinamento reale alle colonne dichiarate ordinabili.
+     */
+    public function handle_sortable_columns_orderby($query) {
+        if (!is_admin() || !$query->is_main_query() || $query->get('post_type') !== 'affiliate_link') {
+            return;
+        }
+        $orderby = $query->get('orderby');
+        $meta_map = array(
+            'clicks'   => '_click_count',
+            'ai_score' => '_ai_performance_score',
+        );
+        if (isset($meta_map[$orderby])) {
+            // Il ramo NOT EXISTS mantiene in elenco anche i link privi del meta
+            // (mai cliccati / senza score), che finiscono in coda all'ordinamento.
+            $sort_clause = array(
+                'relation' => 'OR',
+                'alma_sort_value'   => array('key' => $meta_map[$orderby], 'compare' => 'EXISTS', 'type' => 'NUMERIC'),
+                'alma_sort_missing' => array('key' => $meta_map[$orderby], 'compare' => 'NOT EXISTS'),
+            );
+            // La meta_query esistente (es. filtro per Source) va preservata:
+            // sostituirla annullerebbe silenziosamente il filtro attivo.
+            $existing = $query->get('meta_query');
+            if (is_array($existing) && !empty($existing)) {
+                $query->set('meta_query', array('relation' => 'AND', $existing, $sort_clause));
+            } else {
+                $query->set('meta_query', $sort_clause);
+            }
+            // Ordina esplicitamente sulla clausola nominata, così l'ordinamento non
+            // dipende dalla prima clausola della meta_query combinata.
+            $query->set('orderby', 'alma_sort_value');
+        }
+    }
     
     /**
      * Aggiungi pagine admin
@@ -1069,7 +1242,12 @@ class AffiliateManagerAI {
                 if(!resp || !resp.success){ $('#alma-dashboard-root').html('<div class="notice notice-error"><p>Errore caricamento dashboard.</p></div>'); return; }
                 var d=resp.data;
                 $('#alma-dashboard-root').html('<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:20px;"><div class="postbox"><div class="inside"><h3>🔗 Link Attivi</h3><strong>'+d.total_links+'</strong></div></div><div class="postbox"><div class="inside"><h3>📊 Click Totali</h3><strong>'+d.total_clicks+'</strong></div></div><div class="postbox"><div class="inside"><h3>🎯 CTR Medio</h3><strong>'+d.avg_ctr+'%</strong></div></div></div><div class="postbox"><div class="inside"><h3>🏆 Top Link</h3><ul id="alma-top"></ul></div></div><div class="postbox"><div class="inside"><h3>📈 Click mensili</h3><canvas id="alma-clicks-monthly"></canvas></div></div>');
-                (d.top_links||[]).forEach(function(l){ $('#alma-top').append('<li><a href="'+l.edit_url+'">'+l.title+'</a> ('+l.click_count+')</li>');});
+                // Titolo e URL inseriti come testo/attributo, mai come HTML: il titolo
+                // del link è modificabile da qualunque utente con edit_posts.
+                (d.top_links||[]).forEach(function(l){
+                    var $a = $('<a></a>').attr('href', l.edit_url).text(l.title);
+                    $('#alma-top').append($('<li></li>').append($a).append(document.createTextNode(' ('+parseInt(l.click_count,10)+')')));
+                });
                 $.post(ajaxurl,{action:'alma_get_chart_data',nonce:nonce,metric:'clicks',range:'monthly'}, function(c){
                     if(c && c.success && window.Chart){new Chart(document.getElementById('alma-clicks-monthly'),{type:'line',data:{labels:c.data.labels,datasets:[{label:'Click Mensili',data:c.data.data,borderColor:'#2271b1'}]}});}
                 });
@@ -1795,9 +1973,11 @@ class AffiliateManagerAI {
             isset($_POST['alma_delete_links_nonce']) &&
             wp_verify_nonce($_POST['alma_delete_links_nonce'], 'alma_delete_links')) {
             $delete_id = intval($_POST['delete_link_id']);
-            if ($delete_id) {
+            if ($delete_id && get_post_type($delete_id) === 'affiliate_link') {
                 wp_delete_post($delete_id, true);
                 echo '<div class="notice notice-success"><p>' . __('Link eliminato.', 'affiliate-link-manager-ai') . '</p></div>';
+            } elseif ($delete_id) {
+                echo '<div class="notice notice-error"><p>' . esc_html__('L\'ID indicato non corrisponde a un Link Affiliato: nessun contenuto è stato eliminato.', 'affiliate-link-manager-ai') . '</p></div>';
             }
         }
 
@@ -1854,7 +2034,22 @@ class AffiliateManagerAI {
             if (!empty($_POST['alma_clear_openai_api_key'])) {
                 delete_option('alma_openai_api_key');
             } elseif (!empty($_POST['openai_api_key'])) {
-                update_option('alma_openai_api_key', sanitize_text_field($_POST['openai_api_key']));
+                // Il filtro pre_option (costante wp-config) va sospeso durante la
+                // scrittura: altrimenti add_option/update_option confrontano il valore
+                // della costante e non salvano nulla nel database.
+                remove_filter('pre_option_alma_openai_api_key', array(__CLASS__, 'filter_openai_api_key_constant'));
+                $new_api_key = sanitize_text_field(wp_unslash($_POST['openai_api_key']));
+                if (false === get_option('alma_openai_api_key', false)) {
+                    // Nuova option: creata direttamente con autoload=no, senza
+                    // finestra delete→add in cui la chiave non esiste.
+                    add_option('alma_openai_api_key', $new_api_key, '', 'no');
+                } else {
+                    update_option('alma_openai_api_key', $new_api_key);
+                    if (function_exists('wp_set_option_autoload')) {
+                        wp_set_option_autoload('alma_openai_api_key', false);
+                    }
+                }
+                add_filter('pre_option_alma_openai_api_key', array(__CLASS__, 'filter_openai_api_key_constant'));
             }
             $selected_model = sanitize_text_field($_POST['openai_model'] ?? 'gpt-5.4-mini');
             $custom_model = sanitize_text_field($_POST['openai_model_custom'] ?? '');
@@ -3995,7 +4190,8 @@ class AffiliateManagerAI {
     }
     
     private function remove_shortcode_from_content($content, $link_id) {
-        $pattern = '/\[affiliate_link[^\]]*id=["\']?' . $link_id . '["\']?[^\]]*\]/';
+        // (?!\d) evita falsi positivi: rimuovendo il link 12 non deve sparire lo shortcode del link 123.
+        $pattern = '/\[affiliate_link\b[^\]]*\bid=["\']?' . (int) $link_id . '(?!\d)[^\]]*\]/';
         return preg_replace($pattern, '', $content);
     }
 
@@ -4040,7 +4236,8 @@ class AffiliateManagerAI {
     }
 
     private function remove_widget_shortcode_from_content($content, $widget_id) {
-        $pattern = '/\[affiliate_links_widget[^\]]*id=["\']?' . $widget_id . '["\']?[^\]]*\]/';
+        // (?!\d) evita falsi positivi su ID widget con più cifre (es. 12 vs 123).
+        $pattern = '/\[affiliate_links_widget\b[^\]]*\bid=["\']?' . (int) $widget_id . '(?!\d)[^\]]*\]/';
         return preg_replace($pattern, '', $content);
     }
 
@@ -4125,6 +4322,23 @@ class AffiliateManagerAI {
     }
 
     public function maybe_run_update_tasks() {
+        // Rimuove l'evento legacy senza handler eventualmente ancora schedulato.
+        if (wp_next_scheduled('alma_daily_optimization')) {
+            wp_clear_scheduled_hook('alma_daily_optimization');
+        }
+
+        // Migrazione one-time: i vecchi valori di estimated_cost contenevano il
+        // numero totale di token, non un costo. Vengono azzerati per non falsare
+        // le somme con i nuovi valori in USD.
+        if (!get_option('alma_ai_cost_unit_migrated')) {
+            global $wpdb;
+            $usage_table = ALMA_AI_Usage_Logger::table_name();
+            if ($wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $usage_table)) == $usage_table) {
+                $wpdb->query("UPDATE {$usage_table} SET estimated_cost = NULL WHERE estimated_cost IS NOT NULL");
+            }
+            update_option('alma_ai_cost_unit_migrated', 1, false);
+        }
+
         $installed_version = get_option('alma_plugin_version', '0.0.0');
         $geo_import_schema_version = get_option('alma_geo_import_schema_version', '0');
         $geo_job_store = new ALMA_Geo_Index_Job_Store();

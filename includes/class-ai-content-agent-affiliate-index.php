@@ -161,6 +161,13 @@ class ALMA_AI_Content_Agent_Affiliate_Index {
         return array('processed'=>$processed,'indexed'=>$indexed);
     }
 
+    public static function remove_single($post_id) {
+        global $wpdb;
+        $table = self::table_name();
+        if (in_array($table, ALMA_AI_Content_Agent_Store::missing_tables(), true)) { return false; }
+        return (bool)$wpdb->delete($table, array('affiliate_link_id' => absint($post_id)), array('%d'));
+    }
+
     public static function index_single($post_id, $allow_unpublished = true) {
         global $wpdb;
         $post = get_post($post_id);
@@ -329,5 +336,7 @@ add_action('save_post_affiliate_link', function($post_id, $post, $update){
 add_action('before_delete_post', function($post_id){
     $post = get_post($post_id);
     if (!$post || $post->post_type !== 'affiliate_link') { return; }
-    ALMA_AI_Content_Agent_Affiliate_Index::index_single($post_id, true);
+    // Alla cancellazione definitiva la riga indice va eliminata: la reindicizzazione
+    // precedente lasciava record orfani nell'affiliate index.
+    ALMA_AI_Content_Agent_Affiliate_Index::remove_single($post_id);
 });

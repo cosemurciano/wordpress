@@ -155,6 +155,13 @@ class ALMA_Geo_Index_Admin {
             }
             $settings = $this->geocoder->get_settings();
             $report = $this->geocoder->geocode_batch($settings['batch_size'], $action === 'retry_failed' ? 'failed' : 'pending');
+            if (!empty($report['locked'])) {
+                $this->notice_error(__('Un\'altra elaborazione di geocoding è già in corso: il batch non è stato avviato. Riprova tra qualche minuto.', 'affiliate-link-manager-ai'));
+                return;
+            }
+            if (!empty($report['configuration_error'])) {
+                $this->notice_error(__('Google ha rifiutato la richiesta (REQUEST_DENIED): verifica API key e abilitazione della Geocoding API. Il batch è stato interrotto.', 'affiliate-link-manager-ai'));
+            }
             $this->notice_success(sprintf(__('Batch geocoding completato: %1$d processate, %2$d verified, %3$d ambiguous, %4$d manual_required, %5$d failed. Oggetti collegati sincronizzati: %6$d, errori sync: %7$d.', 'affiliate-link-manager-ai'), $report['processed'], $report['verified'], $report['ambiguous'], $report['manual_required'], $report['failed'], $report['linked_objects_synced'], $report['linked_objects_sync_errors']));
             return;
         }
@@ -621,6 +628,21 @@ class ALMA_Geo_Index_Admin {
     }
 
 
+    /**
+     * Neutralizza l'esecuzione di formule (Excel/Sheets) nei CSV esportati:
+     * i valori che iniziano con = + - @ o tab/CR vengono prefissati con apostrofo.
+     */
+    private function csv_safe_cell($value) {
+        $value = (string) $value;
+        // ltrim come l'escaping dell'export link del core: " =SUM(...)" con spazi
+        // iniziali viene comunque interpretato come formula dai fogli di calcolo.
+        $check = ltrim($value);
+        if ($check !== '' && in_array($check[0], array('=', '+', '-', '@', "\t", "\r"), true)) {
+            $value = "'" . $value;
+        }
+        return $value;
+    }
+
     private function download_affiliate_job_log($job_id) {
         if (!current_user_can('manage_options')) {
             wp_die(esc_html__('Permessi insufficienti.', 'affiliate-link-manager-ai'));
@@ -640,17 +662,17 @@ class ALMA_Geo_Index_Admin {
                 (int) $item['job_id'],
                 (int) $item['row_number'],
                 (int) $item['object_id'],
-                sanitize_text_field($payload['post_title'] ?? ($payload['title'] ?? ($payload['link_title'] ?? ''))),
-                esc_url_raw($payload['affiliate_url'] ?? ($payload['url'] ?? '')),
-                sanitize_text_field($payload['primary_name'] ?? ''),
-                sanitize_text_field($payload['primary_city'] ?? ($payload['city'] ?? '')),
-                sanitize_text_field($payload['primary_region'] ?? ($payload['region'] ?? '')),
+                $this->csv_safe_cell(sanitize_text_field($payload['post_title'] ?? ($payload['title'] ?? ($payload['link_title'] ?? '')))),
+                $this->csv_safe_cell(esc_url_raw($payload['affiliate_url'] ?? ($payload['url'] ?? ''))),
+                $this->csv_safe_cell(sanitize_text_field($payload['primary_name'] ?? '')),
+                $this->csv_safe_cell(sanitize_text_field($payload['primary_city'] ?? ($payload['city'] ?? ''))),
+                $this->csv_safe_cell(sanitize_text_field($payload['primary_region'] ?? ($payload['region'] ?? ''))),
                 sanitize_key($payload['final_bucket'] ?? ''),
-                sanitize_text_field($payload['safe_for_auto_import'] ?? ''),
+                $this->csv_safe_cell(sanitize_text_field($payload['safe_for_auto_import'] ?? '')),
                 sanitize_key($item['status']),
                 sanitize_key($item['action']),
-                sanitize_textarea_field($item['message']),
-                $this->affiliate_import_suggestion($item['message'] ?? ''),
+                $this->csv_safe_cell(sanitize_textarea_field($item['message'])),
+                $this->csv_safe_cell($this->affiliate_import_suggestion($item['message'] ?? '')),
                 sanitize_text_field($item['processed_at']),
             ));
         }
@@ -783,7 +805,9 @@ class ALMA_Geo_Index_Admin {
         $current['remaining_pending'] = (int) ($report['remaining_pending'] ?? ($current['remaining_pending'] ?? 0));
         $current['rate_limit_detected'] = !empty($current['rate_limit_detected']) || !empty($report['rate_limit_detected']);
         $current['api_errors'] = array_values(array_unique(array_merge((array) ($current['api_errors'] ?? array()), (array) ($report['api_errors'] ?? array()))));
-        $current['rows'] = array_merge((array) ($current['rows'] ?? array()), (array) ($report['rows'] ?? array()));
+        // Cap alle ultime 500 righe: senza limite il report cumulativo in user_meta
+        // cresceva a ogni batch fino a righe usermeta enormi.
+        $current['rows'] = array_slice(array_merge((array) ($current['rows'] ?? array()), (array) ($report['rows'] ?? array())), -500);
         $current['examples'] = array_slice(array_merge((array) ($current['examples'] ?? array()), (array) ($report['examples'] ?? array())), -5);
         $current['session_id'] = $session_id;
         update_user_meta(get_current_user_id(), 'alma_geo_affiliate_geocoding_last_report', $current);
@@ -798,7 +822,7 @@ class ALMA_Geo_Index_Admin {
         $out = fopen('php://output', 'w');
         fputcsv($out, array('ID località','nome località','canonical name','query usata','status precedente','status nuovo','lat','lng','place_id','formatted address','confidence','errore/messaggio','numero Link Affiliati collegati'));
         foreach ((array) ($report['rows'] ?? array()) as $row) {
-            fputcsv($out, array((int) ($row['location_id'] ?? 0), (string) ($row['name'] ?? ''), (string) ($row['canonical_name'] ?? ''), (string) ($row['query'] ?? ''), (string) ($row['previous_status'] ?? ''), (string) ($row['new_status'] ?? ''), (string) ($row['lat'] ?? ''), (string) ($row['lng'] ?? ''), (string) ($row['place_id'] ?? ''), (string) ($row['formatted_address'] ?? ''), (string) ($row['confidence'] ?? ''), (string) ($row['message'] ?? ''), (int) ($row['affiliate_link_count'] ?? 0)));
+            fputcsv($out, array((int) ($row['location_id'] ?? 0), $this->csv_safe_cell($row['name'] ?? ''), $this->csv_safe_cell($row['canonical_name'] ?? ''), $this->csv_safe_cell($row['query'] ?? ''), (string) ($row['previous_status'] ?? ''), (string) ($row['new_status'] ?? ''), (string) ($row['lat'] ?? ''), (string) ($row['lng'] ?? ''), $this->csv_safe_cell($row['place_id'] ?? ''), $this->csv_safe_cell($row['formatted_address'] ?? ''), (string) ($row['confidence'] ?? ''), $this->csv_safe_cell($row['message'] ?? ''), (int) ($row['affiliate_link_count'] ?? 0)));
         }
         fclose($out);
         exit;

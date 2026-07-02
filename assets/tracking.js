@@ -22,13 +22,25 @@
      */
     $(document).ready(function() {
         initAffiliateTracking();
-        
-        // Re-inizializza per contenuti caricati dinamicamente
-        $(document).on('DOMNodeInserted', function(e) {
-            if ($(e.target).find('.alma-affiliate-link').length > 0) {
-                initAffiliateTracking();
-            }
-        });
+
+        // Re-inizializza per contenuti caricati dinamicamente.
+        // MutationObserver sostituisce il Mutation Event DOMNodeInserted,
+        // deprecato e rimosso nei browser recenti.
+        if ('MutationObserver' in window) {
+            const observer = new MutationObserver(function(mutations) {
+                for (const mutation of mutations) {
+                    for (const node of mutation.addedNodes) {
+                        if (node.nodeType === 1 &&
+                            (node.matches && node.matches('.alma-affiliate-link') ||
+                             node.querySelector && node.querySelector('.alma-affiliate-link'))) {
+                            initAffiliateTracking();
+                            return;
+                        }
+                    }
+                }
+            });
+            observer.observe(document.body, { childList: true, subtree: true });
+        }
     });
     
     /**
@@ -54,14 +66,12 @@
                 trackAffiliateClick(linkId, $link.attr('href'), 'click', source);
             });
             
-            // Traccia anche right-click (apri in nuova scheda)
-            $link.on('contextmenu', function(e) {
-                trackAffiliateClick(linkId, $link.attr('href'), 'contextmenu', source);
-            });
-            
-            // Traccia middle-click (apri in nuova scheda)
-            $link.on('mousedown', function(e) {
-                if (e.which === 2) {
+            // Il right-click (contextmenu) non viene più tracciato: aprire il menu
+            // contestuale non è una navigazione e gonfiava i conteggi.
+            // Il middle-click viene tracciato tramite l'evento standard auxclick,
+            // che scatta solo quando il click è effettivo.
+            $link.on('auxclick', function(e) {
+                if (e.button === 1 || (e.originalEvent && e.originalEvent.button === 1)) {
                     trackAffiliateClick(linkId, $link.attr('href'), 'middleclick', source);
                 }
             });
@@ -155,7 +165,9 @@
             })
             .then(response => response.json())
             .then(data => {
-                if (data && data.success) {
+                // tracked === false: il server ha scartato il click (bot, duplicato,
+                // tracking anonimi disattivato) — non inviare eventi GA/integrazioni.
+                if (data && data.success && !(data.data && data.data.tracked === false)) {
                     handleSuccess(data.data);
                 }
             })
@@ -176,7 +188,7 @@
             async: true,
             timeout: 2000,
             success: function(response) {
-                if (response.success) {
+                if (response.success && !(response.data && response.data.tracked === false)) {
                     handleSuccess(response.data);
                 }
             },

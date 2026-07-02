@@ -20,10 +20,10 @@ class ALMA_AI_Content_Agent_Planner {
         $saved = (int)($save_result['saved'] ?? 0);
         if ($saved < 1) {
             $err = !empty($save_result['errors']) ? implode('; ', array_map('sanitize_text_field', (array)$save_result['errors'])) : 'Nessuna idea salvata (verificare database).';
-            ALMA_AI_Usage_Logger::log(array('task'=>'content_idea_generation','success'=>false,'model'=>$res['model'],'response_time'=>$res['response_time'] ?? null,'input_tokens'=>$res['usage']['input_tokens'] ?? null,'output_tokens'=>$res['usage']['output_tokens'] ?? null,'estimated_cost'=>$res['usage']['total_tokens'] ?? null,'error'=>$err));
+            ALMA_AI_Usage_Logger::log(array('task'=>'content_idea_generation','success'=>false,'model'=>$res['model'],'response_time'=>$res['response_time'] ?? null,'input_tokens'=>$res['usage']['input_tokens'] ?? null,'output_tokens'=>$res['usage']['output_tokens'] ?? null,'estimated_cost'=>$res['estimated_cost'] ?? null,'error'=>$err));
             return array('success'=>false,'error'=>'Nessuna idea salvata (verificare database).','saved'=>0,'diagnostics'=>$ctx['diagnostics'],'db_errors'=>$save_result['errors'] ?? array());
         }
-        ALMA_AI_Usage_Logger::log(array('task'=>'content_idea_generation','success'=>true,'model'=>$res['model'],'response_time'=>$res['response_time'] ?? null,'input_tokens'=>$res['usage']['input_tokens'] ?? null,'output_tokens'=>$res['usage']['output_tokens'] ?? null,'estimated_cost'=>$res['usage']['total_tokens'] ?? null));
+        ALMA_AI_Usage_Logger::log(array('task'=>'content_idea_generation','success'=>true,'model'=>$res['model'],'response_time'=>$res['response_time'] ?? null,'input_tokens'=>$res['usage']['input_tokens'] ?? null,'output_tokens'=>$res['usage']['output_tokens'] ?? null,'estimated_cost'=>$res['estimated_cost'] ?? null));
         return array('success'=>true,'saved'=>$saved,'diagnostics'=>$ctx['diagnostics'],'warnings'=>$save_result['errors'] ?? array());
     }
 }
