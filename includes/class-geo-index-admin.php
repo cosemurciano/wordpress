@@ -299,20 +299,131 @@ class ALMA_Geo_Index_Admin {
                 return;
             }
             $location_id = absint($_POST['location_id'] ?? 0);
-            $location = $this->store->get_location($location_id);
-            $expected_status = $action === 'retry_location' ? 'failed' : 'pending';
-            if (!$location || ($location['geocoding_status'] ?? '') !== $expected_status) {
-                $this->notice_error(__('Azione non eseguita: la località non è nello stato previsto per questa operazione.', 'affiliate-link-manager-ai'));
+            $result = $this->geocode_single_location($location_id);
+            if (is_wp_error($result)) {
+                $this->notice_error($result->get_error_message());
                 return;
             }
-            $result = $this->geocoder->geocode_location($location_id);
             $this->notice_success(sprintf(__('Località #%1$d aggiornata con stato %2$s. Oggetti collegati sincronizzati: %3$d, errori sync: %4$d.', 'affiliate-link-manager-ai'), $location_id, ALMA_Geo_Index_Metabox::geocoding_status_label($result['status'] ?? 'failed'), (int) ($result['linked_objects_synced'] ?? 0), (int) ($result['linked_objects_sync_errors'] ?? 0)));
+            return;
+        }
+        if ($action === 'confirm_location') {
+            $location_id = absint($_POST['location_id'] ?? 0);
+            $result = $this->confirm_single_location($location_id);
+            if (is_wp_error($result)) {
+                $this->notice_error($result->get_error_message());
+                return;
+            }
+            $this->notice_success(sprintf(__('Località #%1$d confermata come verificata e sincronizzata su %2$d contenuti collegati.', 'affiliate-link-manager-ai'), $location_id, (int) ($result['objects_updated'] ?? 0)));
             return;
         }
         if ($action === 'mark_manual_required') {
             $location_id = absint($_POST['location_id'] ?? 0);
             $this->store->update_location_geocoding($location_id, array('status' => 'manual_required', 'message' => __('Marcata manual_required da admin.', 'affiliate-link-manager-ai')));
+            $this->store->sync_location_to_linked_objects($location_id);
             $this->notice_success(__('Località marcata come richiede verifica manuale.', 'affiliate-link-manager-ai'));
+            return;
+        }
+        if ($action === 'bulk_locations') {
+            $this->handle_bulk_locations_action();
+        }
+    }
+
+    /**
+     * Geocodifica una località in qualunque stato riprocessabile (pending,
+     * ambiguous, retry_later, failed, manual_required). Prima l'azione era
+     * legata rigidamente a pending/failed e su una località "Ambiguo"
+     * restituiva "la località non è nello stato previsto".
+     */
+    private function geocode_single_location($location_id) {
+        $location = $this->store->get_location($location_id);
+        if (!$location) {
+            return new WP_Error('not_found', __('Località non trovata.', 'affiliate-link-manager-ai'));
+        }
+        $status = sanitize_key($location['geocoding_status'] ?? 'pending');
+        $overwrite_verified = get_option('alma_geo_geocoding_overwrite_verified', 'no') === 'yes';
+        if ($status === 'verified' && !$overwrite_verified) {
+            return new WP_Error('already_verified', __('Località già verificata: abilita "Permetti sovrascrittura località già verified" nelle impostazioni per rigeocodificarla.', 'affiliate-link-manager-ai'));
+        }
+        return $this->geocoder->geocode_location($location_id, array('overwrite_verified' => 'yes'));
+    }
+
+    /**
+     * Conferma manualmente una località (es. "Ambiguo" con coordinate corrette):
+     * diventa verified con i dati già presenti e si sincronizza sui contenuti.
+     */
+    private function confirm_single_location($location_id) {
+        $location = $this->store->get_location($location_id);
+        if (!$location) {
+            return new WP_Error('not_found', __('Località non trovata.', 'affiliate-link-manager-ai'));
+        }
+        if ($location['lat'] === null || $location['lng'] === null || (string) ($location['geo_provider_place_id'] ?? '') === '') {
+            return new WP_Error('missing_geo_data', sprintf(__('Località #%d senza coordinate o Place ID: geocodificala prima di confermarla.', 'affiliate-link-manager-ai'), $location_id));
+        }
+        $this->store->update_location_geocoding($location_id, array(
+            'status' => 'verified',
+            'message' => '',
+            'confidence' => 1,
+        ));
+        return $this->store->sync_location_to_linked_objects($location_id);
+    }
+
+    /**
+     * Azioni massive sulle località selezionate (max 50 per invio).
+     */
+    private function handle_bulk_locations_action() {
+        $operation = sanitize_key(wp_unslash($_POST['alma_geo_bulk_operation'] ?? ''));
+        $ids = array_values(array_filter(array_map('absint', (array) ($_POST['location_ids'] ?? array()))));
+        if (!in_array($operation, array('geocode', 'confirm', 'manual_required'), true)) {
+            $this->notice_error(__('Seleziona un\'azione massiva valida.', 'affiliate-link-manager-ai'));
+            return;
+        }
+        if (empty($ids)) {
+            $this->notice_error(__('Seleziona almeno una località.', 'affiliate-link-manager-ai'));
+            return;
+        }
+        $ids = array_slice($ids, 0, 50);
+        if ($operation === 'geocode' && !$this->geocoder->is_enabled()) {
+            $this->notice_error(__('API key non configurata: impossibile geocodificare.', 'affiliate-link-manager-ai'));
+            return;
+        }
+
+        $ok = 0;
+        $failed = 0;
+        $errors = array();
+        foreach ($ids as $location_id) {
+            if ($operation === 'geocode') {
+                $result = $this->geocode_single_location($location_id);
+            } elseif ($operation === 'confirm') {
+                $result = $this->confirm_single_location($location_id);
+            } else {
+                $this->store->update_location_geocoding($location_id, array('status' => 'manual_required', 'message' => __('Marcata manual_required da admin (azione massiva).', 'affiliate-link-manager-ai')));
+                $this->store->sync_location_to_linked_objects($location_id);
+                $result = array();
+            }
+            if (is_wp_error($result)) {
+                $failed++;
+                if (count($errors) < 5) {
+                    $errors[] = '#' . $location_id . ': ' . $result->get_error_message();
+                }
+            } else {
+                $ok++;
+            }
+        }
+
+        $labels = array(
+            'geocode' => __('geocodificate', 'affiliate-link-manager-ai'),
+            'confirm' => __('confermate come verificate', 'affiliate-link-manager-ai'),
+            'manual_required' => __('marcate manual_required', 'affiliate-link-manager-ai'),
+        );
+        $message = sprintf(__('Azione massiva completata: %1$d località %2$s, %3$d saltate.', 'affiliate-link-manager-ai'), $ok, $labels[$operation], $failed);
+        if (!empty($errors)) {
+            $message .= ' ' . implode(' | ', array_map('sanitize_text_field', $errors));
+        }
+        if ($failed > 0 && $ok === 0) {
+            $this->notice_error($message);
+        } else {
+            $this->notice_success($message);
         }
     }
 
@@ -622,21 +733,49 @@ class ALMA_Geo_Index_Admin {
     }
 
     private function render_locations_table($locations, $include_content_count) {
-        echo '<div style="max-width:100%;overflow:auto;"><table class="widefat striped"><thead><tr><th>ID</th><th>' . esc_html__('Nome canonico', 'affiliate-link-manager-ai') . '</th><th>' . esc_html__('Tipo', 'affiliate-link-manager-ai') . '</th><th>' . esc_html__('Paese', 'affiliate-link-manager-ai') . '</th><th>' . esc_html__('Regione', 'affiliate-link-manager-ai') . '</th><th>' . esc_html__('Città', 'affiliate-link-manager-ai') . '</th><th>' . esc_html__('Query', 'affiliate-link-manager-ai') . '</th><th>' . esc_html__('Stato', 'affiliate-link-manager-ai') . '</th><th>Lat/Lng</th><th>Provider</th><th>Place ID</th><th>' . esc_html__('Formatted address', 'affiliate-link-manager-ai') . '</th><th>' . esc_html__('Errore', 'affiliate-link-manager-ai') . '</th><th>Geocoded at</th>' . ($include_content_count ? '<th>' . esc_html__('Contenuti', 'affiliate-link-manager-ai') . '</th>' : '') . '<th>' . esc_html__('Azioni', 'affiliate-link-manager-ai') . '</th></tr></thead><tbody>';
+        // Form delle azioni massive: esterno alla tabella per non annidare form
+        // (le azioni per riga sono form a sé); le checkbox vi si associano con
+        // l'attributo HTML5 form="...".
+        static $bulk_form_counter = 0;
+        $bulk_form_counter++;
+        $bulk_form_id = 'alma-geo-bulk-form-' . $bulk_form_counter;
+        ?>
+        <form method="post" id="<?php echo esc_attr($bulk_form_id); ?>" style="margin:8px 0;">
+            <?php wp_nonce_field('alma_geo_index_geocoding'); ?>
+            <input type="hidden" name="alma_geo_index_action" value="bulk_locations">
+            <label for="<?php echo esc_attr($bulk_form_id); ?>-op"><strong><?php esc_html_e('Azione massiva sulle località selezionate:', 'affiliate-link-manager-ai'); ?></strong></label>
+            <select name="alma_geo_bulk_operation" id="<?php echo esc_attr($bulk_form_id); ?>-op">
+                <option value="geocode"><?php esc_html_e('Geocodifica', 'affiliate-link-manager-ai'); ?></option>
+                <option value="confirm"><?php esc_html_e('Conferma come verificate', 'affiliate-link-manager-ai'); ?></option>
+                <option value="manual_required"><?php esc_html_e('Segna: richiede verifica manuale', 'affiliate-link-manager-ai'); ?></option>
+            </select>
+            <button type="submit" class="button button-primary"><?php esc_html_e('Applica alle selezionate', 'affiliate-link-manager-ai'); ?></button>
+            <span class="description"><?php esc_html_e('Massimo 50 località per invio. La conferma richiede coordinate e Place ID già presenti; il geocoding e la conferma si sincronizzano subito sui contenuti collegati.', 'affiliate-link-manager-ai'); ?></span>
+        </form>
+        <?php
+        echo '<div style="max-width:100%;overflow:auto;"><table class="widefat striped"><thead><tr><th style="width:28px;"><input type="checkbox" onclick="var t=this; document.querySelectorAll(\'.alma-geo-loc-check-' . esc_attr((string) $bulk_form_counter) . '\').forEach(function(c){c.checked=t.checked;});"></th><th>ID</th><th>' . esc_html__('Nome canonico', 'affiliate-link-manager-ai') . '</th><th>' . esc_html__('Tipo', 'affiliate-link-manager-ai') . '</th><th>' . esc_html__('Paese', 'affiliate-link-manager-ai') . '</th><th>' . esc_html__('Regione', 'affiliate-link-manager-ai') . '</th><th>' . esc_html__('Città', 'affiliate-link-manager-ai') . '</th><th>' . esc_html__('Query', 'affiliate-link-manager-ai') . '</th><th>' . esc_html__('Stato', 'affiliate-link-manager-ai') . '</th><th>Lat/Lng</th><th>Provider</th><th>Place ID</th><th>' . esc_html__('Formatted address', 'affiliate-link-manager-ai') . '</th><th>' . esc_html__('Errore', 'affiliate-link-manager-ai') . '</th><th>Geocoded at</th>' . ($include_content_count ? '<th>' . esc_html__('Contenuti', 'affiliate-link-manager-ai') . '</th>' : '') . '<th>' . esc_html__('Azioni', 'affiliate-link-manager-ai') . '</th></tr></thead><tbody>';
         if (empty($locations)) {
-            $colspan = $include_content_count ? 16 : 15;
+            $colspan = $include_content_count ? 17 : 16;
             echo '<tr><td colspan="' . esc_attr((string) $colspan) . '">' . esc_html__('Nessuna località salvata.', 'affiliate-link-manager-ai') . '</td></tr>';
         }
         foreach ($locations as $location) {
             $lat_lng = ($location['lat'] !== null && $location['lng'] !== null) ? $location['lat'] . ', ' . $location['lng'] : '';
-            echo '<tr><td>' . esc_html((string) $location['id']) . '</td><td>' . esc_html($location['canonical_name']) . '</td><td>' . esc_html($location['type']) . '</td><td>' . esc_html($location['country']) . '</td><td>' . esc_html($location['region']) . '</td><td>' . esc_html($location['city']) . '</td><td>' . esc_html($location['suggested_geocoding_query']) . '</td><td>' . esc_html(ALMA_Geo_Index_Metabox::geocoding_status_label($location['geocoding_status'])) . '</td><td>' . esc_html($lat_lng) . '</td><td>' . esc_html($location['geo_provider']) . '</td><td>' . esc_html($location['geo_provider_place_id']) . '</td><td>' . esc_html(wp_trim_words((string) ($location['formatted_address'] ?? ''), 12, '…')) . '</td><td>' . esc_html(wp_trim_words((string) ($location['geocoding_error'] ?? ''), 12, '…')) . '</td><td>' . esc_html((string) ($location['geocoded_at'] ?? '')) . '</td>';
+            $status = sanitize_key($location['geocoding_status'] ?? 'pending');
+            echo '<tr><td><input type="checkbox" class="alma-geo-loc-check-' . esc_attr((string) $bulk_form_counter) . '" form="' . esc_attr($bulk_form_id) . '" name="location_ids[]" value="' . esc_attr((string) $location['id']) . '"></td>';
+            echo '<td>' . esc_html((string) $location['id']) . '</td><td>' . esc_html($location['canonical_name']) . '</td><td>' . esc_html($location['type']) . '</td><td>' . esc_html($location['country']) . '</td><td>' . esc_html($location['region']) . '</td><td>' . esc_html($location['city']) . '</td><td>' . esc_html($location['suggested_geocoding_query']) . '</td><td>' . esc_html(ALMA_Geo_Index_Metabox::geocoding_status_label($location['geocoding_status'])) . '</td><td>' . esc_html($lat_lng) . '</td><td>' . esc_html($location['geo_provider']) . '</td><td>' . esc_html($location['geo_provider_place_id']) . '</td><td>' . esc_html(wp_trim_words((string) ($location['formatted_address'] ?? ''), 12, '…')) . '</td><td>' . esc_html(wp_trim_words((string) ($location['geocoding_error'] ?? ''), 12, '…')) . '</td><td>' . esc_html((string) ($location['geocoded_at'] ?? '')) . '</td>';
             if ($include_content_count) {
                 echo '<td>' . esc_html((string) $location['content_count']) . '</td>';
             }
             echo '<td>';
-            $this->render_geocoding_button('geocode_location', __('Geocodifica', 'affiliate-link-manager-ai'), (int) $location['id']);
-            $this->render_geocoding_button('retry_location', __('Riprova', 'affiliate-link-manager-ai'), (int) $location['id']);
-            $this->render_geocoding_button('mark_manual_required', __('Segna manual_required', 'affiliate-link-manager-ai'), (int) $location['id']);
+            if ($status !== 'verified' || get_option('alma_geo_geocoding_overwrite_verified', 'no') === 'yes') {
+                $this->render_geocoding_button('geocode_location', __('Geocodifica', 'affiliate-link-manager-ai'), (int) $location['id']);
+            }
+            if ($status !== 'verified' && $location['lat'] !== null && $location['lng'] !== null && (string) ($location['geo_provider_place_id'] ?? '') !== '') {
+                $this->render_geocoding_button('confirm_location', __('Conferma verificata', 'affiliate-link-manager-ai'), (int) $location['id']);
+            }
+            if ($status !== 'manual_required') {
+                $this->render_geocoding_button('mark_manual_required', __('Verifica manuale', 'affiliate-link-manager-ai'), (int) $location['id']);
+            }
             echo '</td></tr>';
         }
         echo '</tbody></table></div>';

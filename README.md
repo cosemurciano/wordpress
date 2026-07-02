@@ -1,3 +1,16 @@
+## 2.47.0 - 2026-07-02
+
+### Località — azioni corrette, sync degli stati e selezione massiva
+- **Fix "Azione non eseguita: la località non è nello stato previsto"**: "Geocodifica" funzionava solo su località `pending` e "Riprova" solo su `failed`; ora geocodifica qualunque stato riprocessabile (pending, ambiguous, retry_later, failed, manual_required) e le località `verified` sono protette a meno dell'opzione di sovrascrittura.
+- **Lo stato geocoding si applica sempre ai contenuti collegati**: la sincronizzazione scriveva solo `verified`; ora link affiliati e post riflettono l'esito reale (ambiguous, failed, retry_later inclusi) invece di restare "In attesa di geocoding" con la località già geocodificata.
+- **Nuova azione "Conferma verificata"**: una località ambigua con coordinate e Place ID corretti (es. partial match di Google) si promuove a `verified` con un click e si sincronizza subito sui contenuti.
+- **Selezione massiva delle località**: checkbox con "seleziona tutto" e azioni in blocco (Geocodifica / Conferma come verificate / Richiede verifica manuale) fino a 50 località per invio, disponibile sia nella tab Località sia in Impostazioni & Log.
+
+### Widget Contestuale — matcher v5
+- La penalità geografica (-30) scatta anche sui **nomi paese** quando i country code mancano (località non ancora geocodificate): un link "Parigi, Francia" in attesa di geocoding non può più comparire su un articolo localizzato in Algeria. Verificato che la data di pubblicazione del link NON ha alcun peso nello scoring: il sintomo era causato dal segnale geografico neutro delle località incomplete.
+- `MATCHER_VERSION=5` invalida la cache dei risultati precedenti.
+- Versione plugin aggiornata a `2.47.0`.
+
 ## 2.46.1 - 2026-07-02
 
 ### Widget Link Contestuale — coerenza geografica (matcher v4)

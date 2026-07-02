@@ -156,12 +156,13 @@ class ALMA_Geo_Index_Geocoder {
         $provider_result = $provider->geocode($query, array('region' => $settings['country_bias']));
         $validated = $this->validate_result($location, $provider_result);
         $this->store->update_location_geocoding($location['id'], $validated);
-        if (($validated['status'] ?? '') === 'verified') {
-            $sync_report = $this->store->sync_location_to_linked_objects((int) $location['id']);
-            $validated['linked_objects_synced'] = (int) ($sync_report['objects_updated'] ?? 0);
-            $validated['linked_objects_sync_errors'] = count($sync_report['errors'] ?? array());
-            $validated['linked_objects_sync_report'] = $sync_report;
-        }
+        // Sincronizza SEMPRE l'esito sui contenuti collegati (non solo verified):
+        // lo stato geocoding di link e post deve riflettere quello della località
+        // (ambiguous, failed, retry_later inclusi) invece di restare "In attesa".
+        $sync_report = $this->store->sync_location_to_linked_objects((int) $location['id']);
+        $validated['linked_objects_synced'] = (int) ($sync_report['objects_updated'] ?? 0);
+        $validated['linked_objects_sync_errors'] = count($sync_report['errors'] ?? array());
+        $validated['linked_objects_sync_report'] = $sync_report;
         $validated['query'] = $query;
         $validated['provider_status'] = sanitize_text_field($provider_result['status'] ?? '');
         $validated['rate_limit_detected'] = $this->is_rate_limit_result($provider_result);

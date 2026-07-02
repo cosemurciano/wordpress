@@ -790,10 +790,9 @@ class ALMA_Geo_Index_Store {
             $report['errors'][] = __('Località non trovata.', 'affiliate-link-manager-ai');
             return $report;
         }
-        if (($location['geocoding_status'] ?? '') !== 'verified') {
-            $report['errors'][] = __('Località non verified: sincronizzazione saltata.', 'affiliate-link-manager-ai');
-            return $report;
-        }
+        // La sincronizzazione avviene per QUALSIASI stato: i contenuti collegati
+        // devono riflettere l'esito reale del geocoding (verified, ambiguous,
+        // failed, retry_later), non restare congelati su "In attesa".
 
         $allowed_types = array(self::OBJECT_TYPE_POST, self::OBJECT_TYPE_PAGE, self::OBJECT_TYPE_AFFILIATE_LINK);
         $relations = $wpdb->get_results(
@@ -826,7 +825,10 @@ class ALMA_Geo_Index_Store {
                 continue;
             }
 
-            update_post_meta($object_id, '_alma_geo_geocoding_status', 'verified');
+            // Sincronizza lo stato REALE della località: prima veniva scritto
+            // sempre 'verified', quindi i contenuti collegati a località ambigue
+            // o fallite restavano "In attesa di geocoding" a tempo indefinito.
+            update_post_meta($object_id, '_alma_geo_geocoding_status', sanitize_key($location['geocoding_status'] ?? 'pending'));
             update_post_meta($object_id, '_alma_geo_primary_lat', $location['lat'] !== null ? (string) $location['lat'] : '');
             update_post_meta($object_id, '_alma_geo_primary_lng', $location['lng'] !== null ? (string) $location['lng'] : '');
             update_post_meta($object_id, '_alma_geo_primary_place_id', (string) ($location['geo_provider_place_id'] ?? ''));
