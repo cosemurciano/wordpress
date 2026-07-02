@@ -188,13 +188,37 @@ class ALMA_Geo_Index_Store {
         );
 
         if ($existing) {
+            // Merge conservativo: se il record in ingresso non porta dati di
+            // geocoding (import/associazioni con soli nomi) non deve degradare
+            // una località già geocodificata a pending azzerandone le coordinate
+            // (che il geocoding automatico rigeocodificherebbe pagando quota).
+            $existing_status = sanitize_key($existing['geocoding_status'] ?? 'pending');
+            $incoming_has_geo = $data['lat'] !== null && $data['lng'] !== null && $data['geo_provider_place_id'] !== '';
+            if (!$incoming_has_geo && $existing_status !== 'pending' && $row['geocoding_status'] === 'pending') {
+                foreach (array('lat', 'lng', 'geo_provider', 'geo_provider_place_id', 'geocoding_status', 'formatted_address', 'address_components', 'geocoded_at', 'geocoding_error') as $geo_field) {
+                    $row[$geo_field] = $existing[$geo_field] ?? $row[$geo_field];
+                }
+            }
             $wpdb->update($this->table_locations(), $row, array('id' => (int) $existing['id']), $formats, array('%d'));
+            $this->maybe_queue_auto_geocoding($row['geocoding_status']);
             return (int) $existing['id'];
         }
 
         $row['created_at'] = $now;
         $wpdb->insert($this->table_locations(), $row, array_merge($formats, array('%s')));
+        $this->maybe_queue_auto_geocoding($row['geocoding_status']);
         return (int) $wpdb->insert_id;
+    }
+
+    /**
+     * Geocoding automatico: ogni località che nasce o resta in stato pending
+     * schedula il drain in background. Copre tutti i flussi (metabox, import
+     * CSV/API, auto-indexer, creazione contenuti) perché passano tutti da qui.
+     */
+    private function maybe_queue_auto_geocoding($geocoding_status) {
+        if ($geocoding_status === 'pending' && class_exists('ALMA_Geo_Geocoding_Queue')) {
+            ALMA_Geo_Geocoding_Queue::maybe_schedule();
+        }
     }
 
     public function upsert_content_index($object_id, $object_type, $location_id, $data) {
@@ -322,6 +346,21 @@ class ALMA_Geo_Index_Store {
 
         $source = sanitize_text_field($source);
         $locations = $this->normalize_associated_locations($locations, $source);
+        // Località selezionate dalla ricerca Google del metabox (o comunque già
+        // complete di coordinate e Place ID): sono già geocodificate, non ha
+        // senso rimetterle in coda pending per un secondo passaggio.
+        foreach ($locations as &$location_ref) {
+            if (($location_ref['geocoding_status'] ?? 'pending') === 'pending'
+                && ($location_ref['lat'] ?? '') !== ''
+                && ($location_ref['lng'] ?? '') !== ''
+                && ($location_ref['geo_provider_place_id'] ?? '') !== '') {
+                $location_ref['geocoding_status'] = 'verified';
+                if (($location_ref['geo_provider'] ?? '') === '') {
+                    $location_ref['geo_provider'] = 'google_maps';
+                }
+            }
+        }
+        unset($location_ref);
         if (empty($locations)) {
             $this->log_geo_store_event('info', 'Geo Index Store save received no associated locations.', $object_id, $object_type);
         }
