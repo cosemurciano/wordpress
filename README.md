@@ -1,3 +1,13 @@
+## 2.49.0 - 2026-07-02
+
+### Mappa Geografica frontend (nuova)
+- Nuovo shortcode `[alma_geo_map width="100%" height="600px"]`: mappa Google a vista mondo con marker sulle località che contengono **articoli geolocalizzati**; `width`/`height` accettano px, %, vh, vw, em, rem; `zoom` iniziale configurabile; `search="no"` per nascondere la ricerca.
+- **Ricerca ampia sopra la mappa**: campo di ricerca sui nomi delle località (con suggerimenti), zoom e apertura automatica del popup sulla località trovata — nessuna API aggiuntiva, zero costi extra.
+- **Click sulla località**: popup con i primi articoli e link "Vedi tutti gli articoli" verso la pagina elenco configurata; il secondo click sul marker naviga direttamente alla pagina. Nuovo shortcode `[alma_geo_location_articles per_page="20"]` per la pagina elenco: titolo località, conteggio, griglia articoli con immagine/estratto/data e paginazione.
+- **Pagina impostazioni dedicata "Mappa Geografica"**: API key browser di Google Maps (separata da quella server del geocoding, con istruzioni per la restrizione per referrer), **categorie da escludere** (gli articoli in quelle categorie spariscono da marker ed elenchi), pagina elenco articoli, dimensioni di default.
+- Le righe-località duplicate (import diversi) vengono unificate in un solo marker (raggruppamento per coordinate); i dati marker sono in cache 15 minuti, invalidata al salvataggio di articoli e impostazioni.
+- Versione plugin aggiornata a `2.49.0`.
+
 ## 2.48.0 - 2026-07-02
 
 ### Modale "Inserisci Link Affiliato" — fix inserimento e filtro località
