@@ -1,3 +1,13 @@
+## 2.48.0 - 2026-07-02
+
+### Modale "Inserisci Link Affiliato" — fix inserimento e filtro località
+- **Fix "Errore durante l'inserimento"**: l'inserimento in Gutenberg poteva fallire per API blocchi non disponibili al momento del click e per il contenuto RichText dei paragrafi (WP 6.5+) trattato come stringa. Ora ogni strategia (Gutenberg → TinyMCE → textarea) è isolata con fallback a cascata, in Gutenberg lo shortcode viene inserito come blocco dedicato subito dopo il blocco selezionato, e gli script `wp-data`/`wp-blocks` sono dipendenze garantite nel block editor.
+- **Niente più lavoro perso**: se nessun editor è raggiungibile, lo shortcode viene copiato negli appunti e mostrato nel messaggio, invece del solo errore.
+- **Nuovo filtro "📍 Località"**: il modale elenca le località con link affiliati collegati (ordinate per numero di link) e filtra i risultati per area geografica — la località scelta viene espansa a righe omonime e, per i paesi, a tutte le località di quel paese.
+- **Preselezione automatica**: se l'articolo in modifica è geolocalizzato, il filtro parte già sulla sua località primaria (con avviso e possibilità di rimuoverlo), mostrando subito i link della zona giusta.
+- **Badge località nei risultati**: ogni link mostra la sua località primaria (📍 Città, Paese) accanto a tipologia, click e utilizzi.
+- Versione plugin aggiornata a `2.48.0`.
+
 ## 2.47.0 - 2026-07-02
 
 ### Località — azioni corrette, sync degli stati e selezione massiva

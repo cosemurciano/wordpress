@@ -8,6 +8,7 @@ if (!defined('ABSPATH')) {
 
 class ALMA_Editor_Ajax {
     private $dashboard_stats;
+    private $geo_store_instance = null;
 
     public function __construct($dashboard_stats) {
         $this->dashboard_stats = $dashboard_stats;
@@ -16,6 +17,7 @@ class ALMA_Editor_Ajax {
     public function init() {
         add_action('wp_ajax_alma_search_links', array($this, 'ajax_search_links'));
         add_action('wp_ajax_alma_ai_suggest_links', array($this, 'ajax_ai_suggest_links'));
+        add_action('wp_ajax_alma_editor_geo_locations', array($this, 'ajax_editor_geo_locations'));
         add_action('admin_footer-post.php', array($this, 'add_editor_integration'));
         add_action('admin_footer-post-new.php', array($this, 'add_editor_integration'));
         add_action('admin_footer-page.php', array($this, 'add_editor_integration'));
@@ -55,6 +57,7 @@ class ALMA_Editor_Ajax {
 
         $search = isset($_POST['search']) ? sanitize_text_field(wp_unslash($_POST['search'])) : '';
         $type_filter = isset($_POST['type_filter']) ? absint($_POST['type_filter']) : 0;
+        $geo_filter = isset($_POST['geo_filter']) ? absint($_POST['geo_filter']) : 0;
 
         $args = array(
             'post_type' => 'affiliate_link',
@@ -76,6 +79,14 @@ class ALMA_Editor_Ajax {
                     'terms' => $type_filter
                 )
             );
+        }
+
+        if ($geo_filter > 0) {
+            $geo_link_ids = $this->get_link_ids_for_location_area($geo_filter);
+            if (empty($geo_link_ids)) {
+                wp_send_json_success(array());
+            }
+            $args['post__in'] = $geo_link_ids;
         }
 
         $query = new WP_Query($args);
@@ -111,7 +122,171 @@ class ALMA_Editor_Ajax {
             wp_reset_postdata();
         }
 
+        $results = $this->attach_location_labels($results);
+
         wp_send_json_success($results);
+    }
+
+    /**
+     * Località disponibili per il filtro geografico del modale (con conteggio
+     * link collegati) e località primaria del post corrente per la preselezione.
+     */
+    public function ajax_editor_geo_locations() {
+        $this->ajax_require_nonce('alma_editor_search');
+        $this->ajax_require_capability('edit_posts');
+
+        $store = $this->geo_store();
+        if (!$store || !$store->tables_exist()) {
+            wp_send_json_success(array('locations' => array(), 'current_location_id' => 0));
+        }
+
+        global $wpdb;
+        $rows = $wpdb->get_results($wpdb->prepare(
+            "SELECT l.id, l.canonical_name, l.type, l.city, l.country, l.country_code, COUNT(DISTINCT ci.object_id) AS link_count
+             FROM {$store->table_locations()} l
+             INNER JOIN {$store->table_content_index()} ci ON ci.location_id = l.id AND ci.object_type = %s
+             GROUP BY l.id
+             ORDER BY link_count DESC, l.canonical_name ASC
+             LIMIT 150",
+            ALMA_Geo_Index_Store::OBJECT_TYPE_AFFILIATE_LINK
+        ), ARRAY_A);
+
+        $locations = array();
+        foreach ((array) $rows as $row) {
+            $label = sanitize_text_field($row['canonical_name']);
+            $country = sanitize_text_field($row['country'] ?: $row['country_code']);
+            if ($country !== '' && strcasecmp($country, $label) !== 0) {
+                $label .= ' (' . $country . ')';
+            }
+            $locations[] = array(
+                'id' => (int) $row['id'],
+                'label' => $label,
+                'count' => (int) $row['link_count'],
+            );
+        }
+
+        // Località primaria dell'articolo in modifica: preselezionata nel filtro.
+        $current_location_id = 0;
+        $post_id = isset($_POST['post_id']) ? absint($_POST['post_id']) : 0;
+        if ($post_id > 0 && current_user_can('edit_post', $post_id)) {
+            $post = get_post($post_id);
+            if ($post instanceof WP_Post) {
+                $object_type = $post->post_type === 'page' ? ALMA_Geo_Index_Store::OBJECT_TYPE_PAGE : ALMA_Geo_Index_Store::OBJECT_TYPE_POST;
+                $primary = $store->get_primary_location_for_object($post_id, $object_type);
+                $current_location_id = (int) ($primary['id'] ?? 0);
+                if ($current_location_id > 0 && !in_array($current_location_id, wp_list_pluck($locations, 'id'), true)) {
+                    // La località dell'articolo non ha link diretti: resta utile
+                    // come filtro perché l'area viene espansa (stessa città/paese).
+                    $location = $store->get_location($current_location_id);
+                    if ($location) {
+                        $label = sanitize_text_field($location['canonical_name']);
+                        $country = sanitize_text_field($location['country'] ?: $location['country_code']);
+                        if ($country !== '' && strcasecmp($country, $label) !== 0) {
+                            $label .= ' (' . $country . ')';
+                        }
+                        array_unshift($locations, array('id' => $current_location_id, 'label' => $label, 'count' => 0));
+                    }
+                }
+            }
+        }
+
+        wp_send_json_success(array('locations' => $locations, 'current_location_id' => $current_location_id));
+    }
+
+    /**
+     * Espande la località scelta alla sua "area" e ritorna gli ID dei link
+     * affiliati collegati: stessa riga, righe omonime (stessa città/canonical,
+     * import diversi) e — per località di tipo paese — tutte le località di
+     * quel paese.
+     */
+    private function get_link_ids_for_location_area($location_id) {
+        $store = $this->geo_store();
+        if (!$store || !$store->tables_exist()) {
+            return array();
+        }
+        $location = $store->get_location($location_id);
+        if (!$location) {
+            return array();
+        }
+
+        global $wpdb;
+        $conditions = array('l.id = %d');
+        $params = array(absint($location_id));
+
+        $city = trim((string) ($location['city'] ?: $location['canonical_name']));
+        if ($city !== '') {
+            $conditions[] = 'l.city = %s';
+            $conditions[] = 'l.canonical_name = %s';
+            array_push($params, $city, $city);
+        }
+        if (sanitize_key($location['type'] ?? '') === 'country') {
+            if ((string) $location['country_code'] !== '') {
+                $conditions[] = 'l.country_code = %s';
+                $params[] = (string) $location['country_code'];
+            }
+            $country_name = trim((string) ($location['country'] ?: $location['canonical_name']));
+            if ($country_name !== '') {
+                $conditions[] = 'l.country = %s';
+                $params[] = $country_name;
+            }
+        }
+
+        $params_final = array_merge(array(ALMA_Geo_Index_Store::OBJECT_TYPE_AFFILIATE_LINK), $params);
+        $ids = $wpdb->get_col($wpdb->prepare(
+            "SELECT DISTINCT ci.object_id
+             FROM {$store->table_content_index()} ci
+             INNER JOIN {$store->table_locations()} l ON l.id = ci.location_id
+             WHERE ci.object_type = %s AND (" . implode(' OR ', $conditions) . ') LIMIT 500',
+            $params_final
+        ));
+        return array_values(array_filter(array_map('absint', (array) $ids)));
+    }
+
+    /**
+     * Etichetta della località primaria per ciascun link nei risultati (una query).
+     */
+    private function attach_location_labels($results) {
+        if (empty($results)) {
+            return $results;
+        }
+        $store = $this->geo_store();
+        if (!$store || !$store->tables_exist()) {
+            return $results;
+        }
+        global $wpdb;
+        $ids = array_map('absint', wp_list_pluck($results, 'id'));
+        $placeholders = implode(',', array_fill(0, count($ids), '%d'));
+        $rows = $wpdb->get_results($wpdb->prepare(
+            "SELECT ci.object_id, l.canonical_name, l.country, l.country_code
+             FROM {$store->table_content_index()} ci
+             INNER JOIN {$store->table_locations()} l ON l.id = ci.location_id
+             WHERE ci.object_type = %s AND ci.is_primary = 1 AND ci.object_id IN ($placeholders)",
+            array_merge(array(ALMA_Geo_Index_Store::OBJECT_TYPE_AFFILIATE_LINK), $ids)
+        ), ARRAY_A);
+        $labels = array();
+        foreach ((array) $rows as $row) {
+            $label = sanitize_text_field($row['canonical_name']);
+            $country = sanitize_text_field($row['country'] ?: $row['country_code']);
+            if ($country !== '' && strcasecmp($country, $label) !== 0) {
+                $label .= ', ' . $country;
+            }
+            $labels[absint($row['object_id'])] = $label;
+        }
+        foreach ($results as &$result) {
+            $result['location'] = $labels[$result['id']] ?? '';
+        }
+        unset($result);
+        return $results;
+    }
+
+    private function geo_store() {
+        if (!class_exists('ALMA_Geo_Index_Store')) {
+            return null;
+        }
+        if ($this->geo_store_instance === null) {
+            $this->geo_store_instance = new ALMA_Geo_Index_Store();
+        }
+        return $this->geo_store_instance;
     }
 
     public function ajax_ai_suggest_links() {
