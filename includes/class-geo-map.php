@@ -133,6 +133,28 @@ class ALMA_Geo_Map {
     private function enqueue_map_assets() {
         // Leaflet è incluso nel plugin: nessun CDN, nessuna chiave, nessun costo.
         wp_enqueue_style('alma-leaflet', ALMA_PLUGIN_URL . 'assets/vendor/leaflet/leaflet.css', array(), '1.9.4');
+        // Icona di chiusura del popup più evidente: cerchio bianco con X grande.
+        wp_add_inline_style('alma-leaflet', '
+            .alma-geo-map .leaflet-popup-close-button {
+                width: 28px !important;
+                height: 28px !important;
+                top: 8px !important;
+                right: 8px !important;
+                font-size: 20px !important;
+                font-weight: 700;
+                line-height: 26px !important;
+                color: #1d2327 !important;
+                background: #f0f0f1 !important;
+                border-radius: 50%;
+                box-shadow: 0 1px 3px rgba(0,0,0,.25);
+                text-align: center;
+            }
+            .alma-geo-map .leaflet-popup-close-button:hover {
+                background: #d63638 !important;
+                color: #fff !important;
+            }
+            .alma-geo-map .leaflet-popup-content { margin: 14px 18px; }
+        ');
         wp_enqueue_script('alma-leaflet', ALMA_PLUGIN_URL . 'assets/vendor/leaflet/leaflet.js', array(), '1.9.4', true);
         if (file_exists(ALMA_PLUGIN_DIR . 'assets/geo-map.js')) {
             wp_enqueue_script('alma-geo-map', ALMA_PLUGIN_URL . 'assets/geo-map.js', array('alma-leaflet'), ALMA_VERSION, true);
@@ -207,7 +229,7 @@ class ALMA_Geo_Map {
         foreach ((array) $rows as $row) {
             $ids = implode(',', array_map('absint', array_filter(explode(',', (string) $row['location_ids']))));
             $markers[] = array(
-                'name' => sanitize_text_field($row['name']),
+                'name' => html_entity_decode(sanitize_text_field($row['name']), ENT_QUOTES, 'UTF-8'),
                 'lat' => (float) $row['rlat'],
                 'lng' => (float) $row['rlng'],
                 'count' => (int) $row['article_count'],
@@ -318,10 +340,12 @@ class ALMA_Geo_Map {
         foreach ($query->posts as $post) {
             $items[] = array(
                 'id' => (int) $post->ID,
-                'title' => get_the_title($post),
+                // Decodifica le entità HTML (&#8217; ecc.): il JS inserisce i titoli
+                // come testo, quindi le entità arriverebbero letterali a schermo.
+                'title' => html_entity_decode(get_the_title($post), ENT_QUOTES, 'UTF-8'),
                 'url' => get_permalink($post),
                 'date' => get_the_date('', $post),
-                'excerpt' => wp_trim_words(wp_strip_all_tags(get_the_excerpt($post)), 24, '…'),
+                'excerpt' => html_entity_decode(wp_trim_words(wp_strip_all_tags(get_the_excerpt($post)), 24, '…'), ENT_QUOTES, 'UTF-8'),
                 'thumbnail' => get_the_post_thumbnail_url($post, 'medium') ?: '',
             );
         }

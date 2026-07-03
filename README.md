@@ -1,3 +1,12 @@
+## 2.52.0 - 2026-07-03
+
+### Mappa Geografica — zoom di riempimento, popup rifinito, fix entità HTML
+- **Zoom minimo calcolato da Leaflet**: al caricamento (e a ogni resize) la mappa calcola lo zoom al quale il planisfero riempie esattamente il contenitore — mai bande vuote, a qualunque larghezza/altezza, Europa correttamente centrata alla vista iniziale.
+- **Fix redirect involontari**: il "secondo click sul marker" apriva la pagina dei risultati anche quando si voleva solo chiudere il popup; la navigazione ora avviene esclusivamente dal pulsante "Vedi tutti gli articoli →".
+- **Popup**: rimosso il conteggio articoli sotto il nome della località; larghezza fissa (280px) così il caricamento di miniature e titoli non fa "saltare" la finestrella; pulsante di chiusura più evidente (cerchio grigio con X grande, rosso al passaggio del mouse).
+- **Fix caratteri speciali**: titoli ed estratti con entità HTML (es. "dell&amp;#8217;Isola") ora vengono decodificati e mostrati correttamente ("dell'Isola") sia nel popup sia nella pagina elenco.
+- Versione plugin aggiornata a `2.52.0`.
+
 ## 2.51.1 - 2026-07-03
 
 ### Mappa Geografica — planisfero ripetuto ed Europa al centro

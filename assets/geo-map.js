@@ -40,9 +40,10 @@
     }
 
     function popupContent(markerData, container, articles, recommendedLine) {
-        var html = '<div class="alma-geo-map-info" style="max-width:300px;font-size:13px;line-height:1.45;">';
+        // Larghezza FISSA: lo stato di caricamento e quello finale hanno le
+        // stesse dimensioni, il popup non "salta" quando arrivano i contenuti.
+        var html = '<div class="alma-geo-map-info" style="width:280px;font-size:13px;line-height:1.45;">';
         html += '<strong style="font-size:16px;display:block;margin-bottom:1px;">📍 ' + escapeHtml(markerData.name) + '</strong>';
-        html += '<span style="color:#666;">' + escapeHtml(String(markerData.count)) + (markerData.count === 1 ? ' articolo' : ' articoli') + '</span>';
         if (recommendedLine) {
             html += '<div style="margin-top:4px;font-weight:600;color:#2271b1;">🎯 ' + escapeHtml(recommendedLine) + '</div>';
         }
@@ -73,8 +74,6 @@
         var zoom = parseInt(container.getAttribute('data-zoom'), 10) || 2;
         var ajaxUrl = container.getAttribute('data-ajax-url');
 
-        // Il planisfero si ripete orizzontalmente: a larghezze piene (100%) le
-        // proporzioni del mondo singolo lascerebbero bande vuote ai lati.
         var map = L.map(container, {
             center: DEFAULT_CENTER, // Europa al centro
             zoom: zoom,
@@ -86,6 +85,25 @@
         });
         map.on('focus click', function () { map.scrollWheelZoom.enable(); });
         map.on('blur', function () { map.scrollWheelZoom.disable(); });
+
+        // Zoom minimo dinamico: quello al quale il planisfero (256·2^z px)
+        // riempie esattamente il contenitore — mai bande vuote, a qualunque
+        // combinazione di larghezza/altezza. Ricalcolato al resize.
+        function applyFillZoom(recenter) {
+            var size = Math.max(container.clientWidth, container.clientHeight);
+            if (size < 1) { return; }
+            var fillZoom = Math.max(1, Math.ceil(Math.log(size / 256) / Math.LN2));
+            map.setMinZoom(fillZoom);
+            if (recenter || map.getZoom() < fillZoom) {
+                map.setView(DEFAULT_CENTER, Math.max(fillZoom, parseInt(container.getAttribute('data-zoom'), 10) || 2));
+            }
+        }
+        applyFillZoom(true);
+        var resizeTimer = null;
+        window.addEventListener('resize', function () {
+            if (resizeTimer) { clearTimeout(resizeTimer); }
+            resizeTimer = setTimeout(function () { applyFillZoom(false); }, 200);
+        });
 
         L.tileLayer(cfg().tileUrl || 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
             maxZoom: 19,
@@ -101,7 +119,7 @@
                     title: markerData.name + ' (' + markerData.count + ')'
                 }).addTo(map);
                 marker.almaData = markerData;
-                marker.bindPopup(popupContent(markerData, container, null, ''), { maxWidth: 340 });
+                marker.bindPopup(popupContent(markerData, container, null, ''), { minWidth: 296, maxWidth: 320 });
                 marker.on('click', function () {
                     openMarker(entry, marker);
                 });
@@ -116,15 +134,10 @@
     function openMarker(entry, marker) {
         var data = marker.almaData;
         var container = entry.container;
-        var pageUrl = listPageUrl(container, data.ids);
 
-        // Secondo click sul marker già aperto: vai direttamente alla pagina elenco.
-        if (pageUrl && entry.lastOpened === marker && marker.isPopupOpen()) {
-            window.location.href = pageUrl;
-            return;
-        }
-        entry.lastOpened = marker;
-
+        // La navigazione alla pagina elenco avviene SOLO tramite il pulsante
+        // esplicito nel popup: il "secondo click sul marker" causava redirect
+        // involontari (es. click per chiudere il popup).
         marker.setPopupContent(popupContent(data, container, null, ''));
         marker.openPopup();
 
@@ -182,7 +195,6 @@
             if (input.value === '') {
                 entry.map.setView(DEFAULT_CENTER, parseInt(entry.container.getAttribute('data-zoom'), 10) || 2);
                 entry.map.closePopup();
-                entry.lastOpened = null;
             }
         });
     }
