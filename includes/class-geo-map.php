@@ -1,15 +1,18 @@
 <?php
 /**
- * Mappa Google frontend delle località con articoli geolocalizzati.
+ * Mappa frontend delle località con articoli geolocalizzati.
+ *
+ * Rendering con Leaflet + tile OpenStreetMap (libreria BSD inclusa nel plugin,
+ * nessuna API key e nessun costo — Maps JavaScript API non è utilizzabile).
  *
  * - Shortcode [alma_geo_map width="100%" height="600px" zoom="2"]: mappa mondo
  *   con marker sulle località (lat/lng presenti) collegate ad articoli
  *   pubblicati; ricerca ampia sopra la mappa sui nomi delle località.
- * - Click sul marker: infowindow con gli articoli e link alla pagina elenco
+ * - Click sul marker: popup con gli articoli e link alla pagina elenco
  *   configurata (shortcode [alma_geo_location_articles]).
- * - Pagina impostazioni dedicata: API key browser (separata da quella server
- *   del geocoding, da restringere per referrer), categorie da escludere,
- *   pagina elenco, dimensioni di default.
+ * - Pagina impostazioni dedicata: categorie da escludere, pagina elenco,
+ *   dimensioni di default. Tile server personalizzabile con i filtri
+ *   `alma_geo_map_tile_url` e `alma_geo_map_tile_attribution`.
  */
 if (!defined('ABSPATH')) {
     exit;
@@ -17,7 +20,6 @@ if (!defined('ABSPATH')) {
 
 class ALMA_Geo_Map {
     const MENU_SLUG = 'alma-geo-map';
-    const OPTION_BROWSER_KEY = 'alma_geo_map_browser_api_key';
     const OPTION_EXCLUDED_CATS = 'alma_geo_map_excluded_categories';
     const OPTION_LIST_PAGE = 'alma_geo_map_list_page_id';
     const OPTION_DEFAULT_WIDTH = 'alma_geo_map_default_width';
@@ -59,20 +61,12 @@ class ALMA_Geo_Map {
             'search' => 'yes',
         ), $atts, 'alma_geo_map');
 
-        $browser_key = trim((string) get_option(self::OPTION_BROWSER_KEY, ''));
-        if ($browser_key === '') {
-            if (current_user_can('manage_options')) {
-                return '<div class="alma-geo-map-notice" style="padding:16px;border:1px dashed #d63638;border-radius:6px;">' . esc_html__('Mappa Geografica: configura la API key browser di Google Maps nella pagina "Mappa Geografica" del plugin (visibile solo agli amministratori).', 'affiliate-link-manager-ai') . '</div>';
-            }
-            return '';
-        }
-
         $width = $this->sanitize_css_dimension($atts['width'], '100%');
         $height = $this->sanitize_css_dimension($atts['height'], '600px');
         $zoom = max(1, min(12, absint($atts['zoom'])));
         $show_search = sanitize_key($atts['search']) !== 'no';
 
-        $this->enqueue_map_assets($browser_key);
+        $this->enqueue_map_assets();
 
         static $instance = 0;
         $instance++;
@@ -120,19 +114,23 @@ class ALMA_Geo_Map {
         return $fallback;
     }
 
-    private function enqueue_map_assets($browser_key) {
+    private function enqueue_map_assets() {
+        // Leaflet è incluso nel plugin: nessun CDN, nessuna chiave, nessun costo.
+        wp_enqueue_style('alma-leaflet', ALMA_PLUGIN_URL . 'assets/vendor/leaflet/leaflet.css', array(), '1.9.4');
+        wp_enqueue_script('alma-leaflet', ALMA_PLUGIN_URL . 'assets/vendor/leaflet/leaflet.js', array(), '1.9.4', true);
         if (file_exists(ALMA_PLUGIN_DIR . 'assets/geo-map.js')) {
-            wp_enqueue_script('alma-geo-map', ALMA_PLUGIN_URL . 'assets/geo-map.js', array(), ALMA_VERSION, true);
+            wp_enqueue_script('alma-geo-map', ALMA_PLUGIN_URL . 'assets/geo-map.js', array('alma-leaflet'), ALMA_VERSION, true);
+            wp_localize_script('alma-geo-map', 'almaGeoMapCfg', array(
+                'leafletImages' => ALMA_PLUGIN_URL . 'assets/vendor/leaflet/images/',
+                /**
+                 * Tile server personalizzabile: il default OpenStreetMap è adatto a
+                 * traffico moderato (tile usage policy OSMF); per siti ad alto
+                 * traffico impostare un provider dedicato con questi filtri.
+                 */
+                'tileUrl' => esc_url_raw(apply_filters('alma_geo_map_tile_url', 'https://tile.openstreetmap.org/{z}/{x}/{y}.png')),
+                'tileAttribution' => wp_kses_post(apply_filters('alma_geo_map_tile_attribution', '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors')),
+            ));
         }
-        // Il loader ufficiale con callback: la mappa si inizializza quando l'API è pronta.
-        wp_enqueue_script(
-            'google-maps-js',
-            'https://maps.googleapis.com/maps/api/js?key=' . rawurlencode($browser_key) . '&loading=async&callback=almaGeoMapInit',
-            array('alma-geo-map'),
-            null,
-            true
-        );
-        wp_script_add_data('google-maps-js', 'strategy', 'async');
     }
 
     /* ---------------------------------------------------------------------
@@ -367,12 +365,6 @@ class ALMA_Geo_Map {
         }
 
         if (!empty($_POST['alma_geo_map_save']) && check_admin_referer('alma_geo_map_settings')) {
-            $browser_key = trim(sanitize_text_field(wp_unslash($_POST[self::OPTION_BROWSER_KEY] ?? '')));
-            if ($browser_key !== '') {
-                update_option(self::OPTION_BROWSER_KEY, $browser_key, false);
-            } elseif (!empty($_POST['alma_geo_map_clear_key'])) {
-                delete_option(self::OPTION_BROWSER_KEY);
-            }
             update_option(self::OPTION_EXCLUDED_CATS, array_values(array_filter(array_map('absint', (array) ($_POST['alma_geo_map_excluded'] ?? array())))), false);
             update_option(self::OPTION_LIST_PAGE, absint($_POST[self::OPTION_LIST_PAGE] ?? 0), false);
             update_option(self::OPTION_DEFAULT_WIDTH, $this->sanitize_css_dimension($_POST[self::OPTION_DEFAULT_WIDTH] ?? '100%', '100%'), false);
@@ -381,8 +373,6 @@ class ALMA_Geo_Map {
             echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__('Impostazioni Mappa Geografica salvate.', 'affiliate-link-manager-ai') . '</p></div>';
         }
 
-        $browser_key = (string) get_option(self::OPTION_BROWSER_KEY, '');
-        $masked = $browser_key === '' ? __('Non configurata', 'affiliate-link-manager-ai') : sprintf(__('Configurata (termina con %s)', 'affiliate-link-manager-ai'), substr($browser_key, -4));
         $excluded = $this->get_excluded_category_ids();
         $categories = get_categories(array('hide_empty' => false));
         $list_page_id = absint(get_option(self::OPTION_LIST_PAGE, 0));
@@ -397,17 +387,14 @@ class ALMA_Geo_Map {
                 <p class="description"><?php esc_html_e('Attributi: width e height accettano px, %, vh, vw, em, rem (es. width="80%" height="70vh"); zoom="2" (1-12) per lo zoom iniziale; search="no" per nascondere la ricerca. Per la pagina elenco usa lo shortcode:', 'affiliate-link-manager-ai'); ?> <code>[alma_geo_location_articles per_page="20"]</code></p>
             </div>
 
+            <div class="card" style="max-width:860px;">
+                <h2><?php esc_html_e('Motore mappa: Leaflet + OpenStreetMap', 'affiliate-link-manager-ai'); ?></h2>
+                <p><?php esc_html_e('La mappa usa Leaflet (libreria open source inclusa nel plugin) con le mappe di OpenStreetMap: nessuna API key, nessun costo e nessun servizio Google. Per siti ad alto traffico è possibile impostare un tile server dedicato con i filtri alma_geo_map_tile_url e alma_geo_map_tile_attribution.', 'affiliate-link-manager-ai'); ?></p>
+            </div>
+
             <form method="post">
                 <?php wp_nonce_field('alma_geo_map_settings'); ?>
                 <table class="form-table" role="presentation">
-                    <tr>
-                        <th scope="row"><label for="<?php echo esc_attr(self::OPTION_BROWSER_KEY); ?>"><?php esc_html_e('API key Google Maps (browser)', 'affiliate-link-manager-ai'); ?></label></th>
-                        <td>
-                            <input type="password" id="<?php echo esc_attr(self::OPTION_BROWSER_KEY); ?>" name="<?php echo esc_attr(self::OPTION_BROWSER_KEY); ?>" value="" class="regular-text" autocomplete="off" />
-                            <p class="description"><?php echo esc_html($masked); ?>. <?php esc_html_e('Chiave DIVERSA da quella server del geocoding: questa è visibile nel sorgente della pagina (è il funzionamento di Maps JavaScript API), quindi crea una chiave dedicata con restrizione per referrer HTTP (il tuo dominio) e abilitata solo per "Maps JavaScript API". Lascia vuoto per mantenere la chiave esistente.', 'affiliate-link-manager-ai'); ?></p>
-                            <label><input type="checkbox" name="alma_geo_map_clear_key" value="1" /> <?php esc_html_e('Rimuovi la chiave salvata', 'affiliate-link-manager-ai'); ?></label>
-                        </td>
-                    </tr>
                     <tr>
                         <th scope="row"><?php esc_html_e('Categorie da escludere', 'affiliate-link-manager-ai'); ?></th>
                         <td>
