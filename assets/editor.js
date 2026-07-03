@@ -172,6 +172,15 @@ jQuery(document).ready(function($) {
             const searchTerm = $('#alma-link-search').val();
             searchLinks(searchTerm);
         });
+
+        // Filtro località geografica
+        $(document).on('change.alma_editor', '#alma-geo-filter', function() {
+            if (!$(this).val()) {
+                $('#alma-geo-filter-hint').hide();
+            }
+            const searchTerm = $('#alma-link-search').val();
+            searchLinks(searchTerm);
+        });
         
         // Pulsante Cerca
         $(document).on('click.alma_editor', '#alma-search-btn', function() {
@@ -338,9 +347,12 @@ jQuery(document).ready(function($) {
                         <span class="dashicons dashicons-search" style="position:absolute;right:15px;top:50%;transform:translateY(-50%);color:#999;"></span>
                     </div>
                     
-                    <div class="alma-search-filters" style="display:flex;gap:10px;align-items:center;">
-                        <select id="alma-type-filter" style="flex:1;padding:8px 12px;border:1px solid #ddd;border-radius:4px;">
+                    <div class="alma-search-filters" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+                        <select id="alma-type-filter" style="flex:1;min-width:160px;padding:8px 12px;border:1px solid #ddd;border-radius:4px;">
                             <option value="">Tutte le tipologie</option>
+                        </select>
+                        <select id="alma-geo-filter" title="Filtra per località geografica" style="flex:1;min-width:180px;padding:8px 12px;border:1px solid #ddd;border-radius:4px;">
+                            <option value="">📍 Tutte le località</option>
                         </select>
                         <button type="button" id="alma-search-btn" class="button">
                             Cerca
@@ -349,6 +361,7 @@ jQuery(document).ready(function($) {
                             Suggerisci AI
                         </button>
                     </div>
+                    <p id="alma-geo-filter-hint" style="display:none;margin:8px 0 0;font-size:12px;color:#2271b1;"></p>
                 </div>
                 
                 <div class="alma-results-section" style="flex:1;overflow-y:auto;padding:20px 25px;background:white;">
@@ -445,8 +458,52 @@ jQuery(document).ready(function($) {
         // Disabilita campi pulsante inizialmente
         $('#alma-button-text, #alma-button-size, #alma-button-align').prop('disabled', true);
 
-        // Carica le tipologie dopo aver creato il modal
+        // Carica tipologie e località dopo aver creato il modal
         loadLinkTypes();
+        loadGeoLocations();
+    }
+
+    /**
+     * Carica le località per il filtro geografico e preseleziona quella
+     * dell'articolo corrente (se localizzato).
+     */
+    function loadGeoLocations() {
+        $.ajax({
+            url: alma_editor.ajax_url,
+            type: 'POST',
+            data: {
+                action: 'alma_editor_geo_locations',
+                nonce: alma_editor.nonce,
+                post_id: alma_editor.post_id || 0
+            },
+            success: function(response) {
+                if (!response.success || !response.data) {
+                    return;
+                }
+                const locations = response.data.locations || [];
+                if (!locations.length) {
+                    $('#alma-geo-filter').hide();
+                    return;
+                }
+                let optionsHtml = '<option value="">📍 Tutte le località</option>';
+                locations.forEach(function(loc) {
+                    const count = loc.count > 0 ? ' — ' + loc.count : '';
+                    optionsHtml += `<option value="${loc.id}">${escapeHtml(loc.label)}${count}</option>`;
+                });
+                $('#alma-geo-filter').html(optionsHtml);
+
+                // Preseleziona la località dell'articolo: mostra subito i link della zona.
+                const current = parseInt(response.data.current_location_id, 10) || 0;
+                if (current > 0 && $('#alma-geo-filter option[value="' + current + '"]').length) {
+                    $('#alma-geo-filter').val(String(current));
+                    const label = $('#alma-geo-filter option:selected').text();
+                    $('#alma-geo-filter-hint')
+                        .text('Filtro attivo sulla località dell\'articolo: ' + label + '. Scegli "Tutte le località" per rimuoverlo.')
+                        .show();
+                    searchLinks($('#alma-link-search').val() || '');
+                }
+            }
+        });
     }
     
     /**
@@ -516,7 +573,8 @@ jQuery(document).ready(function($) {
                 action: 'alma_search_links',
                 nonce: alma_editor.nonce,
                 search: searchTerm,
-                type_filter: typeFilter
+                type_filter: typeFilter,
+                geo_filter: $('#alma-geo-filter').val() || ''
             },
             success: function(response) {
                 if (response.success && response.data.length > 0) {
@@ -591,7 +649,8 @@ jQuery(document).ready(function($) {
 
                 <div class="alma-link-main" style="flex:1;min-width:0;">
                     <strong class="alma-link-title" style="display:block;font-size:14px;font-weight:600;color:#23282d;margin-bottom:5px;">${escapeHtml(link.title)}</strong>
-                    ${types ? `<span class="alma-link-type" style="display:inline-block;padding:2px 8px;background:#e0e0e0;color:#666;font-size:11px;border-radius:3px;">${escapeHtml(types)}</span>` : ''}
+                    ${types ? `<span class="alma-link-type" style="display:inline-block;padding:2px 8px;background:#e0e0e0;color:#666;font-size:11px;border-radius:3px;margin-right:6px;">${escapeHtml(types)}</span>` : ''}
+                    ${link.location ? `<span class="alma-link-location" style="display:inline-block;padding:2px 8px;background:#e7f0f8;color:#2271b1;font-size:11px;border-radius:3px;">📍 ${escapeHtml(link.location)}</span>` : ''}
                     <div class="alma-link-meta" style="margin-top:5px;">
                         <span class="alma-link-url" title="${escapeHtml(link.url || '')}" style="color:#666;font-size:12px;">
                             ${link.url ? escapeHtml(truncateUrl(link.url)) : 'URL non configurato'}
@@ -702,67 +761,94 @@ jQuery(document).ready(function($) {
                 closeModal();
             }, 1500);
         } else {
-            alert(alma_editor.strings.insert_error || 'Errore durante l\'inserimento');
+            // Nessun editor raggiungibile: lo shortcode non deve andare perso.
+            copyToClipboard(shortcode);
+            alert((alma_editor.strings.insert_error || 'Errore durante l\'inserimento') +
+                '\n\nLo shortcode è stato copiato negli appunti: incollalo dove serve.\n\n' + shortcode);
         }
     }
-    
+
     /**
-     * Inserisci nell'editor (Gutenberg o Classic)
+     * Inserisci nell'editor (Gutenberg o Classic).
+     * Ogni strategia è isolata: se una lancia un'eccezione si passa alla
+     * successiva invece di fallire tutto (era la causa di
+     * "Errore durante l'inserimento" con wp.blocks non disponibile o
+     * contenuto RichText non-stringa nei paragrafi di WP 6.5+).
      */
     function insertIntoEditor(shortcode) {
+        // 1) Gutenberg Block Editor
         try {
-            // Prova con Gutenberg Block Editor
-            if (typeof wp !== 'undefined' && wp.data && wp.data.select('core/block-editor')) {
-                const selectedBlock = wp.data.select('core/block-editor').getSelectedBlock();
-                
-                if (selectedBlock && selectedBlock.name === 'core/paragraph') {
-                    // Aggiungi al blocco paragrafo esistente
-                    const currentContent = selectedBlock.attributes.content || '';
-                    const newContent = currentContent + ' ' + shortcode;
-                    
-                    wp.data.dispatch('core/block-editor').updateBlockAttributes(
-                        selectedBlock.clientId,
-                        { content: newContent }
-                    );
-                } else {
-                    // Crea nuovo blocco shortcode
-                    const block = wp.blocks.createBlock('core/shortcode', {
-                        text: shortcode
-                    });
-                    wp.data.dispatch('core/block-editor').insertBlocks(block);
+            if (typeof wp !== 'undefined' && wp.data && typeof wp.data.select === 'function') {
+                const blockEditor = wp.data.select('core/block-editor');
+                const dispatcher = wp.data.dispatch && wp.data.dispatch('core/block-editor');
+                if (blockEditor && dispatcher && wp.blocks && typeof wp.blocks.createBlock === 'function') {
+                    const block = wp.blocks.createBlock('core/shortcode', { text: shortcode });
+                    const selectedBlock = blockEditor.getSelectedBlock ? blockEditor.getSelectedBlock() : null;
+                    if (selectedBlock && blockEditor.getBlockIndex) {
+                        // Subito dopo il blocco selezionato (non dentro: il contenuto
+                        // dei paragrafi non è più una semplice stringa in WP recenti).
+                        const index = blockEditor.getBlockIndex(selectedBlock.clientId) + 1;
+                        const rootClientId = blockEditor.getBlockRootClientId ? blockEditor.getBlockRootClientId(selectedBlock.clientId) : undefined;
+                        dispatcher.insertBlocks(block, index, rootClientId || undefined);
+                    } else {
+                        dispatcher.insertBlocks(block);
+                    }
+                    return true;
                 }
-                return true;
             }
-            
-            // Prova con Classic Editor (TinyMCE)
-            if (typeof tinyMCE !== 'undefined' && tinyMCE.activeEditor && !tinyMCE.activeEditor.isHidden()) {
+        } catch (error) {
+            console.error('ALMA: inserimento Gutenberg fallito, provo il fallback.', error);
+        }
+
+        // 2) Classic Editor (TinyMCE visuale)
+        try {
+            if (typeof tinyMCE !== 'undefined' && tinyMCE.activeEditor && !tinyMCE.activeEditor.isHidden() && !tinyMCE.activeEditor.removed) {
                 tinyMCE.activeEditor.execCommand('mceInsertContent', false, shortcode);
                 return true;
             }
-            
-            // Fallback: inserisci in textarea
+        } catch (error) {
+            console.error('ALMA: inserimento TinyMCE fallito, provo il fallback.', error);
+        }
+
+        // 3) Textarea (Classic Editor in modalità Testo)
+        try {
             const textarea = document.getElementById('content');
-            if (textarea) {
-                const start = textarea.selectionStart;
-                const end = textarea.selectionEnd;
+            if (textarea && textarea.offsetParent !== null) {
+                const start = textarea.selectionStart || 0;
+                const end = textarea.selectionEnd || 0;
                 const text = textarea.value;
-                
                 textarea.value = text.substring(0, start) + shortcode + text.substring(end);
                 textarea.selectionStart = textarea.selectionEnd = start + shortcode.length;
-                
-                // Trigger change event
-                const event = new Event('input', { bubbles: true });
-                textarea.dispatchEvent(event);
-                
+                textarea.dispatchEvent(new Event('input', { bubbles: true }));
                 return true;
             }
-            
-            return false;
-            
         } catch (error) {
-            console.error('Errore inserimento shortcode:', error);
-            return false;
+            console.error('ALMA: inserimento textarea fallito.', error);
         }
+
+        return false;
+    }
+
+    /**
+     * Copia negli appunti con fallback per browser/contesti senza Clipboard API.
+     */
+    function copyToClipboard(text) {
+        try {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(text);
+                return;
+            }
+        } catch (e) { /* fallback sotto */ }
+        try {
+            const helper = document.createElement('textarea');
+            helper.value = text;
+            helper.style.position = 'fixed';
+            helper.style.opacity = '0';
+            document.body.appendChild(helper);
+            helper.select();
+            document.execCommand('copy');
+            document.body.removeChild(helper);
+        } catch (e) { /* niente clipboard: lo shortcode è comunque nell'alert */ }
     }
     
     /**

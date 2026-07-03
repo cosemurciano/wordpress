@@ -135,10 +135,17 @@ class ALMA_Assets {
 
         if ($screen && in_array($hook, array('post.php', 'post-new.php')) && in_array($screen->post_type, $allowed_types, true)) {
             if (file_exists(ALMA_PLUGIN_DIR . 'assets/editor.js')) {
+                // wp-data e wp-blocks garantiscono che l'inserimento del blocco
+                // shortcode in Gutenberg trovi sempre le API disponibili.
+                $editor_deps = array('jquery');
+                if (function_exists('get_current_screen') && $screen && method_exists($screen, 'is_block_editor') && $screen->is_block_editor()) {
+                    $editor_deps[] = 'wp-data';
+                    $editor_deps[] = 'wp-blocks';
+                }
                 wp_enqueue_script(
                     'alma-editor-script',
                     ALMA_PLUGIN_URL . 'assets/editor.js',
-                    array('jquery'),
+                    $editor_deps,
                     ALMA_VERSION,
                     true
                 );
@@ -147,11 +154,13 @@ class ALMA_Assets {
                     'ajax_url' => admin_url('admin-ajax.php'),
                     'nonce' => wp_create_nonce('alma_editor_search'),
                     'plugin_url' => ALMA_PLUGIN_URL,
+                    'post_id' => absint(get_the_ID() ?: ($_GET['post'] ?? 0)),
                     'strings' => array(
                         'button_text' => __('🔗 Link Affiliati', 'affiliate-link-manager-ai'),
                         'search_placeholder' => __('Cerca link affiliato...', 'affiliate-link-manager-ai'),
                         'no_results' => __('Nessun link trovato', 'affiliate-link-manager-ai'),
                         'insert' => __('Inserisci', 'affiliate-link-manager-ai'),
+                        'insert_error' => __('Impossibile inserire automaticamente lo shortcode nell\'editor.', 'affiliate-link-manager-ai'),
                         'loading' => __('Caricamento...', 'affiliate-link-manager-ai')
                     )
                 ));
