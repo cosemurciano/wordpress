@@ -1,3 +1,12 @@
+## 2.50.0 - 2026-07-03
+
+### Mappa Geografica — motore Leaflet + OpenStreetMap (niente API key)
+- La mappa frontend non usa più Maps JavaScript API (non utilizzabile): il rendering avviene con **Leaflet** (libreria open source BSD inclusa nel plugin, nessun CDN) e tile **OpenStreetMap** — nessuna chiave, nessun costo, nessun servizio Google nel frontend.
+- Tutto il resto è invariato: shortcode `[alma_geo_map]` con width/height anche in %, ricerca località sopra la mappa, popup con articoli e link alla pagina elenco, categorie escluse, cache marker.
+- Rimosso il campo API key browser dalla pagina impostazioni (il geocoding server-side con Google resta invariato); tile server personalizzabile per siti ad alto traffico con i filtri `alma_geo_map_tile_url` e `alma_geo_map_tile_attribution`.
+- Zoom con rotella disattivato finché la mappa non riceve il focus, per non intrappolare lo scroll della pagina.
+- Versione plugin aggiornata a `2.50.0`.
+
 ## 2.49.0 - 2026-07-02
 
 ### Mappa Geografica frontend (nuova)

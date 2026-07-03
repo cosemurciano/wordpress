@@ -1,15 +1,18 @@
 /**
  * Affiliate Link Manager AI - Mappa Geografica frontend
  *
- * Inizializzata dal callback del loader Google Maps (almaGeoMapInit).
+ * Rendering con Leaflet + OpenStreetMap (nessuna API key).
  * Marker sulle località con articoli geolocalizzati; ricerca sui nomi
- * delle località (nessuna API aggiuntiva); click → popup con articoli
- * e link alla pagina elenco.
+ * delle località; click → popup con articoli e link alla pagina elenco.
  */
 (function () {
     'use strict';
 
-    var maps = [];
+    var WORLD_CENTER = [22, 8];
+
+    function cfg() {
+        return window.almaGeoMapCfg || {};
+    }
 
     function normalize(text) {
         return String(text || '')
@@ -35,10 +38,10 @@
         return base + (base.indexOf('?') === -1 ? '?' : '&') + 'alma_location=' + encodeURIComponent(ids);
     }
 
-    function infoWindowContent(marker, container, articles) {
-        var html = '<div class="alma-geo-map-info" style="max-width:300px;font-size:13px;line-height:1.45;">';
-        html += '<strong style="font-size:15px;display:block;margin-bottom:2px;">📍 ' + escapeHtml(marker.name) + '</strong>';
-        html += '<span style="color:#666;">' + escapeHtml(String(marker.count)) + (marker.count === 1 ? ' articolo' : ' articoli') + '</span>';
+    function popupContent(markerData, container, articles) {
+        var html = '<div class="alma-geo-map-info" style="max-width:280px;font-size:13px;line-height:1.45;">';
+        html += '<strong style="font-size:15px;display:block;margin-bottom:2px;">📍 ' + escapeHtml(markerData.name) + '</strong>';
+        html += '<span style="color:#666;">' + escapeHtml(String(markerData.count)) + (markerData.count === 1 ? ' articolo' : ' articoli') + '</span>';
         if (articles === null) {
             html += '<p style="margin:8px 0 0;color:#666;">Caricamento articoli…</p>';
         } else if (articles.length) {
@@ -48,7 +51,7 @@
             });
             html += '</ul>';
         }
-        var pageUrl = listPageUrl(container, marker.ids);
+        var pageUrl = listPageUrl(container, markerData.ids);
         if (pageUrl) {
             html += '<p style="margin:10px 0 0;"><a href="' + escapeHtml(pageUrl) + '" style="font-weight:600;">Vedi tutti gli articoli →</a></p>';
         }
@@ -59,34 +62,41 @@
     function initMapContainer(container) {
         var zoom = parseInt(container.getAttribute('data-zoom'), 10) || 2;
         var ajaxUrl = container.getAttribute('data-ajax-url');
-        var map = new google.maps.Map(container, {
+
+        var map = L.map(container, {
+            center: WORLD_CENTER, // vista mondo, continenti visibili
             zoom: zoom,
-            center: { lat: 22, lng: 8 }, // vista mondo, continenti visibili
-            mapTypeControl: false,
-            streetViewControl: false,
-            fullscreenControl: true,
-            gestureHandling: 'cooperative'
+            minZoom: 1,
+            worldCopyJump: true,
+            // Lo scroll della pagina non deve zoomare per errore: zoom con
+            // ctrl+rotella, doppio click o controlli.
+            scrollWheelZoom: false
         });
-        var infoWindow = new google.maps.InfoWindow();
-        var entry = { container: container, map: map, markers: [], infoWindow: infoWindow };
-        maps.push(entry);
+        map.on('focus click', function () { map.scrollWheelZoom.enable(); });
+        map.on('blur', function () { map.scrollWheelZoom.disable(); });
+
+        L.tileLayer(cfg().tileUrl || 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: cfg().tileAttribution || '&copy; OpenStreetMap contributors'
+        }).addTo(map);
+
+        var entry = { container: container, map: map, markers: [] };
 
         fetchJson(ajaxUrl + '?action=alma_geo_map_markers').then(function (response) {
             if (!response || !response.success || !Array.isArray(response.data)) { return; }
             response.data.forEach(function (markerData) {
-                var marker = new google.maps.Marker({
-                    map: map,
-                    position: { lat: markerData.lat, lng: markerData.lng },
+                var marker = L.marker([markerData.lat, markerData.lng], {
                     title: markerData.name + ' (' + markerData.count + ')'
-                });
+                }).addTo(map);
                 marker.almaData = markerData;
-                marker.addListener('click', function () {
+                marker.bindPopup(popupContent(markerData, container, null), { maxWidth: 320 });
+                marker.on('click', function () {
                     openMarker(entry, marker);
                 });
                 entry.markers.push(marker);
             });
             populateSearch(entry);
-        }).catch(function () { /* endpoint non raggiungibile: mappa vuota */ });
+        }).catch(function () { /* endpoint non raggiungibile: mappa senza marker */ });
 
         return entry;
     }
@@ -96,24 +106,23 @@
         var container = entry.container;
         var pageUrl = listPageUrl(container, data.ids);
 
-        entry.infoWindow.setContent(infoWindowContent(data, container, null));
-        entry.infoWindow.open({ map: entry.map, anchor: marker });
-
-        var ajaxUrl = container.getAttribute('data-ajax-url');
-        fetchJson(ajaxUrl + '?action=alma_geo_map_articles&location_ids=' + encodeURIComponent(data.ids)).then(function (response) {
-            var articles = response && response.success && response.data && Array.isArray(response.data.items) ? response.data.items : [];
-            entry.infoWindow.setContent(infoWindowContent(data, container, articles));
-        }).catch(function () {
-            entry.infoWindow.setContent(infoWindowContent(data, container, []));
-        });
-
-        // Se è configurata la pagina elenco e l'utente clicca di nuovo il marker
-        // già aperto, si naviga direttamente alla pagina.
-        if (pageUrl && entry.lastOpened === marker) {
+        // Secondo click sul marker già aperto: vai direttamente alla pagina elenco.
+        if (pageUrl && entry.lastOpened === marker && marker.isPopupOpen()) {
             window.location.href = pageUrl;
             return;
         }
         entry.lastOpened = marker;
+
+        marker.setPopupContent(popupContent(data, container, null));
+        marker.openPopup();
+
+        var ajaxUrl = container.getAttribute('data-ajax-url');
+        fetchJson(ajaxUrl + '?action=alma_geo_map_articles&location_ids=' + encodeURIComponent(data.ids)).then(function (response) {
+            var articles = response && response.success && response.data && Array.isArray(response.data.items) ? response.data.items : [];
+            marker.setPopupContent(popupContent(data, container, articles));
+        }).catch(function () {
+            marker.setPopupContent(popupContent(data, container, []));
+        });
     }
 
     function populateSearch(entry) {
@@ -140,8 +149,7 @@
             var target = exact || partial;
             if (target) {
                 if (feedback) { feedback.style.display = 'none'; }
-                entry.map.panTo(target.getPosition());
-                entry.map.setZoom(Math.max(entry.map.getZoom(), 8));
+                entry.map.setView(target.getLatLng(), Math.max(entry.map.getZoom(), 8));
                 openMarker(entry, target);
             } else if (feedback) {
                 feedback.textContent = 'Nessuna località trovata per "' + input.value + '". Prova con un altro nome.';
@@ -159,16 +167,19 @@
         input.addEventListener('input', function () {
             if (feedback) { feedback.style.display = 'none'; }
             if (input.value === '') {
-                entry.map.setZoom(parseInt(entry.container.getAttribute('data-zoom'), 10) || 2);
-                entry.map.panTo({ lat: 22, lng: 8 });
-                entry.infoWindow.close();
+                entry.map.setView(WORLD_CENTER, parseInt(entry.container.getAttribute('data-zoom'), 10) || 2);
+                entry.map.closePopup();
                 entry.lastOpened = null;
             }
         });
     }
 
-    // Callback globale richiamato dal loader Google Maps.
-    window.almaGeoMapInit = function () {
+    function boot() {
+        if (typeof L === 'undefined') { return; }
+        // Le icone di default di Leaflet vengono risolte dagli asset del plugin.
+        if (cfg().leafletImages) {
+            L.Icon.Default.imagePath = cfg().leafletImages;
+        }
         var containers = document.querySelectorAll('.alma-geo-map');
         Array.prototype.forEach.call(containers, function (container) {
             if (!container.getAttribute('data-alma-initialized')) {
@@ -176,5 +187,11 @@
                 initMapContainer(container);
             }
         });
-    };
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', boot);
+    } else {
+        boot();
+    }
 })();
