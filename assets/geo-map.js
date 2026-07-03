@@ -8,7 +8,8 @@
 (function () {
     'use strict';
 
-    var WORLD_CENTER = [22, 8];
+    // Centro iniziale sull'Europa (l'utente può comunque spostarsi ovunque).
+    var DEFAULT_CENTER = [48, 10];
 
     function cfg() {
         return window.almaGeoMapCfg || {};
@@ -72,13 +73,13 @@
         var zoom = parseInt(container.getAttribute('data-zoom'), 10) || 2;
         var ajaxUrl = container.getAttribute('data-ajax-url');
 
+        // Il planisfero si ripete orizzontalmente: a larghezze piene (100%) le
+        // proporzioni del mondo singolo lascerebbero bande vuote ai lati.
         var map = L.map(container, {
-            center: WORLD_CENTER, // vista mondo, continenti visibili
+            center: DEFAULT_CENTER, // Europa al centro
             zoom: zoom,
-            minZoom: 2,
-            // Il mondo non si ripete: confini rigidi sull'intero planisfero.
-            maxBounds: [[-85, -180], [85, 180]],
-            maxBoundsViscosity: 1.0,
+            minZoom: 1,
+            worldCopyJump: true,
             // Lo scroll della pagina non deve zoomare per errore: zoom con
             // ctrl+rotella, doppio click o controlli.
             scrollWheelZoom: false
@@ -88,8 +89,6 @@
 
         L.tileLayer(cfg().tileUrl || 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
             maxZoom: 19,
-            noWrap: true, // niente copie ripetute del planisfero ai bordi
-            bounds: [[-85, -180], [85, 180]],
             attribution: cfg().tileAttribution || '&copy; OpenStreetMap contributors'
         }).addTo(map);
 
@@ -181,7 +180,7 @@
         input.addEventListener('input', function () {
             if (feedback) { feedback.style.display = 'none'; }
             if (input.value === '') {
-                entry.map.setView(WORLD_CENTER, parseInt(entry.container.getAttribute('data-zoom'), 10) || 2);
+                entry.map.setView(DEFAULT_CENTER, parseInt(entry.container.getAttribute('data-zoom'), 10) || 2);
                 entry.map.closePopup();
                 entry.lastOpened = null;
             }
