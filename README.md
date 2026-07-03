@@ -1,3 +1,9 @@
+## 2.50.1 - 2026-07-03
+
+### Fix Mappa Geografica — tile non visualizzate
+- Fix mappa grigia con soli marker visibili: l'URL template delle tile passava per `esc_url_raw`, che rimuove le parentesi graffe dei placeholder — `https://tile.openstreetmap.org/{z}/{x}/{y}.png` diventava `.../z/x/y.png` e tutte le richieste tile andavano in 404. Nuova validazione dedicata che preserva `{z}/{x}/{y}`, impone https e blocca input pericolosi (fallback al default OpenStreetMap).
+- Versione plugin aggiornata a `2.50.1`.
+
 ## 2.50.0 - 2026-07-03
 
 ### Mappa Geografica — motore Leaflet + OpenStreetMap (niente API key)

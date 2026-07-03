@@ -102,6 +102,22 @@ class ALMA_Geo_Map {
     }
 
     /**
+     * Valida il template URL delle tile PRESERVANDO i placeholder {z}/{x}/{y}:
+     * esc_url_raw rimuove le parentesi graffe e trasformava l'URL in
+     * ".../z/x/y.png" — tutte le tile andavano in 404 e la mappa restava grigia
+     * con i soli marker visibili. Il valore viene emesso via wp_localize_script
+     * (JSON-encoded), quindi qui basta validare schema e caratteri.
+     */
+    private function sanitize_tile_url($url) {
+        $default = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+        $url = trim((string) $url);
+        if (preg_match('#^https://[a-z0-9.\-]+/[a-z0-9._\-/{}?&=%]*\{z\}[a-z0-9._\-/{}?&=%]*\{x\}[a-z0-9._\-/{}?&=%]*\{y\}[a-z0-9._\-/{}?&=%]*$#i', $url)) {
+            return $url;
+        }
+        return $default;
+    }
+
+    /**
      * Dimensioni CSS sicure per lo shortcode: numeri con unità px/%/vh/vw/em/rem
      * (default px se l'unità manca).
      */
@@ -127,7 +143,7 @@ class ALMA_Geo_Map {
                  * traffico moderato (tile usage policy OSMF); per siti ad alto
                  * traffico impostare un provider dedicato con questi filtri.
                  */
-                'tileUrl' => esc_url_raw(apply_filters('alma_geo_map_tile_url', 'https://tile.openstreetmap.org/{z}/{x}/{y}.png')),
+                'tileUrl' => $this->sanitize_tile_url(apply_filters('alma_geo_map_tile_url', 'https://tile.openstreetmap.org/{z}/{x}/{y}.png')),
                 'tileAttribution' => wp_kses_post(apply_filters('alma_geo_map_tile_attribution', '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors')),
             ));
         }
