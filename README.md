@@ -1,3 +1,10 @@
+## 2.51.1 - 2026-07-03
+
+### Mappa Geografica — planisfero ripetuto ed Europa al centro
+- Ripristinata la ripetizione orizzontale del planisfero: con i confini rigidi le proporzioni del mondo singolo non riempivano i contenitori a larghezza piena (100%) e restavano bande vuote ai lati.
+- Vista iniziale centrata sull'Europa (48°N, 10°E) invece che sull'equatore; il reset della ricerca torna alla stessa vista.
+- Versione plugin aggiornata a `2.51.1`.
+
 ## 2.51.0 - 2026-07-03
 
 ### Mappa Geografica — mondo singolo, popup ridisegnato e "Consigliati"
