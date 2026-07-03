@@ -1,3 +1,15 @@
+## 2.53.0 - 2026-07-03
+
+### Trova il tuo viaggio (ricerca a faccette) e integrazione con il tema (BeTheme)
+- **Nuovo shortcode `[alma_trip_finder]`**: ricerca a faccette combinate sulle tassonomie degli articoli (su sothra.it: Dove, Come, Cosa, Perché, Quando, Durata). Il visitatore incrocia più dimensioni (es. Quando=Primavera + Durata=Weekend + Perché=Enogastronomia) e vede solo gli articoli che le soddisfano tutte — cosa impossibile con il menu attuale, una dimensione alla volta.
+- **Contatori intelligenti**: ogni opzione mostra quanti articoli restano scegliendola (es. "Primavera (43)"), calcolati sulla selezione corrente delle altre faccette; le combinazioni senza risultati sono disabilitate. Le tassonomie gerarchiche (es. Dove: Italia → Puglia → Salento) sono indentate e un articolo taggato sulla foglia conta anche per gli antenati, senza doppi conteggi. Conteggi in cache 10 minuti, invalidata al salvataggio degli articoli.
+- **Aggiornamento senza ricaricare la pagina**: risultati e contatori si aggiornano via AJAX, l'URL resta condivisibile (`?alma_f[dove]=…`); **senza JavaScript il form funziona comunque** con l'invio GET classico. Griglia risultati con miniature, chip dei filtri attivi rimovibili, paginazione.
+- **Pagina impostazioni "Trova Viaggio"**: scelta delle tassonomie faccetta (tutte quelle pubbliche dei post, incluse le custom), pagina che ospita lo shortcode, categorie da escludere, articoli per pagina, attivazione chip.
+- **Chip faccette negli articoli (opt-in, default disattivo)**: in cima a ogni articolo le sue faccette come chip cliccabili (es. "Dove: Algeria · Quando: Primavera") che portano alla pagina Trova Viaggio pre-filtrata (fallback: archivio del termine). Nessun cambiamento agli articoli finché non viene attivato.
+- **Colore accento configurabile** (impostazioni Mappa Geografica): pulsanti ed evidenziazioni di popup mappa, pagina elenco e Trova Viaggio si allineano alla palette del tema (es. `#2E8CCB` per BeTheme di sothra.it). Default `#2271b1` invariato (retrocompatibile).
+- **Integrazione BeTheme/Muffin Builder**: classi CSS stabili su tutti gli elementi del popup mappa (`alma-geo-popup-*`) e del Trova Viaggio (`alma-trip-finder__*`) personalizzabili dal Custom CSS del tema, come già avviene per gli altri componenti ALMA; nelle impostazioni istruzioni per l'inserimento degli shortcode in sezioni full-width del Builder.
+- Versione plugin aggiornata a `2.53.0`.
+
 ## 2.52.0 - 2026-07-03
 
 ### Mappa Geografica — zoom di riempimento, popup rifinito, fix entità HTML
