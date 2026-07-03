@@ -1,3 +1,12 @@
+## 2.53.0 - 2026-07-03
+
+### Trova il tuo viaggio (ricerca a faccette) e integrazione con il tema (BeTheme)
+- Nuovo shortcode `[alma_trip_finder]`: ricerca a faccette combinate sulle tassonomie degli articoli (Dove, Come, Cosa, Perché, Quando, Durata su sothra.it) — più dimensioni incrociate insieme, con contatori per opzione, combinazioni impossibili disabilitate e gerarchie indentate.
+- Risultati e contatori aggiornati via AJAX con URL condivisibile; senza JavaScript il form GET funziona comunque. Pagina impostazioni "Trova Viaggio" (tassonomie, pagina, categorie escluse, articoli per pagina).
+- Chip faccette in cima agli articoli (opt-in, default disattivo) verso la pagina Trova Viaggio pre-filtrata.
+- Colore accento configurabile per popup mappa, pagina elenco e Trova Viaggio; classi CSS stabili per il Custom CSS del tema (BeTheme/Muffin Builder), con istruzioni di inserimento nel Builder.
+- Versione plugin aggiornata a `2.53.0`.
+
 ## 2.52.0 - 2026-07-03
 
 ### Mappa Geografica — zoom di riempimento, popup rifinito, fix entità HTML

@@ -40,22 +40,26 @@
     }
 
     function popupContent(markerData, container, articles, recommendedLine) {
+        // Colore accento configurabile (impostazioni Mappa Geografica) per
+        // integrarsi con la palette del tema; classi CSS stabili così il tema
+        // (es. Custom CSS di BeTheme) può ridefinire ogni elemento.
+        var accent = cfg().accentColor || '#2271b1';
         // Larghezza FISSA: lo stato di caricamento e quello finale hanno le
         // stesse dimensioni, il popup non "salta" quando arrivano i contenuti.
         var html = '<div class="alma-geo-map-info" style="width:280px;font-size:13px;line-height:1.45;">';
-        html += '<strong style="font-size:16px;display:block;margin-bottom:1px;">📍 ' + escapeHtml(markerData.name) + '</strong>';
+        html += '<strong class="alma-geo-popup-title" style="font-size:16px;display:block;margin-bottom:1px;">📍 ' + escapeHtml(markerData.name) + '</strong>';
         if (recommendedLine) {
-            html += '<div style="margin-top:4px;font-weight:600;color:#2271b1;">🎯 ' + escapeHtml(recommendedLine) + '</div>';
+            html += '<div class="alma-geo-popup-recommended" style="margin-top:4px;font-weight:600;color:' + escapeHtml(accent) + ';">🎯 ' + escapeHtml(recommendedLine) + '</div>';
         }
         if (articles === null) {
-            html += '<p style="margin:10px 0 0;color:#666;">Caricamento articoli…</p>';
+            html += '<p class="alma-geo-popup-loading" style="margin:10px 0 0;color:#666;">Caricamento articoli…</p>';
         } else if (articles.length) {
-            html += '<div style="margin-top:10px;display:flex;flex-direction:column;gap:8px;">';
+            html += '<div class="alma-geo-popup-articles" style="margin-top:10px;display:flex;flex-direction:column;gap:8px;">';
             articles.slice(0, 5).forEach(function (article) {
                 var thumb = article.thumbnail
                     ? '<img src="' + escapeHtml(article.thumbnail) + '" alt="" loading="lazy" style="width:48px;height:48px;object-fit:cover;border-radius:6px;flex-shrink:0;" />'
                     : '<span style="width:48px;height:48px;border-radius:6px;background:#eef1f5;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:18px;">📄</span>';
-                html += '<a href="' + escapeHtml(article.url) + '" style="display:flex;align-items:center;gap:10px;text-decoration:none;padding:4px;border-radius:6px;">' +
+                html += '<a class="alma-geo-popup-article" href="' + escapeHtml(article.url) + '" style="display:flex;align-items:center;gap:10px;text-decoration:none;padding:4px;border-radius:6px;">' +
                     thumb +
                     '<span style="font-weight:600;line-height:1.3;color:#1d2327;">' + escapeHtml(article.title) + '</span>' +
                     '</a>';
@@ -64,7 +68,7 @@
         }
         var pageUrl = listPageUrl(container, markerData.ids);
         if (pageUrl) {
-            html += '<p style="margin:12px 0 0;text-align:center;"><a href="' + escapeHtml(pageUrl) + '" style="display:inline-block;padding:7px 14px;background:#2271b1;color:#fff;border-radius:6px;font-weight:600;text-decoration:none;">Vedi tutti gli articoli →</a></p>';
+            html += '<p style="margin:12px 0 0;text-align:center;"><a class="alma-geo-popup-button" href="' + escapeHtml(pageUrl) + '" style="display:inline-block;padding:7px 14px;background:' + escapeHtml(accent) + ';color:#fff;border-radius:6px;font-weight:600;text-decoration:none;">Vedi tutti gli articoli →</a></p>';
         }
         html += '</div>';
         return html;

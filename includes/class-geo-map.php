@@ -24,6 +24,8 @@ class ALMA_Geo_Map {
     const OPTION_LIST_PAGE = 'alma_geo_map_list_page_id';
     const OPTION_DEFAULT_WIDTH = 'alma_geo_map_default_width';
     const OPTION_DEFAULT_HEIGHT = 'alma_geo_map_default_height';
+    const OPTION_ACCENT = 'alma_geo_map_accent_color';
+    const DEFAULT_ACCENT = '#2271b1';
     const MARKERS_CACHE_KEY = 'alma_geo_map_markers_v1';
     const MARKERS_CACHE_TTL = 900; // 15 minuti
     const MAX_MARKERS = 2000;
@@ -47,6 +49,16 @@ class ALMA_Geo_Map {
 
     public function invalidate_markers_cache() {
         delete_transient(self::MARKERS_CACHE_KEY);
+    }
+
+    /**
+     * Colore accento dei componenti frontend (popup mappa, pagina elenco,
+     * Trova il tuo viaggio): configurabile dalle impostazioni per integrarsi
+     * con la palette del tema attivo (es. BeTheme). Default retrocompatibile.
+     */
+    public static function get_accent_color() {
+        $color = sanitize_hex_color((string) get_option(self::OPTION_ACCENT, self::DEFAULT_ACCENT));
+        return $color ? $color : self::DEFAULT_ACCENT;
     }
 
     /* ---------------------------------------------------------------------
@@ -167,6 +179,7 @@ class ALMA_Geo_Map {
                  */
                 'tileUrl' => $this->sanitize_tile_url(apply_filters('alma_geo_map_tile_url', 'https://tile.openstreetmap.org/{z}/{x}/{y}.png')),
                 'tileAttribution' => wp_kses_post(apply_filters('alma_geo_map_tile_attribution', '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors')),
+                'accentColor' => self::get_accent_color(),
             ));
         }
     }
@@ -390,6 +403,7 @@ class ALMA_Geo_Map {
         $paged = max(1, absint($_GET['alma_page'] ?? 1));
         $per_page = max(1, min(50, absint($atts['per_page'])));
         $data = $this->get_articles_for_locations($ids, $per_page, $paged);
+        $accent = self::get_accent_color();
 
         ob_start();
         ?>
@@ -398,7 +412,7 @@ class ALMA_Geo_Map {
                 <h2 class="alma-geo-location-articles__title">📍 <?php echo esc_html($data['location_name']); ?></h2>
                 <p class="alma-geo-location-articles__count" style="margin:0 0 4px;color:#555;"><?php echo esc_html(sprintf(_n('%d articolo', '%d articoli', $data['total'], 'affiliate-link-manager-ai'), $data['total'])); ?></p>
                 <?php if ($data['recommended_line'] !== '') : ?>
-                    <p class="alma-geo-location-articles__recommended" style="margin:0 0 18px;font-weight:600;color:#2271b1;">🎯 <?php echo esc_html($data['recommended_line']); ?></p>
+                    <p class="alma-geo-location-articles__recommended" style="margin:0 0 18px;font-weight:600;color:<?php echo esc_attr($accent); ?>;">🎯 <?php echo esc_html($data['recommended_line']); ?></p>
                 <?php endif; ?>
             <?php endif; ?>
             <?php if (empty($data['items'])) : ?>
@@ -425,7 +439,7 @@ class ALMA_Geo_Map {
                     for ($i = 1; $i <= $total_pages; $i++) {
                         $url = add_query_arg(array('alma_location' => implode(',', $ids), 'alma_page' => $i));
                         if ($i === $paged) {
-                            echo '<span style="padding:6px 12px;background:#2271b1;color:#fff;border-radius:4px;">' . esc_html((string) $i) . '</span>';
+                            echo '<span style="padding:6px 12px;background:' . esc_attr($accent) . ';color:#fff;border-radius:4px;">' . esc_html((string) $i) . '</span>';
                         } else {
                             echo '<a href="' . esc_url($url) . '" style="padding:6px 12px;border:1px solid #d0d5dd;border-radius:4px;">' . esc_html((string) $i) . '</a>';
                         }
@@ -464,6 +478,8 @@ class ALMA_Geo_Map {
             update_option(self::OPTION_LIST_PAGE, absint($_POST[self::OPTION_LIST_PAGE] ?? 0), false);
             update_option(self::OPTION_DEFAULT_WIDTH, $this->sanitize_css_dimension($_POST[self::OPTION_DEFAULT_WIDTH] ?? '100%', '100%'), false);
             update_option(self::OPTION_DEFAULT_HEIGHT, $this->sanitize_css_dimension($_POST[self::OPTION_DEFAULT_HEIGHT] ?? '600px', '600px'), false);
+            $accent = sanitize_hex_color((string) ($_POST[self::OPTION_ACCENT] ?? ''));
+            update_option(self::OPTION_ACCENT, $accent ? $accent : self::DEFAULT_ACCENT, false);
             $this->invalidate_markers_cache();
             echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__('Impostazioni Mappa Geografica salvate.', 'affiliate-link-manager-ai') . '</p></div>';
         }
@@ -480,6 +496,12 @@ class ALMA_Geo_Map {
                 <h2><?php esc_html_e('Shortcode', 'affiliate-link-manager-ai'); ?></h2>
                 <p><code>[alma_geo_map width="100%" height="600px"]</code></p>
                 <p class="description"><?php esc_html_e('Attributi: width e height accettano px, %, vh, vw, em, rem (es. width="80%" height="70vh"); zoom="2" (1-12) per lo zoom iniziale; search="no" per nascondere la ricerca. Per la pagina elenco usa lo shortcode:', 'affiliate-link-manager-ai'); ?> <code>[alma_geo_location_articles per_page="20"]</code></p>
+            </div>
+
+            <div class="card" style="max-width:860px;">
+                <h2><?php esc_html_e('Integrazione con il tema (BeTheme / Muffin Builder)', 'affiliate-link-manager-ai'); ?></h2>
+                <p><?php esc_html_e('Per una pagina "Esplora la mappa": crea una pagina con il Muffin Builder, aggiungi una sezione full width con padding 0 e inserisci lo shortcode in un elemento Column/Shortcode. La mappa si adatta alla larghezza della sezione.', 'affiliate-link-manager-ai'); ?></p>
+                <p><?php esc_html_e('Tutti gli elementi frontend usano classi CSS stabili (alma-geo-map, alma-geo-popup-*, alma-geo-location-articles__*, alma-trip-finder__*) personalizzabili dal Custom CSS del tema. Il colore accento qui sotto permette di allineare popup e pulsanti alla palette del tema senza CSS.', 'affiliate-link-manager-ai'); ?></p>
             </div>
 
             <div class="card" style="max-width:860px;">
@@ -519,6 +541,13 @@ class ALMA_Geo_Map {
                                 'option_none_value' => '0',
                             )); ?>
                             <p class="description"><?php esc_html_e('La pagina che si apre al click su una località: deve contenere lo shortcode [alma_geo_location_articles]. Senza pagina, il popup sulla mappa mostra comunque gli articoli.', 'affiliate-link-manager-ai'); ?></p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="<?php echo esc_attr(self::OPTION_ACCENT); ?>"><?php esc_html_e('Colore accento', 'affiliate-link-manager-ai'); ?></label></th>
+                        <td>
+                            <input type="color" name="<?php echo esc_attr(self::OPTION_ACCENT); ?>" id="<?php echo esc_attr(self::OPTION_ACCENT); ?>" value="<?php echo esc_attr(self::get_accent_color()); ?>" />
+                            <p class="description"><?php esc_html_e('Colore di pulsanti ed evidenziazioni nei componenti frontend (popup mappa, pagina elenco, Trova il tuo viaggio). Impostalo sul colore del tema, es. #2E8CCB per BeTheme di sothra.it. Default: #2271b1.', 'affiliate-link-manager-ai'); ?></p>
                         </td>
                     </tr>
                     <tr>
