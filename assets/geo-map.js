@@ -38,22 +38,31 @@
         return base + (base.indexOf('?') === -1 ? '?' : '&') + 'alma_location=' + encodeURIComponent(ids);
     }
 
-    function popupContent(markerData, container, articles) {
-        var html = '<div class="alma-geo-map-info" style="max-width:280px;font-size:13px;line-height:1.45;">';
-        html += '<strong style="font-size:15px;display:block;margin-bottom:2px;">📍 ' + escapeHtml(markerData.name) + '</strong>';
+    function popupContent(markerData, container, articles, recommendedLine) {
+        var html = '<div class="alma-geo-map-info" style="max-width:300px;font-size:13px;line-height:1.45;">';
+        html += '<strong style="font-size:16px;display:block;margin-bottom:1px;">📍 ' + escapeHtml(markerData.name) + '</strong>';
         html += '<span style="color:#666;">' + escapeHtml(String(markerData.count)) + (markerData.count === 1 ? ' articolo' : ' articoli') + '</span>';
+        if (recommendedLine) {
+            html += '<div style="margin-top:4px;font-weight:600;color:#2271b1;">🎯 ' + escapeHtml(recommendedLine) + '</div>';
+        }
         if (articles === null) {
-            html += '<p style="margin:8px 0 0;color:#666;">Caricamento articoli…</p>';
+            html += '<p style="margin:10px 0 0;color:#666;">Caricamento articoli…</p>';
         } else if (articles.length) {
-            html += '<ul style="margin:8px 0 0;padding-left:18px;">';
+            html += '<div style="margin-top:10px;display:flex;flex-direction:column;gap:8px;">';
             articles.slice(0, 5).forEach(function (article) {
-                html += '<li style="margin-bottom:4px;"><a href="' + escapeHtml(article.url) + '">' + escapeHtml(article.title) + '</a></li>';
+                var thumb = article.thumbnail
+                    ? '<img src="' + escapeHtml(article.thumbnail) + '" alt="" loading="lazy" style="width:48px;height:48px;object-fit:cover;border-radius:6px;flex-shrink:0;" />'
+                    : '<span style="width:48px;height:48px;border-radius:6px;background:#eef1f5;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:18px;">📄</span>';
+                html += '<a href="' + escapeHtml(article.url) + '" style="display:flex;align-items:center;gap:10px;text-decoration:none;padding:4px;border-radius:6px;">' +
+                    thumb +
+                    '<span style="font-weight:600;line-height:1.3;color:#1d2327;">' + escapeHtml(article.title) + '</span>' +
+                    '</a>';
             });
-            html += '</ul>';
+            html += '</div>';
         }
         var pageUrl = listPageUrl(container, markerData.ids);
         if (pageUrl) {
-            html += '<p style="margin:10px 0 0;"><a href="' + escapeHtml(pageUrl) + '" style="font-weight:600;">Vedi tutti gli articoli →</a></p>';
+            html += '<p style="margin:12px 0 0;text-align:center;"><a href="' + escapeHtml(pageUrl) + '" style="display:inline-block;padding:7px 14px;background:#2271b1;color:#fff;border-radius:6px;font-weight:600;text-decoration:none;">Vedi tutti gli articoli →</a></p>';
         }
         html += '</div>';
         return html;
@@ -66,8 +75,10 @@
         var map = L.map(container, {
             center: WORLD_CENTER, // vista mondo, continenti visibili
             zoom: zoom,
-            minZoom: 1,
-            worldCopyJump: true,
+            minZoom: 2,
+            // Il mondo non si ripete: confini rigidi sull'intero planisfero.
+            maxBounds: [[-85, -180], [85, 180]],
+            maxBoundsViscosity: 1.0,
             // Lo scroll della pagina non deve zoomare per errore: zoom con
             // ctrl+rotella, doppio click o controlli.
             scrollWheelZoom: false
@@ -77,6 +88,8 @@
 
         L.tileLayer(cfg().tileUrl || 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
             maxZoom: 19,
+            noWrap: true, // niente copie ripetute del planisfero ai bordi
+            bounds: [[-85, -180], [85, 180]],
             attribution: cfg().tileAttribution || '&copy; OpenStreetMap contributors'
         }).addTo(map);
 
@@ -89,7 +102,7 @@
                     title: markerData.name + ' (' + markerData.count + ')'
                 }).addTo(map);
                 marker.almaData = markerData;
-                marker.bindPopup(popupContent(markerData, container, null), { maxWidth: 320 });
+                marker.bindPopup(popupContent(markerData, container, null, ''), { maxWidth: 340 });
                 marker.on('click', function () {
                     openMarker(entry, marker);
                 });
@@ -113,15 +126,16 @@
         }
         entry.lastOpened = marker;
 
-        marker.setPopupContent(popupContent(data, container, null));
+        marker.setPopupContent(popupContent(data, container, null, ''));
         marker.openPopup();
 
         var ajaxUrl = container.getAttribute('data-ajax-url');
         fetchJson(ajaxUrl + '?action=alma_geo_map_articles&location_ids=' + encodeURIComponent(data.ids)).then(function (response) {
-            var articles = response && response.success && response.data && Array.isArray(response.data.items) ? response.data.items : [];
-            marker.setPopupContent(popupContent(data, container, articles));
+            var payload = response && response.success && response.data ? response.data : {};
+            var articles = Array.isArray(payload.items) ? payload.items : [];
+            marker.setPopupContent(popupContent(data, container, articles, payload.recommended_line || ''));
         }).catch(function () {
-            marker.setPopupContent(popupContent(data, container, []));
+            marker.setPopupContent(popupContent(data, container, [], ''));
         });
     }
 

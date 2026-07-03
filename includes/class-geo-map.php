@@ -226,6 +226,55 @@ class ALMA_Geo_Map {
         wp_send_json_success($articles);
     }
 
+    /**
+     * Link affiliati associati alle località, raggruppati per tipologia:
+     * alimenta la riga "Consigliati: 3 tour, 2 avventure".
+     */
+    public function get_recommended_link_counts($location_ids) {
+        global $wpdb;
+        $location_ids = array_values(array_filter(array_map('absint', (array) $location_ids)));
+        if (empty($location_ids) || !$this->store->tables_exist()) {
+            return array();
+        }
+        $placeholders = implode(',', array_fill(0, count($location_ids), '%d'));
+        $rows = $wpdb->get_results($wpdb->prepare(
+            "SELECT t.name AS label, COUNT(DISTINCT p.ID) AS total
+             FROM {$this->store->table_content_index()} ci
+             INNER JOIN {$wpdb->posts} p ON p.ID = ci.object_id AND p.post_type = 'affiliate_link' AND p.post_status = 'publish'
+             INNER JOIN {$wpdb->term_relationships} tr ON tr.object_id = p.ID
+             INNER JOIN {$wpdb->term_taxonomy} tt ON tt.term_taxonomy_id = tr.term_taxonomy_id AND tt.taxonomy = 'link_type'
+             INNER JOIN {$wpdb->terms} t ON t.term_id = tt.term_id
+             WHERE ci.object_type = %s AND ci.location_id IN ($placeholders)
+             GROUP BY t.term_id
+             ORDER BY total DESC, t.name ASC
+             LIMIT 6",
+            array_merge(array(ALMA_Geo_Index_Store::OBJECT_TYPE_AFFILIATE_LINK), $location_ids)
+        ), ARRAY_A);
+
+        $recommended = array();
+        foreach ((array) $rows as $row) {
+            $recommended[] = array(
+                'label' => sanitize_text_field($row['label']),
+                'count' => (int) $row['total'],
+            );
+        }
+        return $recommended;
+    }
+
+    /**
+     * Riga "Consigliati: 3 tour, 2 avventure" pronta per la stampa.
+     */
+    public function format_recommended_line($recommended) {
+        if (empty($recommended)) {
+            return '';
+        }
+        $parts = array();
+        foreach ($recommended as $entry) {
+            $parts[] = (int) $entry['count'] . ' ' . mb_strtolower($entry['label']);
+        }
+        return __('Consigliati:', 'affiliate-link-manager-ai') . ' ' . implode(', ', $parts);
+    }
+
     private function sanitize_location_ids($raw) {
         $ids = array_values(array_filter(array_map('absint', explode(',', (string) $raw))));
         return array_slice($ids, 0, 20);
@@ -276,10 +325,13 @@ class ALMA_Geo_Map {
                 'thumbnail' => get_the_post_thumbnail_url($post, 'medium') ?: '',
             );
         }
+        $recommended = $this->get_recommended_link_counts($location_ids);
         return array(
             'items' => $items,
             'total' => (int) $query->found_posts,
             'location_name' => $this->location_label($location_ids),
+            'recommended' => $recommended,
+            'recommended_line' => $this->format_recommended_line($recommended),
         );
     }
 
@@ -320,7 +372,10 @@ class ALMA_Geo_Map {
         <div class="alma-geo-location-articles">
             <?php if ($data['location_name'] !== '') : ?>
                 <h2 class="alma-geo-location-articles__title">📍 <?php echo esc_html($data['location_name']); ?></h2>
-                <p class="alma-geo-location-articles__count"><?php echo esc_html(sprintf(_n('%d articolo', '%d articoli', $data['total'], 'affiliate-link-manager-ai'), $data['total'])); ?></p>
+                <p class="alma-geo-location-articles__count" style="margin:0 0 4px;color:#555;"><?php echo esc_html(sprintf(_n('%d articolo', '%d articoli', $data['total'], 'affiliate-link-manager-ai'), $data['total'])); ?></p>
+                <?php if ($data['recommended_line'] !== '') : ?>
+                    <p class="alma-geo-location-articles__recommended" style="margin:0 0 18px;font-weight:600;color:#2271b1;">🎯 <?php echo esc_html($data['recommended_line']); ?></p>
+                <?php endif; ?>
             <?php endif; ?>
             <?php if (empty($data['items'])) : ?>
                 <p><?php esc_html_e('Nessun articolo trovato per questa località.', 'affiliate-link-manager-ai'); ?></p>

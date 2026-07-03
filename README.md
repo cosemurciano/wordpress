@@ -1,3 +1,11 @@
+## 2.51.0 - 2026-07-03
+
+### Mappa Geografica — mondo singolo, popup ridisegnato e "Consigliati"
+- **Il planisfero non si ripete più**: tile con `noWrap`, confini rigidi sul mondo (`maxBounds` con viscosità piena) e zoom minimo 2 — niente copie dei continenti ai lati.
+- **Popup articoli ridisegnato**: eliminato l'elenco puntato; ogni articolo è una riga cliccabile con **miniatura a sinistra** (48px, angoli arrotondati, placeholder 📄 se assente) e titolo in evidenza; pulsante "Vedi tutti gli articoli →" a bottone.
+- **Riga "Consigliati" per località**: sotto il titolo della località, nel popup e nella pagina elenco, compare ad es. "🎯 Consigliati: 3 tour, 2 avventure" — il conteggio dei link affiliati associati a quella località raggruppati per Tipologia Link (max 6 tipologie, ordinate per quantità).
+- Versione plugin aggiornata a `2.51.0`.
+
 ## 2.50.1 - 2026-07-03
 
 ### Fix Mappa Geografica — tile non visualizzate
