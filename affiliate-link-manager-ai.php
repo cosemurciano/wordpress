@@ -3,7 +3,7 @@
  * Plugin Name: Affiliate Link Manager AI
  * Plugin URI: https://your-website.com
  * Description: Gestisce link affiliati con intelligenza artificiale per ottimizzazione e tracking automatico.
- * Version: 2.48.0
+ * Version: 2.49.0
  * Author: Cosè Murciano
  * License: GPL v2 or later
  * Text Domain: affiliate-link-manager-ai
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Definisci costanti del plugin
-define('ALMA_VERSION', '2.48.0');
+define('ALMA_VERSION', '2.49.0');
 define('ALMA_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('ALMA_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('ALMA_PLUGIN_FILE', __FILE__);
@@ -105,6 +105,7 @@ require_once ALMA_PLUGIN_DIR . 'includes/class-geo-index-affiliate-link-importer
 require_once ALMA_PLUGIN_DIR . 'includes/class-geo-auto-indexer.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-geo-ai-location-extractor.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-geo-geocoding-queue.php';
+require_once ALMA_PLUGIN_DIR . 'includes/class-geo-map.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-geo-index-admin.php';
 
 /**
@@ -129,6 +130,7 @@ class AffiliateManagerAI {
     private $geo_index_metabox;
     private $geo_index_admin;
     private $geo_auto_indexer;
+    private $geo_map;
     
     public function __construct() {
         global $wpdb;
@@ -145,6 +147,8 @@ class AffiliateManagerAI {
         $this->geo_auto_indexer = new ALMA_Geo_Auto_Indexer($this->geo_index_store);
         $this->geo_auto_indexer->init_hooks();
         ALMA_Geo_Geocoding_Queue::init();
+        $this->geo_map = new ALMA_Geo_Map($this->geo_index_store);
+        $this->geo_map->init();
         add_action('init', array($this, 'init'));
         add_action('widgets_init', array('ALMA_Contextual_Affiliate_Widget', 'register_widget'));
         // Registrato qui (prima che `widgets_init` scatti) perché ALMA_Shortcodes::init()
@@ -1142,6 +1146,7 @@ class AffiliateManagerAI {
             'affiliate-link-widgets',
             ALMA_Contextual_Affiliate_Widget::MENU_SLUG,
             ALMA_Geo_Index_Admin::MENU_SLUG,
+            ALMA_Geo_Map::MENU_SLUG,
             'alma-affiliate-sources',
             self::AI_CONTENT_AGENT_MENU_SLUG,
             'affiliate-link-manager-settings',
@@ -1176,6 +1181,9 @@ class AffiliateManagerAI {
                             break;
                         case ALMA_Geo_Index_Admin::MENU_SLUG:
                             $item[0] = __('Indice Geografico', 'affiliate-link-manager-ai');
+                            break;
+                        case ALMA_Geo_Map::MENU_SLUG:
+                            $item[0] = __('Mappa Geografica', 'affiliate-link-manager-ai');
                             break;
                         case 'alma-affiliate-sources':
                             $item[0] = __('Affiliate Sources', 'affiliate-link-manager-ai');

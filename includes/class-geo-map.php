@@ -1,0 +1,456 @@
+<?php
+/**
+ * Mappa Google frontend delle località con articoli geolocalizzati.
+ *
+ * - Shortcode [alma_geo_map width="100%" height="600px" zoom="2"]: mappa mondo
+ *   con marker sulle località (lat/lng presenti) collegate ad articoli
+ *   pubblicati; ricerca ampia sopra la mappa sui nomi delle località.
+ * - Click sul marker: infowindow con gli articoli e link alla pagina elenco
+ *   configurata (shortcode [alma_geo_location_articles]).
+ * - Pagina impostazioni dedicata: API key browser (separata da quella server
+ *   del geocoding, da restringere per referrer), categorie da escludere,
+ *   pagina elenco, dimensioni di default.
+ */
+if (!defined('ABSPATH')) {
+    exit;
+}
+
+class ALMA_Geo_Map {
+    const MENU_SLUG = 'alma-geo-map';
+    const OPTION_BROWSER_KEY = 'alma_geo_map_browser_api_key';
+    const OPTION_EXCLUDED_CATS = 'alma_geo_map_excluded_categories';
+    const OPTION_LIST_PAGE = 'alma_geo_map_list_page_id';
+    const OPTION_DEFAULT_WIDTH = 'alma_geo_map_default_width';
+    const OPTION_DEFAULT_HEIGHT = 'alma_geo_map_default_height';
+    const MARKERS_CACHE_KEY = 'alma_geo_map_markers_v1';
+    const MARKERS_CACHE_TTL = 900; // 15 minuti
+    const MAX_MARKERS = 2000;
+
+    private $store;
+
+    public function __construct($store = null) {
+        $this->store = $store instanceof ALMA_Geo_Index_Store ? $store : new ALMA_Geo_Index_Store();
+    }
+
+    public function init() {
+        add_shortcode('alma_geo_map', array($this, 'render_map_shortcode'));
+        add_shortcode('alma_geo_location_articles', array($this, 'render_location_articles_shortcode'));
+        add_action('admin_menu', array($this, 'add_menu'), 11);
+        add_action('wp_ajax_alma_geo_map_markers', array($this, 'ajax_markers'));
+        add_action('wp_ajax_nopriv_alma_geo_map_markers', array($this, 'ajax_markers'));
+        add_action('wp_ajax_alma_geo_map_articles', array($this, 'ajax_articles'));
+        add_action('wp_ajax_nopriv_alma_geo_map_articles', array($this, 'ajax_articles'));
+        add_action('save_post_post', array($this, 'invalidate_markers_cache'));
+    }
+
+    public function invalidate_markers_cache() {
+        delete_transient(self::MARKERS_CACHE_KEY);
+    }
+
+    /* ---------------------------------------------------------------------
+     * Shortcode mappa
+     * ------------------------------------------------------------------ */
+
+    public function render_map_shortcode($atts) {
+        $atts = shortcode_atts(array(
+            'width' => get_option(self::OPTION_DEFAULT_WIDTH, '100%'),
+            'height' => get_option(self::OPTION_DEFAULT_HEIGHT, '600px'),
+            'zoom' => 2,
+            'search' => 'yes',
+        ), $atts, 'alma_geo_map');
+
+        $browser_key = trim((string) get_option(self::OPTION_BROWSER_KEY, ''));
+        if ($browser_key === '') {
+            if (current_user_can('manage_options')) {
+                return '<div class="alma-geo-map-notice" style="padding:16px;border:1px dashed #d63638;border-radius:6px;">' . esc_html__('Mappa Geografica: configura la API key browser di Google Maps nella pagina "Mappa Geografica" del plugin (visibile solo agli amministratori).', 'affiliate-link-manager-ai') . '</div>';
+            }
+            return '';
+        }
+
+        $width = $this->sanitize_css_dimension($atts['width'], '100%');
+        $height = $this->sanitize_css_dimension($atts['height'], '600px');
+        $zoom = max(1, min(12, absint($atts['zoom'])));
+        $show_search = sanitize_key($atts['search']) !== 'no';
+
+        $this->enqueue_map_assets($browser_key);
+
+        static $instance = 0;
+        $instance++;
+        $map_id = 'alma-geo-map-' . $instance;
+
+        $list_page_id = absint(get_option(self::OPTION_LIST_PAGE, 0));
+        $list_url = $list_page_id > 0 ? get_permalink($list_page_id) : '';
+
+        ob_start();
+        ?>
+        <div class="alma-geo-map-wrap" style="width:<?php echo esc_attr($width); ?>;max-width:100%;">
+            <?php if ($show_search) : ?>
+                <div class="alma-geo-map-search" style="margin:0 0 10px;position:relative;">
+                    <input type="search"
+                           class="alma-geo-map-search-input"
+                           data-map="<?php echo esc_attr($map_id); ?>"
+                           list="<?php echo esc_attr($map_id); ?>-locations"
+                           placeholder="<?php esc_attr_e('🔍 Cerca una località… (es. Copenaghen, Maldive, Parigi)', 'affiliate-link-manager-ai'); ?>"
+                           style="width:100%;padding:14px 18px;font-size:16px;border:2px solid #d0d5dd;border-radius:8px;box-sizing:border-box;" />
+                    <datalist id="<?php echo esc_attr($map_id); ?>-locations"></datalist>
+                    <p class="alma-geo-map-search-feedback" style="display:none;margin:6px 2px 0;font-size:13px;color:#d63638;"></p>
+                </div>
+            <?php endif; ?>
+            <div id="<?php echo esc_attr($map_id); ?>"
+                 class="alma-geo-map"
+                 data-zoom="<?php echo esc_attr((string) $zoom); ?>"
+                 data-ajax-url="<?php echo esc_url(admin_url('admin-ajax.php')); ?>"
+                 data-list-url="<?php echo esc_url($list_url); ?>"
+                 style="width:100%;height:<?php echo esc_attr($height); ?>;min-height:280px;border-radius:8px;background:#e8ecf1;"></div>
+        </div>
+        <?php
+        return (string) ob_get_clean();
+    }
+
+    /**
+     * Dimensioni CSS sicure per lo shortcode: numeri con unità px/%/vh/vw/em/rem
+     * (default px se l'unità manca).
+     */
+    private function sanitize_css_dimension($value, $fallback) {
+        $value = trim((string) $value);
+        if (preg_match('/^(\d+(?:\.\d+)?)(px|%|vh|vw|em|rem)?$/i', $value, $m)) {
+            $unit = isset($m[2]) && $m[2] !== '' ? strtolower($m[2]) : 'px';
+            return $m[1] . $unit;
+        }
+        return $fallback;
+    }
+
+    private function enqueue_map_assets($browser_key) {
+        if (file_exists(ALMA_PLUGIN_DIR . 'assets/geo-map.js')) {
+            wp_enqueue_script('alma-geo-map', ALMA_PLUGIN_URL . 'assets/geo-map.js', array(), ALMA_VERSION, true);
+        }
+        // Il loader ufficiale con callback: la mappa si inizializza quando l'API è pronta.
+        wp_enqueue_script(
+            'google-maps-js',
+            'https://maps.googleapis.com/maps/api/js?key=' . rawurlencode($browser_key) . '&loading=async&callback=almaGeoMapInit',
+            array('alma-geo-map'),
+            null,
+            true
+        );
+        wp_script_add_data('google-maps-js', 'strategy', 'async');
+    }
+
+    /* ---------------------------------------------------------------------
+     * Endpoint dati (pubblici, sola lettura su contenuti pubblicati)
+     * ------------------------------------------------------------------ */
+
+    public function ajax_markers() {
+        $markers = get_transient(self::MARKERS_CACHE_KEY);
+        if (!is_array($markers)) {
+            $markers = $this->build_markers();
+            set_transient(self::MARKERS_CACHE_KEY, $markers, self::MARKERS_CACHE_TTL);
+        }
+        wp_send_json_success($markers);
+    }
+
+    /**
+     * Località con coordinate e almeno un articolo pubblicato (escluse le
+     * categorie configurate), raggruppate per coordinate arrotondate così le
+     * righe-località duplicate (import diversi) diventano un solo marker.
+     */
+    private function build_markers() {
+        global $wpdb;
+        if (!$this->store->tables_exist()) {
+            return array();
+        }
+
+        $excluded = $this->get_excluded_category_ids();
+        $exclude_sql = '';
+        $params = array(ALMA_Geo_Index_Store::OBJECT_TYPE_POST);
+        if (!empty($excluded)) {
+            $placeholders = implode(',', array_fill(0, count($excluded), '%d'));
+            $exclude_sql = " AND NOT EXISTS (
+                SELECT 1 FROM {$wpdb->term_relationships} tr
+                INNER JOIN {$wpdb->term_taxonomy} tt ON tt.term_taxonomy_id = tr.term_taxonomy_id
+                WHERE tr.object_id = p.ID AND tt.taxonomy = 'category' AND tt.term_id IN ($placeholders)
+            )";
+            $params = array_merge($params, $excluded);
+        }
+        $params[] = self::MAX_MARKERS;
+
+        $rows = $wpdb->get_results($wpdb->prepare(
+            "SELECT ROUND(l.lat, 4) AS rlat, ROUND(l.lng, 4) AS rlng,
+                    MIN(l.canonical_name) AS name,
+                    GROUP_CONCAT(DISTINCT l.id) AS location_ids,
+                    COUNT(DISTINCT p.ID) AS article_count
+             FROM {$this->store->table_locations()} l
+             INNER JOIN {$this->store->table_content_index()} ci ON ci.location_id = l.id AND ci.object_type = %s
+             INNER JOIN {$wpdb->posts} p ON p.ID = ci.object_id AND p.post_type = 'post' AND p.post_status = 'publish'
+             WHERE l.lat IS NOT NULL AND l.lng IS NOT NULL
+             {$exclude_sql}
+             GROUP BY rlat, rlng
+             ORDER BY article_count DESC
+             LIMIT %d",
+            $params
+        ), ARRAY_A);
+
+        $markers = array();
+        foreach ((array) $rows as $row) {
+            $ids = implode(',', array_map('absint', array_filter(explode(',', (string) $row['location_ids']))));
+            $markers[] = array(
+                'name' => sanitize_text_field($row['name']),
+                'lat' => (float) $row['rlat'],
+                'lng' => (float) $row['rlng'],
+                'count' => (int) $row['article_count'],
+                'ids' => $ids,
+            );
+        }
+        return $markers;
+    }
+
+    public function ajax_articles() {
+        $ids = $this->sanitize_location_ids($_GET['location_ids'] ?? ($_POST['location_ids'] ?? ''));
+        if (empty($ids)) {
+            wp_send_json_error(array('message' => __('Località non valida.', 'affiliate-link-manager-ai')), 400);
+        }
+        $articles = $this->get_articles_for_locations($ids, 10);
+        wp_send_json_success($articles);
+    }
+
+    private function sanitize_location_ids($raw) {
+        $ids = array_values(array_filter(array_map('absint', explode(',', (string) $raw))));
+        return array_slice($ids, 0, 20);
+    }
+
+    /**
+     * Articoli pubblicati collegati alle località indicate (categorie escluse
+     * rispettate), ordinati per data.
+     */
+    public function get_articles_for_locations($location_ids, $limit = 20, $paged = 1) {
+        global $wpdb;
+        if (empty($location_ids) || !$this->store->tables_exist()) {
+            return array('items' => array(), 'total' => 0, 'location_name' => '');
+        }
+        $placeholders = implode(',', array_fill(0, count($location_ids), '%d'));
+        $post_ids = $wpdb->get_col($wpdb->prepare(
+            "SELECT DISTINCT ci.object_id FROM {$this->store->table_content_index()} ci
+             WHERE ci.object_type = %s AND ci.location_id IN ($placeholders)",
+            array_merge(array(ALMA_Geo_Index_Store::OBJECT_TYPE_POST), array_map('absint', $location_ids))
+        ));
+        $post_ids = array_values(array_filter(array_map('absint', (array) $post_ids)));
+        if (empty($post_ids)) {
+            return array('items' => array(), 'total' => 0, 'location_name' => $this->location_label($location_ids));
+        }
+
+        $args = array(
+            'post_type' => 'post',
+            'post_status' => 'publish',
+            'post__in' => $post_ids,
+            'posts_per_page' => max(1, min(50, absint($limit))),
+            'paged' => max(1, absint($paged)),
+            'orderby' => 'date',
+            'order' => 'DESC',
+        );
+        $excluded = $this->get_excluded_category_ids();
+        if (!empty($excluded)) {
+            $args['category__not_in'] = $excluded;
+        }
+        $query = new WP_Query($args);
+        $items = array();
+        foreach ($query->posts as $post) {
+            $items[] = array(
+                'id' => (int) $post->ID,
+                'title' => get_the_title($post),
+                'url' => get_permalink($post),
+                'date' => get_the_date('', $post),
+                'excerpt' => wp_trim_words(wp_strip_all_tags(get_the_excerpt($post)), 24, '…'),
+                'thumbnail' => get_the_post_thumbnail_url($post, 'medium') ?: '',
+            );
+        }
+        return array(
+            'items' => $items,
+            'total' => (int) $query->found_posts,
+            'location_name' => $this->location_label($location_ids),
+        );
+    }
+
+    private function location_label($location_ids) {
+        $location = $this->store->get_location(absint($location_ids[0] ?? 0));
+        if (!$location) {
+            return '';
+        }
+        $label = sanitize_text_field($location['canonical_name']);
+        $country = sanitize_text_field($location['country'] ?: $location['country_code']);
+        if ($country !== '' && strcasecmp($country, $label) !== 0) {
+            $label .= ', ' . $country;
+        }
+        return $label;
+    }
+
+    private function get_excluded_category_ids() {
+        $excluded = get_option(self::OPTION_EXCLUDED_CATS, array());
+        return array_values(array_filter(array_map('absint', (array) $excluded)));
+    }
+
+    /* ---------------------------------------------------------------------
+     * Shortcode pagina elenco articoli
+     * ------------------------------------------------------------------ */
+
+    public function render_location_articles_shortcode($atts) {
+        $atts = shortcode_atts(array('per_page' => 20), $atts, 'alma_geo_location_articles');
+        $ids = $this->sanitize_location_ids($_GET['alma_location'] ?? '');
+        if (empty($ids)) {
+            return '<p>' . esc_html__('Seleziona una località dalla mappa per vedere gli articoli collegati.', 'affiliate-link-manager-ai') . '</p>';
+        }
+        $paged = max(1, absint($_GET['alma_page'] ?? 1));
+        $per_page = max(1, min(50, absint($atts['per_page'])));
+        $data = $this->get_articles_for_locations($ids, $per_page, $paged);
+
+        ob_start();
+        ?>
+        <div class="alma-geo-location-articles">
+            <?php if ($data['location_name'] !== '') : ?>
+                <h2 class="alma-geo-location-articles__title">📍 <?php echo esc_html($data['location_name']); ?></h2>
+                <p class="alma-geo-location-articles__count"><?php echo esc_html(sprintf(_n('%d articolo', '%d articoli', $data['total'], 'affiliate-link-manager-ai'), $data['total'])); ?></p>
+            <?php endif; ?>
+            <?php if (empty($data['items'])) : ?>
+                <p><?php esc_html_e('Nessun articolo trovato per questa località.', 'affiliate-link-manager-ai'); ?></p>
+            <?php else : ?>
+                <div class="alma-geo-location-articles__grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:20px;">
+                    <?php foreach ($data['items'] as $item) : ?>
+                        <article class="alma-geo-location-articles__item" style="border:1px solid #e0e0e0;border-radius:8px;overflow:hidden;background:#fff;">
+                            <?php if ($item['thumbnail'] !== '') : ?>
+                                <a href="<?php echo esc_url($item['url']); ?>"><img src="<?php echo esc_url($item['thumbnail']); ?>" alt="<?php echo esc_attr($item['title']); ?>" style="width:100%;height:160px;object-fit:cover;display:block;" loading="lazy" /></a>
+                            <?php endif; ?>
+                            <div style="padding:14px 16px;">
+                                <h3 style="margin:0 0 6px;font-size:16px;"><a href="<?php echo esc_url($item['url']); ?>"><?php echo esc_html($item['title']); ?></a></h3>
+                                <p style="margin:0 0 6px;font-size:13px;color:#666;"><?php echo esc_html($item['date']); ?></p>
+                                <p style="margin:0;font-size:14px;color:#444;"><?php echo esc_html($item['excerpt']); ?></p>
+                            </div>
+                        </article>
+                    <?php endforeach; ?>
+                </div>
+                <?php
+                $total_pages = (int) ceil($data['total'] / $per_page);
+                if ($total_pages > 1) {
+                    echo '<nav class="alma-geo-location-articles__pagination" style="margin-top:20px;display:flex;gap:8px;flex-wrap:wrap;">';
+                    for ($i = 1; $i <= $total_pages; $i++) {
+                        $url = add_query_arg(array('alma_location' => implode(',', $ids), 'alma_page' => $i));
+                        if ($i === $paged) {
+                            echo '<span style="padding:6px 12px;background:#2271b1;color:#fff;border-radius:4px;">' . esc_html((string) $i) . '</span>';
+                        } else {
+                            echo '<a href="' . esc_url($url) . '" style="padding:6px 12px;border:1px solid #d0d5dd;border-radius:4px;">' . esc_html((string) $i) . '</a>';
+                        }
+                    }
+                    echo '</nav>';
+                }
+                ?>
+            <?php endif; ?>
+        </div>
+        <?php
+        return (string) ob_get_clean();
+    }
+
+    /* ---------------------------------------------------------------------
+     * Pagina impostazioni dedicata
+     * ------------------------------------------------------------------ */
+
+    public function add_menu() {
+        add_submenu_page(
+            'edit.php?post_type=affiliate_link',
+            __('Mappa Geografica', 'affiliate-link-manager-ai'),
+            __('Mappa Geografica', 'affiliate-link-manager-ai'),
+            'manage_options',
+            self::MENU_SLUG,
+            array($this, 'render_settings_page')
+        );
+    }
+
+    public function render_settings_page() {
+        if (!current_user_can('manage_options')) {
+            wp_die(esc_html__('Permessi insufficienti.', 'affiliate-link-manager-ai'));
+        }
+
+        if (!empty($_POST['alma_geo_map_save']) && check_admin_referer('alma_geo_map_settings')) {
+            $browser_key = trim(sanitize_text_field(wp_unslash($_POST[self::OPTION_BROWSER_KEY] ?? '')));
+            if ($browser_key !== '') {
+                update_option(self::OPTION_BROWSER_KEY, $browser_key, false);
+            } elseif (!empty($_POST['alma_geo_map_clear_key'])) {
+                delete_option(self::OPTION_BROWSER_KEY);
+            }
+            update_option(self::OPTION_EXCLUDED_CATS, array_values(array_filter(array_map('absint', (array) ($_POST['alma_geo_map_excluded'] ?? array())))), false);
+            update_option(self::OPTION_LIST_PAGE, absint($_POST[self::OPTION_LIST_PAGE] ?? 0), false);
+            update_option(self::OPTION_DEFAULT_WIDTH, $this->sanitize_css_dimension($_POST[self::OPTION_DEFAULT_WIDTH] ?? '100%', '100%'), false);
+            update_option(self::OPTION_DEFAULT_HEIGHT, $this->sanitize_css_dimension($_POST[self::OPTION_DEFAULT_HEIGHT] ?? '600px', '600px'), false);
+            $this->invalidate_markers_cache();
+            echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__('Impostazioni Mappa Geografica salvate.', 'affiliate-link-manager-ai') . '</p></div>';
+        }
+
+        $browser_key = (string) get_option(self::OPTION_BROWSER_KEY, '');
+        $masked = $browser_key === '' ? __('Non configurata', 'affiliate-link-manager-ai') : sprintf(__('Configurata (termina con %s)', 'affiliate-link-manager-ai'), substr($browser_key, -4));
+        $excluded = $this->get_excluded_category_ids();
+        $categories = get_categories(array('hide_empty' => false));
+        $list_page_id = absint(get_option(self::OPTION_LIST_PAGE, 0));
+        ?>
+        <div class="wrap">
+            <h1><?php esc_html_e('Mappa Geografica', 'affiliate-link-manager-ai'); ?></h1>
+            <p><?php esc_html_e('Mappa Google frontend con le località che contengono articoli geolocalizzati. Inseriscila con lo shortcode qui sotto; il click su una località apre la pagina elenco articoli.', 'affiliate-link-manager-ai'); ?></p>
+
+            <div class="card" style="max-width:860px;">
+                <h2><?php esc_html_e('Shortcode', 'affiliate-link-manager-ai'); ?></h2>
+                <p><code>[alma_geo_map width="100%" height="600px"]</code></p>
+                <p class="description"><?php esc_html_e('Attributi: width e height accettano px, %, vh, vw, em, rem (es. width="80%" height="70vh"); zoom="2" (1-12) per lo zoom iniziale; search="no" per nascondere la ricerca. Per la pagina elenco usa lo shortcode:', 'affiliate-link-manager-ai'); ?> <code>[alma_geo_location_articles per_page="20"]</code></p>
+            </div>
+
+            <form method="post">
+                <?php wp_nonce_field('alma_geo_map_settings'); ?>
+                <table class="form-table" role="presentation">
+                    <tr>
+                        <th scope="row"><label for="<?php echo esc_attr(self::OPTION_BROWSER_KEY); ?>"><?php esc_html_e('API key Google Maps (browser)', 'affiliate-link-manager-ai'); ?></label></th>
+                        <td>
+                            <input type="password" id="<?php echo esc_attr(self::OPTION_BROWSER_KEY); ?>" name="<?php echo esc_attr(self::OPTION_BROWSER_KEY); ?>" value="" class="regular-text" autocomplete="off" />
+                            <p class="description"><?php echo esc_html($masked); ?>. <?php esc_html_e('Chiave DIVERSA da quella server del geocoding: questa è visibile nel sorgente della pagina (è il funzionamento di Maps JavaScript API), quindi crea una chiave dedicata con restrizione per referrer HTTP (il tuo dominio) e abilitata solo per "Maps JavaScript API". Lascia vuoto per mantenere la chiave esistente.', 'affiliate-link-manager-ai'); ?></p>
+                            <label><input type="checkbox" name="alma_geo_map_clear_key" value="1" /> <?php esc_html_e('Rimuovi la chiave salvata', 'affiliate-link-manager-ai'); ?></label>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><?php esc_html_e('Categorie da escludere', 'affiliate-link-manager-ai'); ?></th>
+                        <td>
+                            <?php if (empty($categories)) : ?>
+                                <p class="description"><?php esc_html_e('Nessuna categoria presente.', 'affiliate-link-manager-ai'); ?></p>
+                            <?php else : ?>
+                                <div style="max-height:220px;overflow:auto;border:1px solid #d0d5dd;border-radius:4px;padding:10px 12px;max-width:420px;">
+                                    <?php foreach ($categories as $category) : ?>
+                                        <label style="display:block;margin-bottom:4px;">
+                                            <input type="checkbox" name="alma_geo_map_excluded[]" value="<?php echo esc_attr((string) $category->term_id); ?>" <?php checked(in_array((int) $category->term_id, $excluded, true)); ?> />
+                                            <?php echo esc_html($category->name); ?> <span style="color:#888;">(<?php echo esc_html((string) $category->count); ?>)</span>
+                                        </label>
+                                    <?php endforeach; ?>
+                                </div>
+                                <p class="description"><?php esc_html_e('Gli articoli nelle categorie selezionate non vengono considerati: né nei marker né negli elenchi.', 'affiliate-link-manager-ai'); ?></p>
+                            <?php endif; ?>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="<?php echo esc_attr(self::OPTION_LIST_PAGE); ?>"><?php esc_html_e('Pagina elenco articoli', 'affiliate-link-manager-ai'); ?></label></th>
+                        <td>
+                            <?php wp_dropdown_pages(array(
+                                'name' => self::OPTION_LIST_PAGE,
+                                'id' => self::OPTION_LIST_PAGE,
+                                'selected' => $list_page_id,
+                                'show_option_none' => __('— Nessuna (elenco solo nel popup della mappa) —', 'affiliate-link-manager-ai'),
+                                'option_none_value' => '0',
+                            )); ?>
+                            <p class="description"><?php esc_html_e('La pagina che si apre al click su una località: deve contenere lo shortcode [alma_geo_location_articles]. Senza pagina, il popup sulla mappa mostra comunque gli articoli.', 'affiliate-link-manager-ai'); ?></p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><?php esc_html_e('Dimensioni di default', 'affiliate-link-manager-ai'); ?></th>
+                        <td>
+                            <label><?php esc_html_e('Larghezza', 'affiliate-link-manager-ai'); ?> <input type="text" name="<?php echo esc_attr(self::OPTION_DEFAULT_WIDTH); ?>" value="<?php echo esc_attr((string) get_option(self::OPTION_DEFAULT_WIDTH, '100%')); ?>" class="small-text" /></label>
+                            <label style="margin-left:16px;"><?php esc_html_e('Altezza', 'affiliate-link-manager-ai'); ?> <input type="text" name="<?php echo esc_attr(self::OPTION_DEFAULT_HEIGHT); ?>" value="<?php echo esc_attr((string) get_option(self::OPTION_DEFAULT_HEIGHT, '600px')); ?>" class="small-text" /></label>
+                            <p class="description"><?php esc_html_e('Usate quando lo shortcode non specifica width/height. Unità: px, %, vh, vw, em, rem.', 'affiliate-link-manager-ai'); ?></p>
+                        </td>
+                    </tr>
+                </table>
+                <?php submit_button(__('Salva impostazioni', 'affiliate-link-manager-ai'), 'primary', 'alma_geo_map_save'); ?>
+            </form>
+        </div>
+        <?php
+    }
+}
