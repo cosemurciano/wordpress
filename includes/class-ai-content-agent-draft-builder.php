@@ -1117,6 +1117,19 @@ class ALMA_AI_Content_Agent_Draft_Builder {
 
         $ctx = array('posts'=>array(),'pages'=>array(),'affiliate_links'=>array(),'documents'=>array(),'sources_online'=>array(),'media'=>array());
         $warnings = array();
+
+        // Fase 2: blocco geografico esplicito nel payload. Se l'idea attiva ha
+        // una località, l'AI deve restare geograficamente coerente.
+        $geo_idea_id = absint(get_user_meta($user_id, '_alma_active_idea_id', true));
+        if ($geo_idea_id > 0) {
+            $geo_label = sanitize_text_field((string) get_post_meta($geo_idea_id, ALMA_AI_Content_Agent_Ideas::META_LOCATION_LABEL, true));
+            if ($geo_label !== '') {
+                $ctx['geo_context'] = array(
+                    'location' => $geo_label,
+                    'rules' => 'L\'articolo riguarda la località "' . $geo_label . '". Usa SOLO link affiliati e link interni geograficamente coerenti con questa destinazione; non citare né linkare destinazioni diverse, se non per confronti esplicitamente richiesti dal prompt.',
+                );
+            }
+        }
         foreach ($selected as $row) {
             $group = sanitize_key($row['source_group'] ?? '');
             $sid = absint($row['source_id'] ?? 0);

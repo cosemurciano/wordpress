@@ -1,3 +1,14 @@
+## 2.56.0 - 2026-07-04
+
+### Idee sul modello "Post" + geolocalizzazione idee (Fase 2) + importazione massiva CSV programmata (Fase 3)
+- **Menu ristrutturato sul modello dei Post**: dopo la Dashboard ora ci sono **"Tutte le idee"** (elenco) e **"Aggiungi idea"** (workspace); la voce "AI Content Agent" è stata rinominata **"Impostazioni AI Content"** e spostata prima di Impostazioni. La tab "Idee contenuto" è stata eliminata (redirect alla Dashboard per i vecchi link).
+- **"Aggiungi idea"**: aprendo la pagina dal menu si parte con una nuova idea (l'ultima "Nuova idea" mai toccata viene riusata, per non accumulare bozze vuote); con `idea_id` si modifica un'idea esistente — è la destinazione di "Apri nel workspace" da Tutte le idee. I redirect delle azioni mantengono sempre l'idea corrente nell'URL.
+- **Geolocalizzazione delle idee (Fase 2)**: nuovo campo **Località** nel workspace con autocomplete sull'indice geografico. Con una località impostata: i link affiliati della sua area (stessa località, omonimi, paese per località-nazione) ricevono un **boost dominante (+40)** nella ricerca e vengono **inclusi anche senza match testuale**; il payload OpenAI riceve un blocco `geo_context` che impone coerenza geografica alla bozza. Colonna Località in Tutte le idee.
+- **Importazione massiva CSV con programmazione (Fase 3)**: pulsante "Importazione massiva (CSV)" in Tutte le idee → pagina dedicata con **download del CSV di esempio** (Titolo, Localita, Tema, Keyword principale, Keyword secondarie, Profilo istruzioni, Data programmata, Note AI; separatore , o ; autorilevato, max 500 righe). Ogni riga crea un'idea con località risolta sull'indice geografico (le non risolte vengono segnalate), keywords, profilo (per nome o ID) e data programmata; report di import con errori riga per riga.
+- **Generazione automatica in background**: runner WP-Cron giornaliero (con partenza immediata dopo ogni import) che per le idee programmate in scadenza seleziona automaticamente i migliori link affiliati (geo-first + keyword), li salva come selezione dell'idea e genera la bozza con la pipeline esistente — entro un **limite di bozze/giorno configurabile (default 3)** per controllare i costi OpenAI. Lock anti-concorrenza via `add_option` atomica, esiti registrati nella tabella jobs e contatore giornaliero visibile nella pagina di import. Cron rimosso alla disattivazione.
+- Retrocompatibilità: CPT e meta esistenti invariati (solo nuove meta), azioni admin esistenti riusate, vecchi URL della tab reindirizzati.
+- Versione plugin aggiornata a `2.56.0`.
+
 ## 2.55.0 - 2026-07-04
 
 ### AI Content Agent — Fase 1: riorganizzazione (menu + pagina Elenco Idee)

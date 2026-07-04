@@ -13,6 +13,12 @@ class ALMA_AI_Content_Agent_Ideas {
     const META_DRAFT_POST_ID = '_alma_idea_draft_post_id';
     const META_INSTRUCTION_SNAPSHOT_HASH = '_alma_idea_instruction_snapshot_hash';
     const META_INSTRUCTION_SNAPSHOT = '_alma_idea_instruction_snapshot';
+    // Fase 2/3: geolocalizzazione e programmazione.
+    const META_LOCATION_ID = '_alma_idea_location_id';
+    const META_LOCATION_LABEL = '_alma_idea_location_label';
+    const META_SCHEDULED_AT = '_alma_idea_scheduled_at';
+    const META_SOURCE = '_alma_idea_source';
+    const META_KEYWORDS = '_alma_idea_keywords';
 
     public static function init() {
         add_action('init', array(__CLASS__, 'register_cpt'));
@@ -48,6 +54,11 @@ class ALMA_AI_Content_Agent_Ideas {
         update_post_meta($id, self::META_DRAFT_POST_ID, 0);
         update_post_meta($id, self::META_INSTRUCTION_SNAPSHOT_HASH, '');
         update_post_meta($id, self::META_INSTRUCTION_SNAPSHOT, '');
+        update_post_meta($id, self::META_LOCATION_ID, 0);
+        update_post_meta($id, self::META_LOCATION_LABEL, '');
+        update_post_meta($id, self::META_SCHEDULED_AT, '');
+        update_post_meta($id, self::META_SOURCE, 'manual');
+        update_post_meta($id, self::META_KEYWORDS, array());
         return (int)$id;
     }
 
@@ -71,7 +82,8 @@ class ALMA_AI_Content_Agent_Ideas {
         $results = self::normalize_meta_rows(get_post_meta($p->ID, self::META_RESULTS, true));
         $selection = self::normalize_meta_rows(get_post_meta($p->ID, self::META_SELECTION, true));
         $stored_profile_id = absint(get_post_meta($p->ID, self::META_PROFILE_ID, true));
-        return array('ID'=>$p->ID,'title'=>$p->post_title,'profile_id'=>$stored_profile_id,'instruction_profile_id'=>$stored_profile_id,'has_instruction_profile_meta'=>metadata_exists('post', $p->ID, self::META_PROFILE_ID),'prompt'=>get_post_meta($p->ID,self::META_PROMPT,true),'last_query'=>$last_query,'results'=>$results,'selection'=>$selection,'instruction_snapshot_hash'=>sanitize_text_field((string)get_post_meta($p->ID,self::META_INSTRUCTION_SNAPSHOT_HASH,true)),'instruction_snapshot'=>ALMA_AI_Content_Agent_Instructions_Manager::sanitize_profile_textarea((string)get_post_meta($p->ID,self::META_INSTRUCTION_SNAPSHOT,true)),'executed_at'=>sanitize_text_field((string)get_post_meta($p->ID,self::META_EXECUTED_AT,true)),'draft_post_id'=>absint(get_post_meta($p->ID,self::META_DRAFT_POST_ID,true)),'modified'=>$p->post_modified);
+        $keywords = get_post_meta($p->ID, self::META_KEYWORDS, true);
+        return array('ID'=>$p->ID,'title'=>$p->post_title,'profile_id'=>$stored_profile_id,'instruction_profile_id'=>$stored_profile_id,'has_instruction_profile_meta'=>metadata_exists('post', $p->ID, self::META_PROFILE_ID),'prompt'=>get_post_meta($p->ID,self::META_PROMPT,true),'last_query'=>$last_query,'results'=>$results,'selection'=>$selection,'instruction_snapshot_hash'=>sanitize_text_field((string)get_post_meta($p->ID,self::META_INSTRUCTION_SNAPSHOT_HASH,true)),'instruction_snapshot'=>ALMA_AI_Content_Agent_Instructions_Manager::sanitize_profile_textarea((string)get_post_meta($p->ID,self::META_INSTRUCTION_SNAPSHOT,true)),'executed_at'=>sanitize_text_field((string)get_post_meta($p->ID,self::META_EXECUTED_AT,true)),'draft_post_id'=>absint(get_post_meta($p->ID,self::META_DRAFT_POST_ID,true)),'location_id'=>absint(get_post_meta($p->ID,self::META_LOCATION_ID,true)),'location_label'=>sanitize_text_field((string)get_post_meta($p->ID,self::META_LOCATION_LABEL,true)),'scheduled_at'=>sanitize_text_field((string)get_post_meta($p->ID,self::META_SCHEDULED_AT,true)),'source'=>sanitize_key((string)get_post_meta($p->ID,self::META_SOURCE,true) ?: 'manual'),'keywords'=>is_array($keywords) ? array_values(array_filter(array_map('sanitize_text_field', $keywords))) : array(),'modified'=>$p->post_modified);
     }
 
     public static function save_from_request($idea_id, $data) {
@@ -88,6 +100,16 @@ class ALMA_AI_Content_Agent_Ideas {
         }
         if (array_key_exists('openai_prompt', (array)$data)) {
             update_post_meta($idea_id, self::META_PROMPT, sanitize_textarea_field((string)$data['openai_prompt']));
+        }
+        if (array_key_exists('idea_location_id', (array)$data)) {
+            $location_id = absint($data['idea_location_id']);
+            update_post_meta($idea_id, self::META_LOCATION_ID, $location_id);
+            $label = sanitize_text_field((string)($data['idea_location_label'] ?? ''));
+            update_post_meta($idea_id, self::META_LOCATION_LABEL, $location_id > 0 ? $label : '');
+        }
+        if (array_key_exists('idea_scheduled_at', (array)$data)) {
+            $scheduled = sanitize_text_field((string)$data['idea_scheduled_at']);
+            update_post_meta($idea_id, self::META_SCHEDULED_AT, preg_match('/^\d{4}-\d{2}-\d{2}$/', $scheduled) ? $scheduled : '');
         }
         return true;
     }
