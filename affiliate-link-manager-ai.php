@@ -3,7 +3,7 @@
  * Plugin Name: Affiliate Link Manager AI
  * Plugin URI: https://your-website.com
  * Description: Gestisce link affiliati con intelligenza artificiale per ottimizzazione e tracking automatico.
- * Version: 2.53.0
+ * Version: 2.54.0
  * Author: Cosè Murciano
  * License: GPL v2 or later
  * Text Domain: affiliate-link-manager-ai
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Definisci costanti del plugin
-define('ALMA_VERSION', '2.53.0');
+define('ALMA_VERSION', '2.54.0');
 define('ALMA_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('ALMA_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('ALMA_PLUGIN_FILE', __FILE__);
@@ -25,6 +25,7 @@ require_once ALMA_PLUGIN_DIR . 'includes/class-logger.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-ai-utils.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-content-analysis-ai.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-dashboard-stats.php';
+require_once ALMA_PLUGIN_DIR . 'includes/class-dashboard-insights.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-openai-service.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-ai-usage-logger.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-affiliate-widget-ai-rewriter.php';
@@ -153,6 +154,7 @@ class AffiliateManagerAI {
         $this->geo_map->init();
         $this->trip_finder = new ALMA_Trip_Finder();
         $this->trip_finder->init();
+        ALMA_Dashboard_Insights::init();
         add_action('init', array($this, 'init'));
         add_action('widgets_init', array('ALMA_Contextual_Affiliate_Widget', 'register_widget'));
         // Registrato qui (prima che `widgets_init` scatti) perché ALMA_Shortcodes::init()
@@ -337,8 +339,15 @@ class AffiliateManagerAI {
             }
         }
 
+        // Post di provenienza del click: il frontend invia l'URL della pagina
+        // corrente (page_url); il referrer da solo indica la pagina PRECEDENTE
+        // e non permette di attribuire il click all'articolo giusto.
+        $page_url = isset($_POST['page_url']) ? esc_url_raw(wp_unslash($_POST['page_url'])) : '';
+        $source_post_id = $page_url !== '' ? absint(url_to_postid($page_url)) : 0;
+
         $inserted = $wpdb->insert($table_name, array(
             'link_id' => $link_id,
+            'post_id' => $source_post_id,
             'click_time' => current_time('mysql'),
             'user_ip' => $user_ip,
             'user_agent' => $user_agent,
@@ -1231,37 +1240,198 @@ class AffiliateManagerAI {
     /**
      * Render Dashboard Page
      */
+    /**
+     * Dashboard snapshot-driven: legge SOLO lo snapshot precalcolato dal cron
+     * giornaliero (ALMA_Dashboard_Insights) — nessuna query pesante durante
+     * il rendering della pagina.
+     */
     public function render_dashboard_page() {
         if (!current_user_can('manage_options')) {
             wp_die(__('Non hai i permessi per accedere a questa pagina.'));
         }
+        $snapshot = ALMA_Dashboard_Insights::get_snapshot();
+        $advice = ALMA_Dashboard_Insights::get_advice();
         ?>
         <div class="wrap">
             <h1><?php _e('Dashboard Link - Affiliate Link Manager', 'affiliate-link-manager-ai'); ?></h1>
-            <p style="font-size:14px;color:#666;">Versione <?php echo esc_html(ALMA_VERSION); ?></p>
-            <div id="alma-dashboard-root"><p><?php _e('Caricamento statistiche dashboard…', 'affiliate-link-manager-ai'); ?></p></div>
+            <p style="font-size:13px;color:#666;margin-top:2px;">
+                <?php printf(esc_html__('Versione %s', 'affiliate-link-manager-ai'), esc_html(ALMA_VERSION)); ?>
+                <?php if ($snapshot) : ?>
+                    · <?php printf(esc_html__('Dati aggiornati al %s (elaborazione %d ms, ricostruiti ogni notte)', 'affiliate-link-manager-ai'), esc_html($snapshot['generated_at']), (int) $snapshot['duration_ms']); ?>
+                <?php endif; ?>
+                · <button type="button" class="button button-small" id="alma-insights-rebuild"><?php esc_html_e('Aggiorna ora', 'affiliate-link-manager-ai'); ?></button>
+                <span id="alma-insights-rebuild-feedback" style="color:#2271b1;"></span>
+            </p>
+
+            <?php if (!$snapshot) : ?>
+                <div class="notice notice-info"><p><?php esc_html_e('Nessuno snapshot ancora disponibile: premi "Aggiorna ora" per generare i dati (poi verranno ricostruiti automaticamente ogni notte).', 'affiliate-link-manager-ai'); ?></p></div>
+            <?php else : ?>
+
+                <?php
+                $kpis = array(
+                    '7' => __('Click ultimi 7 giorni', 'affiliate-link-manager-ai'),
+                    '30' => __('Click ultimi 30 giorni', 'affiliate-link-manager-ai'),
+                    '180' => __('Click ultimi 180 giorni', 'affiliate-link-manager-ai'),
+                );
+                ?>
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:16px;margin:16px 0;">
+                    <?php foreach ($kpis as $key => $label) :
+                        $period = $snapshot['periods'][$key] ?? array('clicks' => 0, 'previous' => 0, 'delta_pct' => null);
+                        $delta = $period['delta_pct'];
+                        $delta_color = $delta === null ? '#666' : ($delta >= 0 ? '#1a7f37' : '#d63638');
+                        $delta_text = $delta === null ? __('n/d', 'affiliate-link-manager-ai') : (($delta >= 0 ? '▲ +' : '▼ ') . $delta . '%');
+                        ?>
+                        <div class="postbox" style="margin:0;"><div class="inside">
+                            <h3 style="margin:4px 0 8px;"><?php echo esc_html($label); ?></h3>
+                            <div style="font-size:28px;font-weight:700;line-height:1;"><?php echo esc_html(number_format_i18n((int) $period['clicks'])); ?></div>
+                            <p style="margin:8px 0 0;color:<?php echo esc_attr($delta_color); ?>;font-weight:600;">
+                                <?php echo esc_html($delta_text); ?>
+                                <span style="color:#888;font-weight:400;"><?php printf(esc_html__('vs %s precedenti', 'affiliate-link-manager-ai'), esc_html(number_format_i18n((int) $period['previous']))); ?></span>
+                            </p>
+                        </div></div>
+                    <?php endforeach; ?>
+                    <div class="postbox" style="margin:0;"><div class="inside">
+                        <h3 style="margin:4px 0 8px;"><?php esc_html_e('Link senza click (90 giorni)', 'affiliate-link-manager-ai'); ?></h3>
+                        <div style="font-size:28px;font-weight:700;line-height:1;"><?php echo esc_html(number_format_i18n((int) ($snapshot['links_no_clicks_90d'] ?? 0))); ?></div>
+                        <p style="margin:8px 0 0;color:#888;"><?php printf(esc_html__('su %s link pubblicati', 'affiliate-link-manager-ai'), esc_html(number_format_i18n((int) ($snapshot['links_total'] ?? 0)))); ?></p>
+                    </div></div>
+                </div>
+
+                <div class="postbox"><div class="inside">
+                    <h3 style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">📈 <?php esc_html_e('Andamento click', 'affiliate-link-manager-ai'); ?>
+                        <span>
+                            <button type="button" class="button button-small alma-insights-range" data-range="daily"><?php esc_html_e('Giorno (30gg)', 'affiliate-link-manager-ai'); ?></button>
+                            <button type="button" class="button button-small alma-insights-range" data-range="weekly"><?php esc_html_e('Settimana (26)', 'affiliate-link-manager-ai'); ?></button>
+                            <button type="button" class="button button-small alma-insights-range" data-range="monthly"><?php esc_html_e('Mese (12)', 'affiliate-link-manager-ai'); ?></button>
+                        </span>
+                    </h3>
+                    <div style="height:320px;"><canvas id="alma-insights-chart"></canvas></div>
+                </div></div>
+
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px;margin-top:16px;">
+                    <div class="postbox" style="margin:0;"><div class="inside">
+                        <h3>🏆 <?php esc_html_e('Top Link (ultimi 30 giorni)', 'affiliate-link-manager-ai'); ?></h3>
+                        <?php if (empty($snapshot['top_links'])) : ?>
+                            <p><?php esc_html_e('Nessun click registrato negli ultimi 30 giorni.', 'affiliate-link-manager-ai'); ?></p>
+                        <?php else : ?>
+                            <table class="widefat striped">
+                                <thead><tr>
+                                    <th><?php esc_html_e('Link', 'affiliate-link-manager-ai'); ?></th>
+                                    <th><?php esc_html_e('Tipologia', 'affiliate-link-manager-ai'); ?></th>
+                                    <th style="text-align:right;"><?php esc_html_e('Click 30gg', 'affiliate-link-manager-ai'); ?></th>
+                                    <th style="text-align:right;"><?php esc_html_e('Storico', 'affiliate-link-manager-ai'); ?></th>
+                                </tr></thead>
+                                <tbody>
+                                <?php foreach ($snapshot['top_links'] as $link) : ?>
+                                    <tr>
+                                        <td><a href="<?php echo esc_url($link['edit_url']); ?>"><?php echo esc_html($link['title']); ?></a></td>
+                                        <td><?php echo esc_html($link['types']); ?></td>
+                                        <td style="text-align:right;font-weight:600;"><?php echo esc_html(number_format_i18n($link['clicks_period'])); ?></td>
+                                        <td style="text-align:right;color:#666;"><?php echo esc_html(number_format_i18n($link['clicks_total'])); ?></td>
+                                    </tr>
+                                <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                        <?php endif; ?>
+                    </div></div>
+
+                    <div class="postbox" style="margin:0;"><div class="inside">
+                        <h3>📰 <?php esc_html_e('Top Articoli per click affiliati', 'affiliate-link-manager-ai'); ?></h3>
+                        <?php
+                        $top_articles = !empty($snapshot['top_articles_30d']) ? $snapshot['top_articles_30d'] : ($snapshot['top_articles_all'] ?? array());
+                        $articles_label = !empty($snapshot['top_articles_30d']) ? __('ultimi 30 giorni', 'affiliate-link-manager-ai') : __('da inizio tracciamento', 'affiliate-link-manager-ai');
+                        ?>
+                        <?php if (empty($top_articles)) : ?>
+                            <p><?php esc_html_e('Ancora nessun dato: l\'articolo di provenienza viene registrato per i click ricevuti a partire da questa versione. I dati compariranno con i prossimi click.', 'affiliate-link-manager-ai'); ?></p>
+                        <?php else : ?>
+                            <p class="description" style="margin-top:0;"><?php echo esc_html($articles_label); ?></p>
+                            <table class="widefat striped">
+                                <thead><tr>
+                                    <th><?php esc_html_e('Articolo', 'affiliate-link-manager-ai'); ?></th>
+                                    <th style="text-align:right;"><?php esc_html_e('Click affiliati', 'affiliate-link-manager-ai'); ?></th>
+                                    <th></th>
+                                </tr></thead>
+                                <tbody>
+                                <?php foreach ($top_articles as $article) : ?>
+                                    <tr>
+                                        <td><a href="<?php echo esc_url($article['edit_url']); ?>"><?php echo esc_html($article['title']); ?></a></td>
+                                        <td style="text-align:right;font-weight:600;"><?php echo esc_html(number_format_i18n($article['clicks'])); ?></td>
+                                        <td><a href="<?php echo esc_url($article['url']); ?>" target="_blank" rel="noopener"><?php esc_html_e('Vedi', 'affiliate-link-manager-ai'); ?></a></td>
+                                    </tr>
+                                <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                        <?php endif; ?>
+                    </div></div>
+                </div>
+
+                <h2 style="margin-top:24px;">🌍 <?php esc_html_e('Copertura geografica', 'affiliate-link-manager-ai'); ?></h2>
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;">
+                    <div class="postbox" style="margin:0;"><div class="inside">
+                        <h3>🔥 <?php esc_html_e('Località più cliccate (90gg)', 'affiliate-link-manager-ai'); ?></h3>
+                        <?php if (empty($snapshot['geo_top'])) : ?>
+                            <p><?php esc_html_e('Nessun click su link geolocalizzati nel periodo.', 'affiliate-link-manager-ai'); ?></p>
+                        <?php else : ?>
+                            <ul style="margin:0;">
+                                <?php foreach ($snapshot['geo_top'] as $geo) : ?>
+                                    <li>📍 <?php echo esc_html($geo['name']); ?><?php echo $geo['country'] !== '' ? esc_html(' (' . $geo['country'] . ')') : ''; ?> — <strong><?php echo esc_html(number_format_i18n($geo['clicks'])); ?></strong> <?php esc_html_e('click', 'affiliate-link-manager-ai'); ?></li>
+                                <?php endforeach; ?>
+                            </ul>
+                        <?php endif; ?>
+                    </div></div>
+
+                    <div class="postbox" style="margin:0;"><div class="inside">
+                        <h3>🧊 <?php esc_html_e('Con link ma SENZA click (90gg)', 'affiliate-link-manager-ai'); ?></h3>
+                        <p class="description" style="margin-top:0;"><?php esc_html_e('L\'offerta esiste ma non produce: rivedi il posizionamento dei link o rafforza gli articoli di queste aree.', 'affiliate-link-manager-ai'); ?></p>
+                        <?php if (empty($snapshot['geo_unused'])) : ?>
+                            <p><?php esc_html_e('Nessuna: tutte le località con link hanno ricevuto click. 🎉', 'affiliate-link-manager-ai'); ?></p>
+                        <?php else : ?>
+                            <ul style="margin:0;">
+                                <?php foreach ($snapshot['geo_unused'] as $geo) : ?>
+                                    <li>📍 <?php echo esc_html($geo['name']); ?><?php echo $geo['country'] !== '' ? esc_html(' (' . $geo['country'] . ')') : ''; ?> — <?php printf(esc_html__('%1$s link, %2$s articoli', 'affiliate-link-manager-ai'), esc_html(number_format_i18n($geo['links'])), esc_html(number_format_i18n((int) ($geo['posts'] ?? 0)))); ?></li>
+                                <?php endforeach; ?>
+                            </ul>
+                        <?php endif; ?>
+                    </div></div>
+
+                    <div class="postbox" style="margin:0;"><div class="inside">
+                        <h3>💡 <?php esc_html_e('Articoli SENZA link affiliati', 'affiliate-link-manager-ai'); ?></h3>
+                        <p class="description" style="margin-top:0;"><?php esc_html_e('Contenuto senza monetizzazione: importa o associa link affiliati per queste località.', 'affiliate-link-manager-ai'); ?></p>
+                        <?php if (empty($snapshot['geo_no_links'])) : ?>
+                            <p><?php esc_html_e('Nessuna: tutte le località con articoli hanno link affiliati. 🎉', 'affiliate-link-manager-ai'); ?></p>
+                        <?php else : ?>
+                            <ul style="margin:0;">
+                                <?php foreach ($snapshot['geo_no_links'] as $geo) : ?>
+                                    <li>📍 <?php echo esc_html($geo['name']); ?><?php echo $geo['country'] !== '' ? esc_html(' (' . $geo['country'] . ')') : ''; ?> — <?php printf(esc_html__('%s articoli', 'affiliate-link-manager-ai'), esc_html(number_format_i18n($geo['posts']))); ?></li>
+                                <?php endforeach; ?>
+                            </ul>
+                        <?php endif; ?>
+                    </div></div>
+                </div>
+
+                <h2 style="margin-top:24px;">🤖 <?php esc_html_e('Consigli strategici AI', 'affiliate-link-manager-ai'); ?></h2>
+                <div class="postbox"><div class="inside">
+                    <p>
+                        <button type="button" class="button button-primary" id="alma-insights-ai"><?php esc_html_e('Genera consigli AI', 'affiliate-link-manager-ai'); ?></button>
+                        <span id="alma-insights-ai-feedback" style="margin-left:8px;color:#2271b1;"></span>
+                    </p>
+                    <p class="description"><?php esc_html_e('Invia il riepilogo aggregato dello snapshot (nessun dato personale) al modello OpenAI configurato e restituisce 5 raccomandazioni prioritizzate. Solo su richiesta, mai in automatico.', 'affiliate-link-manager-ai'); ?></p>
+                    <pre id="alma-insights-ai-text" style="white-space:pre-wrap;font-family:inherit;font-size:14px;background:#f6f7f7;border:1px solid #dcdcde;border-radius:6px;padding:14px;<?php echo $advice ? '' : 'display:none;'; ?>"><?php echo $advice ? esc_html($advice['text']) : ''; ?></pre>
+                    <p class="description" id="alma-insights-ai-meta"><?php
+                        if ($advice) {
+                            $meta_parts = array($advice['generated_at']);
+                            if (!empty($advice['model'])) { $meta_parts[] = $advice['model']; }
+                            if (!empty($advice['estimated_cost'])) { $meta_parts[] = '~$' . number_format((float) $advice['estimated_cost'], 4); }
+                            echo esc_html(implode(' · ', $meta_parts));
+                        }
+                    ?></p>
+                </div></div>
+
+            <?php endif; ?>
         </div>
-        <script>
-        jQuery(function($){
-            var nonce = '<?php echo esc_js(wp_create_nonce('alma_admin_nonce')); ?>';
-            $.post(ajaxurl,{action:'alma_get_dashboard_data',nonce:nonce}, function(resp){
-                if(!resp || !resp.success){ $('#alma-dashboard-root').html('<div class="notice notice-error"><p>Errore caricamento dashboard.</p></div>'); return; }
-                var d=resp.data;
-                $('#alma-dashboard-root').html('<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:20px;"><div class="postbox"><div class="inside"><h3>🔗 Link Attivi</h3><strong>'+d.total_links+'</strong></div></div><div class="postbox"><div class="inside"><h3>📊 Click Totali</h3><strong>'+d.total_clicks+'</strong></div></div><div class="postbox"><div class="inside"><h3>🎯 CTR Medio</h3><strong>'+d.avg_ctr+'%</strong></div></div></div><div class="postbox"><div class="inside"><h3>🏆 Top Link</h3><ul id="alma-top"></ul></div></div><div class="postbox"><div class="inside"><h3>📈 Click mensili</h3><canvas id="alma-clicks-monthly"></canvas></div></div>');
-                // Titolo e URL inseriti come testo/attributo, mai come HTML: il titolo
-                // del link è modificabile da qualunque utente con edit_posts.
-                (d.top_links||[]).forEach(function(l){
-                    var $a = $('<a></a>').attr('href', l.edit_url).text(l.title);
-                    $('#alma-top').append($('<li></li>').append($a).append(document.createTextNode(' ('+parseInt(l.click_count,10)+')')));
-                });
-                $.post(ajaxurl,{action:'alma_get_chart_data',nonce:nonce,metric:'clicks',range:'monthly'}, function(c){
-                    if(c && c.success && window.Chart){new Chart(document.getElementById('alma-clicks-monthly'),{type:'line',data:{labels:c.data.labels,datasets:[{label:'Click Mensili',data:c.data.data,borderColor:'#2271b1'}]}});}
-                });
-            });
-        });
-        </script>
         <?php
-    }    
+    }
+
     /**
      * Ricorda per pochi secondi qualunque salvataggio editor standard di un Link Affiliato.
      *
@@ -4177,6 +4347,7 @@ class AffiliateManagerAI {
         // Rimuovi cron jobs
         wp_clear_scheduled_hook('alma_daily_optimization');
         ALMA_Geo_Geocoding_Queue::unschedule();
+        ALMA_Dashboard_Insights::unschedule();
         $this->clear_deprecated_trend_cron_events();
         flush_rewrite_rules();
     }
@@ -4250,6 +4421,7 @@ class AffiliateManagerAI {
         $sql = "CREATE TABLE $table_name (
             id mediumint(9) NOT NULL AUTO_INCREMENT,
             link_id mediumint(9) NOT NULL,
+            post_id bigint(20) unsigned DEFAULT 0 NOT NULL,
             click_time datetime DEFAULT CURRENT_TIMESTAMP NOT NULL,
             user_ip varchar(45) DEFAULT '' NOT NULL,
             user_agent text DEFAULT '' NOT NULL,
@@ -4259,7 +4431,8 @@ class AffiliateManagerAI {
             KEY link_id (link_id),
             KEY click_time (click_time),
             KEY link_time (link_id, click_time),
-            KEY source_time (source, click_time)
+            KEY source_time (source, click_time),
+            KEY post_time (post_id, click_time)
         ) $charset_collate;";
         
         require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
