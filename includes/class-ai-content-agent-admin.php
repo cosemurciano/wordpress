@@ -242,10 +242,10 @@ class ALMA_AI_Content_Agent_Admin {
 
         self::set_notice($result);
         $redirect_url = wp_get_referer();
-        if ($do === 'new_content_idea') {
-            $redirect_url = add_query_arg(array('tab' => 'idee', 'ai_ideas_page' => 1), $redirect_url);
-        } elseif ($do === 'save_content_idea') {
-            $redirect_url = add_query_arg('ai_ideas_page', 1, $redirect_url);
+        // Creare o aprire un'idea porta sempre al workspace, anche partendo
+        // dalla pagina Elenco Idee.
+        if (($do === 'new_content_idea' || $do === 'load_content_idea') && !empty($result['success'])) {
+            $redirect_url = admin_url('edit.php?post_type=affiliate_link&page=alma-ai-content-agent&tab=idee');
         }
         wp_safe_redirect($redirect_url); exit;
     }
@@ -296,6 +296,120 @@ class ALMA_AI_Content_Agent_Admin {
             if (!empty($r['warnings'])) { echo '<p><strong>Warning QA:</strong> '.esc_html(implode(' | ', array_map('sanitize_text_field', (array)$r['warnings']))).'</p>'; }
             echo '<p>Puoi revisionare l’articolo in WordPress prima della pubblicazione.</p></div>';
         }
+    }
+
+    /**
+     * Pagina dedicata "Elenco Idee": tutte le idee contenuto con filtri,
+     * ricerca e azioni per riga. Il tab "Idee contenuto" resta solo il
+     * workspace dell'idea attiva.
+     */
+    const IDEAS_LIST_MENU_SLUG = 'alma-ai-content-ideas';
+
+    public static function render_ideas_list_page() {
+        if (!current_user_can('manage_options')) { return; }
+        echo '<div class="wrap alma-ai-agent-admin"><h1>Elenco Idee</h1>';
+        self::render_notice();
+
+        $workspace_url = admin_url('edit.php?post_type=affiliate_link&page=alma-ai-content-agent&tab=idee');
+        $list_url = admin_url('edit.php?post_type=affiliate_link&page=' . self::IDEAS_LIST_MENU_SLUG);
+        $active_idea_id = absint(get_user_meta(get_current_user_id(), '_alma_active_idea_id', true));
+
+        $search = sanitize_text_field(wp_unslash($_GET['s'] ?? ''));
+        $status_filter = sanitize_key($_GET['idea_status'] ?? 'all');
+        if (!in_array($status_filter, array('all', 'executed', 'not_executed', 'with_draft'), true)) { $status_filter = 'all'; }
+        $author_filter = sanitize_key($_GET['idea_author'] ?? 'all');
+        if (!in_array($author_filter, array('all', 'mine'), true)) { $author_filter = 'all'; }
+        $paged = max(1, absint($_GET['ideas_page'] ?? 1));
+        $per_page = 20;
+
+        $query_args = array(
+            'post_type' => ALMA_AI_Content_Agent_Ideas::CPT,
+            'post_status' => 'publish',
+            'posts_per_page' => $per_page,
+            'paged' => $paged,
+            'orderby' => 'modified',
+            'order' => 'DESC',
+        );
+        if ($search !== '') { $query_args['s'] = $search; }
+        if ($author_filter === 'mine') { $query_args['author'] = get_current_user_id(); }
+        if ($status_filter === 'executed') {
+            $query_args['meta_query'] = array(array('key' => ALMA_AI_Content_Agent_Ideas::META_EXECUTED_AT, 'value' => '', 'compare' => '!='));
+        } elseif ($status_filter === 'not_executed') {
+            $query_args['meta_query'] = array('relation' => 'OR',
+                array('key' => ALMA_AI_Content_Agent_Ideas::META_EXECUTED_AT, 'value' => '', 'compare' => '='),
+                array('key' => ALMA_AI_Content_Agent_Ideas::META_EXECUTED_AT, 'compare' => 'NOT EXISTS'),
+            );
+        } elseif ($status_filter === 'with_draft') {
+            $query_args['meta_query'] = array(array('key' => ALMA_AI_Content_Agent_Ideas::META_DRAFT_POST_ID, 'value' => 0, 'compare' => '>', 'type' => 'NUMERIC'));
+        }
+        $query = new WP_Query($query_args);
+
+        // Nome profilo per ID in una sola passata (evita una query per riga).
+        $profile_names = array();
+        foreach ((array) ALMA_AI_Content_Agent_Instructions_Manager::get_profiles(100, 0) as $profile_row) {
+            $profile_names[(int)($profile_row['id'] ?? 0)] = sanitize_text_field($profile_row['profile_name'] ?? '');
+        }
+
+        echo '<p>';
+        self::action_form('new_content_idea', 'Crea nuova idea', '', 'button button-primary');
+        echo '</p>';
+
+        echo '<form method="get" action="'.esc_url(admin_url('edit.php')).'" class="alma-ideas-list-filters" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin:12px 0;">';
+        echo '<input type="hidden" name="post_type" value="affiliate_link"><input type="hidden" name="page" value="'.esc_attr(self::IDEAS_LIST_MENU_SLUG).'">';
+        echo '<label><strong>Cerca</strong><br><input type="search" name="s" value="'.esc_attr($search).'" placeholder="Titolo idea…"></label>';
+        echo '<label><strong>Stato</strong><br><select name="idea_status">';
+        foreach (array('all' => 'Tutti', 'not_executed' => 'Non eseguite', 'executed' => 'Eseguite', 'with_draft' => 'Con bozza') as $value => $label) {
+            echo '<option value="'.esc_attr($value).'" '.selected($status_filter, $value, false).'>'.esc_html($label).'</option>';
+        }
+        echo '</select></label>';
+        echo '<label><strong>Autore</strong><br><select name="idea_author"><option value="all" '.selected($author_filter, 'all', false).'>Tutti</option><option value="mine" '.selected($author_filter, 'mine', false).'>Solo le mie</option></select></label>';
+        echo '<button class="button">Filtra</button> <a class="button" href="'.esc_url($list_url).'">Reset</a></form>';
+
+        echo '<table class="widefat striped"><thead><tr><th>Titolo</th><th>Autore</th><th>Profilo istruzioni</th><th>Contenuti</th><th>Stato</th><th>Bozza</th><th>Ultima modifica</th><th>Azioni</th></tr></thead><tbody>';
+        if (empty($query->posts)) {
+            echo '<tr><td colspan="8"><em>Nessuna idea trovata'.($search !== '' || $status_filter !== 'all' || $author_filter !== 'all' ? ' con i filtri correnti' : '').'.</em></td></tr>';
+        }
+        foreach ($query->posts as $idea_post) {
+            $idea = ALMA_AI_Content_Agent_Ideas::get($idea_post->ID);
+            $is_active = (int)$idea_post->ID === $active_idea_id;
+            $profile_id = absint($idea['instruction_profile_id'] ?? 0);
+            $profile_label = $profile_id > 0 ? ($profile_names[$profile_id] ?? ('#' . $profile_id)) : '—';
+            $selection_count = count((array)($idea['selection'] ?? array()));
+            $executed = !empty($idea['executed_at']);
+            $draft_id = absint($idea['draft_post_id'] ?? 0);
+            $draft_post = $draft_id > 0 ? get_post($draft_id) : null;
+            $author = get_userdata((int)$idea_post->post_author);
+
+            echo '<tr>';
+            echo '<td><strong>'.esc_html($idea_post->post_title).'</strong>'.($is_active ? ' <span class="alma-active-idea-badge">Attiva</span>' : '').'</td>';
+            echo '<td>'.esc_html($author ? $author->display_name : '—').'</td>';
+            echo '<td>'.esc_html($profile_label).'</td>';
+            echo '<td>'.(int)$selection_count.'</td>';
+            echo '<td>'.($executed ? '<span class="alma-badge is-success">Eseguita</span><br><span class="description">'.esc_html($idea['executed_at']).'</span>' : '<span class="alma-badge is-warning">Non eseguita</span>').'</td>';
+            echo '<td>'.($draft_post ? '<a href="'.esc_url(get_edit_post_link($draft_id, 'raw')).'">'.esc_html(get_post_status_object($draft_post->post_status)->label ?? $draft_post->post_status).'</a>' : '—').'</td>';
+            echo '<td>'.esc_html($idea_post->post_modified).'</td>';
+            echo '<td><div class="alma-actions-inline" style="display:flex;gap:4px;flex-wrap:wrap;">';
+            echo '<form method="post" action="'.esc_url(admin_url('admin-post.php')).'">'.wp_nonce_field('alma_ai_agent_action','_wpnonce',true,false).'<input type="hidden" name="action" value="alma_ai_agent_action"><input type="hidden" name="do" value="load_content_idea"><input type="hidden" name="idea_id" value="'.(int)$idea_post->ID.'"><button class="button button-small button-primary">Apri nel workspace</button></form>';
+            if ($selection_count > 0 && !$draft_post) {
+                echo '<form method="post" action="'.esc_url(admin_url('admin-post.php')).'">'.wp_nonce_field('alma_ai_agent_action','_wpnonce',true,false).'<input type="hidden" name="action" value="alma_ai_agent_action"><input type="hidden" name="do" value="generate_draft"><input type="hidden" name="idea_id" value="'.(int)$idea_post->ID.'"><button class="button button-small">Genera bozza</button></form>';
+            }
+            echo '<form method="post" action="'.esc_url(admin_url('admin-post.php')).'" onsubmit="return confirm(\'Eliminare definitivamente questa idea?\');">'.wp_nonce_field('alma_ai_agent_action','_wpnonce',true,false).'<input type="hidden" name="action" value="alma_ai_agent_action"><input type="hidden" name="do" value="delete_content_idea"><input type="hidden" name="idea_id" value="'.(int)$idea_post->ID.'"><button class="button button-small">Elimina</button></form>';
+            echo '</div></td></tr>';
+        }
+        echo '</tbody></table>';
+
+        $total_pages = max(1, (int)$query->max_num_pages);
+        if ($total_pages > 1) {
+            $base_args = array('post_type' => 'affiliate_link', 'page' => self::IDEAS_LIST_MENU_SLUG, 's' => $search, 'idea_status' => $status_filter, 'idea_author' => $author_filter);
+            echo '<div class="tablenav"><div class="tablenav-pages"><span class="displaying-num">'.(int)$query->found_posts.' idee</span> <span class="pagination-links">';
+            for ($i = 1; $i <= $total_pages; $i++) {
+                if ($i === $paged) { echo '<span class="tablenav-pages-navspan button disabled">'.(int)$i.'</span> '; }
+                else { echo '<a class="button" href="'.esc_url(add_query_arg(array_merge($base_args, array('ideas_page' => $i)), admin_url('edit.php'))).'">'.(int)$i.'</a> '; }
+            }
+            echo '</span></div></div>';
+        }
+        echo '<p><a href="'.esc_url($workspace_url).'">← Vai al workspace Idee contenuto</a></p>';
+        echo '</div>';
     }
 
     public static function render_page() {
@@ -687,39 +801,9 @@ class ALMA_AI_Content_Agent_Admin {
     }
 
     private static function render_ideas_tab() {
+        // Il tab è SOLO il workspace dell'idea attiva: l'elenco completo vive
+        // nella pagina dedicata "Elenco Idee".
         $active_idea_id = absint(get_user_meta(get_current_user_id(), '_alma_active_idea_id', true));
-        $ideas_per_page = 10;
-        $ideas_page_requested = isset($_GET['ai_ideas_page']);
-        $current_ideas_page = max(1, absint($_GET['ai_ideas_page'] ?? 1));
-        $all_idea_ids = get_posts(array(
-            'post_type' => ALMA_AI_Content_Agent_Ideas::CPT,
-            'post_status' => 'publish',
-            'posts_per_page' => -1,
-            'fields' => 'ids',
-            'orderby' => 'modified',
-            'order' => 'DESC',
-            'author' => get_current_user_id(),
-            'no_found_rows' => true,
-        ));
-        if (!is_array($all_idea_ids)) { $all_idea_ids = array(); }
-        $total_ideas = count($all_idea_ids);
-        $total_ideas_pages = max(1, (int)ceil($total_ideas / $ideas_per_page));
-        if ($current_ideas_page > $total_ideas_pages) { $current_ideas_page = $total_ideas_pages; }
-        if (!$ideas_page_requested && $active_idea_id > 0 && in_array($active_idea_id, array_map('intval', $all_idea_ids), true)) {
-            $active_idea_index = array_search($active_idea_id, array_map('intval', $all_idea_ids), true);
-            if ($active_idea_index !== false) {
-                $current_ideas_page = (int)floor($active_idea_index / $ideas_per_page) + 1;
-            }
-        }
-        $ideas = get_posts(array(
-            'post_type' => ALMA_AI_Content_Agent_Ideas::CPT,
-            'post_status' => 'publish',
-            'posts_per_page' => $ideas_per_page,
-            'paged' => $current_ideas_page,
-            'orderby' => 'modified',
-            'order' => 'DESC',
-            'author' => get_current_user_id(),
-        ));
         if ($active_idea_id > 0) {
             $active_post = get_post($active_idea_id);
             if (!$active_post || $active_post->post_type !== ALMA_AI_Content_Agent_Ideas::CPT) {
@@ -727,19 +811,21 @@ class ALMA_AI_Content_Agent_Admin {
                 $active_idea_id = 0;
             }
         }
-        if ($active_idea_id < 1 && !empty($all_idea_ids)) {
-            $active_idea_id = (int)$all_idea_ids[0];
-            update_user_meta(get_current_user_id(), '_alma_active_idea_id', $active_idea_id);
-            $current_ideas_page = 1;
-            $ideas = get_posts(array(
+        if ($active_idea_id < 1) {
+            $recent_ids = get_posts(array(
                 'post_type' => ALMA_AI_Content_Agent_Ideas::CPT,
                 'post_status' => 'publish',
-                'posts_per_page' => $ideas_per_page,
-                'paged' => $current_ideas_page,
+                'posts_per_page' => 1,
+                'fields' => 'ids',
                 'orderby' => 'modified',
                 'order' => 'DESC',
                 'author' => get_current_user_id(),
+                'no_found_rows' => true,
             ));
+            if (!empty($recent_ids)) {
+                $active_idea_id = (int)$recent_ids[0];
+                update_user_meta(get_current_user_id(), '_alma_active_idea_id', $active_idea_id);
+            }
         }
         $active_idea = $active_idea_id ? ALMA_AI_Content_Agent_Ideas::get($active_idea_id) : array();
         if (!empty($active_idea['ID'])) { ALMA_AI_Content_Agent_Selection_Session::load_from_idea($active_idea); }
@@ -804,35 +890,9 @@ class ALMA_AI_Content_Agent_Admin {
         if (!empty($active_idea['draft_post_id']) && get_post((int)$active_idea['draft_post_id'])) { echo '<p><a href="'.esc_url(get_edit_post_link((int)$active_idea['draft_post_id'],'raw')).'">Apri bozza</a></p>'; }
         echo '</section>';
 
-        echo '<section class="alma-idea-section"><h4 class="alma-idea-section-title">Idee create</h4>';
-        if (empty($ideas)) { echo '<p class="description">Nessuna idea creata.</p>'; }
-        else {
-            echo '<div class="alma-ideas-list">';
-            foreach($ideas as $idea_post){
-                $is_active=((int)$idea_post->ID===(int)$active_idea_id);
-                $record_class = 'alma-idea-record'.($is_active ? ' is-active' : '');
-                echo '<article class="'.esc_attr($record_class).'"'.($is_active ? ' aria-current="true"' : '').'><p class="alma-idea-record-title"><strong>'.esc_html($idea_post->post_title).'</strong>'.($is_active?' <span class="alma-active-idea-badge">Idea attiva</span>':'').'</p><p class="description alma-idea-record-meta">Ultima modifica: '.esc_html($idea_post->post_modified).'</p><form method="post" action="'.esc_url(admin_url('admin-post.php')).'">'.wp_nonce_field('alma_ai_agent_action','_wpnonce',true,false).'<input type="hidden" name="action" value="alma_ai_agent_action"><input type="hidden" name="do" value="load_content_idea"><input type="hidden" name="idea_id" value="'.(int)$idea_post->ID.'"><button class="button button-small">Carica</button></form></article>';
-            }
-            echo '</div>';
-            if ($total_ideas > $ideas_per_page) {
-                $pagination_args = array();
-                foreach (wp_unslash($_GET) as $query_key => $query_value) {
-                    if (is_array($query_value)) { continue; }
-                    $pagination_args[sanitize_key($query_key)] = sanitize_text_field($query_value);
-                }
-                unset($pagination_args['ai_ideas_page']);
-                $pagination_args['post_type'] = 'affiliate_link';
-                $pagination_args['page'] = 'alma-ai-content-agent';
-                $pagination_args['tab'] = 'idee';
-                $prev_url = add_query_arg(array_merge($pagination_args, array('ai_ideas_page' => max(1, $current_ideas_page - 1))), admin_url('edit.php'));
-                $next_url = add_query_arg(array_merge($pagination_args, array('ai_ideas_page' => min($total_ideas_pages, $current_ideas_page + 1))), admin_url('edit.php'));
-                echo '<nav class="alma-ideas-pagination" aria-label="Paginazione idee create">';
-                if ($current_ideas_page > 1) { echo '<a class="button button-small" href="'.esc_url($prev_url).'">Precedente</a>'; } else { echo '<span class="button button-small disabled" aria-disabled="true">Precedente</span>'; }
-                echo '<span class="alma-ideas-page-indicator">Pagina '.esc_html((string)$current_ideas_page).' di '.esc_html((string)$total_ideas_pages).'</span>';
-                if ($current_ideas_page < $total_ideas_pages) { echo '<a class="button button-small" href="'.esc_url($next_url).'">Successiva</a>'; } else { echo '<span class="button button-small disabled" aria-disabled="true">Successiva</span>'; }
-                echo '</nav>';
-            }
-        }
+        echo '<section class="alma-idea-section"><h4 class="alma-idea-section-title">Tutte le idee</h4>';
+        echo '<p class="description">L\'elenco completo delle idee (con filtri, ricerca e azioni) è nella pagina dedicata.</p>';
+        echo '<p><a class="button" href="'.esc_url(admin_url('edit.php?post_type=affiliate_link&page=' . self::IDEAS_LIST_MENU_SLUG)).'">📋 Elenco Idee</a></p>';
         echo '</section>';
 
         echo '<section class="alma-idea-section alma-idea-details"><h4 class="alma-idea-section-title">Dettagli idea</h4><ul><li><strong>Contenuti aggiunti:</strong> '.(int)($summary['selected_total'] ?? 0).'</li><li><strong>Profilo istruzioni AI:</strong> '.(int)($active_idea['profile_id'] ?? 0).'</li><li><strong>Prompt OpenAI:</strong> '.(!empty($active_idea['prompt']) ? 'Presente' : 'Assente').'</li></ul></section></div></aside>';
