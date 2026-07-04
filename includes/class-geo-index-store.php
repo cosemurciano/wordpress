@@ -715,6 +715,47 @@ class ALMA_Geo_Index_Store {
         );
     }
 
+    /**
+     * ID dei link affiliati pubblicati collegati all'AREA della località:
+     * stessa riga, località omonime (import diversi) e — per le località di
+     * tipo paese — tutte le località del paese. Usato dall'AI Content Agent
+     * per la selezione geo-first dei candidati.
+     */
+    public function get_affiliate_link_ids_for_area($location_id) {
+        global $wpdb;
+        $location = $this->get_location($location_id);
+        if (!$location) {
+            return array();
+        }
+        $name = trim((string) $location['canonical_name']);
+        $city = trim((string) (($location['city'] ?? '') !== '' ? $location['city'] : $name));
+        $conditions = array('l.id = %d');
+        $params = array(absint($location_id));
+        if ($name !== '') {
+            $conditions[] = 'LOWER(l.canonical_name) = LOWER(%s)';
+            $params[] = $name;
+        }
+        if ($city !== '') {
+            $conditions[] = "(l.city <> '' AND LOWER(l.city) = LOWER(%s))";
+            $params[] = $city;
+        }
+        $country_code = trim((string) ($location['country_code'] ?? ''));
+        if (($location['type'] ?? '') === 'country' && $country_code !== '') {
+            $conditions[] = 'l.country_code = %s';
+            $params[] = $country_code;
+        }
+        $where = implode(' OR ', $conditions);
+        $ids = $wpdb->get_col($wpdb->prepare(
+            "SELECT DISTINCT ci.object_id
+             FROM {$this->table_locations()} l
+             INNER JOIN {$this->table_content_index()} ci ON ci.location_id = l.id AND ci.object_type = %s
+             INNER JOIN {$wpdb->posts} p ON p.ID = ci.object_id AND p.post_type = 'affiliate_link' AND p.post_status = 'publish'
+             WHERE ({$where})",
+            array_merge(array(self::OBJECT_TYPE_AFFILIATE_LINK), $params)
+        ));
+        return array_values(array_filter(array_map('absint', (array) $ids)));
+    }
+
     public function get_locations_by_geocoding_status($status = 'pending', $limit = 20) {
         global $wpdb;
         if (!$this->tables_exist()) {

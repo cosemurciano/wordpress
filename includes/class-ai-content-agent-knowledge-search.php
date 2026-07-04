@@ -10,6 +10,12 @@ class ALMA_AI_Content_Agent_Knowledge_Search {
         $results = array();
         $search_scope = sanitize_key((string)($input['search_scope'] ?? ''));
 
+        // Fase 2: geolocalizzazione. Se l'idea ha una località, i link della
+        // sua area geografica ricevono un boost dominante e vengono inclusi
+        // anche quando il match testuale da solo non li troverebbe.
+        $geo_link_ids = array_values(array_filter(array_map('absint', (array)($input['geo_link_ids'] ?? array()))));
+        $geo_label = sanitize_text_field((string)($input['geo_location_label'] ?? ''));
+
         if ($search_scope === 'affiliate_links_only') {
             $results = array_merge($results, self::search_affiliate_links($query));
         } else {
@@ -22,10 +28,61 @@ class ALMA_AI_Content_Agent_Knowledge_Search {
             $results = array_merge($results, self::search_media($query));
         }
 
+        if (!empty($geo_link_ids)) {
+            $results = self::apply_geo_context($results, $geo_link_ids, $geo_label, $query);
+        }
+
         $results = self::dedupe($results);
         $grouped = self::group_and_rank($results);
 
         return array('query' => $query, 'groups' => $grouped, 'generated_at' => current_time('mysql'));
+    }
+
+    /**
+     * Boost dei risultati affiliate della località (+40) e iniezione dei link
+     * dell'area geografica assenti dal match testuale (score base 55).
+     */
+    private static function apply_geo_context($results, $geo_link_ids, $geo_label, $query) {
+        $geo_map = array_fill_keys($geo_link_ids, true);
+        $present = array();
+        foreach ($results as $i => $r) {
+            if (($r['source_group'] ?? $r['source_type'] ?? '') !== 'affiliate_link') { continue; }
+            $sid = (int)($r['source_id'] ?? 0);
+            if ($sid > 0 && isset($geo_map[$sid])) {
+                $results[$i]['score'] = min(100, (int)$r['score'] + 40);
+                $results[$i]['reason'] = trim('Località coerente' . ($geo_label !== '' ? ' (' . $geo_label . ')' : '') . ' · ' . (string)$r['reason'], ' ·');
+                $present[$sid] = true;
+            }
+        }
+        $missing = array_diff($geo_link_ids, array_keys($present));
+        foreach (array_slice($missing, 0, 60) as $link_id) {
+            $p = get_post($link_id);
+            if (!$p || $p->post_type !== 'affiliate_link' || $p->post_status !== 'publish') { continue; }
+            $affiliate = ALMA_AI_Content_Agent_Affiliate_Index::get_affiliate_url_data($link_id);
+            if (empty($affiliate['valid'])) { continue; }
+            $link_types = wp_get_object_terms($link_id, 'link_type', array('fields' => 'names'));
+            $provider = (string) get_post_meta($link_id, '_alma_source_provider', true);
+            if ($provider === '') { $provider = (string) get_post_meta($link_id, '_alma_provider', true); }
+            $image = ALMA_AI_Content_Agent_Affiliate_Index::get_image_data($link_id);
+            $results[] = self::result(array_merge(array(
+                'key' => 'affiliate_geo:' . $link_id,
+                'source_group' => 'affiliate_link',
+                'source_type' => 'affiliate_link',
+                'source_id' => $link_id,
+                'title' => get_the_title($p),
+                'excerpt' => wp_trim_words(wp_strip_all_tags((string)($p->post_excerpt ?: $p->post_content)), 18),
+                'score' => 55,
+                'reason' => 'Link affiliato della località' . ($geo_label !== '' ? ' ' . $geo_label : ''),
+                'edit_url' => get_edit_post_link($link_id, 'raw'),
+                'affiliate_url' => esc_url_raw((string)$affiliate['url']),
+                'link_types' => is_wp_error($link_types) ? array() : array_values(array_filter(array_map('sanitize_text_field', (array)$link_types))),
+                'provenance' => sanitize_text_field($provider),
+                'provider' => sanitize_text_field($provider),
+                'source' => sanitize_text_field($provider),
+                'dedupe_ref' => 'affiliate_link:' . $link_id,
+            ), $image));
+        }
+        return $results;
     }
 
     private static function normalize_input($input) {

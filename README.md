@@ -1,3 +1,11 @@
+## 2.56.0 - 2026-07-04
+
+### Idee sul modello "Post" + geolocalizzazione idee + importazione massiva CSV programmata
+- Menu ristrutturato: "Tutte le idee" e "Aggiungi idea" dopo la Dashboard; "Impostazioni AI Content" (ex AI Content Agent) prima di Impostazioni; tab "Idee contenuto" eliminata.
+- Campo Località nell'idea con autocomplete sull'indice geografico: boost geo-first nella ricerca dei link affiliati e blocco geo_context nel payload OpenAI per bozze geograficamente coerenti.
+- Importazione massiva idee da CSV (con CSV di esempio scaricabile) e programmazione: runner giornaliero in background che seleziona i link della località e genera le bozze automaticamente, con limite bozze/giorno configurabile e log nei job.
+- Versione plugin aggiornata a `2.56.0`.
+
 ## 2.55.0 - 2026-07-04
 
 ### AI Content Agent — Fase 1: riorganizzazione (menu + pagina Elenco Idee)

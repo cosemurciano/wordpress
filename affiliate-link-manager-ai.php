@@ -3,7 +3,7 @@
  * Plugin Name: Affiliate Link Manager AI
  * Plugin URI: https://your-website.com
  * Description: Gestisce link affiliati con intelligenza artificiale per ottimizzazione e tracking automatico.
- * Version: 2.55.0
+ * Version: 2.56.0
  * Author: Cosè Murciano
  * License: GPL v2 or later
  * Text Domain: affiliate-link-manager-ai
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Definisci costanti del plugin
-define('ALMA_VERSION', '2.55.0');
+define('ALMA_VERSION', '2.56.0');
 define('ALMA_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('ALMA_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('ALMA_PLUGIN_FILE', __FILE__);
@@ -54,6 +54,7 @@ require_once ALMA_PLUGIN_DIR . 'includes/class-ai-content-agent-draft-quality-ch
 require_once ALMA_PLUGIN_DIR . 'includes/class-ai-content-agent-draft-builder.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-ai-content-agent-result-usage.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-ai-content-agent-instructions-manager.php';
+require_once ALMA_PLUGIN_DIR . 'includes/class-ai-content-agent-idea-importer.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-affiliate-source-url-validator.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-affiliate-source-provider-interface.php';
 require_once ALMA_PLUGIN_DIR . 'includes/providers/class-affiliate-source-provider-manual.php';
@@ -155,6 +156,7 @@ class AffiliateManagerAI {
         $this->trip_finder = new ALMA_Trip_Finder();
         $this->trip_finder->init();
         ALMA_Dashboard_Insights::init();
+        ALMA_AI_Content_Agent_Idea_Importer::init();
         add_action('init', array($this, 'init'));
         add_action('widgets_init', array('ALMA_Contextual_Affiliate_Widget', 'register_widget'));
         // Registrato qui (prima che `widgets_init` scatti) perché ALMA_Shortcodes::init()
@@ -1117,14 +1119,34 @@ class AffiliateManagerAI {
             array('ALMA_AI_Content_Agent_Admin', 'render_page')
         );
 
-        // Elenco Idee (pagina dedicata, fuori dal workspace)
+        // Tutte le idee (elenco, modello "Post")
         add_submenu_page(
             self::AFFILIATE_LINK_PARENT_MENU,
-            __('Elenco Idee', 'affiliate-link-manager-ai'),
-            __('Elenco Idee', 'affiliate-link-manager-ai'),
+            __('Tutte le idee', 'affiliate-link-manager-ai'),
+            __('Tutte le idee', 'affiliate-link-manager-ai'),
             self::AI_CONTENT_AGENT_CAPABILITY,
             ALMA_AI_Content_Agent_Admin::IDEAS_LIST_MENU_SLUG,
             array('ALMA_AI_Content_Agent_Admin', 'render_ideas_list_page')
+        );
+
+        // Aggiungi idea (workspace)
+        add_submenu_page(
+            self::AFFILIATE_LINK_PARENT_MENU,
+            __('Aggiungi idea', 'affiliate-link-manager-ai'),
+            __('Aggiungi idea', 'affiliate-link-manager-ai'),
+            self::AI_CONTENT_AGENT_CAPABILITY,
+            ALMA_AI_Content_Agent_Admin::ADD_IDEA_MENU_SLUG,
+            array('ALMA_AI_Content_Agent_Admin', 'render_add_idea_page')
+        );
+
+        // Importazione massiva idee (pagina dedicata, raggiunta da Tutte le idee)
+        add_submenu_page(
+            null,
+            __('Importazione massiva idee', 'affiliate-link-manager-ai'),
+            __('Importazione massiva idee', 'affiliate-link-manager-ai'),
+            self::AI_CONTENT_AGENT_CAPABILITY,
+            ALMA_AI_Content_Agent_Idea_Importer::PAGE_SLUG,
+            array('ALMA_AI_Content_Agent_Idea_Importer', 'render_page')
         );
 
         // Pagina nascosta per modifica widget
@@ -1162,9 +1184,9 @@ class AffiliateManagerAI {
         $items = $submenu[$parent];
         $order = array(
             'affiliate-link-manager-dashboard',
-            // AI Content Agent subito dopo la Dashboard, con la pagina Elenco Idee.
-            self::AI_CONTENT_AGENT_MENU_SLUG,
+            // Idee sul modello "Post": elenco + aggiungi, subito dopo la Dashboard.
             ALMA_AI_Content_Agent_Admin::IDEAS_LIST_MENU_SLUG,
+            ALMA_AI_Content_Agent_Admin::ADD_IDEA_MENU_SLUG,
             'edit.php?post_type=affiliate_link',
             'post-new.php?post_type=affiliate_link',
             'edit-tags.php?taxonomy=link_type&post_type=affiliate_link',
@@ -1175,6 +1197,8 @@ class AffiliateManagerAI {
             ALMA_Geo_Map::MENU_SLUG,
             ALMA_Trip_Finder::MENU_SLUG,
             'alma-affiliate-sources',
+            // Impostazioni AI Content prima delle Impostazioni generali.
+            self::AI_CONTENT_AGENT_MENU_SLUG,
             'affiliate-link-manager-settings',
             'alma-css-editor',
         );
@@ -1215,7 +1239,13 @@ class AffiliateManagerAI {
                             $item[0] = __('Trova Viaggio', 'affiliate-link-manager-ai');
                             break;
                         case ALMA_AI_Content_Agent_Admin::IDEAS_LIST_MENU_SLUG:
-                            $item[0] = __('Elenco Idee', 'affiliate-link-manager-ai');
+                            $item[0] = __('Tutte le idee', 'affiliate-link-manager-ai');
+                            break;
+                        case ALMA_AI_Content_Agent_Admin::ADD_IDEA_MENU_SLUG:
+                            $item[0] = __('Aggiungi idea', 'affiliate-link-manager-ai');
+                            break;
+                        case self::AI_CONTENT_AGENT_MENU_SLUG:
+                            $item[0] = __('Impostazioni AI Content', 'affiliate-link-manager-ai');
                             break;
                         case 'alma-affiliate-sources':
                             $item[0] = __('Affiliate Sources', 'affiliate-link-manager-ai');
@@ -4363,6 +4393,7 @@ class AffiliateManagerAI {
         wp_clear_scheduled_hook('alma_daily_optimization');
         ALMA_Geo_Geocoding_Queue::unschedule();
         ALMA_Dashboard_Insights::unschedule();
+        ALMA_AI_Content_Agent_Idea_Importer::unschedule();
         $this->clear_deprecated_trend_cron_events();
         flush_rewrite_rules();
     }
