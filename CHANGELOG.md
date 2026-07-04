@@ -1,3 +1,15 @@
+## 2.54.0 - 2026-07-04
+
+### Dashboard strategica — snapshot in background, trend, gap geografici, consigli AI
+- **Nessuna query pesante al rendering**: tutte le elaborazioni (trend, top, gap geografici) girano **una volta al giorno via WP-Cron** (~03:30, con lock anti-concorrenza) e il risultato è salvato in uno snapshot; la Dashboard legge solo lo snapshot. Pulsante "Aggiorna ora" per ricostruirlo su richiesta; data/durata dell'ultima elaborazione sempre visibili.
+- **Andamento click con grafici** (Chart.js): per giorno (30 giorni, barre), per settimana (26) e per mese (12, linea), con selettore del periodo. KPI 7/30/180 giorni con **confronto sul periodo precedente** (variazione % verde/rossa).
+- **Top Link migliorato**: classifica per click negli **ultimi 30 giorni** (non più solo lo storico cumulato) con tipologia link e click storici a confronto.
+- **Nuovo Top Articoli**: gli articoli che generano più click sui link affiliati che contengono. Il tracking ora registra il **post di provenienza** del click (nuova colonna `post_id` in `alma_analytics`, migrazione automatica; il frontend invia l'URL della pagina corrente — il solo referrer indicava la pagina precedente). I click storici restano validi ma senza attribuzione articolo.
+- **Copertura geografica strategica**: località più cliccate (90 giorni); località **con link affiliati ma senza click** (offerta che non produce, con conteggio link e articoli); località **con articoli ma senza link affiliati** (contenuto non monetizzato). KPI "link senza click negli ultimi 90 giorni".
+- **Consigli strategici AI su richiesta**: il riepilogo aggregato dello snapshot (nessun dato personale: IP e user agent non lasciano il sito) viene inviato al modello OpenAI configurato che restituisce 5 raccomandazioni prioritizzate con motivazione sui numeri; risultato salvato con data, modello e costo stimato. Mai chiamate automatiche.
+- Retrocompatibilità: gli endpoint AJAX esistenti della dashboard restano invariati; il cron viene rimosso alla disattivazione del plugin.
+- Versione plugin aggiornata a `2.54.0`.
+
 ## 2.53.0 - 2026-07-03
 
 ### Trova il tuo viaggio (ricerca a faccette) e integrazione con il tema (BeTheme)

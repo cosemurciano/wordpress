@@ -130,6 +130,16 @@ class ALMA_Assets {
                     '4.4.0',
                     true
                 );
+                if (file_exists(ALMA_PLUGIN_DIR . 'assets/dashboard-insights.js') && class_exists('ALMA_Dashboard_Insights')) {
+                    wp_enqueue_script(
+                        'alma-dashboard-insights',
+                        ALMA_PLUGIN_URL . 'assets/dashboard-insights.js',
+                        array('chart.js'),
+                        ALMA_VERSION,
+                        true
+                    );
+                    wp_localize_script('alma-dashboard-insights', 'almaInsights', ALMA_Dashboard_Insights::get_chart_payload());
+                }
             }
         }
 

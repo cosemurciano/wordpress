@@ -105,6 +105,9 @@
             nonce: alma_tracking.nonce,
             link_id: linkId,
             referrer: document.referrer || window.location.href,
+            // Pagina corrente: permette di attribuire il click all'articolo
+            // di provenienza (il referrer indica solo la pagina precedente).
+            page_url: window.location.href,
             click_type: clickType,
             source: source,
             timestamp: Date.now()

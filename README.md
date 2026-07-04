@@ -1,3 +1,13 @@
+## 2.54.0 - 2026-07-04
+
+### Dashboard strategica — snapshot in background, trend, gap geografici, consigli AI
+- Le query pesanti girano una volta al giorno via WP-Cron (snapshot con lock); la Dashboard legge solo lo snapshot — zero impatto sul rendering. Pulsante "Aggiorna ora".
+- Grafici andamento click per giorno (30gg), settimana (26) e mese (12); KPI 7/30/180 giorni con variazione % sul periodo precedente.
+- Top Link sugli ultimi 30 giorni (con tipologia e storico) e nuovo Top Articoli per click affiliati: il tracking registra ora il post di provenienza del click (colonna `post_id`, migrazione automatica).
+- Copertura geografica: località più cliccate, località con link ma senza click (90gg), località con articoli ma senza link affiliati.
+- Consigli strategici AI su richiesta dal riepilogo aggregato dello snapshot (5 raccomandazioni prioritizzate, costo stimato visibile, mai in automatico).
+- Versione plugin aggiornata a `2.54.0`.
+
 ## 2.53.0 - 2026-07-03
 
 ### Trova il tuo viaggio (ricerca a faccette) e integrazione con il tema (BeTheme)
