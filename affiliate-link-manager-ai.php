@@ -3,7 +3,7 @@
  * Plugin Name: Affiliate Link Manager AI
  * Plugin URI: https://your-website.com
  * Description: Gestisce link affiliati con intelligenza artificiale per ottimizzazione e tracking automatico.
- * Version: 2.54.0
+ * Version: 2.55.0
  * Author: Cosè Murciano
  * License: GPL v2 or later
  * Text Domain: affiliate-link-manager-ai
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Definisci costanti del plugin
-define('ALMA_VERSION', '2.54.0');
+define('ALMA_VERSION', '2.55.0');
 define('ALMA_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('ALMA_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('ALMA_PLUGIN_FILE', __FILE__);
@@ -1117,6 +1117,16 @@ class AffiliateManagerAI {
             array('ALMA_AI_Content_Agent_Admin', 'render_page')
         );
 
+        // Elenco Idee (pagina dedicata, fuori dal workspace)
+        add_submenu_page(
+            self::AFFILIATE_LINK_PARENT_MENU,
+            __('Elenco Idee', 'affiliate-link-manager-ai'),
+            __('Elenco Idee', 'affiliate-link-manager-ai'),
+            self::AI_CONTENT_AGENT_CAPABILITY,
+            ALMA_AI_Content_Agent_Admin::IDEAS_LIST_MENU_SLUG,
+            array('ALMA_AI_Content_Agent_Admin', 'render_ideas_list_page')
+        );
+
         // Pagina nascosta per modifica widget
         add_submenu_page(
             null,
@@ -1152,6 +1162,9 @@ class AffiliateManagerAI {
         $items = $submenu[$parent];
         $order = array(
             'affiliate-link-manager-dashboard',
+            // AI Content Agent subito dopo la Dashboard, con la pagina Elenco Idee.
+            self::AI_CONTENT_AGENT_MENU_SLUG,
+            ALMA_AI_Content_Agent_Admin::IDEAS_LIST_MENU_SLUG,
             'edit.php?post_type=affiliate_link',
             'post-new.php?post_type=affiliate_link',
             'edit-tags.php?taxonomy=link_type&post_type=affiliate_link',
@@ -1162,7 +1175,6 @@ class AffiliateManagerAI {
             ALMA_Geo_Map::MENU_SLUG,
             ALMA_Trip_Finder::MENU_SLUG,
             'alma-affiliate-sources',
-            self::AI_CONTENT_AGENT_MENU_SLUG,
             'affiliate-link-manager-settings',
             'alma-css-editor',
         );
@@ -1201,6 +1213,9 @@ class AffiliateManagerAI {
                             break;
                         case ALMA_Trip_Finder::MENU_SLUG:
                             $item[0] = __('Trova Viaggio', 'affiliate-link-manager-ai');
+                            break;
+                        case ALMA_AI_Content_Agent_Admin::IDEAS_LIST_MENU_SLUG:
+                            $item[0] = __('Elenco Idee', 'affiliate-link-manager-ai');
                             break;
                         case 'alma-affiliate-sources':
                             $item[0] = __('Affiliate Sources', 'affiliate-link-manager-ai');

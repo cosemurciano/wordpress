@@ -1,3 +1,13 @@
+## 2.55.0 - 2026-07-04
+
+### AI Content Agent — Fase 1: riorganizzazione (menu + pagina Elenco Idee)
+- **AI Content Agent spostato subito dopo la Dashboard** nel menu del plugin, seguito dalla nuova voce "Elenco Idee".
+- **Nuova pagina dedicata "Elenco Idee"**: tutte le idee contenuto in tabella con ricerca per titolo, filtri per stato (non eseguite / eseguite / con bozza) e autore (tutte / solo le mie), profilo istruzioni, numero contenuti selezionati, stato bozza collegata, paginazione. Azioni per riga: **Apri nel workspace** (carica l'idea e porta al tab Idee contenuto), **Genera bozza** (per idee con contenuti selezionati e senza bozza), **Elimina** (con conferma).
+- **Tab "Idee contenuto" alleggerito**: ora è solo il workspace dell'idea attiva (ricerca contenuti, sessione, creazione bozza); l'elenco laterale con paginazione è stato sostituito da un link alla pagina Elenco Idee. Se non c'è un'idea attiva viene caricata automaticamente la più recente.
+- Nessun cambiamento al modello dati (CPT `alma_content_idea` invariato): retrocompatibilità completa.
+- Prima fase del piano di evoluzione dell'agente (seguiranno: geolocalizzazione idee, import CSV programmato, regole inserimento affiliati, bot Telegram, arricchimento in background).
+- Versione plugin aggiornata a `2.55.0`.
+
 ## 2.54.0 - 2026-07-04
 
 ### Dashboard strategica — snapshot in background, trend, gap geografici, consigli AI
