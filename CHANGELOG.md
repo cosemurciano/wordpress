@@ -1,3 +1,9 @@
+## 2.65.3 - 2026-07-05
+
+### Search Console: ricostruzione marker PEM mancanti
+- La normalizzazione della chiave privata ripara anche il caso in cui i marker `-----BEGIN/END PRIVATE KEY-----` siano stati rimossi per errore durante l'inserimento in wp-config (errore OpenSSL "DECODER routines::unsupported"): se il valore è il solo corpo base64, il PEM PKCS#8 viene ricostruito. Verificato con chiave RSA reale (4/4 formati firmano).
+- Versione plugin aggiornata a `2.65.3`.
+
 ## 2.65.2 - 2026-07-05
 
 ### Fix "Firma JWT fallita" con la costante JSON di Search Console
