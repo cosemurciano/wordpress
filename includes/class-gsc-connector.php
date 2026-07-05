@@ -42,9 +42,27 @@ class ALMA_GSC_Connector {
      * Credenziali e configurazione
      * ------------------------------------------------------------------ */
 
+    /**
+     * Percorso del file credenziali: se non è assoluto viene risolto rispetto
+     * ad ABSPATH — sugli hosting condivisi (es. Aruba) il percorso assoluto
+     * reale non è visibile da FTP/File Manager, quindi si può indicare
+     * semplicemente 'nome-cartella/file.json' relativo alla webroot.
+     */
+    public static function resolve_credentials_path($path) {
+        $path = trim((string) $path);
+        if ($path === '') { return ''; }
+        if (!preg_match('#^(/|[A-Za-z]:[/\\\\])#', $path)) {
+            $path = trailingslashit(ABSPATH) . ltrim($path, '/');
+        }
+        return $path;
+    }
+
     public static function credentials_json() {
-        if (defined('ALMA_GSC_SERVICE_ACCOUNT_FILE') && is_readable(ALMA_GSC_SERVICE_ACCOUNT_FILE)) {
-            return (string) file_get_contents(ALMA_GSC_SERVICE_ACCOUNT_FILE);
+        if (defined('ALMA_GSC_SERVICE_ACCOUNT_FILE')) {
+            $path = self::resolve_credentials_path(ALMA_GSC_SERVICE_ACCOUNT_FILE);
+            if ($path !== '' && is_readable($path)) {
+                return (string) file_get_contents($path);
+            }
         }
         if (defined('ALMA_GSC_SERVICE_ACCOUNT_JSON')) {
             return (string) ALMA_GSC_SERVICE_ACCOUNT_JSON;
@@ -60,12 +78,12 @@ class ALMA_GSC_Connector {
      */
     public static function credentials_status() {
         if (defined('ALMA_GSC_SERVICE_ACCOUNT_FILE')) {
-            $path = (string) ALMA_GSC_SERVICE_ACCOUNT_FILE;
+            $path = self::resolve_credentials_path(ALMA_GSC_SERVICE_ACCOUNT_FILE);
             if (!file_exists($path)) {
-                return array('state' => 'error', 'message' => sprintf(__('Costante definita ma il file NON esiste per PHP: %s — controlla il percorso assoluto (e eventuali restrizioni open_basedir).', 'affiliate-link-manager-ai'), $path));
+                return array('state' => 'error', 'message' => sprintf(__('Costante definita ma il file NON esiste per PHP: %1$s — puoi anche usare un percorso RELATIVO alla cartella di WordPress (che su questo server è: %2$s), es. "searchconsole-privata/chiave.json".', 'affiliate-link-manager-ai'), $path, ABSPATH));
             }
             if (!is_readable($path)) {
-                return array('state' => 'error', 'message' => sprintf(__('File presente ma NON leggibile dall\'utente del web server: %s — sistem i permessi (es. chmod 640 con owner corretto).', 'affiliate-link-manager-ai'), $path));
+                return array('state' => 'error', 'message' => sprintf(__('File presente ma NON leggibile dall\'utente del web server: %s — sistema i permessi (es. chmod 640 con owner corretto).', 'affiliate-link-manager-ai'), $path));
             }
             return self::validate_credentials_json((string) file_get_contents($path), sprintf(__('file %s', 'affiliate-link-manager-ai'), $path));
         }
@@ -133,6 +151,26 @@ class ALMA_GSC_Connector {
         return $key;
     }
 
+    /**
+     * Quando OpenSSL rifiuta la chiave, spiega PERCHÉ con fatti concreti
+     * (marker mancanti, caratteri non base64, chiave troncata) così l'utente
+     * capisce se il file/valore è stato modificato e va riscaricato.
+     */
+    public static function private_key_diagnostics($pem) {
+        if (!preg_match('/-----BEGIN [A-Z ]+-----(.*?)-----END [A-Z ]+-----/s', $pem, $m)) {
+            return __('Diagnosi: il PEM non contiene i marker BEGIN/END PRIVATE KEY.', 'affiliate-link-manager-ai');
+        }
+        $body = preg_replace('/\s+/', '', $m[1]);
+        $der = base64_decode($body, true);
+        if ($der === false) {
+            return sprintf(__('Diagnosi: il corpo della chiave contiene caratteri NON base64 (lunghezza %d): il valore è stato alterato. Scarica una NUOVA chiave JSON da Google Cloud e carica il file via FTP senza aprirlo/modificarlo.', 'affiliate-link-manager-ai'), strlen($body));
+        }
+        if (strlen($der) < 1000) {
+            return sprintf(__('Diagnosi: la chiave decodificata è di soli %d byte (attesi ~1200+): il valore è troncato/incompleto. Scarica una NUOVA chiave JSON da Google Cloud e carica il file via FTP senza aprirlo/modificarlo.', 'affiliate-link-manager-ai'), strlen($der));
+        }
+        return sprintf(__('Diagnosi: corpo base64 formalmente valido (%d byte) ma non è una chiave PKCS#8 leggibile: il contenuto non corrisponde a una chiave reale. Scarica una NUOVA chiave JSON da Google Cloud e carica il file via FTP senza aprirlo/modificarlo.', 'affiliate-link-manager-ai'), strlen($der));
+    }
+
     private static function get_access_token() {
         $cached = get_transient(self::TOKEN_TRANSIENT);
         if (is_string($cached) && $cached !== '') { return $cached; }
@@ -161,7 +199,7 @@ class ALMA_GSC_Connector {
         if (!openssl_sign($header . '.' . $claims, $signature, $private_key, 'sha256WithRSAEncryption')) {
             $openssl_detail = '';
             while (($openssl_error = openssl_error_string()) !== false) { $openssl_detail = $openssl_error; }
-            return new WP_Error('alma_gsc_sign', __('Firma JWT fallita: chiave privata non valida.', 'affiliate-link-manager-ai') . ($openssl_detail !== '' ? ' [' . sanitize_text_field($openssl_detail) . ']' : '') . ' ' . __('Suggerimento: usa la costante ALMA_GSC_SERVICE_ACCOUNT_FILE con il file JSON originale non modificato.', 'affiliate-link-manager-ai'));
+            return new WP_Error('alma_gsc_sign', __('Firma JWT fallita: chiave privata non valida.', 'affiliate-link-manager-ai') . ($openssl_detail !== '' ? ' [' . sanitize_text_field($openssl_detail) . ']' : '') . ' ' . self::private_key_diagnostics($private_key));
         }
         $jwt = $header . '.' . $claims . '.' . self::base64url($signature);
 
@@ -373,6 +411,7 @@ class ALMA_GSC_Connector {
         echo '<li>In <a href="https://search.google.com/search-console" target="_blank" rel="noopener">Search Console</a> → Impostazioni → Utenti e autorizzazioni, aggiungi l\'email del service account (es. <code>nome@progetto.iam.gserviceaccount.com</code>) come utente della proprietà.</li>';
         echo '<li>In <code>wp-config.php</code> definisci UNA delle due costanti:<br><code>define( \'ALMA_GSC_SERVICE_ACCOUNT_FILE\', \'/percorso/fuori-webroot/service-account.json\' );</code> (consigliata)<br>oppure <code>define( \'ALMA_GSC_SERVICE_ACCOUNT_JSON\', \'{"type":"service_account",...}\' );</code></li>';
         echo '<li>Indica la proprietà qui sotto, salva, poi <strong>Verifica connessione</strong> e <strong>Aggiorna dati ora</strong>.</li></ol>';
+        echo '<p><strong>Hosting condiviso (es. Aruba):</strong> se non conosci il percorso assoluto del server, usa un percorso <em>relativo</em> alla cartella di WordPress, es. <code>define( \'ALMA_GSC_SERVICE_ACCOUNT_FILE\', \'searchconsole-privata/service-account.json\' );</code>. La cartella di WordPress su questo server è: <code>' . esc_html(ABSPATH) . '</code>. Se il file JSON sta dentro la webroot, proteggi la cartella con un file <code>.htaccess</code> contenente:<br><code>Require all denied</code><br><code>Deny from all</code><br>e verifica che l\'URL del file JSON risponda con errore 403 nel browser.</p>';
         echo '<p><strong>Cosa ci fa l\'agente:</strong> legge le query reali con cui gli utenti trovano il sito (top, in crescita, e soprattutto le <em>opportunità</em>: query con molte impression ma posizione debole) e le usa per proporre idee di contenuto con domanda già dimostrata.</p></div>';
 
         $badge_class = $credentials_status['state'] === 'success' ? 'is-success' : 'is-warning';

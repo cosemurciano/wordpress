@@ -1,3 +1,10 @@
+## 2.65.4 - 2026-07-05
+
+### Search Console: percorso relativo per hosting condivisi + diagnosi chiave privata
+- `ALMA_GSC_SERVICE_ACCOUNT_FILE` accetta percorsi relativi alla cartella di WordPress (utile su hosting condivisi come Aruba); diagnostica e guida mostrano ABSPATH e le istruzioni `.htaccess` per proteggere la cartella.
+- L'errore di firma JWT ora diagnostica la chiave (marker mancanti, caratteri non base64, chiave troncata) e indica come risolvere.
+- Versione plugin aggiornata a `2.65.4`.
+
 ## 2.65.3 - 2026-07-05
 
 ### Search Console: ricostruzione marker PEM mancanti
