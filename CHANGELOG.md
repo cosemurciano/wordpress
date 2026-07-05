@@ -1,3 +1,10 @@
+## 2.65.5 - 2026-07-05
+
+### Search Console: diagnosi dei 403 con elenco proprietà visibili al service account
+- Quando l'API risponde **HTTP 403** ("User does not have sufficient permission for site …"), il plugin ora interroga `sites.list` e mostra **le proprietà che il service account vede davvero** con il relativo livello di permesso: se l'elenco non contiene la proprietà configurata, il messaggio suggerisce di copiarne una esattamente (caso tipico: l'email è stata aggiunta a una proprietà di tipo **Dominio** → `sc-domain:sothra.it`, mentre nel plugin era configurato il prefisso URL `https://www.sothra.it/`, o viceversa). Se il service account non vede alcuna proprietà, il messaggio indica dove aggiungere l'email e ricorda la latenza di propagazione.
+- Nuovo metodo pubblico `ALMA_GSC_Connector::list_sites()` (Webmasters API `sites.list`), riutilizzabile per future diagnostiche.
+- Versione plugin aggiornata a `2.65.5`.
+
 ## 2.65.4 - 2026-07-05
 
 ### Search Console: percorso relativo per hosting condivisi + diagnosi chiave privata

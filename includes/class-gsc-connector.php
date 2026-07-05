@@ -253,7 +253,7 @@ class ALMA_GSC_Connector {
         if ($code < 200 || $code >= 300) {
             $detail = is_array($data) ? sanitize_text_field((string)($data['error']['message'] ?? '')) : '';
             if ($code === 403) {
-                $detail .= ' ' . __('Verifica che l\'email del service account sia stata aggiunta come utente della proprietà in Search Console.', 'affiliate-link-manager-ai');
+                $detail .= ' ' . self::permission_hint($property, $token);
             }
             return new WP_Error('alma_gsc_api', sprintf(__('Errore Search Console (HTTP %d).', 'affiliate-link-manager-ai'), $code) . ' ' . $detail);
         }
@@ -268,6 +268,48 @@ class ALMA_GSC_Connector {
             );
         }
         return $rows;
+    }
+
+    /**
+     * Elenca le proprietà che il service account vede davvero (sites.list).
+     * Serve a diagnosticare i 403: spesso l'email è stata aggiunta a una
+     * proprietà di TIPO diverso (Dominio → sc-domain:… vs prefisso URL).
+     */
+    public static function list_sites($token = null) {
+        if ($token === null) {
+            $token = self::get_access_token();
+        }
+        if (is_wp_error($token)) { return $token; }
+        $response = wp_remote_get('https://searchconsole.googleapis.com/webmasters/v3/sites', array(
+            'timeout' => 20,
+            'headers' => array('Authorization' => 'Bearer ' . $token),
+        ));
+        if (is_wp_error($response)) { return $response; }
+        $data = json_decode(wp_remote_retrieve_body($response), true);
+        $sites = array();
+        foreach ((array) ($data['siteEntry'] ?? array()) as $entry) {
+            $sites[] = array(
+                'site_url' => sanitize_text_field((string) ($entry['siteUrl'] ?? '')),
+                'permission' => sanitize_text_field((string) ($entry['permissionLevel'] ?? '')),
+            );
+        }
+        return $sites;
+    }
+
+    /**
+     * Messaggio esplicativo per gli HTTP 403: confronta la proprietà
+     * configurata con quelle realmente visibili al service account.
+     */
+    private static function permission_hint($property, $token = null) {
+        $sites = self::list_sites($token);
+        if (is_wp_error($sites) || empty($sites)) {
+            return sprintf(__('Il service account NON vede alcuna proprietà: in Search Console apri la proprietà "%s" → Impostazioni → Utenti e autorizzazioni e aggiungi l\'email del service account (client_email del JSON); la propagazione può richiedere qualche minuto.', 'affiliate-link-manager-ai'), $property);
+        }
+        $labels = array();
+        foreach ($sites as $site) {
+            $labels[] = $site['site_url'] . ' (' . $site['permission'] . ')';
+        }
+        return sprintf(__('La proprietà configurata è "%1$s" ma il service account vede queste: %2$s — copia ESATTAMENTE una di queste nel campo Proprietà (es. "sc-domain:sothra.it" se è una proprietà di tipo Dominio).', 'affiliate-link-manager-ai'), $property, implode(', ', $labels));
     }
 
     /* ---------------------------------------------------------------------
