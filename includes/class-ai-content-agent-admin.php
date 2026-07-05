@@ -280,6 +280,9 @@ class ALMA_AI_Content_Agent_Admin {
             $wpdb->delete(ALMA_AI_Content_Agent_Store::table('content_chunks'), array('knowledge_item_id'=>$id));
             $ok = $wpdb->delete(ALMA_AI_Content_Agent_Store::table('knowledge_items'), array('id'=>$id,'source_type'=>'document_txt'));
             $result = array('success'=>(bool)$ok,'message'=>$ok?'Documento TXT eliminato dal Knowledge Base.':'Errore eliminazione documento TXT.');
+        } elseif ($do === 'save_insertion_rules') {
+            ALMA_AI_Insertion_Rules::save_from_request($_POST);
+            $result = array('success' => true, 'message' => 'Regole inserimento salvate.');
         } elseif ($do === 'save_source') {
             $result = ALMA_AI_Content_Agent_Source_Manager::save_source($_POST);
         } elseif ($do === 'toggle_source') {
@@ -364,6 +367,47 @@ class ALMA_AI_Content_Agent_Admin {
      * workspace dell'idea attiva.
      */
     const IDEAS_LIST_MENU_SLUG = 'alma-ai-content-ideas';
+
+    /**
+     * Tab "Regole inserimento" (Fase 4): come l'AI inserisce gli shortcode
+     * affiliati nelle bozze — pattern abilitati, densità, posizioni, widget.
+     */
+    private static function render_insertion_rules_tab() {
+        $rules = ALMA_AI_Insertion_Rules::get_rules();
+        echo '<h2>Regole inserimento affiliati</h2>';
+        echo '<p class="description">Definiscono COME le bozze AI inseriscono gli shortcode: il vocabolario dei pattern viene inviato al modello e le regole di densità/posizione vengono comunque applicate dal sistema dopo la generazione (QA deterministico).</p>';
+        echo '<form method="post" action="'.esc_url(admin_url('admin-post.php')).'">';
+        wp_nonce_field('alma_ai_agent_action');
+        echo '<input type="hidden" name="action" value="alma_ai_agent_action"><input type="hidden" name="do" value="save_insertion_rules">';
+        echo '<table class="form-table" role="presentation">';
+
+        echo '<tr><th scope="row">Pattern abilitati</th><td>';
+        foreach (ALMA_AI_Insertion_Rules::all_patterns() as $key => $label) {
+            echo '<label style="display:block;margin-bottom:4px;"><input type="checkbox" name="alma_ai_insert_patterns[]" value="'.esc_attr($key).'" '.checked(in_array($key, $rules['patterns'], true), true, false).'> '.esc_html($label).'</label>';
+        }
+        echo '<p class="description">Anchor: link testuale nella frase. Bottone: CTA a fine sezione. Card: box con immagine e descrizione. Widget: raccolta finale "Esperienze consigliate" con titoli/descrizioni riscritti dall\'AI (creato automaticamente e visibile in Elenco Widget Link).</p></td></tr>';
+
+        echo '<tr><th scope="row"><label for="'.esc_attr(ALMA_AI_Insertion_Rules::OPTION_DENSITY).'">Densità massima</label></th><td>';
+        echo '1 inserimento ogni <input type="number" min="100" max="2000" step="50" class="small-text" name="'.esc_attr(ALMA_AI_Insertion_Rules::OPTION_DENSITY).'" id="'.esc_attr(ALMA_AI_Insertion_Rules::OPTION_DENSITY).'" value="'.esc_attr((string)$rules['density_words']).'"> parole';
+        echo '<p class="description">Gli inserimenti oltre soglia vengono degradati: le anchor tornano testo semplice, gli altri pattern vengono rimossi.</p></td></tr>';
+
+        echo '<tr><th scope="row"><label for="'.esc_attr(ALMA_AI_Insertion_Rules::OPTION_MIN_PARAGRAPHS).'">Paragrafi iniziali protetti</label></th><td>';
+        echo '<input type="number" min="0" max="10" class="small-text" name="'.esc_attr(ALMA_AI_Insertion_Rules::OPTION_MIN_PARAGRAPHS).'" id="'.esc_attr(ALMA_AI_Insertion_Rules::OPTION_MIN_PARAGRAPHS).'" value="'.esc_attr((string)$rules['min_paragraphs_before']).'">';
+        echo '<p class="description">Nessun inserimento nei primi N paragrafi: l\'introduzione crea fiducia, non vende.</p></td></tr>';
+
+        echo '<tr><th scope="row"><label for="'.esc_attr(ALMA_AI_Insertion_Rules::OPTION_WIDGET_MAX_LINKS).'">Link massimi nel widget</label></th><td>';
+        echo '<input type="number" min="2" max="8" class="small-text" name="'.esc_attr(ALMA_AI_Insertion_Rules::OPTION_WIDGET_MAX_LINKS).'" id="'.esc_attr(ALMA_AI_Insertion_Rules::OPTION_WIDGET_MAX_LINKS).'" value="'.esc_attr((string)$rules['widget_max_links']).'">';
+        echo '<p class="description">Il widget di raccolta finale contiene da 2 a N link; massimo un widget per articolo (applicato dal QA).</p></td></tr>';
+
+        echo '<tr><th scope="row"><label for="'.esc_attr(ALMA_AI_Insertion_Rules::OPTION_BUTTON_TEXT).'">Testo bottone di default</label></th><td>';
+        echo '<input type="text" class="regular-text" name="'.esc_attr(ALMA_AI_Insertion_Rules::OPTION_BUTTON_TEXT).'" id="'.esc_attr(ALMA_AI_Insertion_Rules::OPTION_BUTTON_TEXT).'" value="'.esc_attr($rules['button_text']).'"></td></tr>';
+
+        echo '<tr><th scope="row"><label for="'.esc_attr(ALMA_AI_Insertion_Rules::OPTION_ANCHOR_RULES).'">Regole per le anchor</label></th><td>';
+        echo '<textarea class="large-text" rows="3" name="'.esc_attr(ALMA_AI_Insertion_Rules::OPTION_ANCHOR_RULES).'" id="'.esc_attr(ALMA_AI_Insertion_Rules::OPTION_ANCHOR_RULES).'">'.esc_textarea($rules['anchor_rules']).'</textarea>';
+        echo '<p class="description">Inviate al modello insieme al pattern anchor.</p></td></tr>';
+
+        echo '</table><p><button class="button button-primary">Salva regole</button></p></form>';
+    }
 
     public static function render_ideas_list_page() {
         if (!current_user_can('manage_options')) { return; }
@@ -482,7 +526,7 @@ class ALMA_AI_Content_Agent_Admin {
         if (!current_user_can('manage_options')) { return; }
         // La tab "Idee contenuto" non esiste più: il workspace vive nella
         // pagina "Aggiungi idea", l'elenco nella pagina "Tutte le idee".
-        $tabs = array('dashboard'=>'Dashboard','istruzioni-ai'=>'Istruzioni AI','documenti'=>'Documenti TXT','fonti'=>'Fonti online AI','reindex'=>'Reindicizza','log'=>'Stato/log');
+        $tabs = array('dashboard'=>'Dashboard','istruzioni-ai'=>'Istruzioni AI','inserimento'=>'Regole inserimento','documenti'=>'Documenti TXT','fonti'=>'Fonti online AI','reindex'=>'Reindicizza','log'=>'Stato/log');
         $legacy_map = array('overview'=>'dashboard','idee'=>'dashboard','reindirizza'=>'reindex','knowledge'=>'dashboard','media'=>'dashboard','bozze'=>'log','programmazione'=>'log',);
         $tab = sanitize_key($_GET['tab'] ?? 'dashboard');
         if (isset($legacy_map[$tab])) { $tab = $legacy_map[$tab]; }
@@ -490,6 +534,7 @@ class ALMA_AI_Content_Agent_Admin {
         echo '<div class="wrap alma-ai-agent-admin"><h1>Impostazioni AI Content</h1>'; self::render_notice();
         echo '<h2 class="nav-tab-wrapper">'; foreach ($tabs as $tk=>$tl) { echo '<a class="nav-tab '.($tk===$tab?'nav-tab-active':'').'" href="'.esc_url(admin_url('edit.php?post_type=affiliate_link&page=alma-ai-content-agent&tab='.$tk)).'">'.esc_html($tl).'</a>'; } echo '</h2>';
         if ($tab === 'istruzioni-ai') { self::render_instructions_tab(); }
+        elseif ($tab === 'inserimento') { self::render_insertion_rules_tab(); }
         elseif ($tab === 'documenti') { self::render_documents_tab(); }
         elseif ($tab === 'fonti') { self::render_sources_tab(); }
         elseif ($tab === 'reindex') { self::render_reindex_tab(); }

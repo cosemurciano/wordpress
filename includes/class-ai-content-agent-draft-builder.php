@@ -952,6 +952,11 @@ class ALMA_AI_Content_Agent_Draft_Builder {
             'Non usare link non presenti nel payload.',
         );
         if (!empty($profile_payload['instruction_profile_rules']['affiliate_rules'])) { $affiliate_rules[] = $profile_payload['instruction_profile_rules']['affiliate_rules']; }
+        // Fase 4: vocabolario dei pattern di inserimento e regole di densità
+        // dalla tab "Regole inserimento" (poi applicate anche dal QA).
+        if (class_exists('ALMA_AI_Insertion_Rules')) {
+            $affiliate_rules = array_merge($affiliate_rules, ALMA_AI_Insertion_Rules::payload_rules());
+        }
         $seo_rules = array(
             'Il titolo dell\'articolo deve ispirarsi a idea_context.idea_title (e al prompt); content_search_query è servita SOLO a selezionare i link affiliati, non usarla come argomento del pezzo.',
             'Produrre seo_title coerente con titolo idea e prompt.',
@@ -1018,6 +1023,7 @@ class ALMA_AI_Content_Agent_Draft_Builder {
             'seo_rules'=>$seo_rules,
             'media_rules'=>array_filter(array('Usa massimo '.$max_editorial_media_used.' immagini editoriali dalla Media Library nel corpo dell’articolo.','Usare immagini affiliate solo se pertinenti alla sezione.','Non inventare URL immagini.','Usare solo immagini presenti nei link affiliati selezionati.','Non duplicare troppe volte la stessa immagine.','Non scaricare immagini durante la generazione bozza.', $profile_payload['instruction_profile_rules']['image_rules'] ?? '')),
             'output_contract'=>array('title','slug','excerpt','content','seo_title','seo_description','featured_image_id','affiliate_shortcodes_used','affiliate_urls_used','internal_urls_used','media_used','category_ids','tag_ids','new_tags','warnings'),
+            'widget_request_contract'=>'Campo OPZIONALE widget_request nell\'output JSON: {"title":string,"link_ids":[int],"button_text":string,"rewritten":[{"id":int,"title":string,"description":string}]}. Compilalo SOLO se hai inserito il segnaposto [[ALMA_WIDGET]] nel content; il sistema creerà il widget reale e sostituirà il segnaposto.',
             'warnings'=>array_values(array_unique($warnings)),
             'agent_behavior'=>$agent_behavior,
         ), $profile_payload);
@@ -1218,8 +1224,21 @@ class ALMA_AI_Content_Agent_Draft_Builder {
         $taxonomy_clean = self::validate_taxonomies($parsed, (array)($payload['category_candidates'] ?? array()), (array)($payload['tag_candidates'] ?? array()));
         $clean['warnings'] = array_values(array_unique(array_merge((array)$clean['warnings'], (array)$taxonomy_clean['warnings'])));
         if ($clean['title'] === '' || trim(wp_strip_all_tags($clean['content'])) === '') { return self::fail('Titolo o contenuto non validi dopo QA.', $res['model'] ?? '', 'session:user:'.$user_id); }
+
+        // Fase 4: widget richiesto dall'AI (creazione istanza reale + shortcode)
+        // e enforcement deterministico delle regole di inserimento.
+        $ai_widget_id = 0;
+        if (class_exists('ALMA_AI_Insertion_Rules')) {
+            $widget_request = is_array($parsed['widget_request'] ?? null) ? $parsed['widget_request'] : array();
+            $widget_result = ALMA_AI_Insertion_Rules::apply_widget_request($clean['content'], $widget_request, $candidate_affiliate_ids);
+            $ai_widget_id = (int) $widget_result['widget_id'];
+            $enforced = ALMA_AI_Insertion_Rules::enforce($widget_result['content'], ALMA_AI_Insertion_Rules::get_rules());
+            $clean['content'] = $enforced['content'];
+            $clean['warnings'] = array_values(array_unique(array_merge((array)$clean['warnings'], (array)$widget_result['warnings'], (array)$enforced['warnings'])));
+        }
         $post_id = wp_insert_post(array('post_type'=>'post','post_status'=>'draft','post_author'=>$user_id,'post_title'=>$clean['title'],'post_name'=>$clean['slug'],'post_excerpt'=>$clean['excerpt'],'post_content'=>$clean['content']), true);
         if (is_wp_error($post_id) || !$post_id) { return self::fail('Errore creazione bozza.', $res['model'] ?? '', 'session:user:'.$user_id); }
+        if (!empty($ai_widget_id)) { update_post_meta($post_id, '_alma_ai_agent_widget_id', (int) $ai_widget_id); }
         $taxonomy_applied = self::apply_taxonomies_to_post($post_id, $taxonomy_clean);
         $taxonomy_warnings = array_values(array_unique(array_merge((array)$taxonomy_clean['warnings'], (array)$taxonomy_applied['warnings'])));
 

@@ -1,3 +1,11 @@
+## 2.60.0 - 2026-07-05
+
+### Fase 4 (PR 1) — Regole inserimento shortcode, widget creati dall'AI, bozze dirette dall'agente
+- Tab "Regole inserimento" in Impostazioni AI Content: pattern (anchor/bottone/card/widget), densità, paragrafi protetti, widget e anchor rules — inviate al modello e applicate comunque dal QA deterministico dopo la generazione (anchor in eccesso degradate a testo, max un widget).
+- L'AI può creare il widget di raccolta: segnaposto `[[ALMA_WIDGET]]` + `widget_request` con titoli/descrizioni riscritti → istanza reale in Elenco Widget Link e shortcode `[affiliate_links_widget id="X"]` nella bozza.
+- Agente di ideazione: opzione "Crea subito anche le bozze" (entro il limite giornaliero di bozze automatiche), con report delle bozze generate.
+- Versione plugin aggiornata a `2.60.0`.
+
 ## 2.59.0 - 2026-07-05
 
 ### Storage OpenAI e Media Library per l'agente + pulizia impostazioni
