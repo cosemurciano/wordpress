@@ -3,7 +3,7 @@
  * Plugin Name: Affiliate Link Manager AI
  * Plugin URI: https://your-website.com
  * Description: Gestisce link affiliati con intelligenza artificiale per ottimizzazione e tracking automatico.
- * Version: 2.65.5
+ * Version: 2.66.0
  * Author: Cosè Murciano
  * License: GPL v2 or later
  * Text Domain: affiliate-link-manager-ai
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Definisci costanti del plugin
-define('ALMA_VERSION', '2.65.5');
+define('ALMA_VERSION', '2.66.0');
 define('ALMA_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('ALMA_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('ALMA_PLUGIN_FILE', __FILE__);
@@ -4471,6 +4471,7 @@ class AffiliateManagerAI {
         ALMA_AI_Content_Agent_Idea_Importer::unschedule();
         ALMA_AI_Idea_Agent::unschedule();
         ALMA_AI_Post_Enricher::unschedule();
+        ALMA_GSC_Connector::unschedule();
         $this->clear_deprecated_trend_cron_events();
         flush_rewrite_rules();
     }

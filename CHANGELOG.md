@@ -1,3 +1,11 @@
+## 2.66.0 - 2026-07-05
+
+### Search Console: aggiornamento automatico ogni 5 giorni
+- **Nuovo cron WP** (`alma_gsc_cron_refresh`, intervallo dedicato di 5 giorni): lo snapshot Search Console si rigenera da solo ogni 5 giorni, senza dipendere dall'esecuzione dell'agente. Se le credenziali non sono configurate il job esce in silenzio; se l'API fallisce resta valido lo snapshot precedente. Il job viene rimosso alla disattivazione del plugin.
+- Il TTL dello snapshot letto dall'agente è allineato a 5 giorni (prima 1 giorno): meno chiamate all'API di Google, dati comunque freschi per l'ideazione (le query GSC hanno già ~2 giorni di ritardo alla fonte).
+- La tab Search Console mostra la data del prossimo aggiornamento automatico; «Aggiorna dati ora» resta disponibile per forzare il refresh.
+- Versione plugin aggiornata a `2.66.0`.
+
 ## 2.65.5 - 2026-07-05
 
 ### Search Console: diagnosi dei 403 con elenco proprietà visibili al service account

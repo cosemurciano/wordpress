@@ -1,3 +1,9 @@
+## 2.66.0 - 2026-07-05
+
+### Search Console: aggiornamento automatico ogni 5 giorni
+- Lo snapshot Search Console si rigenera da solo ogni 5 giorni via WP-Cron (job rimosso alla disattivazione); la tab mostra il prossimo aggiornamento e «Aggiorna dati ora» forza il refresh.
+- Versione plugin aggiornata a `2.66.0`.
+
 ## 2.65.5 - 2026-07-05
 
 ### Search Console: diagnosi dei 403 con elenco proprietà visibili
