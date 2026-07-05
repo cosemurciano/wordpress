@@ -1,3 +1,11 @@
+## 2.59.0 - 2026-07-05
+
+### Storage OpenAI e Media Library per l'agente + pulizia impostazioni
+- Campo Vector Store ID (Impostazioni → OpenAI API) con verifica accesso via API; l'agente di ideazione consulta lo storage OpenAI con file_search per usare i documenti dell'editore.
+- Nuovo strumento cerca_media: l'agente verifica le immagini editoriali già presenti nella Media Library (solo metadati) e lo segnala nelle idee.
+- Pulizia impostazioni: rimosso il tab "AI Settings" obsoleto; nel tab Reindicizza via il pannello segnaposto; in Stato/log contatori reali dei job al posto dei "Nessun dato".
+- Versione plugin aggiornata a `2.59.0`.
+
 ## 2.58.0 - 2026-07-05
 
 ### Agente AI di ideazione (tool calling OpenAI)
