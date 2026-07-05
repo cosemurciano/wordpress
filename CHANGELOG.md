@@ -1,3 +1,14 @@
+## 2.68.0 - 2026-07-05
+
+### Fase 7.2 (PR B): fatti Wikidata nelle schede località
+- **Seconda fonte sulle schede località: Wikidata** (senza API key). Per ogni località la scheda si arricchisce con la "carta d'identità": descrizione, popolazione, paese, altitudine, **patrimonio UNESCO**, link alla Wikipedia italiana e **attrazioni notevoli entro 10 km** (musei, chiese, castelli, siti archeologici, parchi…) ordinate per notorietà (numero di sitelink), il tutto distillato in una sintesi in italiano pronta per il prompt.
+- **Disambiguazione tra omonimi per prossimità**: l'entità viene cercata per nome (API `wbsearchentities`, lingua italiana) e scelta tra i candidati per distanza haversine dalle coordinate già geocodificate del gazetteer (max 100 km) — es. "Barcellona" siciliana vs spagnola. I dettagli arrivano con una singola query SPARQL per i candidati; le attrazioni con una query `wikibase:around` su tipologie fisse (niente ricorsioni lente).
+- **Warmer a due fonti**: il job notturno riempie prima il clima poi i fatti Wikidata (stesso lock, stesso budget di 60s, pausa di 1s tra le chiamate SPARQL come da policy WDQS), con report per fonte (elaborate/ok/errori/rimanenti) nella tab. Validità 6 mesi; errori ritentati dopo 7 giorni.
+- Lo strumento dell'agente `scheda_localita` ora restituisce anche la sezione `fatti` (con fetch on-demand se mancante, mai bloccante) e il prompt di sistema chiede di usare UNESCO e attrazioni per angoli accurati e non ancora coperti.
+- Tab "Schede località" aggiornata: stato separato per Clima (Open-Meteo) e Fatti (Wikidata).
+- Test standalone 18/18 (parsing WKT, haversine Roma-Milano, disambiguazione per prossimità nei due versi, candidati senza coordinate, payload con UNESCO/popolazione formattata, casi minimi).
+- Versione plugin aggiornata a `2.68.0`.
+
 ## 2.67.0 - 2026-07-05
 
 ### Fase 7.2 (PR A): schede località con clima Open-Meteo per l'agente AI

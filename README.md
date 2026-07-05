@@ -1,3 +1,10 @@
+## 2.68.0 - 2026-07-05
+
+### Fase 7.2 (PR B): fatti Wikidata nelle schede località
+- Le schede località si arricchiscono con la carta d'identità da Wikidata: descrizione, popolazione, patrimonio UNESCO, Wikipedia italiana e attrazioni notevoli entro 10 km, disambiguate per vicinanza alle coordinate del gazetteer.
+- Warmer notturno a due fonti con report separati; l'agente riceve i fatti nella scheda (`scheda_localita`) e li usa per angoli accurati.
+- Versione plugin aggiornata a `2.68.0`.
+
 ## 2.67.0 - 2026-07-05
 
 ### Fase 7.2 (PR A): schede località con clima Open-Meteo per l'agente AI
