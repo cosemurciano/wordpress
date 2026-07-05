@@ -1,3 +1,10 @@
+## 2.65.2 - 2026-07-05
+
+### Fix "Firma JWT fallita" con la costante JSON di Search Console
+- **Normalizzazione automatica della chiave privata**: incollando il JSON del service account in wp-config.php gli `\n` del PEM possono arrivare a PHP come backslash letterali (o con `\r`, o la chiave su una riga sola) e OpenSSL rifiutava la firma. Ora la chiave viene riparata automaticamente (backslash-n → a-capo, ricostruzione righe da 64 caratteri) — verificato con chiave RSA reale nei tre formati rotti tipici.
+- Il messaggio d'errore di firma include ora il dettaglio OpenSSL e suggerisce l'alternativa `ALMA_GSC_SERVICE_ACCOUNT_FILE` (file originale non modificato, sempre preferibile).
+- Versione plugin aggiornata a `2.65.2`.
+
 ## 2.65.1 - 2026-07-05
 
 ### Diagnostica granulare credenziali Search Console
