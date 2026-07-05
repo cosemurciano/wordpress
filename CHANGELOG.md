@@ -1,3 +1,11 @@
+## 2.65.4 - 2026-07-05
+
+### Search Console: percorso relativo per hosting condivisi + diagnosi chiave privata
+- **Percorso relativo alla cartella di WordPress**: la costante `ALMA_GSC_SERVICE_ACCOUNT_FILE` accetta ora anche un percorso relativo (es. `searchconsole-privata/chiave.json`), risolto automaticamente rispetto ad ABSPATH — indispensabile sugli hosting condivisi (es. Aruba) dove il percorso assoluto del server non è visibile da FTP/File Manager. I percorsi assoluti Unix e Windows restano invariati.
+- La diagnostica "file NON esiste" e la guida nella tab Search Console mostrano ora la cartella di WordPress del server (ABSPATH) e spiegano l'uso del percorso relativo, con le istruzioni `.htaccess` (`Require all denied` + `Deny from all`) per proteggere la cartella dentro la webroot e la verifica del 403 nel browser.
+- **Diagnosi della chiave privata**: quando la firma JWT fallisce, l'errore ora spiega il motivo concreto ispezionando il PEM — marker BEGIN/END mancanti, caratteri non base64 (valore alterato), chiave troncata (byte decodificati insufficienti) o corpo formalmente valido ma non PKCS#8 — indicando di scaricare una nuova chiave JSON e caricarla via FTP senza modificarla. Verificato con test standalone (8/8: firma con chiave RSA reale, 4 casi di diagnosi, 3 casi di risoluzione percorso).
+- Versione plugin aggiornata a `2.65.4`.
+
 ## 2.65.3 - 2026-07-05
 
 ### Search Console: ricostruzione marker PEM mancanti
