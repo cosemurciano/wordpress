@@ -1,3 +1,12 @@
+## 2.65.0 - 2026-07-05
+
+### Fase 7.1 — Google Search Console per l'agente AI + sospensione chip faccette
+- Connettore Search Console via service account (costanti wp-config, JWT firmato in PHP): snapshot con query top, query in crescita e opportunità (impression alte, posizione 8-30).
+- Tab "Search Console" con guida, verifica connessione, aggiornamento dati e anteprima snapshot.
+- Nuovo tool dell'agente analizza_ricerche_google: le idee nascono dalla domanda di ricerca reale.
+- Chip faccette negli articoli momentaneamente sospese (codice e opzione conservati).
+- Versione plugin aggiornata a `2.65.0`.
+
 ## 2.64.0 - 2026-07-05
 
 ### Fase 6 — Arricchimento automatico in background dei post pubblicati

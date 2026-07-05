@@ -3,7 +3,7 @@
  * Plugin Name: Affiliate Link Manager AI
  * Plugin URI: https://your-website.com
  * Description: Gestisce link affiliati con intelligenza artificiale per ottimizzazione e tracking automatico.
- * Version: 2.64.0
+ * Version: 2.65.0
  * Author: Cosè Murciano
  * License: GPL v2 or later
  * Text Domain: affiliate-link-manager-ai
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Definisci costanti del plugin
-define('ALMA_VERSION', '2.64.0');
+define('ALMA_VERSION', '2.65.0');
 define('ALMA_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('ALMA_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('ALMA_PLUGIN_FILE', __FILE__);
@@ -61,6 +61,7 @@ require_once ALMA_PLUGIN_DIR . 'includes/class-ai-post-optimizer.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-ai-seo-bridge.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-telegram-bot.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-ai-post-enricher.php';
+require_once ALMA_PLUGIN_DIR . 'includes/class-gsc-connector.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-affiliate-source-url-validator.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-affiliate-source-provider-interface.php';
 require_once ALMA_PLUGIN_DIR . 'includes/providers/class-affiliate-source-provider-manual.php';
@@ -167,6 +168,7 @@ class AffiliateManagerAI {
         ALMA_AI_Post_Optimizer::init();
         ALMA_Telegram_Bot::init();
         ALMA_AI_Post_Enricher::init();
+        ALMA_GSC_Connector::init();
         add_action('init', array($this, 'init'));
         add_action('widgets_init', array('ALMA_Contextual_Affiliate_Widget', 'register_widget'));
         // Registrato qui (prima che `widgets_init` scatti) perché ALMA_Shortcodes::init()

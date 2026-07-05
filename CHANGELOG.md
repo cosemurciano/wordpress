@@ -1,3 +1,13 @@
+## 2.65.0 - 2026-07-05
+
+### Fase 7.1 — Google Search Console per l'agente AI + sospensione chip faccette
+- **Nuovo connettore Search Console** (`ALMA_GSC_Connector`) con autenticazione **service account** (JWT RS256 firmato in PHP, nessuna libreria esterna; credenziali SOLO via costanti `ALMA_GSC_SERVICE_ACCOUNT_FILE` o `ALMA_GSC_SERVICE_ACCOUNT_JSON` in wp-config.php, mai nel database; token in cache 50 minuti).
+- **Tab "Search Console"** in Impostazioni AI Content: guida passo-passo (service account, API, utente della proprietà, costanti), campo proprietà (URL o `sc-domain:`), pulsanti **Verifica connessione** e **Aggiorna dati ora**, anteprima dell'ultimo snapshot.
+- **I dati realmente utili all'agente** (snapshot giornaliero in option, max 1 rigenerazione/giorno): `top_queries` (con quali ricerche gli utenti trovano il sito, 90gg), `rising_queries` (query in crescita, 28gg vs 28gg precedenti → trend), **`opportunities`** (query con impression ≥50 e posizione 8-30: domanda dimostrata senza contenuto adeguato — il segnale a più alto ritorno), `top_pages` (contesto/link interni).
+- **Nuovo tool dell'agente `analizza_ricerche_google`**: l'agente di ideazione legge lo snapshot e il prompt di sistema gli impone di partire dalle "opportunità" e citare le query target nel prompt delle idee create.
+- **Chip faccette negli articoli sospese**: le chip (es. "Perché: Viaggi di Nozze · Quando: Autunno") non vengono più stampate nei post; opzione e codice conservati per la riattivazione futura (impostazione marcata come sospesa).
+- Versione plugin aggiornata a `2.65.0`.
+
 ## 2.64.0 - 2026-07-05
 
 ### Fase 6 — Arricchimento automatico in background dei post pubblicati
