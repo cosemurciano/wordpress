@@ -125,6 +125,10 @@ class ALMA_GSC_Connector {
         if (strpos($key, "\n") === false && preg_match('/^(-----BEGIN [A-Z ]+-----)(.+)(-----END [A-Z ]+-----)$/s', $key, $m)) {
             // PEM finito su una riga sola: ricostruisce le righe da 64 caratteri.
             $key = $m[1] . "\n" . chunk_split(preg_replace('/\s+/', '', $m[2]), 64, "\n") . $m[3] . "\n";
+        } elseif (strpos($key, '-----BEGIN') === false && preg_match('/^[A-Za-z0-9+\/\s=]+$/', $key)) {
+            // Marker BEGIN/END rimossi per errore: la chiave Google è PKCS#8,
+            // ricostruisce il PEM attorno al corpo base64.
+            $key = "-----BEGIN PRIVATE KEY-----\n" . chunk_split(preg_replace('/\s+/', '', $key), 64, "\n") . "-----END PRIVATE KEY-----\n";
         }
         return $key;
     }

@@ -1,3 +1,9 @@
+## 2.65.3 - 2026-07-05
+
+### Search Console: ricostruzione marker PEM mancanti
+- La chiave privata viene riparata anche quando i marker BEGIN/END sono stati rimossi per errore (ricostruzione PEM dal corpo base64).
+- Versione plugin aggiornata a `2.65.3`.
+
 ## 2.65.2 - 2026-07-05
 
 ### Fix "Firma JWT fallita" con la costante JSON di Search Console
