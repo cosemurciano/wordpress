@@ -1,3 +1,9 @@
+## 2.65.5 - 2026-07-05
+
+### Search Console: diagnosi dei 403 con elenco proprietà visibili
+- Sugli errori HTTP 403 il plugin elenca le proprietà realmente visibili al service account (via `sites.list`), evidenziando il mismatch tipico tra proprietà Dominio (`sc-domain:…`) e prefisso URL.
+- Versione plugin aggiornata a `2.65.5`.
+
 ## 2.65.4 - 2026-07-05
 
 ### Search Console: percorso relativo per hosting condivisi + diagnosi chiave privata
