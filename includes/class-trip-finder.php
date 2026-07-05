@@ -487,6 +487,13 @@ class ALMA_Trip_Finder {
      * ------------------------------------------------------------------ */
 
     public function append_facet_chips($content) {
+        // Funzione momentaneamente SOSPESA su richiesta dell'editore: le chip
+        // (es. "Perché: Viaggi di Nozze · Quando: Autunno") non vengono più
+        // stampate negli articoli. L'opzione e il codice restano per la
+        // riattivazione futura.
+        return $content;
+
+        // @phpstan-ignore-next-line codice conservato per la riattivazione
         if (get_option(self::OPTION_CHIPS, '0') !== '1') {
             return $content;
         }
@@ -609,10 +616,10 @@ class ALMA_Trip_Finder {
                         <th scope="row"><?php esc_html_e('Chip faccette negli articoli', 'affiliate-link-manager-ai'); ?></th>
                         <td>
                             <label>
-                                <input type="checkbox" name="<?php echo esc_attr(self::OPTION_CHIPS); ?>" value="1" <?php checked(get_option(self::OPTION_CHIPS, '0'), '1'); ?> />
+                                <input type="checkbox" name="<?php echo esc_attr(self::OPTION_CHIPS); ?>" value="1" <?php checked(get_option(self::OPTION_CHIPS, '0'), '1'); ?> disabled />
                                 <?php esc_html_e('Mostra in cima a ogni articolo le sue faccette come chip cliccabili (es. Dove: Algeria · Quando: Primavera)', 'affiliate-link-manager-ai'); ?>
                             </label>
-                            <p class="description"><?php esc_html_e('Disattivo di default: nessun cambiamento agli articoli finché non lo abiliti.', 'affiliate-link-manager-ai'); ?></p>
+                            <p class="description"><strong><?php esc_html_e('Funzione momentaneamente sospesa', 'affiliate-link-manager-ai'); ?></strong> — <?php esc_html_e('le chip non vengono stampate negli articoli; l\'impostazione verrà riattivata in una versione futura.', 'affiliate-link-manager-ai'); ?></p>
                         </td>
                     </tr>
                     <tr>
