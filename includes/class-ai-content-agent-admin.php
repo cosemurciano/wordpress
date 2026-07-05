@@ -327,8 +327,9 @@ class ALMA_AI_Content_Agent_Admin {
             $counts = (array)($summary['source_counts'] ?? array());
             $affiliate_images = (array)($summary['affiliate_images'] ?? array());
             $taxonomies = (array)($summary['taxonomies'] ?? array());
-            echo '<div class="notice notice-success"><h3 style="margin-top:0;">Bozza articolo creata</h3>';
-            echo '<p><strong>Titolo:</strong> '.esc_html($r['title'] ?? '').'<br><strong>Stato:</strong> Bozza</p><p>';
+            $draft_status_label = (($summary['status'] ?? 'draft') === 'publish') ? 'Pubblicato (pubblicazione diretta attiva)' : 'Bozza';
+            echo '<div class="notice notice-success"><h3 style="margin-top:0;">'.(($summary['status'] ?? 'draft') === 'publish' ? 'Articolo creato e pubblicato' : 'Bozza articolo creata').'</h3>';
+            echo '<p><strong>Titolo:</strong> '.esc_html($r['title'] ?? '').'<br><strong>Stato:</strong> '.esc_html($draft_status_label).'</p><p>';
             if (!empty($r['edit_url'])) { echo '<a class="button button-primary" href="'.esc_url($r['edit_url']).'">Modifica articolo</a> '; }
             if (!empty($r['preview_url'])) { echo '<a class="button" href="'.esc_url($r['preview_url']).'" target="_blank" rel="noopener">Anteprima articolo</a>'; }
             echo '</p><ul>';

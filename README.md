@@ -1,3 +1,11 @@
+## 2.62.0 - 2026-07-05
+
+### Bozze AI complete: immagine in evidenza, meta SEO (All in One SEO), pubblicazione diretta opzionale
+- Fix: l'immagine in evidenza scelta dall'AI ora viene impostata davvero (con fallback alla prima candidata).
+- Meta title/description per ricerca e social scritti in All in One SEO (modello ufficiale o tabella), con copia nei meta del plugin.
+- Nuova impostazione "Pubblicazione diretta delle bozze AI" (default No) in Impostazioni → Generale.
+- Versione plugin aggiornata a `2.62.0`.
+
 ## 2.61.1 - 2026-07-05
 
 ### Fix "Contenuto troppo breve" nel metabox AI Affiliati

@@ -1,3 +1,11 @@
+## 2.62.0 - 2026-07-05
+
+### Bozze AI complete: immagine in evidenza, meta SEO via All in One SEO, pubblicazione diretta opzionale
+- **Fix immagine in evidenza**: il flusso salvava l'ID scelto dall'AI solo come meta ma **non impostava mai la thumbnail** — ora `set_post_thumbnail` viene chiamata sempre, con fallback alla prima immagine candidata della Media Library quando l'AI non sceglie (e warning esplicito se non ci sono candidate).
+- **Meta title e description per ricerca e social**: nuovo bridge `ALMA_AI_Seo_Bridge` che scrive `seo_title`/`seo_description` generati dall'AI in **All in One SEO** — tramite il modello ufficiale del plugin se attivo (title, description, OG title/description, Twitter da OG), oppure upsert diretto sulla tabella `aioseo_posts` se presente; i valori restano comunque nei meta `_alma_ai_seo_title/_alma_ai_seo_description` per tracciabilità (warning nel report se AIOSEO non è rilevato). Applicato a entrambe le pipeline di generazione.
+- **Pubblicazione diretta opzionale**: nuova impostazione "Pubblicazione diretta delle bozze AI" in Impostazioni → Generale (default **No**): con "Sì" gli articoli generati (workspace, runner programmato, agente) vengono pubblicati immediatamente con immagine e SEO già applicati; il messaggio di esito indica lo stato reale (Bozza / Pubblicato).
+- Versione plugin aggiornata a `2.62.0`.
+
 ## 2.61.1 - 2026-07-05
 
 ### Fix "Contenuto troppo breve" nel metabox AI Affiliati (contenuti classic editor / CRLF)

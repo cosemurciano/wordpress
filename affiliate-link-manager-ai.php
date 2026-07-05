@@ -3,7 +3,7 @@
  * Plugin Name: Affiliate Link Manager AI
  * Plugin URI: https://your-website.com
  * Description: Gestisce link affiliati con intelligenza artificiale per ottimizzazione e tracking automatico.
- * Version: 2.61.1
+ * Version: 2.62.0
  * Author: Cosè Murciano
  * License: GPL v2 or later
  * Text Domain: affiliate-link-manager-ai
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Definisci costanti del plugin
-define('ALMA_VERSION', '2.61.1');
+define('ALMA_VERSION', '2.62.0');
 define('ALMA_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('ALMA_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('ALMA_PLUGIN_FILE', __FILE__);
@@ -58,6 +58,7 @@ require_once ALMA_PLUGIN_DIR . 'includes/class-ai-content-agent-idea-importer.ph
 require_once ALMA_PLUGIN_DIR . 'includes/class-ai-idea-agent.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-ai-insertion-rules.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-ai-post-optimizer.php';
+require_once ALMA_PLUGIN_DIR . 'includes/class-ai-seo-bridge.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-affiliate-source-url-validator.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-affiliate-source-provider-interface.php';
 require_once ALMA_PLUGIN_DIR . 'includes/providers/class-affiliate-source-provider-manual.php';
@@ -2250,6 +2251,7 @@ class AffiliateManagerAI {
             // Impostazioni generali
             update_option('alma_track_logged_out', sanitize_text_field($_POST['track_logged_out'] ?? 'yes'));
             update_option('alma_enable_ai', sanitize_text_field($_POST['enable_ai'] ?? 'yes'));
+            update_option('alma_ai_auto_publish', ($_POST['alma_ai_auto_publish'] ?? 'no') === 'yes' ? 'yes' : 'no');
 
             $selected_types = array_map('sanitize_text_field', $_POST['alma_link_post_types'] ?? array());
             update_option('alma_link_post_types', $selected_types);
@@ -2346,6 +2348,18 @@ class AffiliateManagerAI {
                                     <option value="no" <?php selected($enable_ai, 'no'); ?>>No</option>
                                 </select>
                                 <p class="description">Abilita suggerimenti AI e ottimizzazioni automatiche</p>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row">
+                                <label for="alma_ai_auto_publish"><?php _e('Pubblicazione diretta delle bozze AI', 'affiliate-link-manager-ai'); ?></label>
+                            </th>
+                            <td>
+                                <select name="alma_ai_auto_publish" id="alma_ai_auto_publish">
+                                    <option value="no" <?php selected(get_option('alma_ai_auto_publish', 'no'), 'no'); ?>><?php _e('No — crea bozze da revisionare (consigliato)', 'affiliate-link-manager-ai'); ?></option>
+                                    <option value="yes" <?php selected(get_option('alma_ai_auto_publish', 'no'), 'yes'); ?>><?php _e('Sì — pubblica subito gli articoli generati', 'affiliate-link-manager-ai'); ?></option>
+                                </select>
+                                <p class="description"><?php _e('⚠️ Con "Sì" TUTTI gli articoli generati dall\'AI (workspace, runner programmato, agente) vanno online immediatamente senza revisione umana, con immagine in evidenza e meta SEO già applicati. Attivalo solo quando la qualità delle bozze ti soddisfa costantemente.', 'affiliate-link-manager-ai'); ?></p>
                             </td>
                         </tr>
                     </table>
