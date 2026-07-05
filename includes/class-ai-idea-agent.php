@@ -179,12 +179,21 @@ class ALMA_AI_Idea_Agent {
     }
 
     private static function system_prompt($max_ideas) {
-        return 'Sei l\'agente strategico di ideazione contenuti di un blog di viaggi italiano monetizzato con link affiliati. '
+        $prompt = 'Sei l\'agente strategico di ideazione contenuti di un blog di viaggi italiano monetizzato con link affiliati. '
             . 'Il tuo compito: analizzare i DATI REALI del sito tramite gli strumenti disponibili e creare fino a ' . (int)$max_ideas . ' nuove idee di articolo ad alto potenziale. '
-            . 'Metodo obbligatorio: 1) analizza le performance e i gap geografici; 2) per ogni opportunità verifica con cerca_link_affiliati che esistano link da monetizzare e con elenca_articoli_esistenti che il tema non sia già coperto (evita duplicati); 3) crea le idee con crea_idea, includendo località (se pertinente), un prompt editoriale ricco e una data programmata distribuita nei prossimi 14 giorni. '
+            . 'Metodo obbligatorio: 1) analizza le performance e i gap geografici; 2) per ogni opportunità verifica con cerca_link_affiliati che esistano link da monetizzare, con elenca_articoli_esistenti che il tema non sia già coperto (evita duplicati) e con cerca_media se la Media Library ha già immagini utilizzabili sul tema (se sì, segnalalo nel prompt dell\'idea); 3) crea le idee con crea_idea, includendo località (se pertinente), un prompt editoriale ricco e una data programmata distribuita nei prossimi 14 giorni. '
             . 'Privilegia: località con link affiliati ma senza click (offerta inutilizzata), località con molti articoli ma senza copertura pratica/commerciale, trend di click in crescita. '
             . 'Non inventare dati: basa ogni decisione sugli output degli strumenti. Non superare il numero massimo di idee. '
             . 'Alla fine rispondi in italiano con un riepilogo: per ogni idea creata, titolo e motivazione basata sui numeri.';
+        if (self::get_vector_store_id() !== '') {
+            $prompt .= ' Hai inoltre accesso allo storage documenti dell\'editore su OpenAI tramite file_search: consultalo per linee guida editoriali, brief e materiali di contesto prima di decidere le idee.';
+        }
+        return $prompt;
+    }
+
+    private static function get_vector_store_id() {
+        $id = trim((string) get_option('alma_openai_vector_store_id', ''));
+        return preg_match('/^[A-Za-z0-9_\-]{1,120}$/', $id) ? $id : '';
     }
 
     private static function user_prompt($objective) {
@@ -198,11 +207,19 @@ class ALMA_AI_Idea_Agent {
      * ------------------------------------------------------------------ */
 
     private static function tool_definitions() {
-        return array(
+        $tools = array();
+        // Storage OpenAI: strumento ospitato file_search sul Vector Store
+        // configurato — la ricerca avviene lato OpenAI, nessun round locale.
+        $vector_store_id = self::get_vector_store_id();
+        if ($vector_store_id !== '') {
+            $tools[] = array('type' => 'file_search', 'vector_store_ids' => array($vector_store_id));
+        }
+        return array_merge($tools, array(
             array('type' => 'function', 'name' => 'analizza_performance', 'description' => 'Statistiche reali dei click affiliati: trend 7/30/180 giorni, top link, top articoli, località più cliccate, link senza click.', 'parameters' => array('type' => 'object', 'properties' => new stdClass(), 'additionalProperties' => false)),
             array('type' => 'function', 'name' => 'trova_gap_geografici', 'description' => 'Gap di monetizzazione: località con link affiliati ma senza click negli ultimi 90 giorni, e località con articoli pubblicati ma senza link affiliati.', 'parameters' => array('type' => 'object', 'properties' => new stdClass(), 'additionalProperties' => false)),
             array('type' => 'function', 'name' => 'cerca_link_affiliati', 'description' => 'Cerca i link affiliati disponibili per una query e (opzionale) una località: restituisce titolo, tipologie e punteggio di pertinenza.', 'parameters' => array('type' => 'object', 'properties' => array('query' => array('type' => 'string', 'description' => 'Cosa cercare (es. "tour deserto")'), 'localita' => array('type' => 'string', 'description' => 'Nome località opzionale')), 'required' => array('query'), 'additionalProperties' => false)),
             array('type' => 'function', 'name' => 'elenca_articoli_esistenti', 'description' => 'Articoli già pubblicati che corrispondono a una ricerca: usalo per evitare idee duplicate.', 'parameters' => array('type' => 'object', 'properties' => array('query' => array('type' => 'string', 'description' => 'Tema o località da verificare')), 'required' => array('query'), 'additionalProperties' => false)),
+            array('type' => 'function', 'name' => 'cerca_media', 'description' => 'Immagini editoriali già presenti nella Media Library di WordPress che corrispondono a una ricerca: usale per capire se un\'idea ha già immagini utilizzabili.', 'parameters' => array('type' => 'object', 'properties' => array('query' => array('type' => 'string', 'description' => 'Tema o località delle immagini da cercare')), 'required' => array('query'), 'additionalProperties' => false)),
             array('type' => 'function', 'name' => 'crea_idea', 'description' => 'Crea una nuova idea contenuto (visibile in Tutte le idee). Non pubblica nulla: la bozza verrà generata in seguito nel rispetto dei limiti giornalieri.', 'parameters' => array('type' => 'object', 'properties' => array(
                 'titolo' => array('type' => 'string', 'description' => 'Titolo di lavoro dell\'articolo'),
                 'localita' => array('type' => 'string', 'description' => 'Nome della località (opzionale, verrà risolto sull\'indice geografico)'),
@@ -210,7 +227,7 @@ class ALMA_AI_Idea_Agent {
                 'keywords' => array('type' => 'array', 'items' => array('type' => 'string'), 'description' => 'Keyword SEO (max 5)'),
                 'data_programmata' => array('type' => 'string', 'description' => 'Data generazione bozza YYYY-MM-DD (opzionale)'),
             ), 'required' => array('titolo', 'prompt'), 'additionalProperties' => false)),
-        );
+        ));
     }
 
     private static function execute_tool($name, $arguments, &$ideas_created, $max_ideas) {
@@ -223,6 +240,8 @@ class ALMA_AI_Idea_Agent {
                 return self::tool_search_links(sanitize_text_field((string)($arguments['query'] ?? '')), sanitize_text_field((string)($arguments['localita'] ?? '')));
             case 'elenca_articoli_esistenti':
                 return self::tool_existing_articles(sanitize_text_field((string)($arguments['query'] ?? '')));
+            case 'cerca_media':
+                return self::tool_search_media(sanitize_text_field((string)($arguments['query'] ?? '')));
             case 'crea_idea':
                 return self::tool_create_idea($arguments, $ideas_created, $max_ideas);
         }
@@ -290,6 +309,35 @@ class ALMA_AI_Idea_Agent {
             $out[] = array('id' => (int)$p->ID, 'titolo' => html_entity_decode(get_the_title($p), ENT_QUOTES, 'UTF-8'), 'data' => get_the_date('Y-m-d', $p));
         }
         return array('articoli_trovati' => count($out), 'articoli' => $out);
+    }
+
+    /**
+     * Immagini editoriali della Media Library (dall'indice media dell'AI
+     * Content Agent): solo metadati, nessun file binario.
+     */
+    private static function tool_search_media($query) {
+        global $wpdb;
+        if ($query === '') { return array('error' => 'Query mancante.'); }
+        $table = ALMA_AI_Content_Agent_Store::table('media_index');
+        if ($wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $table)) !== $table) {
+            return array('error' => 'Indice media non disponibile: ricostruiscilo da Impostazioni AI Content.');
+        }
+        $like = '%' . $wpdb->esc_like($query) . '%';
+        $rows = $wpdb->get_results($wpdb->prepare(
+            "SELECT attachment_id, file_name, title, alt_text FROM {$table}
+             WHERE is_editorial_candidate = 1 AND (file_name LIKE %s OR title LIKE %s OR alt_text LIKE %s OR caption LIKE %s OR search_text LIKE %s)
+             ORDER BY indexed_at DESC LIMIT 10",
+            $like, $like, $like, $like, $like
+        ), ARRAY_A);
+        $out = array();
+        foreach ((array)$rows as $row) {
+            $out[] = array(
+                'attachment_id' => (int)$row['attachment_id'],
+                'titolo' => sanitize_text_field((string)($row['title'] ?: $row['file_name'])),
+                'alt' => sanitize_text_field((string)$row['alt_text']),
+            );
+        }
+        return array('immagini_trovate' => count($out), 'immagini' => $out);
     }
 
     private static function tool_create_idea($arguments, &$ideas_created, $max_ideas) {

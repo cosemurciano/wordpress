@@ -1,3 +1,12 @@
+## 2.59.0 - 2026-07-05
+
+### Storage OpenAI e Media Library per l'agente + pulizia impostazioni
+- **Storage OpenAI (Vector Store)**: nuovo campo in Impostazioni → OpenAI API per l'ID del Vector Store con pulsante **"Verifica accesso"** (controlla via API che la chiave possa leggerlo e mostra nome, stato, file completati/totali e dimensione). Con l'ID configurato, l'**Agente di ideazione consulta lo storage con lo strumento ospitato `file_search`**: linee guida, brief e documenti caricati su OpenAI Platform entrano nel processo decisionale (il prompt di sistema lo istruisce a consultarli prima di decidere le idee).
+- **Accesso ai media WordPress per l'agente**: nuovo strumento `cerca_media` che interroga l'indice media (solo metadati, immagini editoriali candidate) — l'agente verifica se un'idea ha già immagini utilizzabili nella Media Library e lo segnala nel prompt dell'idea.
+- **Pulizia Impostazioni (audit coerenza)**: rimosso il tab **"AI Settings"** (conteneva solo due checkbox decorative disabilitate); il resto dei tab è coerente con le funzionalità attuali.
+- **Pulizia Impostazioni AI Content**: nel tab **Reindicizza** rimosso il pannello segnaposto disabilitato "Reindicizza selezionati / Disponibile nella prossima fase" (restano le azioni reali, incluso l'indice link interni); nel tab **Stato/log** le card "Nessun dato" sono state sostituite da **contatori reali dei job** (in corso/completati/con errori, con avanzamento e conteggio errori per riga — la tabella jobs è ora alimentata dal runner delle idee programmate) e dal conteggio degli errori AI recenti.
+- Versione plugin aggiornata a `2.59.0`.
+
 ## 2.58.0 - 2026-07-05
 
 ### Agente AI di ideazione (tool calling OpenAI)

@@ -3,7 +3,7 @@
  * Plugin Name: Affiliate Link Manager AI
  * Plugin URI: https://your-website.com
  * Description: Gestisce link affiliati con intelligenza artificiale per ottimizzazione e tracking automatico.
- * Version: 2.58.0
+ * Version: 2.59.0
  * Author: Cosè Murciano
  * License: GPL v2 or later
  * Text Domain: affiliate-link-manager-ai
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Definisci costanti del plugin
-define('ALMA_VERSION', '2.58.0');
+define('ALMA_VERSION', '2.59.0');
 define('ALMA_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('ALMA_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('ALMA_PLUGIN_FILE', __FILE__);
@@ -571,6 +571,7 @@ class AffiliateManagerAI {
         add_action('wp_ajax_alma_get_ai_suggestions', array($this, 'ajax_get_ai_suggestions'));
         add_action('wp_ajax_alma_ai_suggest_text', array($this, 'ajax_ai_suggest_text'));
         add_action('wp_ajax_alma_test_openai_connection', array($this, 'ajax_test_openai_connection'));
+        add_action('wp_ajax_alma_verify_openai_storage', array($this, 'ajax_verify_openai_storage'));
         add_action('wp_ajax_alma_get_performance_predictions', array($this, 'ajax_get_performance_predictions'));
         add_action('wp_ajax_alma_get_link_types', array($this, 'ajax_get_link_types'));
         add_action('wp_ajax_alma_import_affiliate_link', array($this, 'ajax_import_affiliate_link'));
@@ -2281,6 +2282,10 @@ class AffiliateManagerAI {
             update_option('alma_openai_timeout', absint($_POST['openai_timeout'] ?? 30));
             update_option('alma_openai_temperature', floatval($_POST['openai_temperature'] ?? 0.7));
 
+            // Storage OpenAI (Vector Store) usato dall'agente via file_search.
+            $vector_store_id = sanitize_text_field(wp_unslash($_POST['openai_vector_store_id'] ?? ''));
+            update_option('alma_openai_vector_store_id', preg_match('/^[A-Za-z0-9_\-]{1,120}$/', $vector_store_id) ? $vector_store_id : '', false);
+
             // Prompt Widget AI rewrite settings
             update_option('alma_widget_ai_rewrite_prompt', sanitize_textarea_field(wp_unslash($_POST['alma_widget_ai_rewrite_prompt'] ?? '')));
             $widget_tokens = absint($_POST['alma_widget_ai_rewrite_max_output_tokens'] ?? ALMA_Affiliate_Widget_AI_Rewriter::DEFAULT_MAX_OUTPUT_TOKENS);
@@ -2316,7 +2321,6 @@ class AffiliateManagerAI {
                 <h2 class="nav-tab-wrapper alma-settings-tabs">
                     <a href="#general" class="nav-tab nav-tab-active">Generale</a>
                     <a href="#tracking" class="nav-tab">Tracking</a>
-                    <a href="#ai" class="nav-tab">AI Settings</a>
                     <a href="#openai" class="nav-tab">OpenAI API</a>
                     <a href="#content-analysis" class="nav-tab">Content Analysis AI</a>
                     <a href="#prompt-widget" class="nav-tab">Prompt Widget</a>
@@ -2358,33 +2362,6 @@ class AffiliateManagerAI {
                                     <option value="no" <?php selected($track_logged_out, 'no'); ?>>No</option>
                                 </select>
                                 <p class="description">Traccia click anche per visitatori non registrati</p>
-                            </td>
-                        </tr>
-                    </table>
-                </div>
-                
-                <!-- AI Settings -->
-                <div id="ai" class="alma-settings-section" style="display:none;">
-                    <h2>🤖 Impostazioni Intelligenza Artificiale</h2>
-                    <table class="form-table">
-                        <tr>
-                            <th scope="row">AI Performance Scoring</th>
-                            <td>
-                                <label>
-                                    <input type="checkbox" checked disabled /> 
-                                    Calcolo automatico performance score
-                                </label>
-                                <p class="description">Analizza CTR, utilizzo e engagement per ogni link</p>
-                            </td>
-                        </tr>
-                        <tr>
-                            <th scope="row">Suggerimenti Automatici</th>
-                            <td>
-                                <label>
-                                    <input type="checkbox" checked disabled /> 
-                                    Genera suggerimenti per migliorare performance
-                                </label>
-                                <p class="description">Suggerimenti basati su pattern di successo</p>
                             </td>
                         </tr>
                     </table>
@@ -2441,6 +2418,15 @@ class AffiliateManagerAI {
                                     🧪 Testa Connessione
                                 </button>
                                 <div id="openai-test-result" style="margin-top:10px;"></div>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><label for="openai_vector_store_id">Storage OpenAI (Vector Store ID)</label></th>
+                            <td>
+                                <input type="text" name="openai_vector_store_id" id="openai_vector_store_id" class="regular-text" placeholder="vs_..." value="<?php echo esc_attr(get_option('alma_openai_vector_store_id', '')); ?>" />
+                                <button type="button" id="alma-verify-openai-storage" class="button">🔍 Verifica accesso</button>
+                                <div id="alma-openai-storage-result" style="margin-top:10px;"></div>
+                                <p class="description"><?php _e('ID del Vector Store su OpenAI Platform (Storage → Vector stores): l\'Agente di ideazione lo consulta con lo strumento file_search per usare anche i documenti caricati lì (guide, brief, materiali dell\'editore). Lascia vuoto per disattivare.', 'affiliate-link-manager-ai'); ?></p>
                             </td>
                         </tr>
                     </table>
@@ -2635,6 +2621,26 @@ class AffiliateManagerAI {
                 $(this).text(type === 'password' ? '👁 Mostra' : '🙈 Nascondi');
             });
 
+            // Verifica accesso allo Storage OpenAI (Vector Store)
+            $('#alma-verify-openai-storage').on('click', function(e) {
+                e.preventDefault();
+                var $result = $('#alma-openai-storage-result');
+                $result.html('<span class="spinner is-active" style="float:none;margin-top:0;"></span> Verifica in corso...');
+                $.post(ajaxurl, {
+                    action: 'alma_verify_openai_storage',
+                    nonce: '<?php echo wp_create_nonce("alma_admin_nonce"); ?>',
+                    vector_store_id: $('#openai_vector_store_id').val()
+                }, function(response) {
+                    if (response && response.success) {
+                        $result.html('<span style="color:green;">✅ Accesso OK: "' + response.data.name + '" — stato ' + response.data.status + ', file completati ' + response.data.files_completed + '/' + response.data.files_total + ', dimensione ' + response.data.usage + '</span>');
+                    } else {
+                        $result.html('<span style="color:#dc3232;">❌ ' + ((response && response.data && response.data.message) ? response.data.message : 'Verifica fallita') + '</span>');
+                    }
+                }).fail(function() {
+                    $result.html('<span style="color:#dc3232;">❌ Errore di connessione</span>');
+                });
+            });
+
             // Test OpenAI API connection
             $('#test-openai-connection').on('click', function(e) {
                 e.preventDefault();
@@ -2664,6 +2670,50 @@ class AffiliateManagerAI {
         });
         </script>
         <?php
+    }
+
+    /**
+     * Verifica l'accesso al Vector Store OpenAI configurato: conferma che la
+     * API key possa leggerlo e mostra nome, stato e numero di file. È lo
+     * storage che l'Agente di ideazione consulta via file_search.
+     */
+    public function ajax_verify_openai_storage() {
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(array('message' => __('Permessi insufficienti.', 'affiliate-link-manager-ai')), 403);
+        }
+        if (!check_ajax_referer('alma_admin_nonce', 'nonce', false)) {
+            wp_send_json_error(array('message' => __('Nonce non valido.', 'affiliate-link-manager-ai')), 400);
+        }
+        $api_key = trim((string) get_option('alma_openai_api_key', ''));
+        if ($api_key === '') {
+            wp_send_json_error(array('message' => __('OpenAI non è configurata: salva prima la API key.', 'affiliate-link-manager-ai')));
+        }
+        $vector_store_id = sanitize_text_field(wp_unslash($_POST['vector_store_id'] ?? get_option('alma_openai_vector_store_id', '')));
+        if ($vector_store_id === '' || !preg_match('/^[A-Za-z0-9_\-]{1,120}$/', $vector_store_id)) {
+            wp_send_json_error(array('message' => __('Inserisci un Vector Store ID valido (es. vs_...).', 'affiliate-link-manager-ai')));
+        }
+        $response = wp_remote_get('https://api.openai.com/v1/vector_stores/' . rawurlencode($vector_store_id), array(
+            'timeout' => 20,
+            'headers' => array('Authorization' => 'Bearer ' . $api_key),
+        ));
+        if (is_wp_error($response)) {
+            wp_send_json_error(array('message' => __('Errore di connessione a OpenAI.', 'affiliate-link-manager-ai')));
+        }
+        $code = wp_remote_retrieve_response_code($response);
+        $data = json_decode(wp_remote_retrieve_body($response), true);
+        if ($code < 200 || $code >= 300 || !is_array($data)) {
+            $api_error = sanitize_text_field((string)($data['error']['message'] ?? ''));
+            $message = $code === 404 ? __('Vector Store non trovato: controlla l\'ID e che appartenga allo stesso progetto della API key.', 'affiliate-link-manager-ai') : sprintf(__('Errore OpenAI (HTTP %d).', 'affiliate-link-manager-ai'), $code);
+            wp_send_json_error(array('message' => $message . ($api_error !== '' ? ' — ' . $api_error : '')));
+        }
+        $counts = (array)($data['file_counts'] ?? array());
+        wp_send_json_success(array(
+            'name' => sanitize_text_field((string)($data['name'] ?? $vector_store_id)),
+            'status' => sanitize_text_field((string)($data['status'] ?? '')),
+            'files_completed' => (int)($counts['completed'] ?? 0),
+            'files_total' => (int)($counts['total'] ?? 0),
+            'usage' => size_format((int)($data['usage_bytes'] ?? 0)),
+        ));
     }
 
     /**
