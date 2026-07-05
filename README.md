@@ -1,3 +1,9 @@
+## 2.65.2 - 2026-07-05
+
+### Fix "Firma JWT fallita" con la costante JSON di Search Console
+- La chiave privata incollata in wp-config viene normalizzata automaticamente (backslash-n letterali, \r, PEM su una riga); errore di firma con dettaglio OpenSSL.
+- Versione plugin aggiornata a `2.65.2`.
+
 ## 2.65.1 - 2026-07-05
 
 ### Diagnostica granulare credenziali Search Console

@@ -114,6 +114,21 @@ class ALMA_GSC_Connector {
         return rtrim(strtr(base64_encode($data), '+/', '-_'), '=');
     }
 
+    /**
+     * Ripara i danni tipici del copia-incolla del PEM: "\n" letterali
+     * (backslash+n) al posto degli a-capo, \r residui, spazi attorno ai
+     * marker BEGIN/END. Una chiave già corretta resta invariata.
+     */
+    public static function normalize_private_key($key) {
+        $key = str_replace(array('\\n', "\r"), array("\n", ''), $key);
+        $key = trim($key);
+        if (strpos($key, "\n") === false && preg_match('/^(-----BEGIN [A-Z ]+-----)(.+)(-----END [A-Z ]+-----)$/s', $key, $m)) {
+            // PEM finito su una riga sola: ricostruisce le righe da 64 caratteri.
+            $key = $m[1] . "\n" . chunk_split(preg_replace('/\s+/', '', $m[2]), 64, "\n") . $m[3] . "\n";
+        }
+        return $key;
+    }
+
     private static function get_access_token() {
         $cached = get_transient(self::TOKEN_TRANSIENT);
         if (is_string($cached) && $cached !== '') { return $cached; }
@@ -134,9 +149,15 @@ class ALMA_GSC_Connector {
             'iat' => $now,
             'exp' => $now + 3600,
         )));
+        // Normalizza la chiave: incollando il JSON in wp-config gli "\n"
+        // possono arrivare come backslash letterali (o con \r) e il PEM
+        // risulta su una riga sola — OpenSSL lo rifiuta.
+        $private_key = self::normalize_private_key((string) $credentials['private_key']);
         $signature = '';
-        if (!openssl_sign($header . '.' . $claims, $signature, $credentials['private_key'], 'sha256WithRSAEncryption')) {
-            return new WP_Error('alma_gsc_sign', __('Firma JWT fallita: chiave privata non valida.', 'affiliate-link-manager-ai'));
+        if (!openssl_sign($header . '.' . $claims, $signature, $private_key, 'sha256WithRSAEncryption')) {
+            $openssl_detail = '';
+            while (($openssl_error = openssl_error_string()) !== false) { $openssl_detail = $openssl_error; }
+            return new WP_Error('alma_gsc_sign', __('Firma JWT fallita: chiave privata non valida.', 'affiliate-link-manager-ai') . ($openssl_detail !== '' ? ' [' . sanitize_text_field($openssl_detail) . ']' : '') . ' ' . __('Suggerimento: usa la costante ALMA_GSC_SERVICE_ACCOUNT_FILE con il file JSON originale non modificato.', 'affiliate-link-manager-ai'));
         }
         $jwt = $header . '.' . $claims . '.' . self::base64url($signature);
 
