@@ -1,3 +1,10 @@
+## 2.69.0 - 2026-07-05
+
+### Fase 7.2 (PR C): tendenze Google Trends nelle schede località + tool tendenze_google
+- Le schede località includono le tendenze di ricerca da Google Trends (mesi di picco della domanda italiana, trend dell'interesse, query correlate in crescita); nuovo strumento dell'agente `tendenze_google` per validare qualsiasi tema.
+- Endpoint non ufficiali con difese integrate: circuit breaker 6 ore sui limiti di Google, cache aggressive, degrado con errore chiaro.
+- Versione plugin aggiornata a `2.69.0`.
+
 ## 2.68.0 - 2026-07-05
 
 ### Fase 7.2 (PR B): fatti Wikidata nelle schede località
