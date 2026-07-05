@@ -1,3 +1,10 @@
+## 2.61.1 - 2026-07-05
+
+### Fix "Contenuto troppo breve" nel metabox AI Affiliati
+- Fix rilevamento paragrafi per contenuti classic editor/WPBakery con newline Windows (`\r\n`): l'articolo veniva visto come un solo paragrafo e le proposte AI non partivano mai. Stesso fix nella protezione dei primi paragrafi del QA.
+- Conteggio parole Unicode-safe per la densità (le parole accentate italiane venivano contate male).
+- Versione plugin aggiornata a `2.61.1`.
+
 ## 2.61.0 - 2026-07-05
 
 ### Fase 4 (PR 2) — Metabox "AI Affiliati" nell'editor del post

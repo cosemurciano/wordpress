@@ -250,19 +250,50 @@ class ALMA_AI_Post_Optimizer {
      * Paragrafi: split/join compatibile con Gutenberg e classic
      * ------------------------------------------------------------------ */
 
-    public static function split_paragraphs($content) {
-        if (stripos($content, '</p>') !== false) {
-            $parts = preg_split('/(<\/p>)/i', $content, -1, PREG_SPLIT_DELIM_CAPTURE);
-            return array('parts' => $parts, 'mode' => 'html');
+    /**
+     * Un "delimitatore" è la chiusura di paragrafo HTML oppure una riga
+     * vuota (anche con newline Windows \r\n, come salva il classic editor).
+     */
+    public static function is_delimiter($part, $mode) {
+        if ($mode === 'html') {
+            return strcasecmp((string)$part, '</p>') === 0;
         }
-        return array('parts' => preg_split("/(\n\n)/", (string)$content, -1, PREG_SPLIT_DELIM_CAPTURE), 'mode' => 'text');
+        return (bool) preg_match('/^\r?\n[ \t]*\r?\n$/', (string)$part);
+    }
+
+    /**
+     * Sceglie lo split più ricco tra HTML (</p>, Gutenberg) e testo (riga
+     * vuota, classic editor / WPBakery): il contenuto classic con \r\n non
+     * contiene </p> e prima veniva visto come UN solo paragrafo.
+     */
+    public static function split_paragraphs($content) {
+        $content = (string) $content;
+        $text_parts = preg_split("/(\r?\n[ \t]*\r?\n)/", $content, -1, PREG_SPLIT_DELIM_CAPTURE);
+        $text_count = self::count_paragraph_parts($text_parts, 'text');
+        if (stripos($content, '</p>') !== false) {
+            $html_parts = preg_split('/(<\/p>)/i', $content, -1, PREG_SPLIT_DELIM_CAPTURE);
+            $html_count = self::count_paragraph_parts($html_parts, 'html');
+            if ($html_count >= $text_count) {
+                return array('parts' => $html_parts, 'mode' => 'html');
+            }
+        }
+        return array('parts' => $text_parts, 'mode' => 'text');
+    }
+
+    private static function count_paragraph_parts($parts, $mode) {
+        $count = 0;
+        foreach ((array)$parts as $part) {
+            if (self::is_delimiter($part, $mode)) { continue; }
+            if (trim(wp_strip_all_tags($part)) !== '') { $count++; }
+        }
+        return $count;
     }
 
     public static function paragraph_texts($content) {
         $split = self::split_paragraphs($content);
         $texts = array();
         foreach ($split['parts'] as $part) {
-            if ($part === '</p>' || $part === "\n\n" || trim($part) === '') { continue; }
+            if (self::is_delimiter($part, $split['mode'])) { continue; }
             $text = trim(wp_strip_all_tags($part));
             if ($text !== '') { $texts[] = $text; }
         }
@@ -278,15 +309,14 @@ class ALMA_AI_Post_Optimizer {
         $parts = $split['parts'];
         $current = -1;
         foreach ($parts as $i => $part) {
-            if ($part === '</p>' || $part === "\n\n") { continue; }
+            if (self::is_delimiter($part, $split['mode'])) { continue; }
             if (trim(wp_strip_all_tags($part)) === '') { continue; }
             $current++;
             if ($current === (int)$paragraph_index) {
                 if ($inline) {
                     $parts[$i] = rtrim($part) . ' ' . $insertion;
                 } else {
-                    $closer = ($split['mode'] === 'html') ? '</p>' : "\n\n";
-                    $has_delimiter = isset($parts[$i + 1]) && $parts[$i + 1] === $closer;
+                    $has_delimiter = isset($parts[$i + 1]) && self::is_delimiter($parts[$i + 1], $split['mode']);
                     if ($split['mode'] === 'html') {
                         array_splice($parts, $i + 1 + ($has_delimiter ? 1 : 0), 0, array("\n" . $insertion . "\n"));
                     } elseif ($has_delimiter) {
@@ -333,7 +363,7 @@ class ALMA_AI_Post_Optimizer {
         }
 
         // Budget inserimenti: densità meno gli shortcode già presenti.
-        $word_count = str_word_count(wp_strip_all_tags($post->post_content));
+        $word_count = ALMA_AI_Insertion_Rules::count_words(wp_strip_all_tags($post->post_content));
         $existing = preg_match_all('/\[affiliate_link(?:s_widget)?[^\]]*\]/', $post->post_content, $m);
         $budget = max(0, (int)floor($word_count / $rules['density_words']) - (int)$existing);
         if ($budget < 1) {
