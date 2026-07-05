@@ -1,3 +1,13 @@
+## 2.64.0 - 2026-07-05
+
+### Fase 6 — Arricchimento automatico in background dei post pubblicati
+- **Nuova tab "Arricchimento"** in Impostazioni AI Content: attivazione on/off, **articoli al giorno** da analizzare (default 5, 1 chiamata OpenAI per articolo, contatore odierno visibile), **cooldown ri-analisi** (default 60 giorni), pulsante "Esegui ora", coda stimata e **report attività** (ultimi 100 articoli: esito, link aggiunti/sostituiti, note/errori, link di modifica).
+- **Applicazione diretta senza revisione manuale**: il runner giornaliero analizza gli articoli e **aggiorna il post pubblicato aggiungendo i link** — il contenuto esistente non viene mai riscritto (le anchor si accodano al paragrafo scelto, bottoni/card come blocchi autonomi; inserimenti in ordine di paragrafo decrescente per non spostare gli indici). Ogni aggiornamento crea una **revisione WordPress** (rollback nativo).
+- **Ciclo di copertura con ri-analisi**: prima tutti gli articoli mai analizzati, poi il ciclo riparte automaticamente dai più vecchi di analisi — mai prima del cooldown. Nelle **ri-analisi** l'AI riceve gli shortcode esistenti con la loro coerenza geografica e può proporre **sostituzioni** (link incoerenti/non validi o candidati nettamente migliori), applicate preservando pattern e struttura dello shortcode (max 3 per articolo). Motore condiviso con il metabox "AI Affiliati" (stesse Regole inserimento, densità, paragrafi protetti, soli link candidati).
+- **Niente notifiche per articolo**: a fine esecuzione un solo **digest Telegram** (analizzati/aggiornati/link aggiunti/sostituiti), se il bot è abilitato.
+- Lock anti-concorrenza, budget tempo per esecuzione (150s), costi registrati nell'usage logger (task `post_enricher`), cron rimosso alla disattivazione. Test standalone per la logica di sostituzione.
+- Versione plugin aggiornata a `2.64.0`.
+
 ## 2.63.0 - 2026-07-05
 
 ### Fase 5 — Bot Telegram: regia, monitoraggio e strategia

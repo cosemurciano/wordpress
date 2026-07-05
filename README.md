@@ -1,3 +1,12 @@
+## 2.64.0 - 2026-07-05
+
+### Fase 6 — Arricchimento automatico in background dei post pubblicati
+- Tab "Arricchimento": attivazione, articoli/giorno, cooldown ri-analisi, Esegui ora, report attività con esiti per articolo.
+- Il runner aggiorna direttamente i post pubblicati aggiungendo link affiliati (mai riscrittura del contenuto), con revisione WordPress a ogni modifica.
+- Ciclo automatico: prima gli articoli mai analizzati, poi ri-analisi oltre il cooldown con possibili sostituzioni di link incoerenti.
+- Un solo digest Telegram per esecuzione (niente notifiche per articolo).
+- Versione plugin aggiornata a `2.64.0`.
+
 ## 2.63.0 - 2026-07-05
 
 ### Fase 5 — Bot Telegram: regia, monitoraggio e strategia
