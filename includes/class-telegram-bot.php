@@ -200,7 +200,7 @@ class ALMA_Telegram_Bot {
 
     public static function instructions_text() {
         return "<b>Comandi disponibili</b>\n"
-            . "/agente &lt;obiettivo&gt; — avvia l'agente di ideazione (obiettivo opzionale)\n"
+            . "/agente &lt;argomento&gt; — avvia l'agente: crea idee E bozze sul tema indicato (opzionale); parte anche oltre il limite giornaliero\n"
             . "/report — esito dell'ultima esecuzione dell'agente\n"
             . "/bozze — ultime bozze AI con pulsanti Pubblica/Cestina\n"
             . "/top — report sintetico: click e gap geografici\n"
@@ -222,20 +222,22 @@ class ALMA_Telegram_Bot {
             self::send_message($chat_id, '❌ OpenAI non è configurata nel plugin.');
             return;
         }
-        if (ALMA_AI_Idea_Agent::runs_today() >= ALMA_AI_Idea_Agent::get_daily_runs_limit()) {
-            self::send_message($chat_id, '❌ Limite di esecuzioni giornaliere dell\'agente raggiunto (' . (int) ALMA_AI_Idea_Agent::runs_today() . '/' . (int) ALMA_AI_Idea_Agent::get_daily_runs_limit() . ').');
-            return;
-        }
         if (get_option(ALMA_AI_Idea_Agent::LOCK_OPTION)) {
             self::send_message($chat_id, '⏳ Un\'esecuzione dell\'agente è già in corso: riceverai il report al termine.');
             return;
         }
+        // Lancio dalla regia Telegram: force=1 (parte anche oltre il limite
+        // giornaliero) e bozze immediate attive, come dalla pagina Regia AI.
+        $over_limit = ALMA_AI_Idea_Agent::runs_today() >= ALMA_AI_Idea_Agent::get_daily_runs_limit();
         // Autore delle idee: il primo amministratore.
         $admins = get_users(array('role' => 'administrator', 'number' => 1, 'fields' => 'ID'));
         $user_id = !empty($admins) ? (int) $admins[0] : 1;
-        wp_schedule_single_event(time() + 5, ALMA_AI_Idea_Agent::CRON_HOOK, array($user_id, sanitize_textarea_field($objective), 0));
+        wp_schedule_single_event(time() + 5, ALMA_AI_Idea_Agent::CRON_HOOK, array($user_id, sanitize_textarea_field($objective), 1, 1, 0, 0));
         if (function_exists('spawn_cron')) { spawn_cron(); }
-        self::send_message($chat_id, '🤖 Agente di ideazione avviato' . ($objective !== '' ? ' con obiettivo: <i>' . self::esc($objective) . '</i>' : '') . ".\nRiceverai qui il report al termine (2-5 minuti).");
+        self::send_message($chat_id, '🤖 Agente di ideazione avviato' . ($objective !== '' ? ' sul tema: <i>' . self::esc($objective) . '</i>' : '')
+            . "\nCreerà idee e le relative bozze (nel rispetto del limite giornaliero bozze)."
+            . ($over_limit ? "\n✋ Limite esecuzioni giornaliere già raggiunto: il lancio manuale viene eseguito comunque." : '')
+            . "\nRiceverai qui il report al termine (2-5 minuti).");
     }
 
     private static function command_report($chat_id) {

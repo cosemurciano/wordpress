@@ -3,7 +3,7 @@
  * Plugin Name: Affiliate Link Manager AI
  * Plugin URI: https://your-website.com
  * Description: Gestisce link affiliati con intelligenza artificiale per ottimizzazione e tracking automatico.
- * Version: 2.69.0
+ * Version: 2.70.0
  * Author: Cosè Murciano
  * License: GPL v2 or later
  * Text Domain: affiliate-link-manager-ai
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Definisci costanti del plugin
-define('ALMA_VERSION', '2.69.0');
+define('ALMA_VERSION', '2.70.0');
 define('ALMA_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('ALMA_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('ALMA_PLUGIN_FILE', __FILE__);
@@ -56,6 +56,7 @@ require_once ALMA_PLUGIN_DIR . 'includes/class-ai-content-agent-result-usage.php
 require_once ALMA_PLUGIN_DIR . 'includes/class-ai-content-agent-instructions-manager.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-ai-content-agent-idea-importer.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-ai-idea-agent.php';
+require_once ALMA_PLUGIN_DIR . 'includes/class-ai-agent-control-room.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-ai-insertion-rules.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-ai-post-optimizer.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-ai-seo-bridge.php';
@@ -167,6 +168,7 @@ class AffiliateManagerAI {
         ALMA_Dashboard_Insights::init();
         ALMA_AI_Content_Agent_Idea_Importer::init();
         ALMA_AI_Idea_Agent::init();
+        ALMA_AI_Agent_Control_Room::init();
         ALMA_AI_Post_Optimizer::init();
         ALMA_Telegram_Bot::init();
         ALMA_AI_Post_Enricher::init();
@@ -1135,6 +1137,16 @@ class AffiliateManagerAI {
             array('ALMA_AI_Content_Agent_Admin', 'render_page')
         );
 
+        // Regia AI (camera di regia dell'agente di ideazione)
+        add_submenu_page(
+            self::AFFILIATE_LINK_PARENT_MENU,
+            __('Regia AI', 'affiliate-link-manager-ai'),
+            __('Regia AI', 'affiliate-link-manager-ai'),
+            self::AI_CONTENT_AGENT_CAPABILITY,
+            ALMA_AI_Agent_Control_Room::MENU_SLUG,
+            array('ALMA_AI_Agent_Control_Room', 'render_page')
+        );
+
         // Tutte le idee (elenco, modello "Post")
         add_submenu_page(
             self::AFFILIATE_LINK_PARENT_MENU,
@@ -1200,7 +1212,9 @@ class AffiliateManagerAI {
         $items = $submenu[$parent];
         $order = array(
             'affiliate-link-manager-dashboard',
-            // Idee sul modello "Post": elenco + aggiungi, subito dopo la Dashboard.
+            // Regia AI subito dopo la Dashboard: la camera di regia dell'agente.
+            ALMA_AI_Agent_Control_Room::MENU_SLUG,
+            // Idee sul modello "Post": elenco + aggiungi.
             ALMA_AI_Content_Agent_Admin::IDEAS_LIST_MENU_SLUG,
             ALMA_AI_Content_Agent_Admin::ADD_IDEA_MENU_SLUG,
             'edit.php?post_type=affiliate_link',

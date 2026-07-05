@@ -1,3 +1,10 @@
+## 2.70.0 - 2026-07-05
+
+### Regia AI: camera di regia dell'agente di ideazione + Telegram potenziato
+- Nuova pagina "Regia AI" dopo la Dashboard: piano editoriale (quanti articoli, in quanti giorni, obiettivo, bozze immediate di default), consiglio AI del piano basato sui dati, grafico attività 30 giorni, storico esecuzioni e limiti di guardia.
+- I lanci manuali (Regia e Telegram) partono anche oltre il limite giornaliero; `/agente <argomento>` su Telegram crea idee e bozze sul tema indicato.
+- Versione plugin aggiornata a `2.70.0`.
+
 ## 2.69.0 - 2026-07-05
 
 ### Fase 7.2 (PR C): tendenze Google Trends nelle schede località + tool tendenze_google
