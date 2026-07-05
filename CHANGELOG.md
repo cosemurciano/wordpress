@@ -1,3 +1,17 @@
+## 2.70.0 - 2026-07-05
+
+### Regia AI: camera di regia dell'agente di ideazione + Telegram potenziato
+- **Nuova pagina "Regia AI"** nel menu, subito dopo la Dashboard (`ALMA_AI_Agent_Control_Room`):
+  - **Piano editoriale**: comunichi all'agente quanti articoli creare (1-10), in quanti giorni distribuirli (1-60), un obiettivo opzionale, e se creare subito anche le bozze (**spuntato di default**); le idee oltre la quota bozze giornaliera vengono generate automaticamente nei giorni programmati dal job notturno.
+  - **Consiglio AI del piano**: un pulsante chiede all'AI di proporre quanti articoli, in quanti giorni e con quale focus, sulla base dei dati reali (click, gap geografici, opportunità Search Console, ritmo attuale); «Applica al piano» precompila il form.
+  - **Grafico attività** (Chart.js): idee create e bozze AI generate per giorno negli ultimi 30 giorni.
+  - **Storico esecuzioni** (ultime 30: data, idee, bozze, obiettivo, costo, esito, lancio manuale ✋) + report dettagliato dell'ultima esecuzione.
+  - **Limiti di guardia** (idee per esecuzione, esecuzioni automatiche/giorno) spostati qui.
+- **I lanci manuali partono sempre**: dalla Regia e da Telegram l'agente viene eseguito anche oltre il limite giornaliero di esecuzioni (con nota informativa); il limite continua a proteggere le esecuzioni non presidiate. Il piano richiesto (numero idee, giorni) guida i prompt dell'agente ("crea ESATTAMENTE N idee distribuite in X giorni").
+- **Telegram**: `/agente <argomento>` ora crea idee **e relative bozze** sul tema indicato (prima non generava bozze), parte anche oltre il limite giornaliero e lo segnala in chat; guida comandi aggiornata.
+- Il pannello "🤖 Agente ideazione AI" in Tutte le idee diventa una card compatta con lo stato e il pulsante «Apri la Regia AI» (la gestione completa vive nella nuova pagina).
+- Versione plugin aggiornata a `2.70.0`.
+
 ## 2.69.0 - 2026-07-05
 
 ### Fase 7.2 (PR C): tendenze Google Trends nelle schede località + tool tendenze_google

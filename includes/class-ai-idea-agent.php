@@ -27,9 +27,11 @@ class ALMA_AI_Idea_Agent {
     const LOCK_OPTION = 'alma_ai_idea_agent_lock';
     const LOCK_TTL = 600;
     const MAX_ROUNDS = 12;
+    const OPTION_RUN_HISTORY = 'alma_ai_idea_agent_history';
+    const HISTORY_MAX = 30;
 
     public static function init() {
-        add_action(self::CRON_HOOK, array(__CLASS__, 'run'), 10, 3);
+        add_action(self::CRON_HOOK, array(__CLASS__, 'run'), 10, 6);
         add_action('admin_post_alma_ai_idea_agent_start', array(__CLASS__, 'handle_start'));
         add_action('admin_post_alma_ai_idea_agent_settings', array(__CLASS__, 'handle_settings'));
     }
@@ -56,6 +58,11 @@ class ALMA_AI_Idea_Agent {
         return (is_array($counter) && ($counter['date'] ?? '') === current_time('Y-m-d')) ? (int)$counter['count'] : 0;
     }
 
+    public static function get_run_history() {
+        $history = get_option(self::OPTION_RUN_HISTORY, array());
+        return is_array($history) ? $history : array();
+    }
+
     /* ---------------------------------------------------------------------
      * Avvio (admin) → esecuzione in background
      * ------------------------------------------------------------------ */
@@ -63,22 +70,27 @@ class ALMA_AI_Idea_Agent {
     public static function handle_start() {
         if (!current_user_can('manage_options')) { wp_die('forbidden'); }
         check_admin_referer('alma_ai_idea_agent_start');
-        $notice = array('type' => 'success', 'message' => __('Agente ideazione avviato in background: i risultati compariranno qui e in Tutte le idee entro qualche minuto.', 'affiliate-link-manager-ai'));
+        $notice = array('type' => 'success', 'message' => __('Agente ideazione avviato in background: il report comparirà nella Regia AI entro qualche minuto.', 'affiliate-link-manager-ai'));
 
         if (empty(get_option('alma_openai_api_key', ''))) {
             $notice = array('type' => 'error', 'message' => __('OpenAI non è configurata.', 'affiliate-link-manager-ai'));
-        } elseif (self::runs_today() >= self::get_daily_runs_limit()) {
-            $notice = array('type' => 'error', 'message' => __('Limite di esecuzioni giornaliere dell\'agente raggiunto.', 'affiliate-link-manager-ai'));
         } elseif (get_option(self::LOCK_OPTION)) {
             $notice = array('type' => 'error', 'message' => __('Un\'esecuzione dell\'agente è già in corso.', 'affiliate-link-manager-ai'));
         } else {
             $objective = sanitize_textarea_field(wp_unslash($_POST['agent_objective'] ?? ''));
             $create_drafts = empty($_POST['agent_create_drafts']) ? 0 : 1;
-            wp_schedule_single_event(time() + 5, self::CRON_HOOK, array(get_current_user_id(), $objective, $create_drafts));
+            $num_ideas = max(0, min(10, absint($_POST['agent_num_ideas'] ?? 0)));
+            $days_span = max(0, min(60, absint($_POST['agent_days'] ?? 0)));
+            // I lanci manuali dalla Regia partono sempre (force=1): il limite
+            // giornaliero protegge solo le esecuzioni non presidiate.
+            if (self::runs_today() >= self::get_daily_runs_limit()) {
+                $notice['message'] .= ' ' . __('Nota: limite giornaliero già raggiunto, il lancio manuale viene eseguito comunque.', 'affiliate-link-manager-ai');
+            }
+            wp_schedule_single_event(time() + 5, self::CRON_HOOK, array(get_current_user_id(), $objective, $create_drafts, 1, $num_ideas, $days_span));
             if (function_exists('spawn_cron')) { spawn_cron(); }
         }
         set_transient('alma_ai_agent_admin_notice_' . get_current_user_id(), $notice, 120);
-        wp_safe_redirect(wp_get_referer() ?: admin_url('edit.php?post_type=affiliate_link&page=alma-ai-content-ideas'));
+        wp_safe_redirect(wp_get_referer() ?: admin_url('edit.php?post_type=affiliate_link&page=alma-ai-regia'));
         exit;
     }
 
@@ -105,16 +117,19 @@ class ALMA_AI_Idea_Agent {
         return false;
     }
 
-    public static function run($user_id = 0, $objective = '', $create_drafts = 0) {
+    public static function run($user_id = 0, $objective = '', $create_drafts = 0, $force = 0, $num_ideas = 0, $days_span = 0) {
         if (!self::acquire_lock()) { return; }
         $started_at = current_time('mysql');
         $report = array(
             'started_at' => $started_at, 'finished_at' => '', 'rounds' => 0,
             'tool_calls' => array(), 'ideas_created' => array(), 'drafts_created' => array(),
             'cost_total' => 0.0, 'model' => '', 'summary' => '', 'error' => '',
+            'objective' => sanitize_textarea_field((string) $objective), 'forced' => (int) (bool) $force,
         );
         try {
-            if (self::runs_today() >= self::get_daily_runs_limit()) {
+            // I lanci manuali (Regia, Telegram) hanno force=1 e partono sempre;
+            // il limite giornaliero ferma solo le esecuzioni non presidiate.
+            if (empty($force) && self::runs_today() >= self::get_daily_runs_limit()) {
                 $report['error'] = 'Limite esecuzioni giornaliere raggiunto.';
                 return;
             }
@@ -123,12 +138,13 @@ class ALMA_AI_Idea_Agent {
             $user_id = absint($user_id) ?: 1;
             wp_set_current_user($user_id);
 
-            $max_ideas = self::get_max_ideas();
+            $max_ideas = $num_ideas > 0 ? max(1, min(10, absint($num_ideas))) : self::get_max_ideas();
+            $days_span = $days_span > 0 ? max(1, min(60, absint($days_span))) : 14;
             $ideas_created = array();
 
             $input_items = array(
-                array('role' => 'system', 'content' => array(array('type' => 'input_text', 'text' => self::system_prompt($max_ideas)))),
-                array('role' => 'user', 'content' => array(array('type' => 'input_text', 'text' => self::user_prompt($objective)))),
+                array('role' => 'system', 'content' => array(array('type' => 'input_text', 'text' => self::system_prompt($max_ideas, $days_span)))),
+                array('role' => 'user', 'content' => array(array('type' => 'input_text', 'text' => self::user_prompt($objective, $num_ideas, $days_span)))),
             );
 
             for ($round = 1; $round <= self::MAX_ROUNDS; $round++) {
@@ -193,6 +209,22 @@ class ALMA_AI_Idea_Agent {
         } finally {
             $report['finished_at'] = current_time('mysql');
             update_option(self::OPTION_LAST_RUN, $report, false);
+            // Storico compatto per la Regia AI (ultime 30 esecuzioni).
+            $drafts_ok = 0;
+            foreach ((array) $report['drafts_created'] as $draft) {
+                if (!empty($draft['post_id'])) { $drafts_ok++; }
+            }
+            $history = self::get_run_history();
+            array_unshift($history, array(
+                'started_at' => $report['started_at'],
+                'ideas' => count((array) $report['ideas_created']),
+                'drafts' => $drafts_ok,
+                'objective' => mb_substr((string) $report['objective'], 0, 120),
+                'cost' => round((float) $report['cost_total'], 4),
+                'error' => mb_substr((string) $report['error'], 0, 160),
+                'forced' => (int) $report['forced'],
+            ));
+            update_option(self::OPTION_RUN_HISTORY, array_slice($history, 0, self::HISTORY_MAX), false);
             delete_option(self::LOCK_OPTION);
             // Regia Telegram: report di fine esecuzione alle chat autorizzate.
             if (class_exists('ALMA_Telegram_Bot')) {
@@ -201,10 +233,10 @@ class ALMA_AI_Idea_Agent {
         }
     }
 
-    private static function system_prompt($max_ideas) {
+    private static function system_prompt($max_ideas, $days_span = 14) {
         $prompt = 'Sei l\'agente strategico di ideazione contenuti di un blog di viaggi italiano monetizzato con link affiliati. '
             . 'Il tuo compito: analizzare i DATI REALI del sito tramite gli strumenti disponibili e creare fino a ' . (int)$max_ideas . ' nuove idee di articolo ad alto potenziale. '
-            . 'Metodo obbligatorio: 1) analizza le performance, i gap geografici e — se disponibile — le ricerche reali con analizza_ricerche_google (le "opportunità" con impression alte e posizione debole sono il segnale più prezioso: domanda dimostrata senza contenuto adeguato); 2) per ogni opportunità verifica con cerca_link_affiliati che esistano link da monetizzare, con elenca_articoli_esistenti che il tema non sia già coperto (evita duplicati) e con cerca_media se la Media Library ha già immagini utilizzabili sul tema (se sì, segnalalo nel prompt dell\'idea); per le idee legate a una destinazione consulta scheda_localita e usa il clima reale per il taglio stagionale (es. proponi "quando andare" o contenuti per i mesi migliori in arrivo, citando i mesi consigliati nel prompt dell\'idea) e i fatti Wikidata (patrimonio UNESCO, attrazioni notevoli) per angoli accurati e non ancora coperti; per validare un tema usa tendenze_google (Italia, 5 anni): domanda in crescita e mesi di picco delle ricerche indicano COSA proporre e QUANDO pubblicare (prima del picco); 3) crea le idee con crea_idea, includendo località (se pertinente), un prompt editoriale ricco che citi le query target, e una data programmata distribuita nei prossimi 14 giorni. '
+            . 'Metodo obbligatorio: 1) analizza le performance, i gap geografici e — se disponibile — le ricerche reali con analizza_ricerche_google (le "opportunità" con impression alte e posizione debole sono il segnale più prezioso: domanda dimostrata senza contenuto adeguato); 2) per ogni opportunità verifica con cerca_link_affiliati che esistano link da monetizzare, con elenca_articoli_esistenti che il tema non sia già coperto (evita duplicati) e con cerca_media se la Media Library ha già immagini utilizzabili sul tema (se sì, segnalalo nel prompt dell\'idea); per le idee legate a una destinazione consulta scheda_localita e usa il clima reale per il taglio stagionale (es. proponi "quando andare" o contenuti per i mesi migliori in arrivo, citando i mesi consigliati nel prompt dell\'idea) e i fatti Wikidata (patrimonio UNESCO, attrazioni notevoli) per angoli accurati e non ancora coperti; per validare un tema usa tendenze_google (Italia, 5 anni): domanda in crescita e mesi di picco delle ricerche indicano COSA proporre e QUANDO pubblicare (prima del picco); 3) crea le idee con crea_idea, includendo località (se pertinente), un prompt editoriale ricco che citi le query target, e una data programmata distribuita nei prossimi ' . (int)$days_span . ' giorni. '
             . 'Privilegia: località con link affiliati ma senza click (offerta inutilizzata), località con molti articoli ma senza copertura pratica/commerciale, trend di click in crescita. '
             . 'Non inventare dati: basa ogni decisione sugli output degli strumenti. Non superare il numero massimo di idee. '
             . 'Alla fine rispondi in italiano con un riepilogo: per ogni idea creata, titolo e motivazione basata sui numeri.';
@@ -219,9 +251,12 @@ class ALMA_AI_Idea_Agent {
         return preg_match('/^[A-Za-z0-9_\-]{1,120}$/', $id) ? $id : '';
     }
 
-    private static function user_prompt($objective) {
+    private static function user_prompt($objective, $num_ideas = 0, $days_span = 0) {
         $objective = trim((string)$objective);
         $base = 'Analizza i dati del sito e crea le idee di contenuto più promettenti.';
+        if ($num_ideas > 0) {
+            $base = 'Piano editoriale richiesto dall\'editore: crea ESATTAMENTE ' . (int)$num_ideas . ' idee di contenuto, con date programmate distribuite in modo sensato nei prossimi ' . max(1, (int)$days_span) . ' giorni (mai più di una al giorno se possibile).';
+        }
         return $objective !== '' ? $base . ' Obiettivo specifico indicato dall\'editore: ' . $objective : $base;
     }
 
@@ -429,34 +464,33 @@ class ALMA_AI_Idea_Agent {
     }
 
     /* ---------------------------------------------------------------------
-     * UI (card nella pagina Tutte le idee)
+     * UI
      * ------------------------------------------------------------------ */
 
+    /**
+     * Card compatta in Tutte le idee: la gestione completa dell'agente
+     * vive nella pagina Regia AI (v2.70.0).
+     */
     public static function render_panel() {
         if (!current_user_can('manage_options')) { return; }
-        $last = self::get_last_run();
         $running = (bool) get_option(self::LOCK_OPTION);
-        echo '<div class="alma-ideas-card" style="border:1px solid #c3c4c7;border-radius:6px;background:#fff;padding:14px 16px;margin:12px 0;">';
-        echo '<h2 style="margin:0 0 6px;">🤖 Agente ideazione AI</h2>';
-        echo '<p class="description" style="margin-top:0;">Analizza i dati reali (click, gap geografici, link disponibili, articoli esistenti) e crea nuove idee motivate dai numeri. Non genera bozze e non pubblica nulla.</p>';
+        $last = self::get_last_run();
+        echo '<div class="alma-ideas-card" style="border:1px solid #c3c4c7;border-radius:6px;background:#fff;padding:12px 16px;margin:12px 0;display:flex;gap:14px;align-items:center;flex-wrap:wrap;">';
+        echo '<span style="font-size:1.05em;"><strong>🤖 Agente ideazione AI</strong></span>';
+        if ($running) {
+            echo '<span class="description">' . esc_html__('Esecuzione in corso…', 'affiliate-link-manager-ai') . '</span>';
+        } elseif ($last) {
+            echo '<span class="description">' . esc_html(sprintf(__('Ultima esecuzione: %1$s — %2$d idee create.', 'affiliate-link-manager-ai'), (string)($last['started_at'] ?? ''), count((array)($last['ideas_created'] ?? array())))) . '</span>';
+        }
+        echo '<a class="button button-primary" href="' . esc_url(admin_url('edit.php?post_type=affiliate_link&page=alma-ai-regia')) . '">' . esc_html__('Apri la Regia AI', 'affiliate-link-manager-ai') . '</a>';
+        echo '</div>';
+    }
 
-        echo '<form method="post" action="'.esc_url(admin_url('admin-post.php')).'" style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">';
-        wp_nonce_field('alma_ai_idea_agent_start');
-        echo '<input type="hidden" name="action" value="alma_ai_idea_agent_start">';
-        echo '<p style="margin:0;flex:1 1 320px;"><label><strong>'.esc_html__('Obiettivo (opzionale)', 'affiliate-link-manager-ai').'</strong><br><input type="text" name="agent_objective" class="widefat" placeholder="'.esc_attr__('Es. concentrati sull\'Italia, oppure su idee per l\'estate…', 'affiliate-link-manager-ai').'"></label></p>';
-        echo '<p style="margin:0;"><label title="'.esc_attr__('Le bozze contano nel limite giornaliero di bozze automatiche (impostazioni Importazione massiva).', 'affiliate-link-manager-ai').'"><input type="checkbox" name="agent_create_drafts" value="1"> '.esc_html__('Crea subito anche le bozze', 'affiliate-link-manager-ai').'</label></p>';
-        echo '<p style="margin:0;"><button class="button button-primary" '.disabled($running, true, false).'>'.esc_html($running ? __('Esecuzione in corso…', 'affiliate-link-manager-ai') : __('Esegui agente', 'affiliate-link-manager-ai')).'</button></p>';
-        echo '</form>';
-
-        echo '<form method="post" action="'.esc_url(admin_url('admin-post.php')).'" style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:8px;">';
-        wp_nonce_field('alma_ai_idea_agent_settings');
-        echo '<input type="hidden" name="action" value="alma_ai_idea_agent_settings">';
-        echo '<label>'.esc_html__('Max idee per esecuzione', 'affiliate-link-manager-ai').' <input type="number" min="1" max="10" class="small-text" name="'.esc_attr(self::OPTION_MAX_IDEAS).'" value="'.esc_attr((string)self::get_max_ideas()).'"></label>';
-        echo '<label>'.esc_html__('Max esecuzioni al giorno', 'affiliate-link-manager-ai').' <input type="number" min="1" max="20" class="small-text" name="'.esc_attr(self::OPTION_DAILY_RUNS).'" value="'.esc_attr((string)self::get_daily_runs_limit()).'"></label>';
-        echo '<span class="description">'.esc_html(sprintf(__('Esecuzioni oggi: %1$d / %2$d', 'affiliate-link-manager-ai'), self::runs_today(), self::get_daily_runs_limit())).'</span>';
-        echo '<button class="button">'.esc_html__('Salva limiti', 'affiliate-link-manager-ai').'</button>';
-        echo '</form>';
-
+    /**
+     * Report dettagliato dell'ultima esecuzione (usato dalla Regia AI).
+     */
+    public static function render_last_run_details() {
+        $last = self::get_last_run();
         if ($last) {
             $ideas = (array)($last['ideas_created'] ?? array());
             echo '<details style="margin-top:10px;"'.(empty($last['error']) ? '' : ' open').'><summary><strong>'.esc_html__('Ultima esecuzione', 'affiliate-link-manager-ai').'</strong> · '.esc_html($last['started_at'] ?? '').' · '.esc_html(sprintf(__('%1$d idee create, %2$d chiamate strumento, costo stimato ~$%3$s', 'affiliate-link-manager-ai'), count($ideas), count((array)($last['tool_calls'] ?? array())), number_format((float)($last['cost_total'] ?? 0), 4))).($last['model'] !== '' ? ' · '.esc_html($last['model']) : '').'</summary>';
@@ -483,7 +517,8 @@ class ALMA_AI_Idea_Agent {
             }
             if (!empty($last['summary'])) { echo '<pre style="white-space:pre-wrap;font-family:inherit;background:#f6f7f7;border:1px solid #dcdcde;border-radius:6px;padding:10px;margin-top:8px;">'.esc_html($last['summary']).'</pre>'; }
             echo '</details>';
+        } else {
+            echo '<p class="description">' . esc_html__('Nessuna esecuzione registrata: avvia il primo piano qui sopra.', 'affiliate-link-manager-ai') . '</p>';
         }
-        echo '</div>';
     }
 }

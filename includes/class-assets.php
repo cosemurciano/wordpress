@@ -122,7 +122,7 @@ class ALMA_Assets {
                 }
             }
 
-            if ($hook === 'affiliate_link_page_affiliate-link-manager-dashboard') {
+            if (in_array($hook, array('affiliate_link_page_affiliate-link-manager-dashboard', 'affiliate_link_page_alma-ai-regia'), true)) {
                 wp_enqueue_script(
                     'chart.js',
                     'https://cdn.jsdelivr.net/npm/chart.js',
