@@ -32,6 +32,7 @@ if (!defined('ABSPATH')) {
 class ALMA_Geo_Facts {
     const SOURCE_OPEN_METEO = 'open_meteo';
     const SOURCE_WIKIDATA = 'wikidata';
+    const SOURCE_GOOGLE_TRENDS = 'google_trends';
     const CRON_HOOK = 'alma_geo_facts_warm';
     const LOCK_OPTION = 'alma_geo_facts_lock';
     const LOCK_TTL = 300;
@@ -40,6 +41,7 @@ class ALMA_Geo_Facts {
     const OPTION_LAST_REPORT = 'alma_geo_facts_last_report';
     const TTL_DAYS_OK = 270;        // clima ~statico: 9 mesi
     const TTL_DAYS_WIKIDATA = 180;  // fatti anagrafici: 6 mesi
+    const TTL_DAYS_TRENDS = 30;     // tendenze di ricerca: 1 mese
     const TTL_DAYS_ERROR = 7;       // errore API: ritenta dopo una settimana
     const TIME_BUDGET = 60;         // secondi per run del warmer
     const WIKIDATA_MATCH_KM = 100;  // distanza massima nome↔coordinate per accettare l'entità
@@ -474,6 +476,7 @@ class ALMA_Geo_Facts {
         return array(
             self::SOURCE_OPEN_METEO => self::TTL_DAYS_OK,
             self::SOURCE_WIKIDATA => self::TTL_DAYS_WIKIDATA,
+            self::SOURCE_GOOGLE_TRENDS => self::TTL_DAYS_TRENDS,
         );
     }
 
@@ -535,11 +538,17 @@ class ALMA_Geo_Facts {
     private static function warm_one($location, $source, $ttl_days) {
         if ($source === self::SOURCE_WIKIDATA) {
             $result = self::fetch_wikidata((string) $location['canonical_name'], $location['lat'], $location['lng']);
+        } elseif ($source === self::SOURCE_GOOGLE_TRENDS) {
+            $result = ALMA_Google_Trends::fetch_for_keyword((string) $location['canonical_name']);
         } else {
             $result = self::fetch_open_meteo($location['lat'], $location['lng']);
         }
         if (is_wp_error($result)) {
-            self::save_fact((int) $location['id'], $source, array('errore' => sanitize_text_field($result->get_error_message())), self::TTL_DAYS_ERROR);
+            // I limiti di frequenza (429/cooldown) non sono un problema della
+            // località: nessun marcatore, si ritenterà al run successivo.
+            if (!in_array($result->get_error_code(), array('alma_gtrends_429', 'alma_gtrends_cooldown'), true)) {
+                self::save_fact((int) $location['id'], $source, array('errore' => sanitize_text_field($result->get_error_message())), self::TTL_DAYS_ERROR);
+            }
             return false;
         }
         self::save_fact((int) $location['id'], $source, $result, $ttl_days);
@@ -552,16 +561,20 @@ class ALMA_Geo_Facts {
         $report_sources = array();
         try {
             foreach (self::sources() as $source => $ttl_days) {
+                if ($source === self::SOURCE_GOOGLE_TRENDS && get_transient(ALMA_Google_Trends::COOLDOWN_TRANSIENT)) { continue; }
                 $ok = 0;
                 $errors = 0;
                 $processed = 0;
                 $pending = self::pending_locations(self::get_batch_size(), $source);
                 foreach ($pending as $location) {
                     if ((time() - $started_at) > self::TIME_BUDGET) { break 2; }
+                    if ($source === self::SOURCE_GOOGLE_TRENDS && get_transient(ALMA_Google_Trends::COOLDOWN_TRANSIENT)) { break; }
                     $processed++;
                     if (self::warm_one($location, $source, $ttl_days)) { $ok++; } else { $errors++; }
-                    // Cortesia verso le API gratuite (WDQS chiede ritmi moderati).
-                    usleep($source === self::SOURCE_WIKIDATA ? 1000000 : 500000);
+                    // Cortesia verso le API gratuite: WDQS chiede ritmi moderati,
+                    // gli endpoint non ufficiali di Trends ancora di più.
+                    $pauses = array(self::SOURCE_WIKIDATA => 1000000, self::SOURCE_GOOGLE_TRENDS => 2000000);
+                    usleep($pauses[$source] ?? 500000);
                 }
                 $report_sources[$source] = array('processed' => $processed, 'ok' => $ok, 'errors' => $errors, 'remaining' => self::pending_count($source));
             }
@@ -659,6 +672,28 @@ class ALMA_Geo_Facts {
             $out['fatti'] = 'non disponibili';
         }
 
+        // Tendenze di ricerca: solo cache/fetch se la fonte non è in cooldown.
+        $tendenze = self::get_fact($location_id, self::SOURCE_GOOGLE_TRENDS);
+        if (!$tendenze && class_exists('ALMA_Google_Trends')) {
+            $fetched = ALMA_Google_Trends::fetch_for_keyword((string) $row['canonical_name']);
+            if (!is_wp_error($fetched)) {
+                self::save_fact($location_id, self::SOURCE_GOOGLE_TRENDS, $fetched, self::TTL_DAYS_TRENDS);
+                $tendenze = $fetched;
+            }
+        }
+        if (is_array($tendenze) && empty($tendenze['errore'])) {
+            $out['tendenze_ricerca'] = array(
+                'sintesi' => $tendenze['sintesi'] ?? '',
+                'mesi_picco_ricerche' => $tendenze['mesi_picco_ricerche'] ?? '',
+                'trend_interesse' => $tendenze['trend_interesse'] ?? '',
+                'query_correlate_in_crescita' => $tendenze['query_correlate_in_crescita'] ?? array(),
+                'query_correlate_top' => $tendenze['query_correlate_top'] ?? array(),
+                'fonte' => $tendenze['fonte'] ?? '',
+            );
+        } else {
+            $out['tendenze_ricerca'] = 'non disponibili';
+        }
+
         // Dati interni: quanti asset del sito riguardano già la zona.
         $link_ids = method_exists($store, 'get_affiliate_link_ids_for_area') ? (array) $store->get_affiliate_link_ids_for_area($location_id) : array();
         $link_esempi = array();
@@ -711,12 +746,13 @@ class ALMA_Geo_Facts {
     public static function render_settings_tab() {
         $report = get_option(self::OPTION_LAST_REPORT, null);
         $running = (bool) get_option(self::LOCK_OPTION);
-        $labels = array(self::SOURCE_OPEN_METEO => 'Clima (Open-Meteo)', self::SOURCE_WIKIDATA => 'Fatti (Wikidata)');
+        $labels = array(self::SOURCE_OPEN_METEO => 'Clima (Open-Meteo)', self::SOURCE_WIKIDATA => 'Fatti (Wikidata)', self::SOURCE_GOOGLE_TRENDS => 'Tendenze (Google Trends)');
 
         echo '<h2>Schede località (fonti esterne)</h2>';
         echo '<div class="alma-agent-card" style="max-width:900px;"><h3>Come funziona</h3>';
-        echo '<p>Per ogni località dell\'indice geografico con coordinate, il plugin costruisce una <strong>scheda</strong> con dati da fonti esterne: il <strong>clima</strong> da Open-Meteo (mesi migliori per visitare, mesi da evitare, temperature e piogge mensili) e la <strong>carta d\'identità</strong> da Wikidata (descrizione, popolazione, patrimonio UNESCO, Wikipedia italiana e attrazioni notevoli entro 10 km, disambiguate per vicinanza alle coordinate). Non si importano interi dataset: si salva solo la scheda compatta, già in italiano, riusata dall\'agente AI con lo strumento <code>scheda_localita</code>.</p>';
-        echo '<p>Le schede si riempiono da sole con un job notturno (poche località per volta, interrompibile) e restano valide 9 mesi (clima) / 6 mesi (fatti); se l\'agente chiede una località non ancora pronta, la scheda viene creata al volo.</p></div>';
+        echo '<p>Per ogni località dell\'indice geografico con coordinate, il plugin costruisce una <strong>scheda</strong> con dati da fonti esterne: il <strong>clima</strong> da Open-Meteo (mesi migliori per visitare, mesi da evitare, temperature e piogge mensili), la <strong>carta d\'identità</strong> da Wikidata (descrizione, popolazione, patrimonio UNESCO, Wikipedia italiana e attrazioni notevoli entro 10 km, disambiguate per vicinanza alle coordinate) e le <strong>tendenze di ricerca</strong> da Google Trends (in quali mesi gli italiani cercano la destinazione, trend dell\'interesse, query correlate in crescita). Non si importano interi dataset: si salva solo la scheda compatta, già in italiano, riusata dall\'agente AI con lo strumento <code>scheda_localita</code>.</p>';
+        echo '<p>Le schede si riempiono da sole con un job notturno (poche località per volta, interrompibile) e restano valide 9 mesi (clima) / 6 mesi (fatti) / 1 mese (tendenze); se l\'agente chiede una località non ancora pronta, la scheda viene creata al volo.</p>';
+        echo '<p class="description">⚠️ Google Trends non ha un\'API ufficiale: si usano gli endpoint interni del sito. Se Google limita le richieste (HTTP 429) la fonte si sospende da sola per 6 ore e riprende al run successivo; se l\'endpoint cambiasse, la fonte segnala l\'errore senza impattare il resto del plugin.</p></div>';
 
         echo '<table class="form-table" role="presentation">';
         foreach ($labels as $source => $label) {

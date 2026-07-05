@@ -1,3 +1,13 @@
+## 2.69.0 - 2026-07-05
+
+### Fase 7.2 (PR C): tendenze Google Trends nelle schede località + tool tendenze_google
+- **Terza fonte sulle schede località: Google Trends** (nuova classe `ALMA_Google_Trends`). Per ogni località: **in quali mesi gli italiani la cercano** (stagionalità della domanda — spesso anticipa i mesi di viaggio: indica quando pubblicare), **trend dell'interesse** ultimo anno vs precedente, e **query correlate top e in crescita** (gli angoli emergenti). Dati Italia, ultimi 5 anni, distillati in sintesi italiana; validità 30 giorni.
+- **Nuovo strumento dell'agente `tendenze_google`**: analizza QUALSIASI termine o tema (non solo località) per validare un'idea — la domanda esiste? sta crescendo? quando pubblicare? — con cache per termine di 7 giorni. Il prompt di sistema guida l'agente a usarlo per scegliere cosa proporre e quando (prima del picco di ricerche).
+- **Nota importante**: Google Trends non ha un'API ufficiale — si usano gli endpoint interni del sito (gli stessi di pytrends). Difese integrate: **circuit breaker** (al primo HTTP 429 la fonte si sospende da sola per 6 ore, senza marcare le località come in errore), cookie NID recuperato e riusato (1 giorno), pausa di 2 secondi tra le chiamate nel warmer, e degrado con messaggio chiaro se l'endpoint cambia — il resto del plugin non ne risente. L'avvertenza è riportata anche nella tab.
+- Warmer notturno esteso a tre fonti (clima → fatti → tendenze) con stato e report separati nella tab "Schede località"; la scheda `scheda_localita` dell'agente include la nuova sezione `tendenze_ricerca`.
+- Test standalone 22/22 (decodifica prefisso anti-hijacking, stagionalità su 5 anni sintetici con picchi estivi e crescita ultimo anno, serie corte/sporche, parsing query correlate, payload con etichette trend crescita/calo/stabile).
+- Versione plugin aggiornata a `2.69.0`.
+
 ## 2.68.0 - 2026-07-05
 
 ### Fase 7.2 (PR B): fatti Wikidata nelle schede località
