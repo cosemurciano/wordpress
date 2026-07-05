@@ -1,3 +1,11 @@
+## 2.61.0 - 2026-07-05
+
+### Fase 4 (PR 2) — Metabox "AI Affiliati" nell'editor del post
+- Diagnostica degli shortcode affiliati nel contenuto: pattern, validità del link/widget e coerenza geografica con la località del post.
+- "Proponi ottimizzazioni AI": proposte di nuovi inserimenti (anchor/bottone/card) con link geo-coerenti, validate contro le Regole inserimento (densità residua, paragrafi protetti, solo link candidati).
+- Applicazione o scarto proposta per proposta: ogni applicazione crea una revisione WordPress (rollback nativo); blocco se l'editor ha modifiche non salvate.
+- Versione plugin aggiornata a `2.61.0`.
+
 ## 2.60.0 - 2026-07-05
 
 ### Fase 4 (PR 1) — Regole inserimento shortcode, widget creati dall'AI, bozze dirette dall'agente

@@ -1,3 +1,14 @@
+## 2.61.0 - 2026-07-05
+
+### Fase 4 (PR 2) — Metabox "AI Affiliati" nell'editor del post
+- **Nuovo metabox "AI Affiliati"** nell'editor dei post con due sezioni:
+- **Diagnostica shortcode**: tabella degli shortcode affiliati presenti nel contenuto salvato — pattern rilevato (anchor/bottone/card/widget), validità (link pubblicato con URL, widget esistente) e **coerenza geografica** con la località del post (stessa località / stesso paese / località diversa, colorata).
+- **"Proponi ottimizzazioni AI"**: il modello analizza i paragrafi dell'articolo e i link candidati (area geografica del post + match sul titolo) e propone nuovi inserimenti nel rispetto delle Regole inserimento — budget calcolato dalla densità meno gli shortcode già presenti, paragrafi protetti rispettati, solo link candidati (ID inventati scartati), anchor come frase completa che prosegue il paragrafo.
+- **Le proposte non modificano nulla**: vengono salvate in meta e mostrate una a una con pattern, link, posizione, motivazione e anteprima; l'editore le **applica o scarta singolarmente**. Ogni applicazione passa da `wp_update_post` → **revisione WordPress** (rollback nativo) e ricarica la pagina; se l'editor ha modifiche non salvate l'applicazione viene bloccata con un avviso (niente conflitti di contenuto).
+- Inserimento chirurgico: le anchor si accodano al paragrafo scelto, bottoni e card diventano blocchi autonomi subito dopo; supportati sia contenuti HTML (Gutenberg) sia testo classico. Logica testata standalone (10/10).
+- Ogni chiamata AI registrata nell'usage logger con costo stimato (task `post_optimizer`).
+- Versione plugin aggiornata a `2.61.0`.
+
 ## 2.60.0 - 2026-07-05
 
 ### Fase 4 (PR 1) — Regole inserimento shortcode, widget creati dall'AI, bozze dirette dall'agente
