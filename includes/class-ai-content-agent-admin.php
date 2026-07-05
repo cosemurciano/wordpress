@@ -168,6 +168,12 @@ class ALMA_AI_Content_Agent_Admin {
                 $geo_link_ids = $geo_store->get_affiliate_link_ids_for_area($geo_location_id);
             }
             $payload = array('max_ideas'=>absint($_POST['max_ideas'] ?? 1),'content_search_query'=>sanitize_text_field($_POST['content_search_query'] ?? ($_POST['search_terms'] ?? '')),'search_terms'=>sanitize_text_field($_POST['search_terms'] ?? ($_POST['content_search_query'] ?? '')),'theme'=>sanitize_text_field($_POST['theme'] ?? ''),'destination'=>sanitize_text_field($_POST['destination'] ?? ''),'temporary_instructions'=>$temporary_instructions,'openai_prompt'=>ALMA_AI_Content_Agent_Instructions_Manager::sanitize_profile_textarea(wp_unslash($_POST['openai_prompt'] ?? $_POST['temporary_instructions'] ?? '')),'instruction_profile_id'=>$profile_id,'instruction_profile_name'=>sanitize_text_field($profile['profile_name'] ?? ''),'instruction_snapshot_hash'=>sanitize_text_field($instruction_snapshot !== '' ? ALMA_AI_Content_Agent_Instructions_Manager::snapshot_hash($instruction_snapshot) : ''),'instruction_snapshot'=>$instruction_snapshot,'search_scope'=>'affiliate_links_only','geo_location_id'=>$geo_location_id,'geo_location_label'=>$geo_location_label,'geo_link_ids'=>$geo_link_ids);
+            // Il Prompt per OpenAI ora vive nel form "Salva idea", non nel form
+            // di ricerca: se non arriva col POST, mantieni quello già salvato
+            // sull'idea (la ricerca non deve azzerarlo).
+            if (!array_key_exists('openai_prompt', $_POST)) {
+                $payload['openai_prompt'] = ALMA_AI_Content_Agent_Instructions_Manager::sanitize_profile_textarea((string)($active_idea['prompt'] ?? ''));
+            }
             $search = ALMA_AI_Content_Agent_Knowledge_Search::search($payload);
             $stats = ALMA_AI_Content_Agent_Selection_Session::add_search_results($payload, $search);
             $active_idea_id = absint(get_user_meta(get_current_user_id(), '_alma_active_idea_id', true));
@@ -967,55 +973,45 @@ class ALMA_AI_Content_Agent_Admin {
         foreach ((array)$session['selected_results'] as $row) { if (!is_array($row)) { continue; } $rk = sanitize_text_field($row['result_key'] ?? ''); if ($rk !== '') { $usage_keys[] = $rk; } }
         $usage_counts = ALMA_AI_Content_Agent_Result_Usage::get_counts(array_values(array_unique($usage_keys)));
 
-        echo '<div class="alma-ideas-toolbar alma-ideas-card">';
-        echo '<div><label for="alma-idea-title"><strong>Titolo idea</strong></label><input id="alma-idea-title" class="regular-text alma-idea-title-input" form="alma-save-idea-form" type="text" name="idea_title" value="'.esc_attr($active_idea['title'] ?? 'Nuova idea').'">';
-        echo '<p class="description">'.esc_html(!empty($active_idea['executed_at']) ? ('Eseguita il '.$active_idea['executed_at']) : 'Non eseguita').'</p></div>';
+        // Header sul modello dell'editor Post: titolo grande + azioni essenziali
+        // (Salva idea, Crea bozza, Elimina a sola icona). "Crea nuova idea" non
+        // serve più: è la voce di menu "Aggiungi idea".
+        echo '<div class="alma-ideas-toolbar alma-ideas-card" style="display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap;padding:14px 16px;">';
+        if($active_idea_id){ echo '<form id="alma-save-idea-form" method="post" action="'.esc_url(admin_url('admin-post.php')).'">'.wp_nonce_field('alma_ai_agent_action','_wpnonce',true,false).'<input type="hidden" name="action" value="alma_ai_agent_action"><input type="hidden" name="do" value="save_content_idea"><input type="hidden" name="idea_id" value="'.(int)$active_idea_id.'"><input type="hidden" name="idea_status" value="bozza"><input type="hidden" id="alma-save-idea-location-id" name="idea_location_id" value="'.(int)($active_idea['location_id'] ?? 0).'"><input type="hidden" id="alma-save-idea-location-label" name="idea_location_label" value="'.esc_attr($active_idea['location_label'] ?? '').'"></form>'; }
+        echo '<div style="flex:1 1 420px;min-width:280px;">';
+        echo '<input id="alma-idea-title" form="alma-save-idea-form" type="text" name="idea_title" placeholder="Titolo idea (ispira il titolo dell\'articolo)" value="'.esc_attr($active_idea['title'] ?? 'Nuova idea').'" style="width:100%;font-size:1.5em;padding:8px 12px;line-height:1.2;" />';
+        echo '<p class="description" style="margin:6px 2px 0;">'.esc_html(!empty($active_idea['executed_at']) ? ('Eseguita il '.$active_idea['executed_at']) : 'Non eseguita').' · Ultima modifica: '.esc_html(!empty($active_idea['modified']) ? $active_idea['modified'] : 'N/D').' · <a href="'.esc_url(admin_url('edit.php?post_type=affiliate_link&page=' . self::IDEAS_LIST_MENU_SLUG)).'">Tutte le idee</a></p>';
+        echo '</div>';
+        echo '<div class="alma-actions-inline alma-idea-main-actions" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">';
+        if($active_idea_id){ echo '<button class="button button-primary" form="alma-save-idea-form"><span class="dashicons dashicons-saved" aria-hidden="true" style="vertical-align:text-bottom;"></span> Salva idea</button>'; }
+        self::action_form('create_draft_from_selection','Crea bozza','', 'button');
         if (!empty($active_idea['draft_post_id']) && get_post((int)$active_idea['draft_post_id'])) { echo '<a class="button" href="'.esc_url(get_edit_post_link((int)$active_idea['draft_post_id'],'raw')).'">Apri bozza</a>'; }
-        echo '<div class="alma-actions-inline alma-idea-main-actions">';
-        self::action_form('new_content_idea','Crea nuova idea','', 'button alma-action-button alma-action-primary', 'dashicons-lightbulb');
-        if($active_idea_id){ echo '<form id="alma-save-idea-form" method="post" action="'.esc_url(admin_url('admin-post.php')).'">'.wp_nonce_field('alma_ai_agent_action','_wpnonce',true,false).'<input type="hidden" name="action" value="alma_ai_agent_action"><input type="hidden" name="do" value="save_content_idea"><input type="hidden" name="idea_id" value="'.(int)$active_idea_id.'"><input type="hidden" name="idea_status" value="bozza"><input type="hidden" id="alma-save-idea-openai-prompt" name="openai_prompt" value="'.esc_attr($active_idea['prompt']??'').'"><input type="hidden" id="alma-save-idea-instruction-profile-id" name="instruction_profile_id" value="'.(int)$selected_profile_id.'"><input type="hidden" id="alma-save-idea-location-id" name="idea_location_id" value="'.(int)($active_idea['location_id'] ?? 0).'"><input type="hidden" id="alma-save-idea-location-label" name="idea_location_label" value="'.esc_attr($active_idea['location_label'] ?? '').'"><button class="button alma-action-button alma-action-success"><span class="dashicons dashicons-saved" aria-hidden="true"></span><span>Salva idea</span></button></form>'; }
-        if($active_idea_id){ echo '<form method="post" action="'.esc_url(admin_url('admin-post.php')).'">'.wp_nonce_field('alma_ai_agent_action','_wpnonce',true,false).'<input type="hidden" name="action" value="alma_ai_agent_action"><input type="hidden" name="do" value="delete_content_idea"><input type="hidden" name="idea_id" value="'.(int)$active_idea_id.'"><button class="button alma-action-button alma-action-danger"><span class="dashicons dashicons-trash" aria-hidden="true"></span><span>Elimina</span></button></form>'; }
-        self::action_form('create_draft_from_selection','Crea bozza','', 'button alma-action-button alma-action-primary', 'dashicons-edit-page');
-        self::action_form('download_ai_payload_json','Scarica JSON payload OpenAI',$active_idea_id ? '<input type="hidden" name="idea_id" value="'.(int)$active_idea_id.'">' : '', 'button alma-action-button alma-action-secondary', 'dashicons-media-code');
+        if($active_idea_id){ echo '<form method="post" action="'.esc_url(admin_url('admin-post.php')).'" onsubmit="return confirm(\'Eliminare definitivamente questa idea?\');" style="margin:0;">'.wp_nonce_field('alma_ai_agent_action','_wpnonce',true,false).'<input type="hidden" name="action" value="alma_ai_agent_action"><input type="hidden" name="do" value="delete_content_idea"><input type="hidden" name="idea_id" value="'.(int)$active_idea_id.'"><button class="button" type="submit" aria-label="Elimina idea" title="Elimina idea" style="color:#d63638;"><span class="dashicons dashicons-trash" aria-hidden="true" style="vertical-align:text-bottom;"></span></button></form>'; }
         echo '</div>';
-        if (current_user_can('manage_options')) {
-            echo '<details class="alma-idea-advanced-tools"><summary>Strumenti avanzati</summary><p class="description">Download tecnico per diagnostica: utile per confrontare il payload completo di debug con il payload OpenAI normalizzato. Non usare come payload inviato a OpenAI.</p><div class="alma-actions-inline">';
-            self::action_form('download_ai_debug_payload_json','Scarica JSON debug completo (solo diagnostica, non inviato a OpenAI)',$active_idea_id ? '<input type="hidden" name="idea_id" value="'.(int)$active_idea_id.'">' : '', 'button alma-action-button alma-action-secondary', 'dashicons-media-code');
-            echo '</div></details>';
-        }
         echo '</div>';
 
-        echo '<div class="alma-ideas-layout">';
-        echo '<aside class="alma-ideas-col alma-ideas-col-left"><div class="alma-ideas-card alma-active-idea-box">';
-        echo '<section class="alma-idea-section"><h3 class="alma-idea-section-title">Idea attiva</h3><p class="alma-idea-title-lg">'.esc_html($active_idea['title'] ?? 'Nessuna idea attiva').'</p><div class="alma-idea-meta"><p><strong>Stato:</strong> '.esc_html(!empty($active_idea['executed_at']) ? 'Eseguita' : 'Non eseguita').'</p><p><strong>Ultima modifica:</strong> '.esc_html(!empty($active_idea['modified']) ? $active_idea['modified'] : 'N/D').'</p></div>';
-        if ($active_idea_id < 1) { echo '<p class="description">Nessuna idea attiva. Usa il pulsante Crea nuova idea per iniziare.</p>'; }
-        if (!empty($active_idea['draft_post_id']) && get_post((int)$active_idea['draft_post_id'])) { echo '<p><a href="'.esc_url(get_edit_post_link((int)$active_idea['draft_post_id'],'raw')).'">Apri bozza</a></p>'; }
-        echo '</section>';
+        // Layout a 2 colonne: la colonna "Idea attiva" non serve più (le sue
+        // informazioni sono nell'header) e lo spazio va ai risultati di ricerca.
+        echo '<div class="alma-ideas-layout" style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap;">';
 
-        echo '<section class="alma-idea-section"><h4 class="alma-idea-section-title">Tutte le idee</h4>';
-        echo '<p class="description">L\'elenco completo delle idee (con filtri, ricerca e azioni) è nella pagina dedicata.</p>';
-        echo '<p><a class="button" href="'.esc_url(admin_url('edit.php?post_type=affiliate_link&page=' . self::IDEAS_LIST_MENU_SLUG)).'">📋 Tutte le idee</a></p>';
-        echo '</section>';
-
-        echo '<section class="alma-idea-section alma-idea-details"><h4 class="alma-idea-section-title">Dettagli idea</h4><ul><li><strong>Contenuti aggiunti:</strong> '.(int)($summary['selected_total'] ?? 0).'</li><li><strong>Profilo istruzioni AI:</strong> '.(int)($active_idea['profile_id'] ?? 0).'</li><li><strong>Prompt OpenAI:</strong> '.(!empty($active_idea['prompt']) ? 'Presente' : 'Assente').'</li></ul></section></div></aside>';
-
-        echo '<main class="alma-ideas-col alma-ideas-col-main"><div class="alma-ideas-card"><h3>1. Cerca contenuti</h3><form method="post" action="'.esc_url(admin_url('admin-post.php')).'">'.wp_nonce_field('alma_ai_agent_action','_wpnonce',true,false).'<input type="hidden" name="action" value="alma_ai_agent_action"><input type="hidden" name="do" value="search_knowledge_base"><input type="hidden" name="idea_id" value="'.(int)$active_idea_id.'"><p><input class="widefat" type="text" name="content_search_query" placeholder="Cerca contenuti" value="'.esc_attr($session['last_query']['content_search_query'] ?? '').'" required></p><p><label for="alma-idea-instruction-profile">Profilo istruzioni AI</label><select id="alma-idea-instruction-profile" class="widefat" name="instruction_profile_id"><option value="0">Nessun profilo</option>';
-        $rendered_profile_ids = array();
-        foreach($profiles as $p){ $rendered_profile_ids[(int)$p['id']] = true; $sel=selected($selected_profile_id,(int)$p['id'],false); echo '<option value="'.(int)$p['id'].'" '.$sel.'>'.esc_html($p['profile_name']).'</option>'; }
-        if ($selected_profile_id > 0 && empty($rendered_profile_ids[$selected_profile_id])) {
-            $selected_inactive_profile = ALMA_AI_Content_Agent_Instructions_Manager::get_profile($selected_profile_id);
-            if (!empty($selected_inactive_profile['id'])) { echo '<option value="'.(int)$selected_inactive_profile['id'].'" selected>'.esc_html($selected_inactive_profile['profile_name']).' (non attivo, già scelto)</option>'; }
-        }
-        echo '</select></p>';
+        echo '<main class="alma-ideas-col alma-ideas-col-main" style="flex:2.4 1 620px;min-width:0;">';
+        echo '<div class="alma-ideas-card"><h3 style="margin-top:0;">1. Cerca contenuti</h3>';
+        echo '<p class="description" style="margin-top:0;">La ricerca serve <strong>solo a trovare i link affiliati più coerenti</strong> da mettere nella bozza. Il titolo dell\'articolo nasce dal <strong>Titolo idea</strong> (in alto) e dal Prompt per OpenAI (a destra).</p>';
+        echo '<form method="post" action="'.esc_url(admin_url('admin-post.php')).'">'.wp_nonce_field('alma_ai_agent_action','_wpnonce',true,false).'<input type="hidden" name="action" value="alma_ai_agent_action"><input type="hidden" name="do" value="search_knowledge_base"><input type="hidden" name="idea_id" value="'.(int)$active_idea_id.'">';
         // Fase 2: località dell'idea con autocomplete sull'indice geografico.
         $idea_location_id = absint($active_idea['location_id'] ?? 0);
         $idea_location_label = sanitize_text_field($active_idea['location_label'] ?? '');
-        echo '<p><label for="alma-idea-location">Località (indice geografico)</label>';
-        echo '<input id="alma-idea-location" class="widefat" type="text" list="alma-idea-location-list" autocomplete="off" placeholder="Es. Algeria, Copenaghen, Maldive…" value="'.esc_attr($idea_location_label).'">';
+        echo '<div style="display:grid;grid-template-columns:minmax(220px,2fr) minmax(180px,1fr) auto;gap:10px;align-items:end;">';
+        echo '<p style="margin:0;"><label for="alma-idea-search-query"><strong>Cosa cerchi</strong></label><input id="alma-idea-search-query" class="widefat" type="text" name="content_search_query" placeholder="Es. tour deserto, musei, escursioni…" value="'.esc_attr($session['last_query']['content_search_query'] ?? '').'" required></p>';
+        echo '<p style="margin:0;"><label for="alma-idea-location"><strong>Località</strong></label>';
+        echo '<input id="alma-idea-location" class="widefat" type="text" list="alma-idea-location-list" autocomplete="off" placeholder="Es. Algeria, Copenaghen…" value="'.esc_attr($idea_location_label).'">';
         echo '<datalist id="alma-idea-location-list"></datalist>';
         echo '<input type="hidden" id="alma-idea-location-id" name="idea_location_id" value="'.(int)$idea_location_id.'">';
-        echo '<input type="hidden" id="alma-idea-location-label" name="idea_location_label" value="'.esc_attr($idea_location_label).'">';
-        echo '<span class="description">Con una località impostata, i link affiliati della sua area geografica vengono privilegiati nella ricerca e la bozza AI resta geograficamente coerente. Svuota il campo per rimuoverla.</span></p>';
+        echo '<input type="hidden" id="alma-idea-location-label" name="idea_location_label" value="'.esc_attr($idea_location_label).'"></p>';
+        echo '<p style="margin:0;"><button class="button button-primary">Cerca link</button></p>';
+        echo '</div>';
+        echo '<p class="description" style="margin:8px 0 0;">Con una località impostata i link della sua area geografica vengono privilegiati e la bozza resta geograficamente coerente. Svuota il campo per rimuoverla.</p>';
+        echo '</form>';
         echo '<script>(function(){
             var input=document.getElementById("alma-idea-location"),list=document.getElementById("alma-idea-location-list");
             var hidId=document.getElementById("alma-idea-location-id"),hidLabel=document.getElementById("alma-idea-location-label");
@@ -1043,8 +1039,7 @@ class ALMA_AI_Content_Agent_Admin {
             });
             input.addEventListener("change",function(){var term=input.value.trim();if(options[term]){sync(options[term],term);}else if(term===""){sync(0,"");}});
         })();</script>';
-        if (empty($profiles)) { echo '<p class="description"><strong>Nessun profilo istruzioni AI attivo.</strong> Attiva almeno un profilo nella tab Istruzioni AI oppure scegli esplicitamente Nessun profilo.</p>'; }
-        echo '<p><label for="alma-openai-prompt">Prompt per OpenAI</label><textarea id="alma-openai-prompt" class="widefat" rows="4" name="openai_prompt">'.esc_textarea($active_idea['prompt'] ?? ($session['openai_prompt'] ?? '')).'</textarea><span class="description">Questo prompt verrà inviato a OpenAI insieme ai contenuti raccolti e guiderà cosa scrivere nella bozza.</span></p><p><button class="button button-primary">Cerca contenuti</button></p></form></div>';
+        echo '</div>';
 
 
         $all_rows = array();
@@ -1125,6 +1120,8 @@ class ALMA_AI_Content_Agent_Admin {
         if (empty($paged_rows)) {
             if (!empty($all_rows) && $total_results === 0) { echo '<p class="description">Nessun Link affiliato corrisponde ai filtri selezionati.</p>'; } else { echo '<p class="description">Nessun risultato disponibile. Esegui una ricerca per popolare questa sezione.</p>'; }
         }
+        // Risultati su due colonne: più elementi visibili, selezione più rapida.
+        echo '<div class="alma-results-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:12px;align-items:start;">';
         foreach($paged_rows as $item){
             $r=(array)$item['row'];
             $rk=sanitize_text_field($r['result_key'] ?? '');
@@ -1140,13 +1137,45 @@ class ALMA_AI_Content_Agent_Admin {
             else { echo '<form method="post" action="'.esc_url(admin_url('admin-post.php')).'">'.wp_nonce_field('alma_ai_agent_action','_wpnonce',true,false).'<input type="hidden" name="action" value="alma_ai_agent_action"><input type="hidden" name="do" value="add_result_to_idea"><input type="hidden" name="result_key" value="'.esc_attr($rk).'"><button class="button button-small">Aggiungi all’idea</button></form>'; }
             echo '</div>'.$thumbnail_html.'</div></div>';
         }
+        echo '</div>';
         echo '<p><button class="button button-primary" type="submit" form="alma-bulk-add-form">Aggiungi selezionati all’idea</button></p></div></main>';
 
-echo '<aside class="alma-ideas-col alma-ideas-col-right"><div class="alma-ideas-card"><h3>3. Sessione contenuto</h3><p><strong>Totale elementi aggiunti:</strong> '.(int)($summary['selected_total'] ?? 0).'</p>';
+echo '<aside class="alma-ideas-col alma-ideas-col-right" style="flex:1 1 300px;min-width:280px;">';
+
+        // Prompt per OpenAI: guida SOLO la stesura della bozza (la ricerca link
+        // non lo usa), quindi vive fuori dall'area "Cerca contenuti". Appartiene
+        // al form Salva idea tramite l'attributo form (niente hidden da sincronizzare).
+        echo '<div class="alma-ideas-card"><h3 style="margin-top:0;">Prompt per OpenAI</h3>';
+        echo '<textarea id="alma-openai-prompt" class="widefat" rows="6" name="openai_prompt" form="alma-save-idea-form" placeholder="Tono, taglio, cosa includere nell\'articolo…">'.esc_textarea($active_idea['prompt'] ?? ($session['openai_prompt'] ?? '')).'</textarea>';
+        echo '<p class="description">Guida la stesura della bozza insieme al Titolo idea. Non influenza la ricerca dei link. Viene conservato con <strong>Salva idea</strong>.</p></div>';
+
+        echo '<div class="alma-ideas-card"><h3 style="margin-top:0;">Profilo istruzioni AI</h3>';
+        echo '<select id="alma-idea-instruction-profile" class="widefat" name="instruction_profile_id" form="alma-save-idea-form"><option value="0">Nessun profilo</option>';
+        $rendered_profile_ids = array();
+        foreach($profiles as $p){ $rendered_profile_ids[(int)$p['id']] = true; $sel=selected($selected_profile_id,(int)$p['id'],false); echo '<option value="'.(int)$p['id'].'" '.$sel.'>'.esc_html($p['profile_name']).'</option>'; }
+        if ($selected_profile_id > 0 && empty($rendered_profile_ids[$selected_profile_id])) {
+            $selected_inactive_profile = ALMA_AI_Content_Agent_Instructions_Manager::get_profile($selected_profile_id);
+            if (!empty($selected_inactive_profile['id'])) { echo '<option value="'.(int)$selected_inactive_profile['id'].'" selected>'.esc_html($selected_inactive_profile['profile_name']).' (non attivo, già scelto)</option>'; }
+        }
+        echo '</select>';
+        if (empty($profiles)) { echo '<p class="description"><strong>Nessun profilo istruzioni AI attivo.</strong> Attivane uno in Impostazioni AI Content → Istruzioni AI oppure lascia Nessun profilo.</p>'; }
+        echo '<p class="description">Regole editoriali applicate alla bozza. Si conserva con <strong>Salva idea</strong>.</p></div>';
+
+        echo '<div class="alma-ideas-card"><h3 style="margin-top:0;">3. Sessione contenuto</h3><p><strong>Totale elementi aggiunti:</strong> '.(int)($summary['selected_total'] ?? 0).'</p>';
         if ((int)($summary['selected_total'] ?? 0) < 1) { echo '<p>Nessun contenuto aggiunto all’idea.</p>'; }
         foreach($labels as $k=>$label){ $rows=(array)($selected_groups[$k]??array()); if (empty($rows)) { continue; } echo '<section class="alma-results-group"><h4>'.esc_html($label).' <span class="alma-count-badge">'.count($rows).'</span></h4>'; foreach($rows as $r){ $rk=sanitize_text_field($r['result_key'] ?? ''); $usage=(int)($usage_counts[$rk] ?? 0); echo '<div class="alma-result-item"><strong>'.esc_html($r['title'] ?? '').'</strong><p class="description">Score: <span class="alma-score-value">'.(int)($r['score'] ?? 0).'</span> · '.esc_html($r['reason'] ?? '').'</p><span class="alma-usage-badge">Utilizzato in bozze: '.$usage.'</span><form method="post" action="'.esc_url(admin_url('admin-post.php')).'">'.wp_nonce_field('alma_ai_agent_action','_wpnonce',true,false).'<input type="hidden" name="action" value="alma_ai_agent_action"><input type="hidden" name="do" value="remove_selected_item"><input type="hidden" name="result_key" value="'.esc_attr($rk).'"><button class="button button-small">Rimuovi</button></form></div>'; }
         echo '</section>'; }
-        echo '</div></aside></div>';
+        echo '</div>';
+
+        if (current_user_can('manage_options')) {
+            echo '<div class="alma-ideas-card"><details class="alma-idea-advanced-tools"><summary>Strumenti avanzati</summary>';
+            echo '<p class="description">Download tecnici per diagnostica del payload inviato a OpenAI.</p><div class="alma-actions-inline">';
+            self::action_form('download_ai_payload_json','Scarica JSON payload OpenAI',$active_idea_id ? '<input type="hidden" name="idea_id" value="'.(int)$active_idea_id.'">' : '', 'button');
+            self::action_form('download_ai_debug_payload_json','Scarica JSON debug completo',$active_idea_id ? '<input type="hidden" name="idea_id" value="'.(int)$active_idea_id.'">' : '', 'button');
+            echo '</div></details></div>';
+        }
+
+        echo '</aside></div>';
     }
 
 
