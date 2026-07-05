@@ -898,7 +898,9 @@ class ALMA_AI_Content_Agent_Draft_Builder {
             $active_idea_title = sanitize_text_field((string)($active_idea['title'] ?? ''));
         }
         $content_search_query = sanitize_text_field($session['last_query']['content_search_query'] ?? ($session['last_query']['search_terms'] ?? ''));
-        $idea_title = $active_idea_title !== '' ? $active_idea_title : $content_search_query;
+        // Il titolo dell'articolo nasce dal Titolo idea; la query di ricerca è
+        // solo il fallback quando il titolo è rimasto quello di default.
+        $idea_title = ($active_idea_title !== '' && strcasecmp($active_idea_title, 'Nuova idea') !== 0) ? $active_idea_title : $content_search_query;
         $openai_prompt = sanitize_textarea_field($session['openai_prompt'] ?? ($session['last_query']['openai_prompt'] ?? ($session['last_query']['temporary_instructions'] ?? '')));
 
         $internal_link_selection = ALMA_AI_Content_Agent_Internal_Link_Selector::select_candidates(array(
@@ -951,6 +953,7 @@ class ALMA_AI_Content_Agent_Draft_Builder {
         );
         if (!empty($profile_payload['instruction_profile_rules']['affiliate_rules'])) { $affiliate_rules[] = $profile_payload['instruction_profile_rules']['affiliate_rules']; }
         $seo_rules = array(
+            'Il titolo dell\'articolo deve ispirarsi a idea_context.idea_title (e al prompt); content_search_query è servita SOLO a selezionare i link affiliati, non usarla come argomento del pezzo.',
             'Produrre seo_title coerente con titolo idea e prompt.',
             'Produrre seo_description chiara e pertinente.',
             'Evitare keyword stuffing.',

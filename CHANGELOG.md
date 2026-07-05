@@ -1,3 +1,14 @@
+## 2.57.0 - 2026-07-05
+
+### Aggiungi idea — UI ridisegnata sul modello dell'editor Post
+- **Header come nell'editor dei Post**: campo Titolo idea grande a tutta larghezza (con placeholder che chiarisce che ispira il titolo dell'articolo) e accanto solo le azioni essenziali: **Salva idea** (primario), **Crea bozza**, **Apri bozza** (se esiste) ed **Elimina a sola icona** con conferma. Rimosso "Crea nuova idea" (doppione della voce di menu Aggiungi idea); i download JSON sono negli Strumenti avanzati della sidebar.
+- **"1. Cerca contenuti" ripulita**: ora contiene solo ciò che serve alla ricerca — campo "Cosa cerchi" e Località affiancati con pulsante "Cerca link" sulla stessa riga; una nota chiarisce che la ricerca serve **solo a trovare i link affiliati più coerenti**.
+- **Prompt per OpenAI spostato nella sidebar** (fuori dall'area di ricerca): verificato che NON influenza la ricerca dei link — guida solo la stesura della bozza. Ora appartiene direttamente al form "Salva idea" (attributo `form`, senza sincronizzazioni JavaScript fragili) e la ricerca **non azzera più il prompt salvato**.
+- **Profilo istruzioni AI spostato sopra "3. Sessione contenuto"** nella sidebar, anch'esso conservato con Salva idea.
+- **Colonna "Idea attiva" eliminata** (le sue informazioni sono nell'header): lo spazio va alla colonna di ricerca, con **risultati su due colonne** per vedere e selezionare più link a colpo d'occhio.
+- **Titolo idea → titolo articolo**: verificato che `idea_title` arriva già all'AI; ora il titolo di default "Nuova idea" non viene più inviato come titolo (fallback alla query) e una regola esplicita impone all'AI di ispirare il titolo dell'articolo al Titolo idea, usando la query di ricerca SOLO per la selezione dei link.
+- Versione plugin aggiornata a `2.57.0`.
+
 ## 2.56.0 - 2026-07-04
 
 ### Idee sul modello "Post" + geolocalizzazione idee (Fase 2) + importazione massiva CSV programmata (Fase 3)

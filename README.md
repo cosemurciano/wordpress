@@ -1,3 +1,12 @@
+## 2.57.0 - 2026-07-05
+
+### Aggiungi idea — UI ridisegnata sul modello dell'editor Post
+- Header con Titolo idea grande e azioni essenziali (Salva idea, Crea bozza, Apri bozza, Elimina a icona); via "Crea nuova idea", download JSON negli Strumenti avanzati.
+- "Cerca contenuti" compatta (query + località + pulsante in riga): serve solo a trovare i link affiliati; Prompt OpenAI e Profilo istruzioni spostati in sidebar sopra la Sessione contenuto, conservati con Salva idea (la ricerca non azzera più il prompt).
+- Colonna "Idea attiva" rimossa: risultati di ricerca su due colonne con più spazio.
+- Il titolo dell'articolo nasce dal Titolo idea (regola esplicita per l'AI); la query di ricerca resta solo per la selezione dei link.
+- Versione plugin aggiornata a `2.57.0`.
+
 ## 2.56.0 - 2026-07-04
 
 ### Idee sul modello "Post" + geolocalizzazione idee + importazione massiva CSV programmata
