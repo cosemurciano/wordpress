@@ -352,29 +352,52 @@ class ALMA_AI_Post_Optimizer {
         $post_id = self::verify_request();
         $post = get_post($post_id);
         if (!$post) { wp_send_json_error(array('message' => __('Post non trovato.', 'affiliate-link-manager-ai')), 404); }
+        $result = self::generate_proposals($post);
+        if (!empty($result['error'])) {
+            wp_send_json_error(array('message' => $result['error']));
+        }
+        $proposals = (array) $result['proposals'];
+        update_post_meta($post_id, self::META_PROPOSALS, $proposals);
+
+        ob_start();
+        self::render_proposals_rows($proposals);
+        wp_send_json_success(array('html' => (string) ob_get_clean(), 'count' => count($proposals)));
+    }
+
+    /**
+     * Motore proposte, riusato dal metabox (AJAX) e dall'arricchimento in
+     * background (Fase 6). $args:
+     * - allow_replacements: consente proposte di SOSTITUZIONE di shortcode
+     *   esistenti (link geograficamente incoerenti o nettamente peggiori);
+     * - task: etichetta per l'usage logger.
+     * Ritorna array('proposals' => array, 'error' => string).
+     */
+    public static function generate_proposals($post, $args = array()) {
+        $allow_replacements = !empty($args['allow_replacements']);
+        $task = sanitize_key($args['task'] ?? 'post_optimizer');
         if (empty(get_option('alma_openai_api_key', ''))) {
-            wp_send_json_error(array('message' => __('OpenAI non è configurata.', 'affiliate-link-manager-ai')));
+            return array('proposals' => array(), 'error' => __('OpenAI non è configurata.', 'affiliate-link-manager-ai'));
         }
 
         $rules = ALMA_AI_Insertion_Rules::get_rules();
         $paragraphs = self::paragraph_texts($post->post_content);
         if (count($paragraphs) < max(3, $rules['min_paragraphs_before'] + 1)) {
-            wp_send_json_error(array('message' => __('Contenuto troppo breve per proporre inserimenti.', 'affiliate-link-manager-ai')));
+            return array('proposals' => array(), 'error' => __('Contenuto troppo breve per proporre inserimenti.', 'affiliate-link-manager-ai'));
         }
 
         // Budget inserimenti: densità meno gli shortcode già presenti.
         $word_count = ALMA_AI_Insertion_Rules::count_words(wp_strip_all_tags($post->post_content));
         $existing = preg_match_all('/\[affiliate_link(?:s_widget)?[^\]]*\]/', $post->post_content, $m);
         $budget = max(0, (int)floor($word_count / $rules['density_words']) - (int)$existing);
-        if ($budget < 1) {
-            wp_send_json_error(array('message' => __('Densità massima già raggiunta: nessun nuovo inserimento consigliabile.', 'affiliate-link-manager-ai')));
+        if ($budget < 1 && !$allow_replacements) {
+            return array('proposals' => array(), 'error' => __('Densità massima già raggiunta: nessun nuovo inserimento consigliabile.', 'affiliate-link-manager-ai'));
         }
         $budget = min($budget, self::MAX_PROPOSALS);
 
         // Candidati: link dell'area geografica del post + match testuale sul titolo.
         $candidates = self::collect_candidates($post);
         if (empty($candidates)) {
-            wp_send_json_error(array('message' => __('Nessun link affiliato candidato (né geografico né per keyword) per questo articolo.', 'affiliate-link-manager-ai')));
+            return array('proposals' => array(), 'error' => __('Nessun link affiliato candidato (né geografico né per keyword) per questo articolo.', 'affiliate-link-manager-ai'));
         }
 
         $allowed_patterns = array_values(array_intersect($rules['patterns'], array('anchor', 'button', 'card')));
@@ -388,8 +411,21 @@ class ALMA_AI_Post_Optimizer {
             'regole_anchor' => $rules['anchor_rules'],
         );
         $prompt = 'Analizza l\'articolo e proponi al massimo ' . $budget . ' inserimenti di link affiliati che aumentino la conversione SENZA rompere il flusso di lettura. '
-            . 'Rispondi SOLO JSON: {"proposte":[{"paragrafo":int (indice del paragrafo DOPO il quale inserire, >= primo_paragrafo_utilizzabile),"pattern":"anchor|button|card","link_id":int (solo da link_candidati),"frase":string (SOLO per anchor: una frase completa e naturale che prosegue il paragrafo e contiene lo shortcode [affiliate_link id="ID" text="anchor descrittiva"]),"button_text":string (per button/card),"motivo":string (perché qui, orientato alla conversione)}]}. '
-            . 'Meglio poche proposte eccellenti che tante mediocri. CONTEXT: ' . wp_json_encode($context);
+            . 'Rispondi SOLO JSON: {"proposte":[{"paragrafo":int (indice del paragrafo DOPO il quale inserire, >= primo_paragrafo_utilizzabile),"pattern":"anchor|button|card","link_id":int (solo da link_candidati),"frase":string (SOLO per anchor: una frase completa e naturale che prosegue il paragrafo e contiene lo shortcode [affiliate_link id="ID" text="anchor descrittiva"]),"button_text":string (per button/card),"motivo":string (perché qui, orientato alla conversione)}]}. ';
+        if ($allow_replacements) {
+            $existing_analysis = self::analyze_content($post->ID, $post->post_content);
+            $existing_links = array();
+            foreach ((array)$existing_analysis['rows'] as $row) {
+                if ($row['pattern'] === 'Widget') { continue; }
+                if (preg_match('/\bid="?(\d+)"?/', $row['shortcode'], $mm)) {
+                    $existing_links[] = array('link_id' => (int)$mm[1], 'titolo' => $row['title'], 'coerenza_geografica' => $row['geo'], 'valido' => $row['status'] === 'ok');
+                }
+            }
+            $context['shortcode_esistenti'] = $existing_links;
+            $prompt .= 'Puoi inoltre proporre la SOSTITUZIONE di uno shortcode esistente SOLO se il suo link è geograficamente incoerente, non valido, o esiste un candidato nettamente più pertinente: aggiungi alle proposte {"azione":"sostituisci","vecchio_link_id":int (da shortcode_esistenti),"nuovo_link_id":int (da link_candidati),"testo_anchor":string (nuova anchor descrittiva se il pattern è anchor),"motivo":string}. Non sostituire link già coerenti solo per variare. ';
+            if ($budget < 1) { $prompt .= 'La densità massima è già raggiunta: NON proporre nuovi inserimenti, valuta solo eventuali sostituzioni. '; }
+        }
+        $prompt .= 'Meglio poche proposte eccellenti che tante mediocri. CONTEXT: ' . wp_json_encode($context);
 
         $res = ALMA_OpenAI_Service::request(array(
             'system_prompt' => 'Sei un editor esperto di monetizzazione affiliate per blog di viaggi. Proponi inserimenti eleganti e pertinenti. Output solo JSON valido.',
@@ -399,23 +435,76 @@ class ALMA_AI_Post_Optimizer {
             'temperature' => 0.4,
             'timeout' => 60,
         ));
-        ALMA_AI_Usage_Logger::log(array('task' => 'post_optimizer', 'success' => !empty($res['success']), 'model' => $res['model'] ?? '', 'response_time' => $res['response_time'] ?? null, 'input_tokens' => $res['usage']['input_tokens'] ?? null, 'output_tokens' => $res['usage']['output_tokens'] ?? null, 'estimated_cost' => $res['estimated_cost'] ?? null, 'error' => $res['error'] ?? '', 'reference_id' => 'post:' . $post_id));
+        ALMA_AI_Usage_Logger::log(array('task' => $task, 'success' => !empty($res['success']), 'model' => $res['model'] ?? '', 'response_time' => $res['response_time'] ?? null, 'input_tokens' => $res['usage']['input_tokens'] ?? null, 'output_tokens' => $res['usage']['output_tokens'] ?? null, 'estimated_cost' => $res['estimated_cost'] ?? null, 'error' => $res['error'] ?? '', 'reference_id' => 'post:' . $post->ID));
         if (empty($res['success'])) {
-            wp_send_json_error(array('message' => sanitize_text_field((string)($res['error'] ?? __('Errore AI', 'affiliate-link-manager-ai')))));
+            return array('proposals' => array(), 'error' => sanitize_text_field((string)($res['error'] ?? __('Errore AI', 'affiliate-link-manager-ai'))));
         }
         $parsed = json_decode((string)$res['response'], true);
         if (!is_array($parsed)) { $parsed = json_decode(ALMA_AI_Content_Agent_Text_Utils::extract_first_json((string)$res['response']), true); }
         $raw_proposals = is_array($parsed['proposte'] ?? null) ? $parsed['proposte'] : array();
 
         $proposals = self::validate_proposals($raw_proposals, $candidates, $paragraphs, $rules, $budget, $allowed_patterns);
-        if (empty($proposals)) {
-            wp_send_json_error(array('message' => __('L\'AI non ha prodotto proposte valide per questo articolo.', 'affiliate-link-manager-ai')));
+        if ($allow_replacements) {
+            $proposals = array_merge($proposals, self::validate_replacements($raw_proposals, $candidates, $post->post_content));
         }
-        update_post_meta($post_id, self::META_PROPOSALS, $proposals);
+        if (empty($proposals)) {
+            return array('proposals' => array(), 'error' => __('L\'AI non ha prodotto proposte valide per questo articolo.', 'affiliate-link-manager-ai'));
+        }
+        return array('proposals' => $proposals, 'error' => '');
+    }
 
-        ob_start();
-        self::render_proposals_rows($proposals);
-        wp_send_json_success(array('html' => (string) ob_get_clean(), 'count' => count($proposals)));
+    /**
+     * Valida le proposte di sostituzione: il vecchio ID deve essere in uno
+     * shortcode del contenuto, il nuovo tra i candidati, e diversi tra loro.
+     */
+    private static function validate_replacements($raw, $candidates, $content) {
+        $candidate_map = array();
+        foreach ($candidates as $candidate) { $candidate_map[(int)$candidate['id']] = $candidate['titolo']; }
+        $proposals = array();
+        foreach ((array)$raw as $row) {
+            if (!is_array($row) || sanitize_key((string)($row['azione'] ?? '')) !== 'sostituisci') { continue; }
+            $old_id = absint($row['vecchio_link_id'] ?? 0);
+            $new_id = absint($row['nuovo_link_id'] ?? 0);
+            if ($old_id < 1 || $new_id < 1 || $old_id === $new_id) { continue; }
+            if (!isset($candidate_map[$new_id])) { continue; }
+            if (!preg_match('/\[affiliate_link[^\]]*\bid="?' . $old_id . '"?[\s"\]]/', $content)) { continue; }
+            $proposal = array(
+                'pattern' => 'replace',
+                'link_id' => $new_id,
+                'link_title' => $candidate_map[$new_id],
+                'old_link_id' => $old_id,
+                'paragraph' => 0,
+                'insertion' => sprintf('Sostituzione link #%d → #%d (%s)', $old_id, $new_id, $candidate_map[$new_id]),
+                'inline' => false,
+                'anchor_text' => str_replace('"', '', sanitize_text_field((string)($row['testo_anchor'] ?? ''))),
+                'reason' => sanitize_text_field((string)($row['motivo'] ?? '')),
+                'created_at' => current_time('mysql'),
+            );
+            $proposals[md5(wp_json_encode(array('replace', $old_id, $new_id)))] = $proposal;
+            if (count($proposals) >= 3) { break; }
+        }
+        return $proposals;
+    }
+
+    /**
+     * Sostituisce il primo shortcode del vecchio link con il nuovo ID
+     * (stessa struttura/pattern); per le anchor aggiorna anche text=.
+     */
+    public static function apply_replacement($content, $old_link_id, $new_link_id, $anchor_text = '') {
+        $done = false;
+        return array('content' => preg_replace_callback(
+            '/\[affiliate_link([^\]]*)\]/',
+            function ($m) use (&$done, $old_link_id, $new_link_id, $anchor_text) {
+                if ($done || !preg_match('/\bid="?' . (int)$old_link_id . '"?(\s|$)/', $m[1] . ' ')) { return $m[0]; }
+                $done = true;
+                $inner = preg_replace('/\bid="?' . (int)$old_link_id . '"?/', 'id="' . (int)$new_link_id . '"', $m[1]);
+                if ($anchor_text !== '' && preg_match('/\stext="[^"]*"/', $inner)) {
+                    $inner = preg_replace('/(\s)text="[^"]*"/', '$1text="' . $anchor_text . '"', $inner);
+                }
+                return '[affiliate_link' . $inner . ']';
+            },
+            $content
+        ), 'replaced' => $done);
     }
 
     private static function collect_candidates($post) {

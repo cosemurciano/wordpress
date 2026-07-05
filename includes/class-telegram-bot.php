@@ -91,6 +91,12 @@ class ALMA_Telegram_Bot {
         }
     }
 
+    /** Digest e messaggi di servizio verso tutte le chat autorizzate. */
+    public static function send_message_to_all($text, $keyboard = null) {
+        if (!self::is_enabled()) { return; }
+        self::broadcast($text, $keyboard);
+    }
+
     private static function esc($text) {
         return htmlspecialchars((string) $text, ENT_QUOTES, 'UTF-8');
     }
