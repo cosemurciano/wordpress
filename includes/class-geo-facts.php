@@ -7,10 +7,15 @@
  * presente nell'indice geografico del plugin (tabella alma_geo_locations):
  * una località che non riguarda il sito non genera mai una chiamata.
  *
- * Fonte attiva in questa versione: Open-Meteo (archivio ERA5, nessuna API
- * key). Non il meteo di domani ma il CLIMA: medie mensili degli ultimi anni
- * da cui derivare i "mesi migliori per visitare" — il dato utile all'agente
- * per stagionalità editoriale e coerenza dei consigli.
+ * Fonti attive:
+ * - Open-Meteo (archivio ERA5, nessuna API key): non il meteo di domani ma
+ *   il CLIMA — medie mensili degli ultimi anni da cui derivare i "mesi
+ *   migliori per visitare", per stagionalità editoriale e coerenza consigli;
+ * - Wikidata (wbsearchentities + SPARQL, nessuna API key): la "carta
+ *   d'identità" della località — descrizione, popolazione, paese, UNESCO,
+ *   Wikipedia italiana e attrazioni notevoli nel raggio di 10 km. La
+ *   disambiguazione tra omonimi avviene per prossimità alle coordinate
+ *   già geocodificate del gazetteer.
  *
  * Le risposte grezze non si salvano mai: al fetch vengono distillate in un
  * payload compatto in italiano (pochi KB) pronto per il prompt dell'agente.
@@ -26,15 +31,18 @@ if (!defined('ABSPATH')) {
 
 class ALMA_Geo_Facts {
     const SOURCE_OPEN_METEO = 'open_meteo';
+    const SOURCE_WIKIDATA = 'wikidata';
     const CRON_HOOK = 'alma_geo_facts_warm';
     const LOCK_OPTION = 'alma_geo_facts_lock';
     const LOCK_TTL = 300;
     const OPTION_ENABLED = 'alma_geo_facts_enabled';
     const OPTION_BATCH = 'alma_geo_facts_batch_size';
     const OPTION_LAST_REPORT = 'alma_geo_facts_last_report';
-    const TTL_DAYS_OK = 270;   // clima ~statico: 9 mesi
-    const TTL_DAYS_ERROR = 7;  // errore API: ritenta dopo una settimana
-    const TIME_BUDGET = 60;    // secondi per run del warmer
+    const TTL_DAYS_OK = 270;        // clima ~statico: 9 mesi
+    const TTL_DAYS_WIKIDATA = 180;  // fatti anagrafici: 6 mesi
+    const TTL_DAYS_ERROR = 7;       // errore API: ritenta dopo una settimana
+    const TIME_BUDGET = 60;         // secondi per run del warmer
+    const WIKIDATA_MATCH_KM = 100;  // distanza massima nome↔coordinate per accettare l'entità
 
     public static function init() {
         add_action(self::CRON_HOOK, array(__CLASS__, 'warm_batch'));
@@ -210,6 +218,229 @@ class ALMA_Geo_Facts {
     }
 
     /* ---------------------------------------------------------------------
+     * Wikidata: carta d'identità della località + attrazioni vicine
+     * ------------------------------------------------------------------ */
+
+    /**
+     * Costruisce la scheda Wikidata di una località: cerca l'entità per
+     * nome, la disambigua per prossimità alle coordinate del gazetteer,
+     * legge i fatti via SPARQL e le attrazioni notevoli entro 10 km.
+     */
+    public static function fetch_wikidata($name, $lat, $lng) {
+        $candidates = self::wikidata_search($name);
+        if (is_wp_error($candidates)) { return $candidates; }
+        if (empty($candidates)) {
+            return new WP_Error('alma_wikidata', sprintf(__('Wikidata: nessuna entità trovata per "%s".', 'affiliate-link-manager-ai'), $name));
+        }
+        $details = self::wikidata_entity_details(array_slice(wp_list_pluck($candidates, 'id'), 0, 5));
+        if (is_wp_error($details)) { return $details; }
+        $entity = self::pick_wikidata_candidate($details, $lat, $lng);
+        if (!$entity) {
+            return new WP_Error('alma_wikidata', sprintf(__('Wikidata: nessun candidato per "%s" entro %d km dalle coordinate note.', 'affiliate-link-manager-ai'), $name, self::WIKIDATA_MATCH_KM));
+        }
+        $attractions = array();
+        if ($lat !== null && $lng !== null) {
+            $found = self::wikidata_attractions($lat, $lng);
+            if (!is_wp_error($found)) { $attractions = $found; }
+        }
+        return self::build_wikidata_payload($entity, $attractions);
+    }
+
+    /**
+     * Ricerca entità per nome (API wbsearchentities, lingua italiana).
+     */
+    public static function wikidata_search($name) {
+        $url = add_query_arg(array(
+            'action' => 'wbsearchentities',
+            'search' => rawurlencode($name), // add_query_arg non codifica i valori
+            'language' => 'it',
+            'uselang' => 'it',
+            'type' => 'item',
+            'limit' => 5,
+            'format' => 'json',
+        ), 'https://www.wikidata.org/w/api.php');
+        $response = wp_remote_get($url, array('timeout' => 15, 'user-agent' => self::wikidata_user_agent()));
+        if (is_wp_error($response)) { return $response; }
+        $data = json_decode(wp_remote_retrieve_body($response), true);
+        if (!is_array($data) || !isset($data['search'])) {
+            return new WP_Error('alma_wikidata', __('Wikidata: risposta di ricerca non valida.', 'affiliate-link-manager-ai'));
+        }
+        $out = array();
+        foreach ((array) $data['search'] as $hit) {
+            $id = sanitize_text_field((string) ($hit['id'] ?? ''));
+            if (preg_match('/^Q\d+$/', $id)) {
+                $out[] = array('id' => $id, 'label' => sanitize_text_field((string) ($hit['label'] ?? '')));
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * Dettagli dei candidati via SPARQL: coordinate, popolazione, paese,
+     * designazione patrimonio, altitudine, descrizione, Wikipedia it.
+     */
+    public static function wikidata_entity_details($qids) {
+        $values = implode(' ', array_map(function ($q) { return 'wd:' . $q; }, $qids));
+        $query = 'SELECT ?item ?itemDescription ?coord ?population ?elevation ?countryLabel ?heritageLabel ?article WHERE {'
+            . ' VALUES ?item { ' . $values . ' }'
+            . ' OPTIONAL { ?item wdt:P625 ?coord . }'
+            . ' OPTIONAL { ?item wdt:P1082 ?population . }'
+            . ' OPTIONAL { ?item wdt:P2044 ?elevation . }'
+            . ' OPTIONAL { ?item wdt:P17 ?country . }'
+            . ' OPTIONAL { ?item wdt:P1435 ?heritage . }'
+            . ' OPTIONAL { ?article schema:about ?item ; schema:isPartOf <https://it.wikipedia.org/> . }'
+            . ' SERVICE wikibase:label { bd:serviceParam wikibase:language "it,en". } }';
+        $rows = self::wikidata_sparql($query);
+        if (is_wp_error($rows)) { return $rows; }
+        // Più righe per entità (es. più designazioni patrimonio): si aggregano.
+        $entities = array();
+        foreach ($rows as $row) {
+            $qid = preg_replace('#^.*/#', '', (string) self::sparql_value($row, 'item'));
+            if (!preg_match('/^Q\d+$/', $qid)) { continue; }
+            if (!isset($entities[$qid])) {
+                $coord = self::parse_wkt_point((string) self::sparql_value($row, 'coord'));
+                $entities[$qid] = array(
+                    'id' => $qid,
+                    'descrizione' => sanitize_text_field((string) self::sparql_value($row, 'itemDescription')),
+                    'lat' => $coord ? $coord['lat'] : null,
+                    'lng' => $coord ? $coord['lng'] : null,
+                    'popolazione' => absint(self::sparql_value($row, 'population')),
+                    'altitudine_m' => self::sparql_value($row, 'elevation') !== '' ? (int) round((float) self::sparql_value($row, 'elevation')) : null,
+                    'paese' => sanitize_text_field((string) self::sparql_value($row, 'countryLabel')),
+                    'patrimonio' => array(),
+                    'wikipedia_it' => esc_url_raw((string) self::sparql_value($row, 'article')),
+                );
+            }
+            $heritage = sanitize_text_field((string) self::sparql_value($row, 'heritageLabel'));
+            if ($heritage !== '' && !in_array($heritage, $entities[$qid]['patrimonio'], true)) {
+                $entities[$qid]['patrimonio'][] = $heritage;
+            }
+        }
+        return array_values($entities);
+    }
+
+    /**
+     * Attrazioni notevoli entro 10 km, ordinate per notorietà (numero di
+     * sitelink): tipologie fisse senza ricorsione P279* per restare rapidi.
+     */
+    public static function wikidata_attractions($lat, $lng) {
+        // museo, chiesa, castello, sito archeologico, palazzo, cattedrale,
+        // attrazione turistica, parco nazionale, parco urbano, basilica.
+        $query = 'SELECT DISTINCT ?poi ?poiLabel ?links WHERE {'
+            . ' SERVICE wikibase:around { ?poi wdt:P625 ?loc . bd:serviceParam wikibase:center "Point(' . round((float) $lng, 4) . ' ' . round((float) $lat, 4) . ')"^^geo:wktLiteral . bd:serviceParam wikibase:radius "10" . }'
+            . ' VALUES ?class { wd:Q33506 wd:Q16970 wd:Q23413 wd:Q839954 wd:Q16560 wd:Q2977 wd:Q570116 wd:Q46169 wd:Q22698 wd:Q163687 }'
+            . ' ?poi wdt:P31 ?class . ?poi wikibase:sitelinks ?links . FILTER(?links >= 5)'
+            . ' SERVICE wikibase:label { bd:serviceParam wikibase:language "it,en". } }'
+            . ' ORDER BY DESC(?links) LIMIT 8';
+        $rows = self::wikidata_sparql($query);
+        if (is_wp_error($rows)) { return $rows; }
+        $out = array();
+        foreach ($rows as $row) {
+            $label = sanitize_text_field((string) self::sparql_value($row, 'poiLabel'));
+            // Scarta le entità senza etichetta leggibile (label = QID).
+            if ($label !== '' && !preg_match('/^Q\d+$/', $label) && !in_array($label, $out, true)) {
+                $out[] = $label;
+            }
+        }
+        return $out;
+    }
+
+    public static function wikidata_sparql($query) {
+        $response = wp_remote_get(add_query_arg(array('query' => rawurlencode($query), 'format' => 'json'), 'https://query.wikidata.org/sparql'), array(
+            'timeout' => 25,
+            'user-agent' => self::wikidata_user_agent(),
+            'headers' => array('Accept' => 'application/sparql-results+json'),
+        ));
+        if (is_wp_error($response)) { return $response; }
+        $code = wp_remote_retrieve_response_code($response);
+        $data = json_decode(wp_remote_retrieve_body($response), true);
+        if ($code < 200 || $code >= 300 || !is_array($data) || !isset($data['results']['bindings'])) {
+            return new WP_Error('alma_wikidata', sprintf(__('Wikidata SPARQL: risposta non valida (HTTP %d).', 'affiliate-link-manager-ai'), $code));
+        }
+        return (array) $data['results']['bindings'];
+    }
+
+    private static function wikidata_user_agent() {
+        // La policy WDQS richiede uno User-Agent identificabile con contatto.
+        return 'AffiliateLinkManagerAI/' . ALMA_VERSION . ' (WordPress; ' . home_url('/') . ')';
+    }
+
+    private static function sparql_value($row, $key) {
+        return isset($row[$key]['value']) ? (string) $row[$key]['value'] : '';
+    }
+
+    /**
+     * "Point(lng lat)" WKT → coordinate. Pura, testabile.
+     */
+    public static function parse_wkt_point($wkt) {
+        if (!preg_match('/Point\(\s*(-?[\d.]+)\s+(-?[\d.]+)\s*\)/i', (string) $wkt, $m)) { return null; }
+        return array('lng' => (float) $m[1], 'lat' => (float) $m[2]);
+    }
+
+    /**
+     * Distanza haversine in km. Pura, testabile.
+     */
+    public static function haversine_km($lat1, $lng1, $lat2, $lng2) {
+        $rad = M_PI / 180;
+        $dlat = ((float) $lat2 - (float) $lat1) * $rad;
+        $dlng = ((float) $lng2 - (float) $lng1) * $rad;
+        $a = sin($dlat / 2) ** 2 + cos((float) $lat1 * $rad) * cos((float) $lat2 * $rad) * sin($dlng / 2) ** 2;
+        return 6371.0 * 2 * atan2(sqrt($a), sqrt(1 - $a));
+    }
+
+    /**
+     * Sceglie tra i candidati omonimi quello più vicino alle coordinate
+     * note del gazetteer (entro WIKIDATA_MATCH_KM). Senza coordinate di
+     * riferimento vale il primo candidato (miglior match testuale).
+     * Pura, testabile.
+     */
+    public static function pick_wikidata_candidate($entities, $lat, $lng) {
+        if (empty($entities)) { return null; }
+        if ($lat === null || $lng === null) { return $entities[0]; }
+        $best = null;
+        $best_distance = null;
+        foreach ($entities as $entity) {
+            if (!isset($entity['lat'], $entity['lng']) || $entity['lat'] === null || $entity['lng'] === null) { continue; }
+            $distance = self::haversine_km($lat, $lng, $entity['lat'], $entity['lng']);
+            if ($distance <= self::WIKIDATA_MATCH_KM && ($best_distance === null || $distance < $best_distance)) {
+                $best = $entity;
+                $best_distance = $distance;
+            }
+        }
+        return $best;
+    }
+
+    /**
+     * Scheda compatta in italiano dai dati grezzi. Pura, testabile.
+     */
+    public static function build_wikidata_payload($entity, $attractions) {
+        $unesco = '';
+        foreach ((array) $entity['patrimonio'] as $heritage) {
+            if (stripos($heritage, 'unesco') !== false || stripos($heritage, 'patrimonio mondiale') !== false || stripos($heritage, 'world heritage') !== false) {
+                $unesco = $heritage;
+                break;
+            }
+        }
+        $parts = array();
+        if (!empty($entity['descrizione'])) { $parts[] = $entity['descrizione']; }
+        if (!empty($entity['popolazione'])) { $parts[] = number_format((int) $entity['popolazione'], 0, ',', '.') . ' abitanti'; }
+        if ($unesco !== '') { $parts[] = 'patrimonio UNESCO (' . $unesco . ')'; }
+        if (!empty($attractions)) { $parts[] = 'attrazioni notevoli: ' . implode(', ', array_slice((array) $attractions, 0, 8)); }
+        return array(
+            'wikidata_id' => (string) $entity['id'],
+            'descrizione' => (string) ($entity['descrizione'] ?? ''),
+            'popolazione' => (int) ($entity['popolazione'] ?? 0),
+            'paese' => (string) ($entity['paese'] ?? ''),
+            'altitudine_m' => $entity['altitudine_m'] ?? null,
+            'patrimonio_unesco' => $unesco,
+            'attrazioni' => array_slice((array) $attractions, 0, 8),
+            'wikipedia_it' => (string) ($entity['wikipedia_it'] ?? ''),
+            'sintesi' => ucfirst(implode('; ', $parts)) . ($parts ? '.' : ''),
+            'fonte' => 'wikidata.org',
+        );
+    }
+
+    /* ---------------------------------------------------------------------
      * Warmer in background
      * ------------------------------------------------------------------ */
 
@@ -236,7 +467,17 @@ class ALMA_Geo_Facts {
      * nei contenuti per prime. La condizione "senza scheda valida" fa
      * avanzare il lavoro da sola: ogni run riparte da dove si era fermato.
      */
-    public static function pending_locations($limit) {
+    /**
+     * Fonti gestite dal warmer, con TTL della scheda valida.
+     */
+    public static function sources() {
+        return array(
+            self::SOURCE_OPEN_METEO => self::TTL_DAYS_OK,
+            self::SOURCE_WIKIDATA => self::TTL_DAYS_WIKIDATA,
+        );
+    }
+
+    public static function pending_locations($limit, $source = self::SOURCE_OPEN_METEO) {
         global $wpdb;
         if (!class_exists('ALMA_Geo_Index_Store') || !self::table_exists()) { return array(); }
         $store = new ALMA_Geo_Index_Store();
@@ -255,11 +496,11 @@ class ALMA_Geo_Facts {
                )
              ORDER BY usi DESC, l.id ASC
              LIMIT %d",
-            self::SOURCE_OPEN_METEO, current_time('mysql'), max(1, absint($limit))
+            sanitize_key($source), current_time('mysql'), max(1, absint($limit))
         ), ARRAY_A);
     }
 
-    public static function pending_count() {
+    public static function pending_count($source = self::SOURCE_OPEN_METEO) {
         global $wpdb;
         if (!class_exists('ALMA_Geo_Index_Store') || !self::table_exists()) { return 0; }
         $store = new ALMA_Geo_Index_Store();
@@ -273,50 +514,66 @@ class ALMA_Geo_Facts {
                    SELECT 1 FROM {$facts} f
                    WHERE f.location_id = l.id AND f.source = %s AND f.expires_at > %s
                )",
-            self::SOURCE_OPEN_METEO, current_time('mysql')
+            sanitize_key($source), current_time('mysql')
         ));
     }
 
-    public static function ready_count() {
+    public static function ready_count($source = self::SOURCE_OPEN_METEO) {
         global $wpdb;
         if (!self::table_exists()) { return 0; }
         return (int) $wpdb->get_var($wpdb->prepare(
             "SELECT COUNT(*) FROM " . self::table_name() . " WHERE source = %s AND expires_at > %s AND payload NOT LIKE %s",
-            self::SOURCE_OPEN_METEO, current_time('mysql'), '%"errore"%'
+            sanitize_key($source), current_time('mysql'), '%"errore"%'
         ));
+    }
+
+    /**
+     * Recupera e salva la scheda di una fonte per una località. Ritorna
+     * true su successo, false se è stato salvato un marcatore d'errore
+     * (TTL breve: niente martellamenti, si ritenta dopo una settimana).
+     */
+    private static function warm_one($location, $source, $ttl_days) {
+        if ($source === self::SOURCE_WIKIDATA) {
+            $result = self::fetch_wikidata((string) $location['canonical_name'], $location['lat'], $location['lng']);
+        } else {
+            $result = self::fetch_open_meteo($location['lat'], $location['lng']);
+        }
+        if (is_wp_error($result)) {
+            self::save_fact((int) $location['id'], $source, array('errore' => sanitize_text_field($result->get_error_message())), self::TTL_DAYS_ERROR);
+            return false;
+        }
+        self::save_fact((int) $location['id'], $source, $result, $ttl_days);
+        return true;
     }
 
     public static function warm_batch() {
         if (!self::is_enabled() || !self::acquire_lock()) { return; }
         $started_at = time();
-        $ok = 0;
-        $errors = 0;
-        $processed = 0;
+        $report_sources = array();
         try {
-            $pending = self::pending_locations(self::get_batch_size());
-            foreach ($pending as $location) {
-                if ((time() - $started_at) > self::TIME_BUDGET) { break; }
-                $processed++;
-                $result = self::fetch_open_meteo($location['lat'], $location['lng']);
-                if (is_wp_error($result)) {
-                    // Marcatore d'errore con TTL breve: niente martellamenti,
-                    // si ritenta dopo una settimana.
-                    self::save_fact((int) $location['id'], self::SOURCE_OPEN_METEO, array('errore' => sanitize_text_field($result->get_error_message())), self::TTL_DAYS_ERROR);
-                    $errors++;
-                } else {
-                    self::save_fact((int) $location['id'], self::SOURCE_OPEN_METEO, $result, self::TTL_DAYS_OK);
-                    $ok++;
+            foreach (self::sources() as $source => $ttl_days) {
+                $ok = 0;
+                $errors = 0;
+                $processed = 0;
+                $pending = self::pending_locations(self::get_batch_size(), $source);
+                foreach ($pending as $location) {
+                    if ((time() - $started_at) > self::TIME_BUDGET) { break 2; }
+                    $processed++;
+                    if (self::warm_one($location, $source, $ttl_days)) { $ok++; } else { $errors++; }
+                    // Cortesia verso le API gratuite (WDQS chiede ritmi moderati).
+                    usleep($source === self::SOURCE_WIKIDATA ? 1000000 : 500000);
                 }
-                usleep(500000); // mezzo secondo tra le chiamate: cortesia verso l'API gratuita
+                $report_sources[$source] = array('processed' => $processed, 'ok' => $ok, 'errors' => $errors, 'remaining' => self::pending_count($source));
             }
-            update_option(self::OPTION_LAST_REPORT, array(
-                'time' => current_time('mysql'),
-                'processed' => $processed,
-                'ok' => $ok,
-                'errors' => $errors,
-                'remaining' => self::pending_count(),
-            ), false);
         } finally {
+            $totals = array('processed' => 0, 'ok' => 0, 'errors' => 0, 'remaining' => 0);
+            foreach (self::sources() as $source => $ttl_days) {
+                if (!isset($report_sources[$source])) {
+                    $report_sources[$source] = array('processed' => 0, 'ok' => 0, 'errors' => 0, 'remaining' => self::pending_count($source));
+                }
+                foreach (array('processed', 'ok', 'errors', 'remaining') as $key) { $totals[$key] += $report_sources[$source][$key]; }
+            }
+            update_option(self::OPTION_LAST_REPORT, array_merge(array('time' => current_time('mysql'), 'sources' => $report_sources), $totals), false);
             delete_option(self::LOCK_OPTION);
         }
     }
@@ -380,6 +637,28 @@ class ALMA_Geo_Facts {
             $out['clima'] = 'non disponibile';
         }
 
+        // Fatti Wikidata: cache prima, altrimenti fetch on-demand.
+        $fatti = self::get_fact($location_id, self::SOURCE_WIKIDATA);
+        if (!$fatti) {
+            $fetched = self::fetch_wikidata((string) $row['canonical_name'], $row['lat'], $row['lng']);
+            if (!is_wp_error($fetched)) {
+                self::save_fact($location_id, self::SOURCE_WIKIDATA, $fetched, self::TTL_DAYS_WIKIDATA);
+                $fatti = $fetched;
+            }
+        }
+        if (is_array($fatti) && empty($fatti['errore'])) {
+            $out['fatti'] = array(
+                'sintesi' => $fatti['sintesi'] ?? '',
+                'popolazione' => $fatti['popolazione'] ?? 0,
+                'patrimonio_unesco' => $fatti['patrimonio_unesco'] ?? '',
+                'attrazioni' => $fatti['attrazioni'] ?? array(),
+                'wikipedia_it' => $fatti['wikipedia_it'] ?? '',
+                'fonte' => $fatti['fonte'] ?? '',
+            );
+        } else {
+            $out['fatti'] = 'non disponibili';
+        }
+
         // Dati interni: quanti asset del sito riguardano già la zona.
         $link_ids = method_exists($store, 'get_affiliate_link_ids_for_area') ? (array) $store->get_affiliate_link_ids_for_area($location_id) : array();
         $link_esempi = array();
@@ -430,24 +709,30 @@ class ALMA_Geo_Facts {
     }
 
     public static function render_settings_tab() {
-        $ready = self::ready_count();
-        $pending = self::pending_count();
         $report = get_option(self::OPTION_LAST_REPORT, null);
         $running = (bool) get_option(self::LOCK_OPTION);
+        $labels = array(self::SOURCE_OPEN_METEO => 'Clima (Open-Meteo)', self::SOURCE_WIKIDATA => 'Fatti (Wikidata)');
 
         echo '<h2>Schede località (fonti esterne)</h2>';
         echo '<div class="alma-agent-card" style="max-width:900px;"><h3>Come funziona</h3>';
-        echo '<p>Per ogni località dell\'indice geografico con coordinate, il plugin costruisce una <strong>scheda</strong> con dati da fonti esterne — oggi il <strong>clima</strong> da Open-Meteo (medie mensili storiche, gratuito, senza API key): mesi migliori per visitare, mesi da evitare, temperature e piogge mese per mese. Non si importano interi dataset: si salva solo la scheda compatta, già in italiano, riusata dall\'agente AI con lo strumento <code>scheda_localita</code> per proporre idee con la stagionalità giusta.</p>';
-        echo '<p>Le schede si riempiono da sole con un job notturno (poche località per volta, interrompibile) e restano valide 9 mesi; se l\'agente chiede una località non ancora pronta, la scheda viene creata al volo.</p></div>';
+        echo '<p>Per ogni località dell\'indice geografico con coordinate, il plugin costruisce una <strong>scheda</strong> con dati da fonti esterne: il <strong>clima</strong> da Open-Meteo (mesi migliori per visitare, mesi da evitare, temperature e piogge mensili) e la <strong>carta d\'identità</strong> da Wikidata (descrizione, popolazione, patrimonio UNESCO, Wikipedia italiana e attrazioni notevoli entro 10 km, disambiguate per vicinanza alle coordinate). Non si importano interi dataset: si salva solo la scheda compatta, già in italiano, riusata dall\'agente AI con lo strumento <code>scheda_localita</code>.</p>';
+        echo '<p>Le schede si riempiono da sole con un job notturno (poche località per volta, interrompibile) e restano valide 9 mesi (clima) / 6 mesi (fatti); se l\'agente chiede una località non ancora pronta, la scheda viene creata al volo.</p></div>';
 
         echo '<table class="form-table" role="presentation">';
-        echo '<tr><th scope="row">Stato</th><td>';
-        echo '<span class="alma-badge ' . ($pending === 0 ? 'is-success' : 'is-warning') . '">' . esc_html($ready) . ' schede pronte</span> ';
-        echo esc_html($pending) . ' località in attesa' . ($running ? ' — <strong>aggiornamento in corso…</strong>' : '');
-        if (is_array($report)) {
-            echo '<p class="description">Ultimo run: ' . esc_html((string) $report['time']) . ' — elaborate ' . esc_html((string) $report['processed']) . ', ok ' . esc_html((string) $report['ok']) . ', errori ' . esc_html((string) $report['errors']) . ', rimanenti ' . esc_html((string) $report['remaining']) . '.</p>';
+        foreach ($labels as $source => $label) {
+            $ready = self::ready_count($source);
+            $pending = self::pending_count($source);
+            echo '<tr><th scope="row">' . esc_html($label) . '</th><td>';
+            echo '<span class="alma-badge ' . ($pending === 0 ? 'is-success' : 'is-warning') . '">' . esc_html($ready) . ' schede pronte</span> ';
+            echo esc_html($pending) . ' località in attesa';
+            if (is_array($report) && isset($report['sources'][$source])) {
+                $src = $report['sources'][$source];
+                echo '<p class="description">Ultimo run: elaborate ' . esc_html((string) $src['processed']) . ', ok ' . esc_html((string) $src['ok']) . ', errori ' . esc_html((string) $src['errors']) . '.</p>';
+            }
+            echo '</td></tr>';
         }
-        echo '</td></tr></table>';
+        echo '<tr><th scope="row">Ultimo run</th><td>' . (is_array($report) ? esc_html((string) $report['time']) : '—') . ($running ? ' — <strong>aggiornamento in corso…</strong>' : '') . '</td></tr>';
+        echo '</table>';
 
         echo '<form method="post" action="' . esc_url(admin_url('admin-post.php')) . '">';
         wp_nonce_field('alma_geo_facts_admin');
