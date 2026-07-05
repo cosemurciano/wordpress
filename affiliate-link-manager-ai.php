@@ -3,7 +3,7 @@
  * Plugin Name: Affiliate Link Manager AI
  * Plugin URI: https://your-website.com
  * Description: Gestisce link affiliati con intelligenza artificiale per ottimizzazione e tracking automatico.
- * Version: 2.65.5
+ * Version: 2.67.0
  * Author: Cosè Murciano
  * License: GPL v2 or later
  * Text Domain: affiliate-link-manager-ai
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Definisci costanti del plugin
-define('ALMA_VERSION', '2.65.5');
+define('ALMA_VERSION', '2.67.0');
 define('ALMA_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('ALMA_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('ALMA_PLUGIN_FILE', __FILE__);
@@ -62,6 +62,7 @@ require_once ALMA_PLUGIN_DIR . 'includes/class-ai-seo-bridge.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-telegram-bot.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-ai-post-enricher.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-gsc-connector.php';
+require_once ALMA_PLUGIN_DIR . 'includes/class-geo-facts.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-affiliate-source-url-validator.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-affiliate-source-provider-interface.php';
 require_once ALMA_PLUGIN_DIR . 'includes/providers/class-affiliate-source-provider-manual.php';
@@ -169,6 +170,7 @@ class AffiliateManagerAI {
         ALMA_Telegram_Bot::init();
         ALMA_AI_Post_Enricher::init();
         ALMA_GSC_Connector::init();
+        ALMA_Geo_Facts::init();
         add_action('init', array($this, 'init'));
         add_action('widgets_init', array('ALMA_Contextual_Affiliate_Widget', 'register_widget'));
         // Registrato qui (prima che `widgets_init` scatti) perché ALMA_Shortcodes::init()
@@ -4456,9 +4458,10 @@ class AffiliateManagerAI {
         ALMA_Affiliate_Source_Manager::create_tables();
         ALMA_Geo_Index_Store::create_tables();
         ALMA_Geo_Index_Job_Store::create_tables();
+        ALMA_Geo_Facts::create_table();
         ALMA_Contextual_Affiliate_Widget::maybe_set_default_options();
         $this->create_default_categories();
-        update_option('alma_db_schema_version', '5');
+        update_option('alma_db_schema_version', '6');
         update_option('alma_plugin_version', ALMA_VERSION);
         flush_rewrite_rules();
     }
@@ -4471,6 +4474,8 @@ class AffiliateManagerAI {
         ALMA_AI_Content_Agent_Idea_Importer::unschedule();
         ALMA_AI_Idea_Agent::unschedule();
         ALMA_AI_Post_Enricher::unschedule();
+        ALMA_GSC_Connector::unschedule();
+        ALMA_Geo_Facts::unschedule();
         $this->clear_deprecated_trend_cron_events();
         flush_rewrite_rules();
     }
@@ -4529,8 +4534,9 @@ class AffiliateManagerAI {
             ALMA_Affiliate_Source_Manager::create_tables();
             ALMA_Geo_Index_Store::create_tables();
             ALMA_Geo_Index_Job_Store::create_tables();
+            ALMA_Geo_Facts::create_table();
             ALMA_Contextual_Affiliate_Widget::maybe_set_default_options();
-            update_option('alma_db_schema_version', '5');
+            update_option('alma_db_schema_version', '6');
             update_option('alma_plugin_version', ALMA_VERSION);
         }
     }

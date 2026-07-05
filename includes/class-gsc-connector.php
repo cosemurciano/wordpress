@@ -18,9 +18,9 @@
  * - opportunities: query con molte impression ma posizione debole (8-30)
  *   → i contenuti da creare o rafforzare, il segnale più prezioso;
  * - top_pages: le pagine che portano più click (contesto/link interni).
- * Lo snapshot è salvato in option e rigenerato al massimo una volta al
- * giorno (o su richiesta): l'agente lo legge con il tool
- * analizza_ricerche_google.
+ * Lo snapshot è salvato in option e aggiornato automaticamente ogni
+ * 5 giorni via WP-Cron (o su richiesta con "Aggiorna dati ora"):
+ * l'agente lo legge con il tool analizza_ricerche_google.
  */
 if (!defined('ABSPATH')) {
     exit;
@@ -30,12 +30,40 @@ class ALMA_GSC_Connector {
     const OPTION_PROPERTY = 'alma_gsc_property';
     const OPTION_SNAPSHOT = 'alma_gsc_snapshot';
     const TOKEN_TRANSIENT = 'alma_gsc_access_token';
-    const SNAPSHOT_TTL = DAY_IN_SECONDS;
+    const SNAPSHOT_TTL = 5 * DAY_IN_SECONDS;
+    const CRON_HOOK = 'alma_gsc_cron_refresh';
+    const CRON_INTERVAL = 'alma_gsc_five_days';
     const MIN_IMPRESSIONS_OPPORTUNITY = 50;
 
     public static function init() {
         add_action('admin_post_alma_gsc_verify', array(__CLASS__, 'handle_verify'));
         add_action('admin_post_alma_gsc_refresh', array(__CLASS__, 'handle_refresh'));
+        add_filter('cron_schedules', array(__CLASS__, 'register_cron_interval'));
+        add_action(self::CRON_HOOK, array(__CLASS__, 'cron_refresh'));
+        if (!wp_next_scheduled(self::CRON_HOOK)) {
+            wp_schedule_event(time() + HOUR_IN_SECONDS, self::CRON_INTERVAL, self::CRON_HOOK);
+        }
+    }
+
+    public static function register_cron_interval($schedules) {
+        $schedules[self::CRON_INTERVAL] = array(
+            'interval' => 5 * DAY_IN_SECONDS,
+            'display' => __('Ogni 5 giorni (Search Console)', 'affiliate-link-manager-ai'),
+        );
+        return $schedules;
+    }
+
+    /**
+     * Aggiornamento automatico ogni 5 giorni: se non configurata esce in
+     * silenzio; in caso di errore API resta valido lo snapshot precedente.
+     */
+    public static function cron_refresh() {
+        if (!self::is_configured()) { return; }
+        self::build_snapshot();
+    }
+
+    public static function unschedule() {
+        wp_clear_scheduled_hook(self::CRON_HOOK);
     }
 
     /* ---------------------------------------------------------------------
@@ -477,6 +505,9 @@ class ALMA_GSC_Connector {
             echo '<input type="hidden" name="action" value="'.esc_attr($action).'"><button class="button">'.esc_html($label).'</button></form>';
         }
         echo '</div>';
+
+        $next_run = wp_next_scheduled(self::CRON_HOOK);
+        echo '<p class="description">I dati si aggiornano automaticamente ogni 5 giorni' . ($next_run ? ' (prossimo aggiornamento: ' . esc_html(get_date_from_gmt(gmdate('Y-m-d H:i:s', $next_run), 'd/m/Y H:i')) . ')' : '') . '; con «Aggiorna dati ora» forzi subito il refresh.</p>';
 
         if (is_array($snapshot)) {
             echo '<h3>Ultimo snapshot — '.esc_html((string)($snapshot['generated_at'] ?? '')).'</h3>';

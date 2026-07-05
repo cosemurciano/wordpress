@@ -1,3 +1,22 @@
+## 2.67.0 - 2026-07-05
+
+### Fase 7.2 (PR A): schede località con clima Open-Meteo per l'agente AI
+- **Nuova infrastruttura "schede località"** (`ALMA_Geo_Facts`, tabella `alma_geo_facts`): fatti da fonti esterne agganciati alle località dell'indice geografico del plugin. Non si importano dataset: si salva solo la scheda compatta già distillata in italiano (pochi KB per località), con scadenza per fonte.
+- **Prima fonte: Open-Meteo** (archivio ERA5, gratuito, senza API key): dati giornalieri degli ultimi 3 anni completi aggregati in medie mensili (temperature min/max, pioggia, giorni di pioggia) da cui derivano i **mesi migliori per visitare** e i mesi da evitare, con sintesi pronta per il prompt. Validità 9 mesi (il clima è ~statico); gli errori API vengono marcati con TTL breve (7 giorni) per non martellare la fonte.
+- **Warmer notturno interrompibile** (cron giornaliero ~05:00): elabora N località per run (default 10, configurabile 1-50) con lock atomico via `add_option` con TTL e budget di 60 secondi; la condizione "scheda mancante o scaduta" fa avanzare il lavoro da sola. Priorità alle località più usate nei contenuti. Pausa di cortesia di 0,5s tra le chiamate. Report dell'ultimo run (elaborate/ok/errori/rimanenti) visibile in admin.
+- **Nuovo strumento dell'agente `scheda_localita`**: clima reale + dati interni della zona (numero e esempi di link affiliati, articoli pubblicati). Se la scheda non è pronta viene creata al volo (mai bloccante). Il prompt di sistema ora chiede all'agente di consultarla per le idee legate a una destinazione e di usare la stagionalità nel taglio editoriale.
+- **Nuova tab "Schede località"** in Impostazioni AI Content: spiegazione, stato (schede pronte / in attesa), attivazione del riempimento automatico, località per run, pulsante «Esegui ora un run».
+- Tabella creata in attivazione e upgrade (schema DB versione 6); cron rimosso alla disattivazione. Test standalone dell'aggregazione climatica 15/15 (profilo mediterraneo sintetico, valori null, dati insufficienti).
+- Versione plugin aggiornata a `2.67.0`.
+
+## 2.66.0 - 2026-07-05
+
+### Search Console: aggiornamento automatico ogni 5 giorni
+- **Nuovo cron WP** (`alma_gsc_cron_refresh`, intervallo dedicato di 5 giorni): lo snapshot Search Console si rigenera da solo ogni 5 giorni, senza dipendere dall'esecuzione dell'agente. Se le credenziali non sono configurate il job esce in silenzio; se l'API fallisce resta valido lo snapshot precedente. Il job viene rimosso alla disattivazione del plugin.
+- Il TTL dello snapshot letto dall'agente è allineato a 5 giorni (prima 1 giorno): meno chiamate all'API di Google, dati comunque freschi per l'ideazione (le query GSC hanno già ~2 giorni di ritardo alla fonte).
+- La tab Search Console mostra la data del prossimo aggiornamento automatico; «Aggiorna dati ora» resta disponibile per forzare il refresh.
+- Versione plugin aggiornata a `2.66.0`.
+
 ## 2.65.5 - 2026-07-05
 
 ### Search Console: diagnosi dei 403 con elenco proprietà visibili al service account
