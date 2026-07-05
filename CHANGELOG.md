@@ -1,3 +1,12 @@
+## 2.63.0 - 2026-07-05
+
+### Fase 5 — Bot Telegram: regia, monitoraggio e strategia
+- **Nuova integrazione Telegram** (tab "Telegram" in Impostazioni AI Content) con **guida alla configurazione passo-passo**: bot via @BotFather, costanti `ALMA_TELEGRAM_BOT_TOKEN` e `ALMA_TELEGRAM_SECRET` in wp-config.php (le credenziali non toccano mai il database), abilitazione, pulsanti **Registra webhook / Verifica stato webhook / Invia istruzioni su Telegram** (usano le costanti, senza terminale), URL webhook visibile, scoperta della Chat ID con `/id` e pannello **"Chat ID viste di recente"** con pulsante Aggiungi.
+- **Comandi di regia** (solo chat autorizzate): `/agente <obiettivo>` avvia l'agente di ideazione con l'obiettivo indicato; `/report` esito dell'ultima esecuzione (idee, bozze, costo, riepilogo); `/bozze` ultime bozze AI con **pulsanti inline Pubblica/Cestina/Anteprima**; `/top` report sintetico su click 7/30 giorni, top link e gap geografici dallo snapshot Dashboard; `/consigli` ultimi consigli strategici AI; `/id` e `/help` aperti a tutti.
+- **Notifiche push**: ogni nuova bozza AI arriva in chat con i pulsanti di revisione (disattivabile); a fine esecuzione dell'agente arriva il report completo con i link di anteprima delle bozze.
+- **Sicurezza**: webhook REST `alma/v1/telegram` protetto dal secret di Telegram (header verificato con hash_equals) + whitelist di Chat ID; i pulsanti Pubblica/Cestina agiscono SOLO su post generati dall'agente (meta verificata), mai su altri contenuti.
+- Versione plugin aggiornata a `2.63.0`.
+
 ## 2.62.0 - 2026-07-05
 
 ### Bozze AI complete: immagine in evidenza, meta SEO via All in One SEO, pubblicazione diretta opzionale

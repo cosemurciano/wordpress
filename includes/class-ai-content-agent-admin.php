@@ -283,6 +283,9 @@ class ALMA_AI_Content_Agent_Admin {
         } elseif ($do === 'save_insertion_rules') {
             ALMA_AI_Insertion_Rules::save_from_request($_POST);
             $result = array('success' => true, 'message' => 'Regole inserimento salvate.');
+        } elseif ($do === 'save_telegram_settings') {
+            ALMA_Telegram_Bot::save_settings($_POST);
+            $result = array('success' => true, 'message' => 'Impostazioni Telegram salvate.');
         } elseif ($do === 'save_source') {
             $result = ALMA_AI_Content_Agent_Source_Manager::save_source($_POST);
         } elseif ($do === 'toggle_source') {
@@ -527,7 +530,7 @@ class ALMA_AI_Content_Agent_Admin {
         if (!current_user_can('manage_options')) { return; }
         // La tab "Idee contenuto" non esiste più: il workspace vive nella
         // pagina "Aggiungi idea", l'elenco nella pagina "Tutte le idee".
-        $tabs = array('dashboard'=>'Dashboard','istruzioni-ai'=>'Istruzioni AI','inserimento'=>'Regole inserimento','documenti'=>'Documenti TXT','fonti'=>'Fonti online AI','reindex'=>'Reindicizza','log'=>'Stato/log');
+        $tabs = array('dashboard'=>'Dashboard','istruzioni-ai'=>'Istruzioni AI','inserimento'=>'Regole inserimento','telegram'=>'Telegram','documenti'=>'Documenti TXT','fonti'=>'Fonti online AI','reindex'=>'Reindicizza','log'=>'Stato/log');
         $legacy_map = array('overview'=>'dashboard','idee'=>'dashboard','reindirizza'=>'reindex','knowledge'=>'dashboard','media'=>'dashboard','bozze'=>'log','programmazione'=>'log',);
         $tab = sanitize_key($_GET['tab'] ?? 'dashboard');
         if (isset($legacy_map[$tab])) { $tab = $legacy_map[$tab]; }
@@ -536,6 +539,7 @@ class ALMA_AI_Content_Agent_Admin {
         echo '<h2 class="nav-tab-wrapper">'; foreach ($tabs as $tk=>$tl) { echo '<a class="nav-tab '.($tk===$tab?'nav-tab-active':'').'" href="'.esc_url(admin_url('edit.php?post_type=affiliate_link&page=alma-ai-content-agent&tab='.$tk)).'">'.esc_html($tl).'</a>'; } echo '</h2>';
         if ($tab === 'istruzioni-ai') { self::render_instructions_tab(); }
         elseif ($tab === 'inserimento') { self::render_insertion_rules_tab(); }
+        elseif ($tab === 'telegram') { ALMA_Telegram_Bot::render_settings_tab(); }
         elseif ($tab === 'documenti') { self::render_documents_tab(); }
         elseif ($tab === 'fonti') { self::render_sources_tab(); }
         elseif ($tab === 'reindex') { self::render_reindex_tab(); }

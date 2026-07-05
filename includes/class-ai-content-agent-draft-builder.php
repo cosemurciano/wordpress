@@ -1327,6 +1327,8 @@ class ALMA_AI_Content_Agent_Draft_Builder {
         }
         ALMA_AI_Content_Agent_Result_Usage::increment_for_results($selected, $post_id);
         ALMA_AI_Usage_Logger::log(array('task'=>self::TASK_SELECTION,'success'=>true,'model'=>$res['model'] ?? '','response_time'=>$res['response_time'] ?? null,'input_tokens'=>$res['usage']['input_tokens'] ?? null,'output_tokens'=>$res['usage']['output_tokens'] ?? null,'reference_id'=>'post:'.$post_id));
+        // Regia Telegram: la nuova bozza arriva in chat con i pulsanti di revisione.
+        if (class_exists('ALMA_Telegram_Bot')) { ALMA_Telegram_Bot::notify_draft_created($post_id, $post_status); }
         return array(
             'success'=>true,
             'post_id'=>$post_id,
