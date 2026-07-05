@@ -1108,6 +1108,7 @@ class ALMA_AI_Content_Agent_Draft_Builder {
         $post_id = wp_insert_post(array('post_type'=>'post','post_status'=>'draft','post_author'=>get_current_user_id(),'post_title'=>$clean['title'],'post_name'=>$clean['slug'],'post_excerpt'=>$clean['excerpt'],'post_content'=>$clean['content']), true);
         if (is_wp_error($post_id) || !$post_id) { return self::fail('Errore creazione bozza.', $res['model'] ?? '', 'idea:'.$idea_id); }
         if (!empty($clean['featured_image_id'])) set_post_thumbnail($post_id, $clean['featured_image_id']);
+        if (class_exists('ALMA_AI_Seo_Bridge')) { ALMA_AI_Seo_Bridge::apply($post_id, (string)($clean['seo_title'] ?? ''), (string)($clean['seo_description'] ?? '')); }
         update_post_meta($post_id, '_alma_ai_agent_generated', 1); update_post_meta($post_id, '_alma_ai_agent_idea_id', $idea_id); update_post_meta($post_id, '_alma_ai_agent_brief_id', absint($brief['id'] ?? 0)); update_post_meta($post_id, '_alma_ai_agent_task', 'content_draft_generation'); update_post_meta($post_id, '_alma_ai_agent_model', sanitize_text_field($res['model'] ?? '')); update_post_meta($post_id, '_alma_ai_agent_instruction_profile_id', absint($brief['instruction_profile_id'] ?? $idea['instruction_profile_id'] ?? 0)); update_post_meta($post_id, '_alma_ai_agent_instruction_snapshot_hash', sanitize_text_field($brief['instruction_snapshot_hash'] ?? $idea['instruction_snapshot_hash'] ?? '')); update_post_meta($post_id, '_alma_ai_agent_affiliate_links_used', wp_json_encode($clean['affiliate_links_used'])); update_post_meta($post_id, '_alma_ai_agent_affiliate_shortcodes_used', wp_json_encode((array)($clean['affiliate_shortcodes_used'] ?? array()))); update_post_meta($post_id, '_alma_ai_agent_affiliate_urls_used', wp_json_encode((array)($clean['affiliate_urls_used'] ?? array())));
         update_post_meta($post_id, '_alma_ai_agent_internal_urls_used', wp_json_encode((array)($clean['internal_urls_used'] ?? array()))); update_post_meta($post_id, '_alma_ai_agent_media_used', wp_json_encode((array)($clean['media_used'] ?? array()))); update_post_meta($post_id, '_alma_ai_agent_image_ids_used', wp_json_encode($clean['inline_image_ids'])); update_post_meta($post_id, '_alma_ai_agent_featured_image_id', absint($clean['featured_image_id'])); update_post_meta($post_id, '_alma_ai_agent_qa_warnings', wp_json_encode(array_merge((array)$clean['warnings'], (array)($parsed['warnings'] ?? array())))); update_post_meta($post_id, '_alma_ai_seo_title', sanitize_text_field($parsed['seo_title'] ?? '')); update_post_meta($post_id, '_alma_ai_meta_description', sanitize_text_field($parsed['meta_description'] ?? '')); update_post_meta($post_id, '_alma_ai_focus_keyword', sanitize_text_field($parsed['focus_keyword'] ?? '')); update_post_meta($post_id, '_alma_ai_generated_at', current_time('mysql')); update_post_meta($post_id, '_alma_ai_suggested_tags', wp_json_encode((array)($parsed['suggested_tags'] ?? array())));
         ALMA_AI_Usage_Logger::log(array('task'=>'content_draft_generation','success'=>true,'model'=>$res['model'] ?? '','response_time'=>$res['response_time'] ?? null,'input_tokens'=>$res['usage']['input_tokens'] ?? null,'output_tokens'=>$res['usage']['output_tokens'] ?? null,'estimated_cost'=>$res['estimated_cost'] ?? null,'reference_id'=>'post:'.$post_id));
@@ -1236,7 +1237,11 @@ class ALMA_AI_Content_Agent_Draft_Builder {
             $clean['content'] = $enforced['content'];
             $clean['warnings'] = array_values(array_unique(array_merge((array)$clean['warnings'], (array)$widget_result['warnings'], (array)$enforced['warnings'])));
         }
-        $post_id = wp_insert_post(array('post_type'=>'post','post_status'=>'draft','post_author'=>$user_id,'post_title'=>$clean['title'],'post_name'=>$clean['slug'],'post_excerpt'=>$clean['excerpt'],'post_content'=>$clean['content']), true);
+        // Pubblicazione diretta opzionale (Impostazioni → Generale): di
+        // default resta bozza da revisionare.
+        $auto_publish = get_option('alma_ai_auto_publish', 'no') === 'yes';
+        $post_status = $auto_publish ? 'publish' : 'draft';
+        $post_id = wp_insert_post(array('post_type'=>'post','post_status'=>$post_status,'post_author'=>$user_id,'post_title'=>$clean['title'],'post_name'=>$clean['slug'],'post_excerpt'=>$clean['excerpt'],'post_content'=>$clean['content']), true);
         if (is_wp_error($post_id) || !$post_id) { return self::fail('Errore creazione bozza.', $res['model'] ?? '', 'session:user:'.$user_id); }
         if (!empty($ai_widget_id)) { update_post_meta($post_id, '_alma_ai_agent_widget_id', (int) $ai_widget_id); }
         $taxonomy_applied = self::apply_taxonomies_to_post($post_id, $taxonomy_clean);
@@ -1253,7 +1258,25 @@ class ALMA_AI_Content_Agent_Draft_Builder {
         update_post_meta($post_id, '_alma_ai_agent_selected_media_ids', wp_json_encode($candidate_image_ids));
         update_post_meta($post_id, '_alma_ai_agent_featured_image_candidates', wp_json_encode($featured_candidates));
         update_post_meta($post_id, '_alma_ai_agent_media_candidates', wp_json_encode($editorial_media_candidates));
+        // Immagine in evidenza: quella scelta dall'AI, con fallback alla prima
+        // candidata disponibile (prima l'ID veniva solo annotato in meta e la
+        // bozza restava SENZA thumbnail).
         $selected_featured_id = absint($clean['featured_image_id'] ?? 0);
+        if ($selected_featured_id < 1) {
+            foreach (array_merge($featured_candidates, $editorial_media_candidates) as $featured_fallback) {
+                $fallback_id = is_array($featured_fallback) ? absint($featured_fallback['attachment_id'] ?? 0) : 0;
+                if ($fallback_id > 0 && wp_attachment_is_image($fallback_id)) {
+                    $selected_featured_id = $fallback_id;
+                    $clean['warnings'][] = 'Immagine in evidenza non indicata dall\'AI: usata la prima candidata della Media Library.';
+                    break;
+                }
+            }
+        }
+        if ($selected_featured_id > 0) {
+            set_post_thumbnail($post_id, $selected_featured_id);
+        } else {
+            $clean['warnings'][] = 'Nessuna immagine candidata disponibile: bozza senza immagine in evidenza.';
+        }
         update_post_meta($post_id, '_alma_ai_agent_selected_featured_image_id', $selected_featured_id);
         if ($selected_featured_id > 0) {
             $selected_featured_url = function_exists('wp_get_attachment_image_url') ? wp_get_attachment_image_url($selected_featured_id, 'full') : '';
@@ -1288,6 +1311,14 @@ class ALMA_AI_Content_Agent_Draft_Builder {
         update_post_meta($post_id, '_alma_ai_agent_instruction_snapshot_hash', sanitize_text_field($session['instruction_snapshot_hash'] ?? ALMA_AI_Content_Agent_Instructions_Manager::snapshot_hash(wp_json_encode($profile))));
         update_post_meta($post_id, '_alma_ai_agent_qa_warnings', wp_json_encode(array_values(array_unique(array_merge($warnings, (array)$clean['warnings'], $taxonomy_warnings, (array)($parsed['warnings'] ?? array()))))));
         update_post_meta($post_id, '_alma_ai_generated_at', current_time('mysql'));
+
+        // Meta title/description per ricerca e social via All in One SEO.
+        if (class_exists('ALMA_AI_Seo_Bridge')) {
+            $seo_status = ALMA_AI_Seo_Bridge::apply($post_id, (string)($clean['seo_title'] ?? ''), (string)($clean['seo_description'] ?? ''));
+            if ($seo_status === 'meta_only') {
+                $clean['warnings'][] = 'All in One SEO non rilevato: meta title/description salvati solo nei meta del plugin.';
+            }
+        }
         $active_idea_id = absint(get_user_meta($user_id, '_alma_active_idea_id', true));
         if ($active_idea_id > 0) {
             update_post_meta($post_id, '_alma_ai_agent_idea_id', $active_idea_id);
@@ -1296,6 +1327,8 @@ class ALMA_AI_Content_Agent_Draft_Builder {
         }
         ALMA_AI_Content_Agent_Result_Usage::increment_for_results($selected, $post_id);
         ALMA_AI_Usage_Logger::log(array('task'=>self::TASK_SELECTION,'success'=>true,'model'=>$res['model'] ?? '','response_time'=>$res['response_time'] ?? null,'input_tokens'=>$res['usage']['input_tokens'] ?? null,'output_tokens'=>$res['usage']['output_tokens'] ?? null,'reference_id'=>'post:'.$post_id));
+        // Regia Telegram: la nuova bozza arriva in chat con i pulsanti di revisione.
+        if (class_exists('ALMA_Telegram_Bot')) { ALMA_Telegram_Bot::notify_draft_created($post_id, $post_status); }
         return array(
             'success'=>true,
             'post_id'=>$post_id,
@@ -1306,7 +1339,7 @@ class ALMA_AI_Content_Agent_Draft_Builder {
             'model'=>$res['model'] ?? '',
             'usage'=>$res['usage'] ?? array(),
             'summary'=>array(
-                'status'=>'draft',
+                'status'=>$post_status,
                 'instruction_profile_name'=>sanitize_text_field($profile['profile_name'] ?? ($session['instruction_profile_name'] ?? '')),
                 'source_counts'=>array(
                     'post'=>count((array)$ctx['posts']),

@@ -1,3 +1,20 @@
+## 2.63.0 - 2026-07-05
+
+### Fase 5 — Bot Telegram: regia, monitoraggio e strategia
+- Tab "Telegram" con guida completa: costanti in wp-config.php, pulsanti Registra/Verifica webhook e Invia istruzioni, scoperta Chat ID con /id e chat recenti con pulsante Aggiungi.
+- Comandi: /agente <obiettivo> (avvia l'agente), /report, /bozze (con pulsanti Pubblica/Cestina), /top (click e gap), /consigli.
+- Notifiche push: nuove bozze AI in chat con pulsanti di revisione, report di fine esecuzione dell'agente.
+- Sicurezza: secret Telegram verificato sul webhook + whitelist Chat ID; azioni solo su post generati dall'agente.
+- Versione plugin aggiornata a `2.63.0`.
+
+## 2.62.0 - 2026-07-05
+
+### Bozze AI complete: immagine in evidenza, meta SEO (All in One SEO), pubblicazione diretta opzionale
+- Fix: l'immagine in evidenza scelta dall'AI ora viene impostata davvero (con fallback alla prima candidata).
+- Meta title/description per ricerca e social scritti in All in One SEO (modello ufficiale o tabella), con copia nei meta del plugin.
+- Nuova impostazione "Pubblicazione diretta delle bozze AI" (default No) in Impostazioni → Generale.
+- Versione plugin aggiornata a `2.62.0`.
+
 ## 2.61.1 - 2026-07-05
 
 ### Fix "Contenuto troppo breve" nel metabox AI Affiliati

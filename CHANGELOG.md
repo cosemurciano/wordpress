@@ -1,3 +1,20 @@
+## 2.63.0 - 2026-07-05
+
+### Fase 5 — Bot Telegram: regia, monitoraggio e strategia
+- **Nuova integrazione Telegram** (tab "Telegram" in Impostazioni AI Content) con **guida alla configurazione passo-passo**: bot via @BotFather, costanti `ALMA_TELEGRAM_BOT_TOKEN` e `ALMA_TELEGRAM_SECRET` in wp-config.php (le credenziali non toccano mai il database), abilitazione, pulsanti **Registra webhook / Verifica stato webhook / Invia istruzioni su Telegram** (usano le costanti, senza terminale), URL webhook visibile, scoperta della Chat ID con `/id` e pannello **"Chat ID viste di recente"** con pulsante Aggiungi.
+- **Comandi di regia** (solo chat autorizzate): `/agente <obiettivo>` avvia l'agente di ideazione con l'obiettivo indicato; `/report` esito dell'ultima esecuzione (idee, bozze, costo, riepilogo); `/bozze` ultime bozze AI con **pulsanti inline Pubblica/Cestina/Anteprima**; `/top` report sintetico su click 7/30 giorni, top link e gap geografici dallo snapshot Dashboard; `/consigli` ultimi consigli strategici AI; `/id` e `/help` aperti a tutti.
+- **Notifiche push**: ogni nuova bozza AI arriva in chat con i pulsanti di revisione (disattivabile); a fine esecuzione dell'agente arriva il report completo con i link di anteprima delle bozze.
+- **Sicurezza**: webhook REST `alma/v1/telegram` protetto dal secret di Telegram (header verificato con hash_equals) + whitelist di Chat ID; i pulsanti Pubblica/Cestina agiscono SOLO su post generati dall'agente (meta verificata), mai su altri contenuti.
+- Versione plugin aggiornata a `2.63.0`.
+
+## 2.62.0 - 2026-07-05
+
+### Bozze AI complete: immagine in evidenza, meta SEO via All in One SEO, pubblicazione diretta opzionale
+- **Fix immagine in evidenza**: il flusso salvava l'ID scelto dall'AI solo come meta ma **non impostava mai la thumbnail** — ora `set_post_thumbnail` viene chiamata sempre, con fallback alla prima immagine candidata della Media Library quando l'AI non sceglie (e warning esplicito se non ci sono candidate).
+- **Meta title e description per ricerca e social**: nuovo bridge `ALMA_AI_Seo_Bridge` che scrive `seo_title`/`seo_description` generati dall'AI in **All in One SEO** — tramite il modello ufficiale del plugin se attivo (title, description, OG title/description, Twitter da OG), oppure upsert diretto sulla tabella `aioseo_posts` se presente; i valori restano comunque nei meta `_alma_ai_seo_title/_alma_ai_seo_description` per tracciabilità (warning nel report se AIOSEO non è rilevato). Applicato a entrambe le pipeline di generazione.
+- **Pubblicazione diretta opzionale**: nuova impostazione "Pubblicazione diretta delle bozze AI" in Impostazioni → Generale (default **No**): con "Sì" gli articoli generati (workspace, runner programmato, agente) vengono pubblicati immediatamente con immagine e SEO già applicati; il messaggio di esito indica lo stato reale (Bozza / Pubblicato).
+- Versione plugin aggiornata a `2.62.0`.
+
 ## 2.61.1 - 2026-07-05
 
 ### Fix "Contenuto troppo breve" nel metabox AI Affiliati (contenuti classic editor / CRLF)

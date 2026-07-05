@@ -194,6 +194,10 @@ class ALMA_AI_Idea_Agent {
             $report['finished_at'] = current_time('mysql');
             update_option(self::OPTION_LAST_RUN, $report, false);
             delete_option(self::LOCK_OPTION);
+            // Regia Telegram: report di fine esecuzione alle chat autorizzate.
+            if (class_exists('ALMA_Telegram_Bot')) {
+                ALMA_Telegram_Bot::notify_agent_report($report);
+            }
         }
     }
 
