@@ -1,3 +1,10 @@
+## 2.67.0 - 2026-07-05
+
+### Fase 7.2 (PR A): schede località con clima Open-Meteo per l'agente AI
+- Nuove "schede località": clima reale da Open-Meteo (mesi migliori per visitare, temperature e piogge mensili) agganciato alle località dell'indice geografico, riempito da un job notturno interrompibile e usato dall'agente con il nuovo strumento `scheda_localita`.
+- Nuova tab "Schede località" in Impostazioni AI Content con stato, impostazioni e «Esegui ora».
+- Versione plugin aggiornata a `2.67.0`.
+
 ## 2.66.0 - 2026-07-05
 
 ### Search Console: aggiornamento automatico ogni 5 giorni
