@@ -29,7 +29,7 @@ class ALMA_AI_Idea_Agent {
     const MAX_ROUNDS = 12;
 
     public static function init() {
-        add_action(self::CRON_HOOK, array(__CLASS__, 'run'), 10, 2);
+        add_action(self::CRON_HOOK, array(__CLASS__, 'run'), 10, 3);
         add_action('admin_post_alma_ai_idea_agent_start', array(__CLASS__, 'handle_start'));
         add_action('admin_post_alma_ai_idea_agent_settings', array(__CLASS__, 'handle_settings'));
     }
@@ -73,7 +73,8 @@ class ALMA_AI_Idea_Agent {
             $notice = array('type' => 'error', 'message' => __('Un\'esecuzione dell\'agente è già in corso.', 'affiliate-link-manager-ai'));
         } else {
             $objective = sanitize_textarea_field(wp_unslash($_POST['agent_objective'] ?? ''));
-            wp_schedule_single_event(time() + 5, self::CRON_HOOK, array(get_current_user_id(), $objective));
+            $create_drafts = empty($_POST['agent_create_drafts']) ? 0 : 1;
+            wp_schedule_single_event(time() + 5, self::CRON_HOOK, array(get_current_user_id(), $objective, $create_drafts));
             if (function_exists('spawn_cron')) { spawn_cron(); }
         }
         set_transient('alma_ai_agent_admin_notice_' . get_current_user_id(), $notice, 120);
@@ -104,12 +105,12 @@ class ALMA_AI_Idea_Agent {
         return false;
     }
 
-    public static function run($user_id = 0, $objective = '') {
+    public static function run($user_id = 0, $objective = '', $create_drafts = 0) {
         if (!self::acquire_lock()) { return; }
         $started_at = current_time('mysql');
         $report = array(
             'started_at' => $started_at, 'finished_at' => '', 'rounds' => 0,
-            'tool_calls' => array(), 'ideas_created' => array(),
+            'tool_calls' => array(), 'ideas_created' => array(), 'drafts_created' => array(),
             'cost_total' => 0.0, 'model' => '', 'summary' => '', 'error' => '',
         );
         try {
@@ -168,6 +169,24 @@ class ALMA_AI_Idea_Agent {
                 }
             }
             $report['ideas_created'] = $ideas_created;
+
+            // Su richiesta: genera SUBITO le bozze delle idee create, nel
+            // rispetto del limite giornaliero di bozze automatiche (Fase 3).
+            if (!empty($create_drafts) && !empty($ideas_created) && class_exists('ALMA_AI_Content_Agent_Idea_Importer')) {
+                foreach ($ideas_created as $idea) {
+                    $draft = ALMA_AI_Content_Agent_Idea_Importer::generate_draft_now((int)$idea['id']);
+                    $report['drafts_created'][] = array(
+                        'idea_id' => (int)$idea['id'],
+                        'titolo' => $idea['titolo'],
+                        'post_id' => (int)($draft['post_id'] ?? 0),
+                        'error' => empty($draft['success']) ? sanitize_text_field((string)($draft['error'] ?? '')) : '',
+                    );
+                    if (!empty($draft['quota_exhausted'])) {
+                        $report['drafts_created'][] = array('idea_id' => 0, 'titolo' => '', 'post_id' => 0, 'error' => 'Limite giornaliero raggiunto: le idee rimanenti restano in coda (generale automaticamente domani o dal workspace).');
+                        break;
+                    }
+                }
+            }
         } catch (Throwable $e) {
             $report['error'] = sanitize_text_field($e->getMessage());
             ALMA_Logger::error('Idea agent run error', array('error' => $e->getMessage()));
@@ -412,6 +431,7 @@ class ALMA_AI_Idea_Agent {
         wp_nonce_field('alma_ai_idea_agent_start');
         echo '<input type="hidden" name="action" value="alma_ai_idea_agent_start">';
         echo '<p style="margin:0;flex:1 1 320px;"><label><strong>'.esc_html__('Obiettivo (opzionale)', 'affiliate-link-manager-ai').'</strong><br><input type="text" name="agent_objective" class="widefat" placeholder="'.esc_attr__('Es. concentrati sull\'Italia, oppure su idee per l\'estate…', 'affiliate-link-manager-ai').'"></label></p>';
+        echo '<p style="margin:0;"><label title="'.esc_attr__('Le bozze contano nel limite giornaliero di bozze automatiche (impostazioni Importazione massiva).', 'affiliate-link-manager-ai').'"><input type="checkbox" name="agent_create_drafts" value="1"> '.esc_html__('Crea subito anche le bozze', 'affiliate-link-manager-ai').'</label></p>';
         echo '<p style="margin:0;"><button class="button button-primary" '.disabled($running, true, false).'>'.esc_html($running ? __('Esecuzione in corso…', 'affiliate-link-manager-ai') : __('Esegui agente', 'affiliate-link-manager-ai')).'</button></p>';
         echo '</form>';
 
@@ -433,6 +453,18 @@ class ALMA_AI_Idea_Agent {
                 foreach ($ideas as $idea) {
                     $edit = admin_url('edit.php?post_type=affiliate_link&page=alma-ai-add-idea&idea_id=' . (int)$idea['id']);
                     echo '<li><a href="'.esc_url($edit).'">'.esc_html($idea['titolo']).'</a>'.(!empty($idea['localita']) ? ' — 📍 '.esc_html($idea['localita']) : '').'</li>';
+                }
+                echo '</ul>';
+            }
+            $drafts = (array)($last['drafts_created'] ?? array());
+            if (!empty($drafts)) {
+                echo '<p style="margin:10px 0 4px;"><strong>'.esc_html__('Bozze generate:', 'affiliate-link-manager-ai').'</strong></p><ul style="margin:0 0 0 18px;list-style:disc;">';
+                foreach ($drafts as $draft) {
+                    if (!empty($draft['post_id'])) {
+                        echo '<li><a href="'.esc_url(get_edit_post_link((int)$draft['post_id'], 'raw')).'">'.esc_html($draft['titolo']).'</a></li>';
+                    } elseif (!empty($draft['error'])) {
+                        echo '<li style="color:#996800;">'.esc_html(($draft['titolo'] !== '' ? $draft['titolo'].' — ' : '').$draft['error']).'</li>';
+                    }
                 }
                 echo '</ul>';
             }

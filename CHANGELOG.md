@@ -1,3 +1,13 @@
+## 2.60.0 - 2026-07-05
+
+### Fase 4 (PR 1) — Regole inserimento shortcode, widget creati dall'AI, bozze dirette dall'agente
+- **Nuova tab "Regole inserimento"** in Impostazioni AI Content: pattern abilitati (anchor nel testo, bottone CTA, card con immagine, widget di raccolta), densità massima (default 1 inserimento ogni 300 parole), paragrafi iniziali protetti (default 2), link massimi nel widget, testo bottone di default, regole per le anchor. Un'unica fonte di verità per bozze manuali, runner programmato e agente.
+- **Vocabolario dei pattern nel payload OpenAI**: l'AI ora conosce tutte le leve degli shortcode — `text=` per anchor naturali nella frase, `button="yes"` per CTA a fine sezione, `img+fields` per card prodotto — con le regole d'uso orientate alla conversione senza rompere l'eleganza della lettura.
+- **QA deterministico post-generazione** (`ALMA_AI_Insertion_Rules::enforce`): densità applicata dal codice (le anchor in eccesso tornano testo semplice, gli altri pattern vengono rimossi), nessun inserimento nei paragrafi protetti, mai due shortcode consecutivi, massimo un widget per articolo. Testato standalone (12/12).
+- **Widget creati dall'AI**: la bozza può includere il segnaposto `[[ALMA_WIDGET]]` e una `widget_request` (titolo, 2-N link candidati, testo bottone, titoli/descrizioni riscritti per-link nel tono dell'articolo); il plugin crea l'istanza reale nell'option standard dei widget (visibile e modificabile in Elenco Widget Link, con layout automatico in base al numero di link) e sostituisce il segnaposto con `[affiliate_links_widget id="X"]`. Solo link candidati del payload: ID inventati scartati.
+- **Bozze dirette dall'agente di ideazione**: nuova casella "Crea subito anche le bozze" nel pannello agente — dopo la creazione delle idee genera immediatamente le bozze nel rispetto del **limite giornaliero di bozze automatiche** (stesso contatore del runner programmato); il report mostra le bozze generate con link di modifica e segnala quando il limite è raggiunto (le idee restanti restano in coda).
+- Versione plugin aggiornata a `2.60.0`.
+
 ## 2.59.0 - 2026-07-05
 
 ### Storage OpenAI e Media Library per l'agente + pulizia impostazioni

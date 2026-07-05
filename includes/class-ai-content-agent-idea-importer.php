@@ -400,6 +400,26 @@ class ALMA_AI_Content_Agent_Idea_Importer {
     }
 
     /**
+     * Genera SUBITO la bozza di un'idea rispettando il limite giornaliero di
+     * bozze automatiche (stesso contatore del runner programmato): usato
+     * dall'agente di ideazione quando l'editore chiede anche le bozze.
+     */
+    public static function generate_draft_now($idea_id) {
+        $limit = self::get_daily_limit();
+        $today = current_time('Y-m-d');
+        $counter = get_option(self::OPTION_COUNTER, array());
+        $done = (is_array($counter) && ($counter['date'] ?? '') === $today) ? (int)$counter['count'] : 0;
+        if ($limit < 1 || $done >= $limit) {
+            return array('success' => false, 'error' => 'Limite giornaliero di bozze automatiche raggiunto (' . $done . '/' . $limit . ').', 'quota_exhausted' => true);
+        }
+        $result = self::generate_draft_for_scheduled_idea(absint($idea_id));
+        if (!empty($result['success'])) {
+            update_option(self::OPTION_COUNTER, array('date' => $today, 'count' => $done + 1), false);
+        }
+        return is_array($result) ? $result : array('success' => false, 'error' => 'Risposta generazione non valida');
+    }
+
+    /**
      * Pipeline per una singola idea programmata:
      * 1. candidati affiliate via Knowledge Search (geo-first sulla località
      *    dell'idea + keyword del CSV), top N selezionati;
