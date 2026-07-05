@@ -1,3 +1,12 @@
+## 2.61.1 - 2026-07-05
+
+### Fix "Contenuto troppo breve" nel metabox AI Affiliati (contenuti classic editor / CRLF)
+- **Fix rilevamento paragrafi**: il contenuto salvato dal classic editor (e da WPBakery, come su sothra.it) non contiene `</p>` e usa newline Windows `\r\n`; lo splitter cercava solo `\n\n` e vedeva l'intero articolo come UN paragrafo → "Contenuto troppo breve per proporre inserimenti" anche su articoli lunghi. Ora i paragrafi sono delimitati da `</p>` (HTML/Gutenberg) **oppure** da riga vuota con qualunque newline (`\r\n` incluso, anche con spazi), e viene scelta automaticamente la modalità che rileva più paragrafi. Riprodotto e verificato: contenuto CRLF passa da 1 a N paragrafi.
+- **Stesso fix nel QA `enforce()`** (Regole inserimento): con contenuto senza `</p>` la protezione dei primi paragrafi degradava TUTTI gli shortcode dell'articolo; ora usa la stessa delimitazione doppia.
+- **Fix conteggio parole per la densità**: `str_word_count` spezza le parole accentate italiane ("città" contata come due); nuovo conteggio Unicode-safe usato sia dal budget del metabox sia dal QA — la densità configurata (es. ogni 100 parole) ora è calcolata correttamente sui testi italiani.
+- Test standalone estesi: CRLF, WPBakery, righe vuote con spazi, inserimenti inline/blocco su contenuto classic (9 nuovi casi, tutte le suite verdi).
+- Versione plugin aggiornata a `2.61.1`.
+
 ## 2.61.0 - 2026-07-05
 
 ### Fase 4 (PR 2) — Metabox "AI Affiliati" nell'editor del post

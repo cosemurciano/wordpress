@@ -120,12 +120,14 @@ class ALMA_AI_Insertion_Rules {
         }
 
         // 2. Nessuno shortcode nei primi N paragrafi: le anchor diventano
-        //    testo semplice, gli altri pattern vengono rimossi.
+        //    testo semplice, gli altri pattern vengono rimossi. I paragrafi
+        //    sono delimitati da </p> (HTML/Gutenberg) O da riga vuota (classic
+        //    editor, anche con newline Windows \r\n).
         if ($min_paragraphs > 0) {
-            $parts = preg_split('/(<\/p>)/i', $content, -1, PREG_SPLIT_DELIM_CAPTURE);
+            $parts = preg_split('/(<\/p>|\r?\n[ \t]*\r?\n)/i', $content, -1, PREG_SPLIT_DELIM_CAPTURE);
             $paragraph_index = 0;
             foreach ($parts as $i => $part) {
-                if (strcasecmp($part, '</p>') === 0) { $paragraph_index++; continue; }
+                if (strcasecmp($part, '</p>') === 0 || preg_match('/^\r?\n[ \t]*\r?\n$/', $part)) { $paragraph_index++; continue; }
                 if ($paragraph_index < $min_paragraphs && preg_match('/\[affiliate_link(?:s_widget)?[\s\]]/', $part)) {
                     $stripped = self::strip_shortcodes_to_text($part);
                     if ($stripped !== $part) {
@@ -138,7 +140,7 @@ class ALMA_AI_Insertion_Rules {
         }
 
         // 3. Densità: massimo floor(parole/densità) inserimenti (minimo 1).
-        $word_count = str_word_count(wp_strip_all_tags($content));
+        $word_count = self::count_words(wp_strip_all_tags($content));
         $max_insertions = max(1, (int) floor($word_count / $density));
         $found = preg_match_all('/\[affiliate_link(?:s_widget)?[^\]]*\]/', $content, $matches, PREG_OFFSET_CAPTURE);
         if ($found > $max_insertions) {
@@ -163,6 +165,14 @@ class ALMA_AI_Insertion_Rules {
         );
 
         return array('content' => $content, 'warnings' => array_values(array_unique($warnings)));
+    }
+
+    /**
+     * Conteggio parole Unicode-safe: str_word_count spezza le parole
+     * accentate italiane ("città" → 2), falsando la densità.
+     */
+    public static function count_words($text) {
+        return (int) preg_match_all('/\p{L}[\p{L}\p{N}\'\x{2019}]*/u', (string) $text, $m);
     }
 
     /**
