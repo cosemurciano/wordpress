@@ -14,15 +14,22 @@ class ALMA_OpenAI_Service {
         $timeout = isset($args['timeout']) ? absint($args['timeout']) : absint(get_option('alma_openai_timeout', 30));
         $warnings = array();
 
-        $input = array();
-        if (!empty($args['system_prompt'])) {
-            $input[] = array('role'=>'system','content'=>array(array('type'=>'input_text','text'=>(string)$args['system_prompt'])));
+        if (!empty($args['input_items']) && is_array($args['input_items'])) {
+            // Loop agente (tool calling): il chiamante fornisce l'input completo
+            // della Responses API, inclusi i function_call e i
+            // function_call_output dei turni precedenti.
+            $input = array_values($args['input_items']);
+        } else {
+            $input = array();
+            if (!empty($args['system_prompt'])) {
+                $input[] = array('role'=>'system','content'=>array(array('type'=>'input_text','text'=>(string)$args['system_prompt'])));
+            }
+            foreach ((array)($args['conversation'] ?? array()) as $msg) {
+                if (empty($msg['role']) || !isset($msg['content'])) { continue; }
+                $input[] = array('role'=>sanitize_key($msg['role']),'content'=>array(array('type'=>'input_text','text'=>(string)$msg['content'])));
+            }
+            $input[] = array('role'=>'user','content'=>array(array('type'=>'input_text','text'=>(string)($args['user_prompt'] ?? ''))));
         }
-        foreach ((array)($args['conversation'] ?? array()) as $msg) {
-            if (empty($msg['role']) || !isset($msg['content'])) { continue; }
-            $input[] = array('role'=>sanitize_key($msg['role']),'content'=>array(array('type'=>'input_text','text'=>(string)$msg['content'])));
-        }
-        $input[] = array('role'=>'user','content'=>array(array('type'=>'input_text','text'=>(string)($args['user_prompt'] ?? ''))));
 
         $body = array('model'=>$model,'input'=>$input,'max_output_tokens'=>$max_output_tokens);
         if (!empty($args['tools']) && is_array($args['tools'])) {
@@ -104,12 +111,24 @@ class ALMA_OpenAI_Service {
                 foreach ((array)($out['content'] ?? array()) as $c) { if (($c['type'] ?? '') === 'output_text' && !empty($c['text'])) { $text .= $c['text']; } }
             }
         }
-        if (trim($text) === '') {
+        // Function calls richieste dal modello (tool calling): con chiamate in
+        // sospeso una risposta senza testo è legittima, non un errore.
+        $function_calls = array();
+        foreach ((array)($data['output'] ?? array()) as $out) {
+            if (($out['type'] ?? '') === 'function_call') {
+                $function_calls[] = array(
+                    'call_id' => sanitize_text_field((string)($out['call_id'] ?? '')),
+                    'name' => sanitize_key((string)($out['name'] ?? '')),
+                    'arguments' => (string)($out['arguments'] ?? '{}'),
+                );
+            }
+        }
+        if (trim($text) === '' && empty($function_calls)) {
             ALMA_Logger::warning('OpenAI empty response', array('model' => $data['model'] ?? $model, 'response_time' => $rt, 'raw_response' => $data));
             return array('success'=>false,'error'=>__('Risposta AI vuota', 'affiliate-link-manager-ai'),'error_code'=>'empty_response','error_category'=>'api','response_time'=>$rt,'model'=>$data['model'] ?? $model,'max_output_tokens'=>$max_output_tokens,'response_format_used'=>$response_format_used,'warnings'=>$warnings,'raw_response'=>$data);
         }
         $usage = $data['usage'] ?? null;
-        return array('success'=>true,'response'=>$text,'model'=>$data['model'] ?? $model,'response_time'=>$rt,'usage'=>$usage,'estimated_cost'=>self::estimate_cost_usd($data['model'] ?? $model, $usage),'max_output_tokens'=>$max_output_tokens,'response_format_used'=>$response_format_used,'raw_response'=>$data,'warnings'=>$warnings);
+        return array('success'=>true,'response'=>$text,'function_calls'=>$function_calls,'model'=>$data['model'] ?? $model,'response_time'=>$rt,'usage'=>$usage,'estimated_cost'=>self::estimate_cost_usd($data['model'] ?? $model, $usage),'max_output_tokens'=>$max_output_tokens,'response_format_used'=>$response_format_used,'raw_response'=>$data,'warnings'=>$warnings);
     }
 
     /**

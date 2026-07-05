@@ -415,6 +415,8 @@ class ALMA_AI_Content_Agent_Admin {
         echo '<a class="button" href="'.esc_url(admin_url('admin.php?page=' . ALMA_AI_Content_Agent_Idea_Importer::PAGE_SLUG)).'">📥 Importazione massiva (CSV)</a>';
         echo '</p>';
 
+        if (class_exists('ALMA_AI_Idea_Agent')) { ALMA_AI_Idea_Agent::render_panel(); }
+
         echo '<form method="get" action="'.esc_url(admin_url('edit.php')).'" class="alma-ideas-list-filters" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin:12px 0;">';
         echo '<input type="hidden" name="post_type" value="affiliate_link"><input type="hidden" name="page" value="'.esc_attr(self::IDEAS_LIST_MENU_SLUG).'">';
         echo '<label><strong>Cerca</strong><br><input type="search" name="s" value="'.esc_attr($search).'" placeholder="Titolo idea…"></label>';

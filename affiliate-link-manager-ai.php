@@ -3,7 +3,7 @@
  * Plugin Name: Affiliate Link Manager AI
  * Plugin URI: https://your-website.com
  * Description: Gestisce link affiliati con intelligenza artificiale per ottimizzazione e tracking automatico.
- * Version: 2.57.0
+ * Version: 2.58.0
  * Author: Cosè Murciano
  * License: GPL v2 or later
  * Text Domain: affiliate-link-manager-ai
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Definisci costanti del plugin
-define('ALMA_VERSION', '2.57.0');
+define('ALMA_VERSION', '2.58.0');
 define('ALMA_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('ALMA_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('ALMA_PLUGIN_FILE', __FILE__);
@@ -55,6 +55,7 @@ require_once ALMA_PLUGIN_DIR . 'includes/class-ai-content-agent-draft-builder.ph
 require_once ALMA_PLUGIN_DIR . 'includes/class-ai-content-agent-result-usage.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-ai-content-agent-instructions-manager.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-ai-content-agent-idea-importer.php';
+require_once ALMA_PLUGIN_DIR . 'includes/class-ai-idea-agent.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-affiliate-source-url-validator.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-affiliate-source-provider-interface.php';
 require_once ALMA_PLUGIN_DIR . 'includes/providers/class-affiliate-source-provider-manual.php';
@@ -157,6 +158,7 @@ class AffiliateManagerAI {
         $this->trip_finder->init();
         ALMA_Dashboard_Insights::init();
         ALMA_AI_Content_Agent_Idea_Importer::init();
+        ALMA_AI_Idea_Agent::init();
         add_action('init', array($this, 'init'));
         add_action('widgets_init', array('ALMA_Contextual_Affiliate_Widget', 'register_widget'));
         // Registrato qui (prima che `widgets_init` scatti) perché ALMA_Shortcodes::init()
@@ -4394,6 +4396,7 @@ class AffiliateManagerAI {
         ALMA_Geo_Geocoding_Queue::unschedule();
         ALMA_Dashboard_Insights::unschedule();
         ALMA_AI_Content_Agent_Idea_Importer::unschedule();
+        ALMA_AI_Idea_Agent::unschedule();
         $this->clear_deprecated_trend_cron_events();
         flush_rewrite_rules();
     }
