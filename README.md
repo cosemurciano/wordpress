@@ -1,3 +1,12 @@
+## 2.58.0 - 2026-07-05
+
+### Agente AI di ideazione (tool calling OpenAI)
+- Nuovo agente autonomo in "Tutte le idee": legge i dati reali (performance click, gap geografici, link disponibili, articoli esistenti) tramite strumenti tipizzati e crea idee contenuto motivate dai numeri, con località, keywords, prompt e data programmata.
+- Guard-rail: mai bozze o pubblicazioni dirette; limiti configurabili (idee per esecuzione, esecuzioni al giorno), lock, esecuzione in background, costi registrati per ogni chiamata.
+- Pannello con obiettivo opzionale, limiti e report dell'ultima esecuzione (idee create, chiamate strumento, costo stimato, riepilogo).
+- Servizio OpenAI esteso con supporto tool-calling multi-turno (retrocompatibile).
+- Versione plugin aggiornata a `2.58.0`.
+
 ## 2.57.0 - 2026-07-05
 
 ### Aggiungi idea — UI ridisegnata sul modello dell'editor Post

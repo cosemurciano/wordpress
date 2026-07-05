@@ -1,3 +1,14 @@
+## 2.58.0 - 2026-07-05
+
+### Agente AI di ideazione (tool calling OpenAI)
+- **Nuovo agente autonomo di ideazione** in "Tutte le idee": analizza i **dati reali del sito** e crea nuove idee contenuto motivate dai numeri. Funziona con il tool calling della Responses API di OpenAI (loop agentico, max 12 round): il modello decide quali strumenti usare, il plugin li esegue e gli restituisce i risultati.
+- **Strumenti dell'agente** (tipizzati, in sola lettura + un'unica azione): `analizza_performance` (trend click 7/30/180gg, top link/articoli, località più cliccate — dallo snapshot della Dashboard), `trova_gap_geografici` (località con link senza click, con articoli senza link), `cerca_link_affiliati` (Knowledge Search con boost geografico), `elenca_articoli_esistenti` (anti-duplicazione) e `crea_idea` (unica azione permessa: crea l'idea con località risolta sull'indice geografico, keywords, prompt editoriale e data programmata — poi il runner esistente genererà la bozza nei limiti giornalieri).
+- **Guard-rail**: l'agente non genera bozze e non pubblica mai; massimo idee per esecuzione (default 5) e massimo esecuzioni al giorno (default 2) configurabili; lock atomico anti-concorrenza; esecuzione in background (evento cron immediato); ogni chiamata OpenAI registrata nell'usage logger con costo stimato.
+- **Pannello in "Tutte le idee"**: campo obiettivo opzionale (es. "concentrati sull'Italia"), pulsante Esegui agente, limiti configurabili e report dell'ultima esecuzione (idee create con link diretto al workspace, chiamate strumento, costo stimato, riepilogo dell'agente, eventuali errori).
+- **Servizio OpenAI esteso** (retrocompatibile): supporto a `input_items` (input grezzo multi-turno della Responses API) e restituzione delle `function_calls` richieste dal modello; una risposta senza testo ma con tool call in sospeso non è più considerata errore.
+- Le idee create dall'agente hanno origine `agent` e sono normali idee: modificabili nel workspace, programmabili, eliminabili.
+- Versione plugin aggiornata a `2.58.0`.
+
 ## 2.57.0 - 2026-07-05
 
 ### Aggiungi idea — UI ridisegnata sul modello dell'editor Post
