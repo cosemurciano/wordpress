@@ -1,3 +1,9 @@
+## 2.65.1 - 2026-07-05
+
+### Diagnostica granulare credenziali Search Console
+- Lo stato credenziali distingue: costante mancante (con nota sulla posizione in wp-config.php), file inesistente, file non leggibile, JSON non valido o di tipo sbagliato; in caso di successo mostra l'email del service account.
+- Versione plugin aggiornata a `2.65.1`.
+
 ## 2.65.0 - 2026-07-05
 
 ### Fase 7.1 — Google Search Console per l'agente AI + sospensione chip faccette
