@@ -1,3 +1,9 @@
+## 2.65.1 - 2026-07-05
+
+### Diagnostica granulare credenziali Search Console
+- Lo stato credenziali nella tab Search Console ora distingue i casi invece del generico "costante non definita": **costante mancante** (con promemoria: il `define()` va PRIMA della riga `/* That's all, stop editing! */` di wp-config.php), **file inesistente per PHP** (percorso/open_basedir), **file non leggibile** (permessi), **JSON non valido**, **tipo sbagliato** (es. client OAuth invece di service account), **campi mancanti** — e in caso di successo mostra l'email del service account da aggiungere come utente della proprietà.
+- Versione plugin aggiornata a `2.65.1`.
+
 ## 2.65.0 - 2026-07-05
 
 ### Fase 7.1 — Google Search Console per l'agente AI + sospensione chip faccette

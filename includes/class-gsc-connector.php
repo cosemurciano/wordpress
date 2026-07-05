@@ -52,6 +52,43 @@ class ALMA_GSC_Connector {
         return '';
     }
 
+    /**
+     * Diagnostica granulare delle credenziali: distingue costante mancante,
+     * file inesistente, file non leggibile (permessi/open_basedir) e JSON
+     * non valido — "costante non definita" da sola non basta a capire dove
+     * intervenire.
+     */
+    public static function credentials_status() {
+        if (defined('ALMA_GSC_SERVICE_ACCOUNT_FILE')) {
+            $path = (string) ALMA_GSC_SERVICE_ACCOUNT_FILE;
+            if (!file_exists($path)) {
+                return array('state' => 'error', 'message' => sprintf(__('Costante definita ma il file NON esiste per PHP: %s — controlla il percorso assoluto (e eventuali restrizioni open_basedir).', 'affiliate-link-manager-ai'), $path));
+            }
+            if (!is_readable($path)) {
+                return array('state' => 'error', 'message' => sprintf(__('File presente ma NON leggibile dall\'utente del web server: %s — sistem i permessi (es. chmod 640 con owner corretto).', 'affiliate-link-manager-ai'), $path));
+            }
+            return self::validate_credentials_json((string) file_get_contents($path), sprintf(__('file %s', 'affiliate-link-manager-ai'), $path));
+        }
+        if (defined('ALMA_GSC_SERVICE_ACCOUNT_JSON')) {
+            return self::validate_credentials_json((string) ALMA_GSC_SERVICE_ACCOUNT_JSON, __('costante JSON', 'affiliate-link-manager-ai'));
+        }
+        return array('state' => 'warning', 'message' => __('Nessuna costante definita. Verifica che il define() sia nel wp-config.php del sito, PRIMA della riga "/* That\'s all, stop editing! */" (dopo quella riga le costanti non vengono caricate).', 'affiliate-link-manager-ai'));
+    }
+
+    private static function validate_credentials_json($json, $source_label) {
+        $data = json_decode($json, true);
+        if (!is_array($data)) {
+            return array('state' => 'error', 'message' => sprintf(__('%s: contenuto non è JSON valido.', 'affiliate-link-manager-ai'), $source_label));
+        }
+        if (($data['type'] ?? '') !== 'service_account') {
+            return array('state' => 'error', 'message' => sprintf(__('%s: non è una chiave service account (type="%s") — serve il JSON con "type":"service_account".', 'affiliate-link-manager-ai'), $source_label, (string)($data['type'] ?? '')));
+        }
+        if (empty($data['client_email']) || empty($data['private_key'])) {
+            return array('state' => 'error', 'message' => sprintf(__('%s: mancano client_email o private_key.', 'affiliate-link-manager-ai'), $source_label));
+        }
+        return array('state' => 'success', 'message' => sprintf(__('OK (%1$s) — service account: %2$s. Ricorda di aggiungere questa email come utente della proprietà in Search Console.', 'affiliate-link-manager-ai'), $source_label, sanitize_text_field((string) $data['client_email'])));
+    }
+
     public static function is_configured() {
         return self::credentials_json() !== '' && self::get_property() !== '';
     }
@@ -302,7 +339,7 @@ class ALMA_GSC_Connector {
      * ------------------------------------------------------------------ */
 
     public static function render_settings_tab() {
-        $configured_constants = self::credentials_json() !== '';
+        $credentials_status = self::credentials_status();
         $snapshot = get_option(self::OPTION_SNAPSHOT, null);
 
         echo '<h2>Google Search Console</h2>';
@@ -313,8 +350,9 @@ class ALMA_GSC_Connector {
         echo '<li>Indica la proprietà qui sotto, salva, poi <strong>Verifica connessione</strong> e <strong>Aggiorna dati ora</strong>.</li></ol>';
         echo '<p><strong>Cosa ci fa l\'agente:</strong> legge le query reali con cui gli utenti trovano il sito (top, in crescita, e soprattutto le <em>opportunità</em>: query con molte impression ma posizione debole) e le usa per proporre idee di contenuto con domanda già dimostrata.</p></div>';
 
+        $badge_class = $credentials_status['state'] === 'success' ? 'is-success' : 'is-warning';
         echo '<table class="form-table" role="presentation">';
-        echo '<tr><th scope="row">Stato credenziali</th><td><span class="alma-badge '.($configured_constants ? 'is-success' : 'is-warning').'">'.($configured_constants ? 'costante definita' : 'costante non definita').'</span><p class="description">Le credenziali vivono solo in wp-config.php / file, mai nel database.</p></td></tr>';
+        echo '<tr><th scope="row">Stato credenziali</th><td><span class="alma-badge '.esc_attr($badge_class).'">'.esc_html($credentials_status['state'] === 'success' ? 'OK' : ($credentials_status['state'] === 'error' ? 'errore' : 'non configurate')).'</span> '.esc_html($credentials_status['message']).'<p class="description">Le credenziali vivono solo in wp-config.php / file, mai nel database. La costante va inserita PRIMA della riga <code>/* That\'s all, stop editing! */</code>.</p></td></tr>';
         echo '</table>';
 
         echo '<form method="post" action="'.esc_url(admin_url('admin-post.php')).'">';
