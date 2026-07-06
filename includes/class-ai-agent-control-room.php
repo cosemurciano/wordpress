@@ -26,6 +26,8 @@ class ALMA_AI_Agent_Control_Room {
     public static function init() {
         add_action('admin_post_alma_ai_regia_advice', array(__CLASS__, 'handle_advice'));
         add_filter('display_post_states', array(__CLASS__, 'mark_agent_posts'), 10, 2);
+        add_filter('views_edit-post', array(__CLASS__, 'add_ai_posts_view'));
+        add_action('pre_get_posts', array(__CLASS__, 'filter_ai_posts_query'));
     }
 
     /**
@@ -39,6 +41,35 @@ class ALMA_AI_Agent_Control_Room {
             $states['alma_ai_agent'] = __('🤖 Scritto dall\'Agente AI', 'affiliate-link-manager-ai');
         }
         return $states;
+    }
+
+    /**
+     * Vista "Articoli AI" accanto a Tutti | Pubblicati | Bozze: filtra
+     * l'elenco ai soli post scritti dall'agente.
+     */
+    public static function add_ai_posts_view($views) {
+        global $wpdb;
+        $count = (int) $wpdb->get_var(
+            "SELECT COUNT(DISTINCT pm.post_id) FROM {$wpdb->postmeta} pm
+             INNER JOIN {$wpdb->posts} p ON p.ID = pm.post_id
+             WHERE pm.meta_key = '_alma_ai_agent_generated' AND pm.meta_value = '1'
+               AND p.post_type = 'post' AND p.post_status NOT IN ('trash', 'auto-draft')"
+        );
+        $current = !empty($_GET['alma_ai_agent']);
+        $views['alma_ai_agent'] = '<a href="' . esc_url(admin_url('edit.php?post_type=post&alma_ai_agent=1')) . '"' . ($current ? ' class="current" aria-current="page"' : '') . '>🤖 ' . esc_html__('Articoli AI', 'affiliate-link-manager-ai') . ' <span class="count">(' . (int) $count . ')</span></a>';
+        return $views;
+    }
+
+    public static function filter_ai_posts_query($query) {
+        if (!is_admin() || !$query->is_main_query() || empty($_GET['alma_ai_agent'])) {
+            return;
+        }
+        if (($query->get('post_type') ?: 'post') !== 'post') {
+            return;
+        }
+        $meta_query = (array) $query->get('meta_query');
+        $meta_query[] = array('key' => '_alma_ai_agent_generated', 'value' => '1');
+        $query->set('meta_query', $meta_query);
     }
 
     /* ---------------------------------------------------------------------
