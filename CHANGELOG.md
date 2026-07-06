@@ -1,3 +1,14 @@
+## 2.76.0 - 2026-07-06
+
+### Regia AI v2: piano con data di inizio, consigli strategici accorpati, stop dell'agente, via il tetto bozze
+- **Consigli strategici accorpati nella Regia**: il consiglio del piano ora usa TUTTE le informazioni disponibili — il prompt statistico completo della dashboard (lo stesso dei vecchi "Consigli strategici AI", che si trasferiscono qui), le opportunità Search Console, i gap geografici e il ritmo di produzione — e restituisce **piano consigliato** (articoli/giorni/obiettivo) + motivazione + **3-6 consigli strategici prioritizzati**. «Applica il piano» compila i campi modificabili (Quanti articoli, In quanti giorni, data, obiettivo/suggerimenti dell'admin), poi si rivede e si preme «Avvia il piano». Il box in Dashboard rimanda alla Regia (con gli ultimi consigli in un dettaglio); il comando Telegram `/consigli` riceve i nuovi consigli della Regia (compatibilità mantenuta).
+- **Data di inizio del piano** (nuovo campo, default oggi; date passate → oggi): ogni piano è indipendente e **si somma** a quelli già programmati — le idee ricevono date distribuite dalla data scelta. Guardia deterministica: se l'AI assegna date fuori dalla finestra [inizio, inizio+giorni), vengono ridistribuite in sequenza dentro la finestra (test standalone 11/11).
+- **Via il tetto giornaliero di bozze** (era 3, nascosto in Importazione massiva): ogni idea creata genera la sua bozza — quelle programmate a oggi subito, le future nel giorno previsto dal runner giornaliero, che ora processa TUTTE le idee in scadenza a run brevi (budget 180s) auto-programmandosi ogni 2 minuti finché ce ne sono. Se la pubblicazione automatica è attiva, la bozza viene pubblicata. Il ritmo lo decide solo la programmazione dei piani. Contatore bozze mantenuto come statistica.
+- **Limiti di guardia rimossi** dalla Regia (in conflitto con la nuova logica): niente più tetto di esecuzioni giornaliere (il lock impedisce comunque esecuzioni sovrapposte); le option restano nel database per compatibilità.
+- **Stato esecuzione + pulsante Ferma**: la Regia mostra chiaramente "AGENTE IN ESECUZIONE…" (con auto-refresh della pagina ogni 15s) e un pulsante **🛑 Ferma l'agente**: lo stop agisce ai confini di ogni round del loop e prima di ogni bozza (il passo in corso si conclude, poi il run si interrompe pulitamente registrando "Interrotto dall'amministratore"); le idee già create restano e le loro bozze arriveranno nei giorni programmati.
+- Problematiche valutate e gestite: piani sovrapposti si sommano (più bozze nello stesso giorno → il runner le smaltisce in catena); data nel passato normalizzata a oggi; stop a run non partito neutralizzato dal riavvio pulito del flag; massimo 10 articoli per piano (limite strutturale del loop agente: per piani più grandi, lanciare più piani con date successive).
+- Versione plugin aggiornata a `2.76.0`.
+
 ## 2.75.1 - 2026-07-06
 
 ### Filtro Sources senza archiviate + verifica dei percorsi d'import

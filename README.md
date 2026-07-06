@@ -1,3 +1,9 @@
+## 2.76.0 - 2026-07-06
+
+### Regia AI v2
+- Consigli strategici accorpati nel consiglio del piano (contesto completo: statistiche, Search Console, gap, ritmo) con «Applica il piano»; piano con data di inizio (i piani si sommano); ogni idea genera la sua bozza nel giorno programmato senza tetto giornaliero; stato "in esecuzione" con pulsante Ferma; limiti di guardia rimossi.
+- Versione plugin aggiornata a `2.76.0`.
+
 ## 2.75.1 - 2026-07-06
 
 ### Filtro Sources senza archiviate

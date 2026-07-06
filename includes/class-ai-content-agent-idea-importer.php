@@ -104,21 +104,14 @@ class ALMA_AI_Content_Agent_Idea_Importer {
 
             <div class="card" style="max-width:860px;">
                 <h2><?php esc_html_e('Generazione automatica in background', 'affiliate-link-manager-ai'); ?></h2>
-                <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
-                    <?php wp_nonce_field('alma_ai_ideas_import_settings'); ?>
-                    <input type="hidden" name="action" value="alma_ai_ideas_import_settings">
-                    <p><label><?php esc_html_e('Massimo bozze generate automaticamente al giorno', 'affiliate-link-manager-ai'); ?>
-                        <input type="number" name="<?php echo esc_attr(self::OPTION_DAILY_LIMIT); ?>" min="0" max="50" value="<?php echo esc_attr((string)self::get_daily_limit()); ?>" class="small-text"></label></p>
-                    <p class="description"><?php esc_html_e('Tetto ai costi OpenAI: il runner giornaliero non supera questo numero di bozze. 0 = generazione automatica sospesa (le idee restano programmate).', 'affiliate-link-manager-ai'); ?></p>
-                    <p><button class="button"><?php esc_html_e('Salva', 'affiliate-link-manager-ai'); ?></button></p>
-                </form>
+                <p class="description"><?php esc_html_e('Ogni idea programmata genera la sua bozza nel giorno previsto, senza tetto giornaliero: il ritmo lo decide la programmazione dei piani (quanti articoli, in quanti giorni, da quando) nella Regia AI. Il runner lavora a run brevi e si auto-programma finché ci sono idee in scadenza.', 'affiliate-link-manager-ai'); ?></p>
                 <?php
                 $counter = get_option(self::OPTION_COUNTER, array());
                 $today = current_time('Y-m-d');
                 $today_count = (is_array($counter) && ($counter['date'] ?? '') === $today) ? (int)$counter['count'] : 0;
                 $next_run = wp_next_scheduled(self::CRON_HOOK);
                 ?>
-                <p class="description"><?php printf(esc_html__('Bozze generate oggi: %1$d / %2$d · Prossima esecuzione automatica: %3$s', 'affiliate-link-manager-ai'), $today_count, self::get_daily_limit(), $next_run ? esc_html(get_date_from_gmt(gmdate('Y-m-d H:i:s', $next_run), 'Y-m-d H:i')) : '—'); ?></p>
+                <p class="description"><?php printf(esc_html__('Bozze generate oggi: %1$d · Prossima esecuzione automatica: %2$s', 'affiliate-link-manager-ai'), $today_count, $next_run ? esc_html(get_date_from_gmt(gmdate('Y-m-d H:i:s', $next_run), 'Y-m-d H:i')) : '—'); ?></p>
             </div>
         </div>
         <?php
@@ -334,26 +327,29 @@ class ALMA_AI_Content_Agent_Idea_Importer {
     }
 
     /**
-     * Genera le bozze delle idee programmate in scadenza, entro il limite
-     * giornaliero. Riusa l'intera pipeline esistente: selezione candidati via
-     * Knowledge Search (geo-first), sessione contenuto, Draft Builder.
+     * Genera le bozze di TUTTE le idee programmate in scadenza: il ritmo lo
+     * decide la programmazione dei piani (quanti articoli, in quanti giorni,
+     * da quando), non un tetto giornaliero. Il run lavora entro un budget di
+     * tempo e, se restano idee in scadenza, si auto-programma un run di
+     * recupero (pattern del warmer). Riusa l'intera pipeline esistente:
+     * selezione candidati via Knowledge Search (geo-first), sessione
+     * contenuto, Draft Builder.
      */
     public static function run_scheduled() {
         if (!self::acquire_lock()) { return; }
         global $wpdb;
         $job_id = 0;
+        $processed = 0;
         try {
-            $limit = self::get_daily_limit();
             $today = current_time('Y-m-d');
             $counter = get_option(self::OPTION_COUNTER, array());
             $done_today = (is_array($counter) && ($counter['date'] ?? '') === $today) ? (int)$counter['count'] : 0;
-            $quota = max(0, $limit - $done_today);
-            if ($quota < 1 || empty(get_option('alma_openai_api_key', ''))) { return; }
+            if (empty(get_option('alma_openai_api_key', ''))) { return; }
 
             $idea_ids = get_posts(array(
                 'post_type' => ALMA_AI_Content_Agent_Ideas::CPT,
                 'post_status' => 'publish',
-                'posts_per_page' => $quota,
+                'posts_per_page' => 10,
                 'fields' => 'ids',
                 'orderby' => 'meta_value',
                 'meta_key' => ALMA_AI_Content_Agent_Ideas::META_SCHEDULED_AT,
@@ -372,11 +368,15 @@ class ALMA_AI_Content_Agent_Idea_Importer {
             $wpdb->insert($jobs_table, array('job_type' => 'scheduled_ideas', 'status' => 'running', 'total_items' => count($idea_ids), 'started_at' => current_time('mysql'), 'updated_at' => current_time('mysql')));
             $job_id = (int) $wpdb->insert_id;
 
-            $processed = 0;
             $errors = 0;
             $last_error = '';
+            $started_ts = time();
             $original_user = get_current_user_id();
             foreach ($idea_ids as $idea_id) {
+                // Budget di tempo per run (hosting condiviso): le idee non
+                // elaborate restano in scadenza e riprendono col run di
+                // recupero auto-programmato qui sotto.
+                if ((time() - $started_ts) > 180) { break; }
                 $result = self::generate_draft_for_scheduled_idea((int) $idea_id);
                 $processed++;
                 if (empty($result['success'])) {
@@ -397,21 +397,44 @@ class ALMA_AI_Content_Agent_Idea_Importer {
         } finally {
             delete_option(self::LOCK_OPTION);
         }
+        // Run di recupero: se questo giro ha prodotto qualcosa e restano
+        // idee in scadenza, si riparte tra 2 minuti (mai loop a vuoto).
+        if ($processed > 0 && self::due_ideas_count() > 0) {
+            wp_schedule_single_event(time() + 120, self::CRON_HOOK);
+            if (function_exists('spawn_cron')) { spawn_cron(); }
+        }
     }
 
     /**
-     * Genera SUBITO la bozza di un'idea rispettando il limite giornaliero di
-     * bozze automatiche (stesso contatore del runner programmato): usato
-     * dall'agente di ideazione quando l'editore chiede anche le bozze.
+     * Idee programmate in scadenza (oggi o prima) senza bozza.
+     */
+    public static function due_ideas_count() {
+        $ids = get_posts(array(
+            'post_type' => ALMA_AI_Content_Agent_Ideas::CPT,
+            'post_status' => 'publish',
+            'posts_per_page' => -1,
+            'fields' => 'ids',
+            'no_found_rows' => true,
+            'meta_query' => array(
+                array('key' => ALMA_AI_Content_Agent_Ideas::META_SCHEDULED_AT, 'value' => '', 'compare' => '!='),
+                array('key' => ALMA_AI_Content_Agent_Ideas::META_SCHEDULED_AT, 'value' => current_time('Y-m-d'), 'compare' => '<='),
+                array('key' => ALMA_AI_Content_Agent_Ideas::META_EXECUTED_AT, 'value' => '', 'compare' => '='),
+                array('key' => ALMA_AI_Content_Agent_Ideas::META_DRAFT_POST_ID, 'value' => 0, 'compare' => '<=', 'type' => 'NUMERIC'),
+            ),
+        ));
+        return count($ids);
+    }
+
+    /**
+     * Genera SUBITO la bozza di un'idea: usato dall'agente di ideazione per
+     * le idee programmate a oggi. Nessun tetto giornaliero: il ritmo lo
+     * decide la programmazione del piano (il contatore resta solo come
+     * statistica visibile in Regia).
      */
     public static function generate_draft_now($idea_id) {
-        $limit = self::get_daily_limit();
         $today = current_time('Y-m-d');
         $counter = get_option(self::OPTION_COUNTER, array());
         $done = (is_array($counter) && ($counter['date'] ?? '') === $today) ? (int)$counter['count'] : 0;
-        if ($limit < 1 || $done >= $limit) {
-            return array('success' => false, 'error' => 'Limite giornaliero di bozze automatiche raggiunto (' . $done . '/' . $limit . ').', 'quota_exhausted' => true);
-        }
         $result = self::generate_draft_for_scheduled_idea(absint($idea_id));
         if (!empty($result['success'])) {
             update_option(self::OPTION_COUNTER, array('date' => $today, 'count' => $done + 1), false);
