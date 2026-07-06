@@ -1,3 +1,12 @@
+## 2.73.0 - 2026-07-06
+
+### Verifica link affiliati: audit degli URL salvati + bonifica tpx.li
+- **Diagnosi del caso "0 visite su GetYourGuide"**: alcuni Link Affiliati erano salvati nel database come short link Travelpayouts (`getyourguide.tpx.li/…`) invece del deep link ufficiale con `partner_id` — i click finivano tracciati da Travelpayouts e il programma partner GetYourGuide non li vedeva. Verificato che **il plugin non altera mai gli URL in uscita** (pubblica esattamente il valore di `_affiliate_url`; nel codice non esiste alcun riferimento a tpx.li/Travelpayouts) e che l'import CSV corrente produce URL corretti (`getyourguide.com` + `partner_id`): il problema è nei dati storici di quei link.
+- **Nuova pagina "Verifica link"** (menu Affiliate Link AI): riepilogo dei domini realmente in uso nei link pubblicati (con ⚠️ sui tpx.li), conteggio dei link getyourguide.* senza partner_id, elenco dei link da bonificare.
+- **Bonifica guidata**: batch da 15 link per click (interrompibile, lock atomico, budget 25s) — per ogni link il server segue i redirect fino al prodotto getyourguide.*, elimina i parametri di tracciamento Travelpayouts e riapplica `partner_id`/`utm_medium` ufficiali riusando il builder dell'import CSV. **L'URL originale viene salvato nel meta di backup `_alma_url_pre_bonifica`** prima di ogni modifica (mai sovrascritto se già presente); i link irrisolvibili vengono marcati e esclusi dai giri successivi (con pulsante "Ritenta i falliti"); il Partner ID viene precompilato da un link GYG già corretto. Report dell'ultimo giro con esito per link. La cache del widget contestuale viene invalidata a fine giro.
+- Test standalone 13/13 (pulizia URL attività con parametri Travelpayouts, domini .it/.com, rifiuto tpx.li/pagine città/domini estranei, risoluzione Location assoluti/relativi/scheme-relative, estrazione partner_id, flusso completo fino all'URL ufficiale).
+- Versione plugin aggiornata a `2.73.0`.
+
 ## 2.72.0 - 2026-07-06
 
 ### Fase 7.2 (PR D): territorio OpenStreetMap + aeroporto più vicino nelle schede località
