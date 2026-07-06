@@ -1,3 +1,10 @@
+## 2.75.1 - 2026-07-06
+
+### Filtro Sources senza archiviate + verifica dei percorsi d'import
+- **Filtro "Sources" nell'elenco Link Affiliati**: le source archiviate non compaiono più nel menu a tendina (prima erano elencate con suffisso "(eliminata)"). Il filtro per ID resta applicabile via URL, così i link di una source archiviata restano raggiungibili all'occorrenza.
+- **Verifica dei prossimi import (documentata)**: il percorso **Viator API** usa il `productUrl` restituito dall'API partner così com'è (già con `pid`, `mcid` e `medium=api`) e lo salva senza alcuna trasformazione; il percorso **GetYourGuide CSV** passa dal builder che normalizza al dominio ufficiale `.it` e aggiunge `partner_id` (v2.74.0); l'import su una source archiviata è bloccato; la deduplica lavora per `external_id` e per URL; la normalizzazione dominio non tocca URL non-GetYourGuide. I prossimi import producono quindi URL corretti su entrambi i canali.
+- Versione plugin aggiornata a `2.75.1`.
+
 ## 2.75.0 - 2026-07-06
 
 ### Verifica link: bonifica anche per Viator + protezione esplicita dei link Travelpayouts manuali

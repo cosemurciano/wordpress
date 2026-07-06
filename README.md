@@ -1,3 +1,9 @@
+## 2.75.1 - 2026-07-06
+
+### Filtro Sources senza archiviate
+- Il filtro "Sources" nell'elenco Link Affiliati non mostra più le source archiviate; verificati i percorsi d'import (Viator API e GetYourGuide CSV producono URL corretti).
+- Versione plugin aggiornata a `2.75.1`.
+
 ## 2.75.0 - 2026-07-06
 
 ### Verifica link: bonifica anche per Viator
