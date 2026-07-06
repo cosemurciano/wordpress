@@ -1,3 +1,9 @@
+## 2.74.0 - 2026-07-06
+
+### Dominio ufficiale GetYourGuide (.it)
+- I link GetYourGuide fanno riferimento al dominio ufficiale del programma partner italiano (`www.getyourguide.it`), configurabile in "Verifica link": vale per import CSV futuri, bonifica tpx.li e — con il nuovo convertitore batch — per l'archivio esistente (con backup).
+- Versione plugin aggiornata a `2.74.0`.
+
 ## 2.73.0 - 2026-07-06
 
 ### Verifica link affiliati: audit + bonifica tpx.li
