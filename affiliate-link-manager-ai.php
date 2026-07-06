@@ -3,7 +3,7 @@
  * Plugin Name: Affiliate Link Manager AI
  * Plugin URI: https://your-website.com
  * Description: Gestisce link affiliati con intelligenza artificiale per ottimizzazione e tracking automatico.
- * Version: 2.75.1
+ * Version: 2.76.0
  * Author: Cosè Murciano
  * License: GPL v2 or later
  * Text Domain: affiliate-link-manager-ai
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Definisci costanti del plugin
-define('ALMA_VERSION', '2.75.1');
+define('ALMA_VERSION', '2.76.0');
 define('ALMA_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('ALMA_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('ALMA_PLUGIN_FILE', __FILE__);
@@ -1498,20 +1498,12 @@ class AffiliateManagerAI {
 
                 <h2 style="margin-top:24px;">🤖 <?php esc_html_e('Consigli strategici AI', 'affiliate-link-manager-ai'); ?></h2>
                 <div class="postbox"><div class="inside">
-                    <p>
-                        <button type="button" class="button button-primary" id="alma-insights-ai"><?php esc_html_e('Genera consigli AI', 'affiliate-link-manager-ai'); ?></button>
-                        <span id="alma-insights-ai-feedback" style="margin-left:8px;color:#2271b1;"></span>
-                    </p>
-                    <p class="description"><?php esc_html_e('Invia il riepilogo aggregato dello snapshot (nessun dato personale) al modello OpenAI configurato e restituisce 5 raccomandazioni prioritizzate. Solo su richiesta, mai in automatico.', 'affiliate-link-manager-ai'); ?></p>
-                    <pre id="alma-insights-ai-text" style="white-space:pre-wrap;font-family:inherit;font-size:14px;background:#f6f7f7;border:1px solid #dcdcde;border-radius:6px;padding:14px;<?php echo $advice ? '' : 'display:none;'; ?>"><?php echo $advice ? esc_html($advice['text']) : ''; ?></pre>
-                    <p class="description" id="alma-insights-ai-meta"><?php
-                        if ($advice) {
-                            $meta_parts = array($advice['generated_at']);
-                            if (!empty($advice['model'])) { $meta_parts[] = $advice['model']; }
-                            if (!empty($advice['estimated_cost'])) { $meta_parts[] = '~$' . number_format((float) $advice['estimated_cost'], 4); }
-                            echo esc_html(implode(' · ', $meta_parts));
-                        }
-                    ?></p>
+                    <p><?php esc_html_e('I consigli strategici si sono trasferiti nella Regia AI, accorpati al consiglio del piano editoriale: lì l\'AI usa TUTTE le informazioni disponibili (statistiche complete, opportunità Search Console, ritmo di produzione) e ti propone piano + raccomandazioni applicabili con un click.', 'affiliate-link-manager-ai'); ?></p>
+                    <p><a class="button button-primary" href="<?php echo esc_url(admin_url('edit.php?post_type=affiliate_link&page=alma-ai-regia')); ?>">🎬 <?php esc_html_e('Apri la Regia AI', 'affiliate-link-manager-ai'); ?></a></p>
+                    <?php if ($advice) : ?>
+                        <details><summary><?php esc_html_e('Ultimi consigli generati', 'affiliate-link-manager-ai'); ?> · <?php echo esc_html($advice['generated_at']); ?></summary>
+                        <pre style="white-space:pre-wrap;font-family:inherit;font-size:14px;background:#f6f7f7;border:1px solid #dcdcde;border-radius:6px;padding:14px;"><?php echo esc_html($advice['text']); ?></pre></details>
+                    <?php endif; ?>
                 </div></div>
 
             <?php endif; ?>
