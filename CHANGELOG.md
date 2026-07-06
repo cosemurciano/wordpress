@@ -1,3 +1,13 @@
+## 2.71.0 - 2026-07-06
+
+### Warmer schede località: report affidabile, turni garantiti e run in catena
+- **Bug 1 — report azzerato**: quando il budget di 60 secondi si esauriva a metà run, un `break` usciva da entrambi i cicli prima del salvataggio dei contatori e il report mostrava "elaborate 0, ok 0, errori 0" per tutte le fonti nonostante le schede venissero realmente create. Ora i contatori di ogni fonte vengono salvati **anche se parziali**.
+- **Bug 2 — starvation delle fonti**: Open-Meteo (con più località in attesa) consumava l'intero budget a ogni run e Wikidata/Google Trends non arrivavano quasi mai al proprio turno (nella pratica: 56 schede clima vs 19 fatti vs 1 tendenze). Ora ogni fonte ha un **budget dedicato di 20 secondi per run**: il turno è garantito.
+- **Run in catena**: un solo run notturno non basta per smaltire migliaia di schede su hosting condiviso. Finché resta lavoro (e il run corrente ha prodotto qualcosa), il warmer **si auto-programma** un nuovo run dopo 90 secondi, fino a **30 run al giorno** — tanti run brevi invece di uno lungo, il pattern giusto per Aruba. A regime: centinaia di schede al giorno, backlog smaltito in pochi giorni. Contatore giornaliero con tetto anti-loop (si azzera al cambio data, tollera opzioni corrotte) e guardia sul cooldown di Google Trends (niente giri a vuoto).
+- La tab "Schede località" spiega il nuovo comportamento e mostra i run di recupero usati oggi (X/30).
+- Test standalone 6/6 sul contatore della catena (tetto giornaliero, reset al cambio data, opzione corrotta).
+- Versione plugin aggiornata a `2.71.0`.
+
 ## 2.70.1 - 2026-07-06
 
 ### Fix precisione widget contestuale: basta link di altre regioni sugli articoli localizzati
