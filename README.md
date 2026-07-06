@@ -1,3 +1,9 @@
+## 2.74.1 - 2026-07-06
+
+### Verifica link: solo GetYourGuide, batch più massivi
+- La bonifica tocca esclusivamente gli short link `getyourguide.tpx.li` (altri programmi esclusi); batch portato a 50 link per click con budget di 40 secondi a giro.
+- Versione plugin aggiornata a `2.74.1`.
+
 ## 2.74.0 - 2026-07-06
 
 ### Dominio ufficiale GetYourGuide (.it)

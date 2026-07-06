@@ -1,3 +1,10 @@
+## 2.74.1 - 2026-07-06
+
+### Verifica link: solo GetYourGuide, batch più massivi
+- **Perimetro ristretto ai soli link GetYourGuide**: la bonifica ora intercetta esclusivamente gli short link `getyourguide.tpx.li` — gli eventuali short link Travelpayouts di altri programmi (altri sottodomini `*.tpx.li`) non vengono più toccati né marcati come falliti; nella tabella dei domini compaiono come "altro programma — per ora non toccato". Il convertitore di dominio era già limitato a `getyourguide.*`.
+- **Batch della bonifica portato da 15 a 50 link per click**, con budget tempo a 40 secondi per giro (i link non elaborati restano in coda per il click successivo) e pausa tra le richieste dimezzata. Testi della pagina aggiornati.
+- Versione plugin aggiornata a `2.74.1`.
+
 ## 2.74.0 - 2026-07-06
 
 ### Dominio ufficiale GetYourGuide: riferimento a www.getyourguide.it
