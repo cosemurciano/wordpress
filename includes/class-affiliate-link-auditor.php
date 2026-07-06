@@ -28,9 +28,12 @@ class ALMA_Affiliate_Link_Auditor {
     const OPTION_LAST_REPORT = 'alma_link_audit_last_report';
     const META_BACKUP = '_alma_url_pre_bonifica';
     const META_FAILED = '_alma_url_bonifica_failed';
-    const BATCH_SIZE = 15;
-    const TIME_BUDGET = 25;
+    const BATCH_SIZE = 50;
+    const TIME_BUDGET = 40;
     const MAX_REDIRECTS = 6;
+    // SOLO i link GetYourGuide: gli short link Travelpayouts di altri
+    // programmi (altri sottodomini *.tpx.li) non vengono toccati.
+    const TPX_GYG_MARKER = 'getyourguide.tpx.li/';
 
     public static function init() {
         add_action('admin_post_alma_link_audit_fix', array(__CLASS__, 'handle_fix'));
@@ -72,7 +75,7 @@ class ALMA_Affiliate_Link_Auditor {
              WHERE pm.meta_key = '_affiliate_url' AND pm.meta_value LIKE %s
                AND p.post_type = 'affiliate_link' AND p.post_status = 'publish' {$failed_where}
              ORDER BY pm.post_id ASC LIMIT %d",
-            '%' . $wpdb->esc_like('.tpx.li/') . '%', max(1, absint($limit))
+            '%' . $wpdb->esc_like(self::TPX_GYG_MARKER) . '%', max(1, absint($limit))
         ), ARRAY_A);
     }
 
@@ -86,7 +89,7 @@ class ALMA_Affiliate_Link_Auditor {
              {$failed_join}
              WHERE pm.meta_key = '_affiliate_url' AND pm.meta_value LIKE %s
                AND p.post_type = 'affiliate_link' AND p.post_status = 'publish' {$failed_where}",
-            '%' . $wpdb->esc_like('.tpx.li/') . '%'
+            '%' . $wpdb->esc_like(self::TPX_GYG_MARKER) . '%'
         ));
     }
 
@@ -262,7 +265,7 @@ class ALMA_Affiliate_Link_Auditor {
                     $details[] = array('post_id' => $post_id, 'titolo' => (string) $link['post_title'], 'esito' => 'corretto', 'nota' => $new_url);
                     $fixed++;
                 }
-                usleep(300000); // cortesia verso il servizio di redirect
+                usleep(150000); // cortesia verso il servizio di redirect
             }
             update_option(self::OPTION_LAST_REPORT, array(
                 'time' => current_time('mysql'),
@@ -376,7 +379,7 @@ class ALMA_Affiliate_Link_Auditor {
             delete_transient('alma_link_audit_notice_' . get_current_user_id());
             echo '<div class="notice notice-' . esc_attr($notice['type'] === 'error' ? 'error' : 'success') . ' is-dismissible"><p>' . esc_html($notice['message']) . '</p></div>';
         }
-        echo '<p class="description" style="max-width:900px;">Il plugin pubblica esattamente l\'URL salvato in ogni Link Affiliato, senza alterarlo. Questa pagina mostra <strong>cosa è salvato davvero</strong> e corregge i link salvati come short link Travelpayouts (<code>tpx.li</code>) — che non vengono tracciati dal programma partner ufficiale GetYourGuide — trasformandoli nel deep link ufficiale con il tuo <code>partner_id</code>.</p>';
+        echo '<p class="description" style="max-width:900px;">Il plugin pubblica esattamente l\'URL salvato in ogni Link Affiliato, senza alterarlo. Questa pagina mostra <strong>cosa è salvato davvero</strong> e corregge <strong>solo i link GetYourGuide</strong> salvati come short link Travelpayouts (<code>getyourguide.tpx.li</code>) — che non vengono tracciati dal programma partner ufficiale — trasformandoli nel deep link ufficiale con il tuo <code>partner_id</code>. I link di altri programmi/domini non vengono toccati.</p>';
 
         // ---- Riepilogo domini ----
         echo '<div style="' . esc_attr($card) . '"><h2 style="margin-top:0;">Domini in uso nei link pubblicati</h2>';
@@ -386,8 +389,14 @@ class ALMA_Affiliate_Link_Auditor {
         } else {
             echo '<table class="widefat striped" style="max-width:560px;"><thead><tr><th>Dominio</th><th>Link</th><th></th></tr></thead><tbody>';
             foreach ($domains as $row) {
-                $is_tpx = strpos((string) $row['dominio'], 'tpx.li') !== false;
-                echo '<tr><td><code>' . esc_html((string) $row['dominio']) . '</code></td><td>' . esc_html((string) $row['n']) . '</td><td>' . ($is_tpx ? '<span style="color:#d63638;">⚠️ da bonificare</span>' : '') . '</td></tr>';
+                $dominio = (string) $row['dominio'];
+                $flag = '';
+                if ($dominio === 'getyourguide.tpx.li') {
+                    $flag = '<span style="color:#d63638;">⚠️ da bonificare</span>';
+                } elseif (strpos($dominio, 'tpx.li') !== false) {
+                    $flag = '<span class="description">altro programma — per ora non toccato</span>';
+                }
+                echo '<tr><td><code>' . esc_html($dominio) . '</code></td><td>' . esc_html((string) $row['n']) . '</td><td>' . $flag . '</td></tr>';
             }
             echo '</tbody></table>';
         }
@@ -424,12 +433,12 @@ class ALMA_Affiliate_Link_Auditor {
         // ---- Bonifica tpx.li ----
         $tpx_pending = self::tpx_count();
         $failed = self::failed_count();
-        echo '<div style="' . esc_attr($card) . '"><h2 style="margin-top:0;">Bonifica link tpx.li (Travelpayouts → GetYourGuide ufficiale)</h2>';
+        echo '<div style="' . esc_attr($card) . '"><h2 style="margin-top:0;">Bonifica link getyourguide.tpx.li (Travelpayouts → GetYourGuide ufficiale)</h2>';
         if ($tpx_pending === 0 && $failed === 0) {
             echo '<p>✅ Nessun link tpx.li da bonificare.</p>';
         } else {
             echo '<p>' . esc_html(sprintf('%d link da bonificare.', $tpx_pending)) . ($failed > 0 ? ' <span style="color:#d63638;">' . esc_html(sprintf('%d falliti in run precedenti (elencati sotto, esclusi dai prossimi giri).', $failed)) . '</span>' : '') . '</p>';
-            echo '<p class="description">Per ogni link il server segue i redirect fino al prodotto getyourguide.*, elimina i parametri Travelpayouts e applica il tuo partner_id. L\'URL originale viene salvato in un meta di backup (<code>' . esc_html(self::META_BACKUP) . '</code>) prima di ogni modifica. Batch da ' . esc_html((string) self::BATCH_SIZE) . ' link per click.</p>';
+            echo '<p class="description">Per ogni link il server segue i redirect fino al prodotto getyourguide.*, elimina i parametri Travelpayouts e applica il tuo partner_id. L\'URL originale viene salvato in un meta di backup (<code>' . esc_html(self::META_BACKUP) . '</code>) prima di ogni modifica. Batch fino a ' . esc_html((string) self::BATCH_SIZE) . ' link per click, entro un budget di ' . esc_html((string) self::TIME_BUDGET) . ' secondi a giro (i non elaborati restano in coda per il click successivo).</p>';
             echo '<form method="post" action="' . esc_url(admin_url('admin-post.php')) . '" style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;">';
             wp_nonce_field('alma_link_audit');
             echo '<input type="hidden" name="action" value="alma_link_audit_fix">';
