@@ -1,3 +1,9 @@
+## 2.70.1 - 2026-07-06
+
+### Fix precisione widget contestuale
+- Su articoli geolocalizzati il widget non propone più link di altre regioni: penalità per stesso paese con regioni diverse (-10) e dominanza geografica (con risultati locali disponibili, i non-locali vengono scartati). Cache invalidata automaticamente.
+- Versione plugin aggiornata a `2.70.1`.
+
 ## 2.70.0 - 2026-07-05
 
 ### Regia AI: camera di regia dell'agente di ideazione + Telegram potenziato

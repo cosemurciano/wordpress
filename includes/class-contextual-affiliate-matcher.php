@@ -18,7 +18,11 @@ class ALMA_Contextual_Affiliate_Matcher {
     const MAX_POOL_SIZE = 300;
     // Inclusa nell'hash della cache del widget: cambiarla invalida i risultati
     // calcolati con versioni precedenti dell'algoritmo.
-    const MATCHER_VERSION = 5;
+    const MATCHER_VERSION = 6;
+    // Sopra questa soglia il segnale geografico è "locale" (stessa città,
+    // contenimento paese/regione o stessa regione): quando almeno un
+    // risultato è locale, quelli senza segnale locale vengono scartati.
+    const GEO_DOMINANCE_THRESHOLD = 20;
 
     private $settings;
     private $geo_store = null;
@@ -77,19 +81,27 @@ class ALMA_Contextual_Affiliate_Matcher {
         $results = array();
         $min_score = max(0, min(100, absint($settings['min_score'])));
         foreach ($profiles as $profile) {
-            $score = $this->score_profile($profile, $signals, $df, $pool_size, $geo_map[$profile['id']] ?? array());
+            $link_locations = $geo_map[$profile['id']] ?? array();
+            $geo = $this->geo_score($signals['locations'], $link_locations);
+            $score = $this->score_profile($profile, $signals, $df, $pool_size, $geo);
             if ($score < $min_score) {
                 continue;
             }
             $results[] = array(
                 'id' => $profile['id'],
                 'score' => $score,
+                'geo' => $geo,
                 'click_count' => $profile['click_count'],
                 'title' => $profile['display_title'],
                 'affiliate_url' => $profile['affiliate_url'],
                 'has_image' => $profile['has_image'],
             );
         }
+
+        // Dominanza geografica: su un articolo localizzato (es. Cefalù), se
+        // esistono risultati locali non devono comparire link di altre zone
+        // saliti solo con keyword generiche ("tour", "centro storico"…).
+        $results = self::apply_geo_dominance($results, self::GEO_DOMINANCE_THRESHOLD);
 
         usort($results, array($this, 'sort_results'));
 
@@ -327,12 +339,33 @@ class ALMA_Contextual_Affiliate_Matcher {
         );
     }
 
-    private function score_profile($profile, $signals, $df, $pool_size, $link_locations) {
+    /**
+     * Se almeno un risultato ha un segnale geografico "locale" (>= soglia:
+     * stessa città, contenimento o stessa regione), i risultati senza quel
+     * segnale vengono scartati: un link di Milano non deve riempire il
+     * widget di un articolo su Cefalù solo perché condivide keyword
+     * generiche. Senza risultati locali il comportamento resta invariato.
+     * Pura, testabile.
+     */
+    public static function apply_geo_dominance($results, $threshold = self::GEO_DOMINANCE_THRESHOLD) {
+        $best_geo = 0;
+        foreach ((array) $results as $result) {
+            $best_geo = max($best_geo, (int) ($result['geo'] ?? 0));
+        }
+        if ($best_geo < $threshold) {
+            return $results;
+        }
+        return array_values(array_filter((array) $results, function ($result) use ($threshold) {
+            return (int) ($result['geo'] ?? 0) >= $threshold;
+        }));
+    }
+
+    private function score_profile($profile, $signals, $df, $pool_size, $geo_score) {
         $score = 0;
 
         // 1) Geo Index: il segnale dominante (fino a 45, penalità se le località
         //    sono esplicitamente diverse). 0 quando una delle due parti non ha dati.
-        $score += $this->geo_score($signals['locations'], $link_locations);
+        $score += (int) $geo_score;
 
         // 2) Frase esatta: titolo del link contenuto nel titolo o negli heading.
         if ($profile['title'] !== '' && $this->contains_phrase($signals['title'], $profile['title'])) {
@@ -377,7 +410,9 @@ class ALMA_Contextual_Affiliate_Matcher {
      *   (es. confronto "Maldive vs Seychelles") e il link è in quel paese
      *   (es. escursione a Malé). Senza questo livello i link corretti si
      *   fermavano al generico +10 e non superavano la soglia.
-     * - stessa regione: 20; stesso paese tra due località puntuali: 10
+     * - stessa regione: 20; stesso paese tra due località puntuali: 10,
+     *   ma -10 se ENTRAMBE dichiarano regioni e non ne condividono nessuna
+     *   (blog italiano: "stesso paese" è quasi sempre vero e non basta)
      * - paesi dichiarati da entrambe le parti e disgiunti: -30 (un link di
      *   Parigi su un articolo sulle Maldive non deve poter risalire con i
      *   soli segnali testuali generici). Metadati incompleti restano neutri.
@@ -434,6 +469,14 @@ class ALMA_Contextual_Affiliate_Matcher {
 
         if (!empty(array_intersect($post_index['countries'], $link_index['countries']))
             || !empty(array_intersect($post_index['country_names'], $link_index['country_names']))) {
+            // Stesso paese ma regioni dichiarate da ENTRAMBE le parti e senza
+            // intersezione (il match stessa-regione è già stato tentato sopra):
+            // su un blog italiano "stesso paese" è quasi sempre vero, quindi un
+            // link di Milano su un articolo su Cefalù è esplicitamente altrove.
+            // Con regioni incomplete si resta neutri-positivi come prima.
+            if (!empty($post_index['regions']) && !empty($link_index['regions'])) {
+                return -10;
+            }
             return 10;
         }
 

@@ -1,3 +1,13 @@
+## 2.70.1 - 2026-07-06
+
+### Fix precisione widget contestuale: basta link di altre regioni sugli articoli localizzati
+- **Bug**: su un articolo geolocalizzato correttamente (es. Cefalù) il widget contestuale mostrava link di tutt'altra zona (Lecce, Civitavecchia, Milano). Causa: due località puntuali nello stesso paese valevano **+10 senza alcuna penalità inter-regione** — su un blog italiano "stesso paese" è quasi sempre vero — e le keyword generiche condivise col titolo ("tour", "centro storico") valevano doppio, facendo superare la soglia a link di altre regioni, specie quando i link davvero pertinenti erano esclusi perché già presenti nell'articolo.
+- **Fix 1 — penalità inter-regione**: stesso paese ma regioni dichiarate da entrambe le parti e senza intersezione → **-10** (era +10). Con metadati regione incompleti resta il neutro-positivo +10 di prima.
+- **Fix 2 — dominanza geografica**: se almeno un risultato ha un segnale locale (stessa città, contenimento paese/regione o stessa regione, geo ≥ 20), i risultati **senza** segnale locale vengono scartati: meglio 1-2 proposte pertinenti che 4 riempitive. Se non esistono risultati locali il comportamento resta invariato.
+- `MATCHER_VERSION` portata a 6: le cache del widget calcolate col vecchio algoritmo si invalidano da sole.
+- Test standalone 12/12, incluso il caso reale del bug (Milano/Lecce su Cefalù → penalizzati; Palermo stessa regione → 20; Cefalù stessa località → 45; contenimento paese invariato a 35; dominanza nei 4 scenari).
+- Versione plugin aggiornata a `2.70.1`.
+
 ## 2.70.0 - 2026-07-05
 
 ### Regia AI: camera di regia dell'agente di ideazione + Telegram potenziato
