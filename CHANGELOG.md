@@ -1,3 +1,12 @@
+## 2.75.0 - 2026-07-06
+
+### Verifica link: bonifica anche per Viator + protezione esplicita dei link Travelpayouts manuali
+- **Verificato di nuovo che il plugin non altera i link**: nella stessa pagina pubblica convivono i link Viator importati via API (pubblicati intatti: `viator.com/it-IT/…?pid=…&mcid=…&medium=api`) e i vecchi link salvati come short Travelpayouts (`viator.tpx.li`, stesso `trs` degli short inseriti a mano) — sono post diversi, non una riscrittura.
+- **Bonifica per programma**: oltre a GetYourGuide, ora anche **Viator** — gli short link `viator.tpx.li` vengono risolti fino alla pagina prodotto (solo codici prodotto reali `dNNN-NNNPNN`, mai pagine città), il locale viene normalizzato a `it-IT` come nei link API, e viene applicato `?pid=…&mcid=42383&medium=link` (il `pid` attribuisce la commissione; precompilato leggendolo dai link API già presenti). Card di bonifica separata per programma con conteggi e ID dedicati; report con etichetta del programma.
+- **Gli short link Travelpayouts inseriti volontariamente restano intoccabili**: booking, expedia, tripadvisor, agoda e qualsiasi altro sottodominio `*.tpx.li` non vengono né modificati né marcati — in tabella domini compaiono come "link Travelpayouts manuale — non viene toccato". Nulla viene aggiunto né modificato su di essi.
+- Test standalone 10/10 Viator (locale en→it-IT e query rimossa, aggiunta locale mancante, it-IT invariato, rifiuto di tpx.li/pagine città/domini estranei, builder pid+mcid+medium, booking.tpx.li estraneo a entrambi i cleaner) + 13/13 GYG di non-regressione.
+- Versione plugin aggiornata a `2.75.0`.
+
 ## 2.74.1 - 2026-07-06
 
 ### Verifica link: solo GetYourGuide, batch più massivi

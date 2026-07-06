@@ -1,3 +1,9 @@
+## 2.75.0 - 2026-07-06
+
+### Verifica link: bonifica anche per Viator
+- La bonifica copre anche gli short link `viator.tpx.li` (risolti al prodotto viator.com in it-IT con `pid` ufficiale, come i link importati via API); gli short link Travelpayouts manuali (booking, expedia, tripadvisor, agoda…) restano esplicitamente intoccabili.
+- Versione plugin aggiornata a `2.75.0`.
+
 ## 2.74.1 - 2026-07-06
 
 ### Verifica link: solo GetYourGuide, batch più massivi

@@ -31,9 +31,12 @@ class ALMA_Affiliate_Link_Auditor {
     const BATCH_SIZE = 50;
     const TIME_BUDGET = 40;
     const MAX_REDIRECTS = 6;
-    // SOLO i link GetYourGuide: gli short link Travelpayouts di altri
-    // programmi (altri sottodomini *.tpx.li) non vengono toccati.
+    // Bonifica SOLO per i programmi qui elencati: gli short link
+    // Travelpayouts inseriti volontariamente (booking, expedia,
+    // tripadvisor, agoda, …) NON vengono toccati né marcati.
     const TPX_GYG_MARKER = 'getyourguide.tpx.li/';
+    const TPX_VIATOR_MARKER = 'viator.tpx.li/';
+    const VIATOR_MCID = '42383'; // campagna standard dei link partner Viator
 
     public static function init() {
         add_action('admin_post_alma_link_audit_fix', array(__CLASS__, 'handle_fix'));
@@ -61,9 +64,20 @@ class ALMA_Affiliate_Link_Auditor {
     }
 
     /**
-     * Link con URL tpx.li (Travelpayouts) ancora da bonificare.
+     * Programmi bonificabili: marker dello short link Travelpayouts e
+     * etichetta. Tutto ciò che non è qui NON viene toccato.
      */
-    public static function tpx_links($limit = 50, $exclude_failed = true) {
+    public static function programs() {
+        return array(
+            'gyg' => array('marker' => self::TPX_GYG_MARKER, 'label' => 'GetYourGuide', 'id_label' => 'Partner ID GetYourGuide', 'id_placeholder' => 'es. 88HSYUH'),
+            'viator' => array('marker' => self::TPX_VIATOR_MARKER, 'label' => 'Viator', 'id_label' => 'PID Viator', 'id_placeholder' => 'es. P00299246'),
+        );
+    }
+
+    /**
+     * Link con URL short Travelpayouts del programma ancora da bonificare.
+     */
+    public static function tpx_links($limit = 50, $exclude_failed = true, $marker = self::TPX_GYG_MARKER) {
         global $wpdb;
         $failed_join = $exclude_failed ? "LEFT JOIN {$wpdb->postmeta} f ON f.post_id = pm.post_id AND f.meta_key = '" . self::META_FAILED . "'" : '';
         $failed_where = $exclude_failed ? 'AND f.meta_id IS NULL' : '';
@@ -75,11 +89,11 @@ class ALMA_Affiliate_Link_Auditor {
              WHERE pm.meta_key = '_affiliate_url' AND pm.meta_value LIKE %s
                AND p.post_type = 'affiliate_link' AND p.post_status = 'publish' {$failed_where}
              ORDER BY pm.post_id ASC LIMIT %d",
-            '%' . $wpdb->esc_like(self::TPX_GYG_MARKER) . '%', max(1, absint($limit))
+            '%' . $wpdb->esc_like((string) $marker) . '%', max(1, absint($limit))
         ), ARRAY_A);
     }
 
-    public static function tpx_count($exclude_failed = true) {
+    public static function tpx_count($exclude_failed = true, $marker = self::TPX_GYG_MARKER) {
         global $wpdb;
         $failed_join = $exclude_failed ? "LEFT JOIN {$wpdb->postmeta} f ON f.post_id = pm.post_id AND f.meta_key = '" . self::META_FAILED . "'" : '';
         $failed_where = $exclude_failed ? 'AND f.meta_id IS NULL' : '';
@@ -89,7 +103,7 @@ class ALMA_Affiliate_Link_Auditor {
              {$failed_join}
              WHERE pm.meta_key = '_affiliate_url' AND pm.meta_value LIKE %s
                AND p.post_type = 'affiliate_link' AND p.post_status = 'publish' {$failed_where}",
-            '%' . $wpdb->esc_like(self::TPX_GYG_MARKER) . '%'
+            '%' . $wpdb->esc_like((string) $marker) . '%'
         ));
     }
 
@@ -163,6 +177,62 @@ class ALMA_Affiliate_Link_Auditor {
     }
 
     /**
+     * URL Viator "pulito": host viator.com, locale normalizzato a it-IT
+     * (formato dei link importati via API), path di un prodotto
+     * (…/dNNN-CODICE), niente query/fragment. Pura, testabile.
+     */
+    public static function clean_viator_url($url) {
+        $parts = wp_parse_url(trim((string) $url));
+        $host = strtolower((string) ($parts['host'] ?? ''));
+        $path = (string) ($parts['path'] ?? '');
+        if ($host === '' || strpos($host, 'viator.com') === false || strpos($host, 'tpx.li') !== false) {
+            return '';
+        }
+        // Solo pagine PRODOTTO (codice dNNN-NNNPNN, es. d479-8647P347):
+        // le pagine città (es. /Rome/d511-ttd) non sono link affiliabili.
+        if (!preg_match('#/d\d+-\d+P\d+/?$#', $path)) {
+            return '';
+        }
+        // Locale it-IT come nei link API ufficiali dell'editore.
+        if (preg_match('#^/[a-z]{2}-[A-Z]{2}/#', $path)) {
+            $path = preg_replace('#^/[a-z]{2}-[A-Z]{2}/#', '/it-IT/', $path);
+        } else {
+            $path = '/it-IT' . $path;
+        }
+        return 'https://www.viator.com' . rtrim($path, '/');
+    }
+
+    /**
+     * Deep link affiliato Viator: pid (attribuisce la commissione),
+     * mcid campagna standard, medium=link (link manuale, non API).
+     * Pura, testabile.
+     */
+    public static function build_viator_affiliate_url($clean_url, $pid, $mcid = self::VIATOR_MCID) {
+        $clean_url = trim((string) $clean_url);
+        $pid = sanitize_text_field((string) $pid);
+        if ($clean_url === '' || $pid === '') { return ''; }
+        return $clean_url . '?pid=' . rawurlencode($pid) . '&mcid=' . rawurlencode((string) $mcid) . '&medium=link';
+    }
+
+    /**
+     * PID Viator già in uso nei link importati via API: precompila la bonifica.
+     */
+    public static function detect_viator_pid() {
+        global $wpdb;
+        $url = (string) $wpdb->get_var($wpdb->prepare(
+            "SELECT pm.meta_value FROM {$wpdb->postmeta} pm
+             INNER JOIN {$wpdb->posts} p ON p.ID = pm.post_id
+             WHERE pm.meta_key = '_affiliate_url' AND pm.meta_value LIKE %s AND pm.meta_value LIKE %s
+               AND p.post_type = 'affiliate_link' AND p.post_status = 'publish' LIMIT 1",
+            '%' . $wpdb->esc_like('viator.com') . '%', '%' . $wpdb->esc_like('pid=') . '%'
+        ));
+        $query = (string) (wp_parse_url($url, PHP_URL_QUERY) ?: '');
+        if ($query === '') { return ''; }
+        wp_parse_str($query, $params);
+        return sanitize_text_field((string) ($params['pid'] ?? ''));
+    }
+
+    /**
      * Risolve un header Location eventualmente relativo. Pura, testabile.
      */
     public static function resolve_location_url($current_url, $location) {
@@ -181,13 +251,14 @@ class ALMA_Affiliate_Link_Auditor {
     }
 
     /**
-     * Segue i redirect (max MAX_REDIRECTS) fino a un URL getyourguide.*.
+     * Segue i redirect (max MAX_REDIRECTS) fino a un URL del programma
+     * atteso (needle nell'host, es. "getyourguide." o "viator.com").
      */
-    public static function resolve_redirect_chain($url) {
+    public static function resolve_redirect_chain($url, $host_needle = 'getyourguide.') {
         $current = (string) $url;
         for ($hop = 0; $hop < self::MAX_REDIRECTS; $hop++) {
             $host = strtolower((string) (wp_parse_url($current, PHP_URL_HOST) ?: ''));
-            if ($host !== '' && strpos($host, 'getyourguide.') !== false && strpos($host, 'tpx.li') === false) {
+            if ($host !== '' && strpos($host, (string) $host_needle) !== false && strpos($host, 'tpx.li') === false) {
                 return $current;
             }
             $response = wp_remote_get($current, array(
@@ -202,7 +273,7 @@ class ALMA_Affiliate_Link_Auditor {
             $location = wp_remote_retrieve_header($response, 'location');
             if (is_array($location)) { $location = end($location); }
             if ($code < 300 || $code >= 400 || (string) $location === '') {
-                return new WP_Error('alma_audit_noredirect', sprintf(__('La catena di redirect si è fermata su %1$s (HTTP %2$d) senza raggiungere getyourguide.', 'affiliate-link-manager-ai'), $current, $code));
+                return new WP_Error('alma_audit_noredirect', sprintf(__('La catena di redirect si è fermata su %1$s (HTTP %2$d) senza raggiungere il dominio del programma.', 'affiliate-link-manager-ai'), $current, $code));
             }
             $next = self::resolve_location_url($current, (string) $location);
             if ($next === '') {
@@ -210,7 +281,7 @@ class ALMA_Affiliate_Link_Auditor {
             }
             $current = $next;
         }
-        return new WP_Error('alma_audit_loop', __('Troppi redirect senza raggiungere getyourguide.', 'affiliate-link-manager-ai'));
+        return new WP_Error('alma_audit_loop', __('Troppi redirect senza raggiungere il dominio del programma.', 'affiliate-link-manager-ai'));
     }
 
     private static function acquire_lock() {
@@ -232,9 +303,13 @@ class ALMA_Affiliate_Link_Auditor {
     public static function handle_fix() {
         if (!current_user_can('manage_options')) { wp_die('forbidden'); }
         check_admin_referer('alma_link_audit');
+        $programs = self::programs();
+        $program = sanitize_key($_POST['program'] ?? 'gyg');
+        if (!isset($programs[$program])) { $program = 'gyg'; }
+        $marker = $programs[$program]['marker'];
         $partner_id = sanitize_text_field(wp_unslash($_POST['partner_id'] ?? ''));
         if ($partner_id === '') {
-            self::redirect_back('error', 'Inserisci il Partner ID GetYourGuide prima di avviare la bonifica.');
+            self::redirect_back('error', sprintf('Inserisci il %s prima di avviare la bonifica.', $programs[$program]['id_label']));
         }
         if (!self::acquire_lock()) {
             self::redirect_back('error', 'Una bonifica è già in corso: riprova tra qualche istante.');
@@ -244,20 +319,26 @@ class ALMA_Affiliate_Link_Auditor {
         $fixed = 0;
         $errors = 0;
         try {
-            $links = self::tpx_links(self::BATCH_SIZE);
+            $links = self::tpx_links(self::BATCH_SIZE, true, $marker);
             foreach ($links as $link) {
                 if ((time() - $started_at) > self::TIME_BUDGET) { break; }
                 $post_id = (int) $link['post_id'];
                 $old_url = (string) $link['url'];
-                $resolved = self::resolve_redirect_chain($old_url);
-                $clean = is_wp_error($resolved) ? '' : self::clean_gyg_url($resolved);
-                if (is_wp_error($resolved) || $clean === '') {
-                    $reason = is_wp_error($resolved) ? $resolved->get_error_message() : __('Destinazione non riconosciuta come attività GetYourGuide.', 'affiliate-link-manager-ai');
+                if ($program === 'viator') {
+                    $resolved = self::resolve_redirect_chain($old_url, 'viator.com');
+                    $clean = is_wp_error($resolved) ? '' : self::clean_viator_url($resolved);
+                    $new_url = $clean !== '' ? self::build_viator_affiliate_url($clean, $partner_id) : '';
+                } else {
+                    $resolved = self::resolve_redirect_chain($old_url, 'getyourguide.');
+                    $clean = is_wp_error($resolved) ? '' : self::clean_gyg_url($resolved);
+                    $new_url = $clean !== '' ? ALMA_Affiliate_Source_GYG_CSV_Importer::build_affiliate_url($clean, $partner_id) : '';
+                }
+                if (is_wp_error($resolved) || $new_url === '') {
+                    $reason = is_wp_error($resolved) ? $resolved->get_error_message() : sprintf(__('Destinazione non riconosciuta come prodotto %s.', 'affiliate-link-manager-ai'), $programs[$program]['label']);
                     update_post_meta($post_id, self::META_FAILED, sanitize_text_field($reason));
                     $details[] = array('post_id' => $post_id, 'titolo' => (string) $link['post_title'], 'esito' => 'errore', 'nota' => sanitize_text_field($reason));
                     $errors++;
                 } else {
-                    $new_url = ALMA_Affiliate_Source_GYG_CSV_Importer::build_affiliate_url($clean, $partner_id);
                     // Backup una-tantum: se esiste già non viene sovrascritto,
                     // così l'URL originario pre-bonifica resta sempre recuperabile.
                     add_post_meta($post_id, self::META_BACKUP, $old_url, true);
@@ -269,9 +350,10 @@ class ALMA_Affiliate_Link_Auditor {
             }
             update_option(self::OPTION_LAST_REPORT, array(
                 'time' => current_time('mysql'),
+                'program' => $programs[$program]['label'],
                 'fixed' => $fixed,
                 'errors' => $errors,
-                'remaining' => self::tpx_count(),
+                'remaining' => self::tpx_count(true, $marker),
                 'details' => $details,
             ), false);
             // Gli URL sono cambiati: il widget contestuale deve rigenerare la cache.
@@ -281,8 +363,8 @@ class ALMA_Affiliate_Link_Auditor {
         } finally {
             delete_option(self::LOCK_OPTION);
         }
-        $remaining = self::tpx_count();
-        self::redirect_back($errors > 0 && $fixed === 0 ? 'error' : 'success', sprintf('Bonifica: %1$d corretti, %2$d falliti in questo giro; %3$d ancora da bonificare.', $fixed, $errors, $remaining) . ($remaining > 0 ? ' Premi di nuovo il pulsante per continuare.' : ' Completata!'));
+        $remaining = self::tpx_count(true, $marker);
+        self::redirect_back($errors > 0 && $fixed === 0 ? 'error' : 'success', sprintf('Bonifica %1$s: %2$d corretti, %3$d falliti in questo giro; %4$d ancora da bonificare.', $programs[$program]['label'], $fixed, $errors, $remaining) . ($remaining > 0 ? ' Premi di nuovo il pulsante per continuare.' : ' Completata!'));
     }
 
     public static function handle_retry() {
@@ -379,7 +461,7 @@ class ALMA_Affiliate_Link_Auditor {
             delete_transient('alma_link_audit_notice_' . get_current_user_id());
             echo '<div class="notice notice-' . esc_attr($notice['type'] === 'error' ? 'error' : 'success') . ' is-dismissible"><p>' . esc_html($notice['message']) . '</p></div>';
         }
-        echo '<p class="description" style="max-width:900px;">Il plugin pubblica esattamente l\'URL salvato in ogni Link Affiliato, senza alterarlo. Questa pagina mostra <strong>cosa è salvato davvero</strong> e corregge <strong>solo i link GetYourGuide</strong> salvati come short link Travelpayouts (<code>getyourguide.tpx.li</code>) — che non vengono tracciati dal programma partner ufficiale — trasformandoli nel deep link ufficiale con il tuo <code>partner_id</code>. I link di altri programmi/domini non vengono toccati.</p>';
+        echo '<p class="description" style="max-width:900px;">Il plugin pubblica esattamente l\'URL salvato in ogni Link Affiliato, senza alterarlo. Questa pagina mostra <strong>cosa è salvato davvero</strong> e bonifica <strong>solo GetYourGuide e Viator</strong> salvati come short link Travelpayouts (<code>getyourguide.tpx.li</code>, <code>viator.tpx.li</code>) — che non vengono tracciati dai programmi partner ufficiali — trasformandoli nel deep link ufficiale con il tuo ID partner. Gli short link Travelpayouts inseriti volontariamente (booking, expedia, tripadvisor, agoda, …) e ogni altro dominio <strong>non vengono toccati</strong>.</p>';
 
         // ---- Riepilogo domini ----
         echo '<div style="' . esc_attr($card) . '"><h2 style="margin-top:0;">Domini in uso nei link pubblicati</h2>';
@@ -391,10 +473,10 @@ class ALMA_Affiliate_Link_Auditor {
             foreach ($domains as $row) {
                 $dominio = (string) $row['dominio'];
                 $flag = '';
-                if ($dominio === 'getyourguide.tpx.li') {
+                if (in_array($dominio, array('getyourguide.tpx.li', 'viator.tpx.li'), true)) {
                     $flag = '<span style="color:#d63638;">⚠️ da bonificare</span>';
                 } elseif (strpos($dominio, 'tpx.li') !== false) {
-                    $flag = '<span class="description">altro programma — per ora non toccato</span>';
+                    $flag = '<span class="description">link Travelpayouts manuale — non viene toccato</span>';
                 }
                 echo '<tr><td><code>' . esc_html($dominio) . '</code></td><td>' . esc_html((string) $row['n']) . '</td><td>' . $flag . '</td></tr>';
             }
@@ -430,30 +512,37 @@ class ALMA_Affiliate_Link_Auditor {
         echo '<p class="description" style="margin-top:8px;">Anche qui l\'URL precedente viene salvato nel meta di backup <code>' . esc_html(self::META_BACKUP) . '</code> prima della modifica.</p>';
         echo '</div>';
 
-        // ---- Bonifica tpx.li ----
-        $tpx_pending = self::tpx_count();
+        // ---- Bonifica short link Travelpayouts (solo programmi supportati) ----
         $failed = self::failed_count();
-        echo '<div style="' . esc_attr($card) . '"><h2 style="margin-top:0;">Bonifica link getyourguide.tpx.li (Travelpayouts → GetYourGuide ufficiale)</h2>';
-        if ($tpx_pending === 0 && $failed === 0) {
-            echo '<p>✅ Nessun link tpx.li da bonificare.</p>';
-        } else {
-            echo '<p>' . esc_html(sprintf('%d link da bonificare.', $tpx_pending)) . ($failed > 0 ? ' <span style="color:#d63638;">' . esc_html(sprintf('%d falliti in run precedenti (elencati sotto, esclusi dai prossimi giri).', $failed)) . '</span>' : '') . '</p>';
-            echo '<p class="description">Per ogni link il server segue i redirect fino al prodotto getyourguide.*, elimina i parametri Travelpayouts e applica il tuo partner_id. L\'URL originale viene salvato in un meta di backup (<code>' . esc_html(self::META_BACKUP) . '</code>) prima di ogni modifica. Batch fino a ' . esc_html((string) self::BATCH_SIZE) . ' link per click, entro un budget di ' . esc_html((string) self::TIME_BUDGET) . ' secondi a giro (i non elaborati restano in coda per il click successivo).</p>';
-            echo '<form method="post" action="' . esc_url(admin_url('admin-post.php')) . '" style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;">';
-            wp_nonce_field('alma_link_audit');
-            echo '<input type="hidden" name="action" value="alma_link_audit_fix">';
-            echo '<p style="margin:0;"><label><strong>Partner ID GetYourGuide</strong><br><input type="text" name="partner_id" class="regular-text" value="' . esc_attr(self::detect_partner_id()) . '" placeholder="es. 88HSYUH"></label></p>';
-            echo '<p style="margin:0;"><button class="button button-primary">Bonifica i prossimi ' . esc_html((string) min(self::BATCH_SIZE, max(1, $tpx_pending))) . ' link</button></p>';
-            echo '</form>';
-            if ($failed > 0) {
-                echo '<form method="post" action="' . esc_url(admin_url('admin-post.php')) . '" style="margin-top:8px;">';
-                wp_nonce_field('alma_link_audit');
-                echo '<input type="hidden" name="action" value="alma_link_audit_retry"><button class="button">Ritenta i falliti</button></form>';
+        echo '<div style="' . esc_attr($card) . '"><h2 style="margin-top:0;">Bonifica short link Travelpayouts → deep link ufficiali</h2>';
+        echo '<p class="description">Solo GetYourGuide e Viator: gli short link Travelpayouts inseriti volontariamente (booking, expedia, tripadvisor, agoda, …) <strong>non vengono toccati</strong>. Per ogni link il server segue i redirect fino al prodotto ufficiale, elimina i parametri Travelpayouts e applica il tuo ID partner. L\'URL originale viene salvato in un meta di backup (<code>' . esc_html(self::META_BACKUP) . '</code>) prima di ogni modifica. Batch fino a ' . esc_html((string) self::BATCH_SIZE) . ' link per click, entro un budget di ' . esc_html((string) self::TIME_BUDGET) . ' secondi a giro (i non elaborati restano in coda per il click successivo).</p>';
+        $any_pending = false;
+        foreach (self::programs() as $program_key => $program) {
+            $pending = self::tpx_count(true, $program['marker']);
+            if ($pending === 0) {
+                echo '<p>✅ ' . esc_html($program['label']) . ': nessun link <code>' . esc_html(rtrim($program['marker'], '/')) . '</code> da bonificare.</p>';
+                continue;
             }
+            $any_pending = true;
+            $default_id = $program_key === 'viator' ? self::detect_viator_pid() : self::detect_partner_id();
+            echo '<form method="post" action="' . esc_url(admin_url('admin-post.php')) . '" style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;margin:0 0 10px;padding:10px;border:1px solid #dcdcde;border-radius:6px;">';
+            wp_nonce_field('alma_link_audit');
+            echo '<input type="hidden" name="action" value="alma_link_audit_fix"><input type="hidden" name="program" value="' . esc_attr($program_key) . '">';
+            echo '<p style="margin:0;"><strong>' . esc_html($program['label']) . '</strong><br><span class="description">' . esc_html(sprintf('%d link %s da bonificare', $pending, rtrim($program['marker'], '/'))) . '</span></p>';
+            echo '<p style="margin:0;"><label><strong>' . esc_html($program['id_label']) . '</strong><br><input type="text" name="partner_id" class="regular-text" value="' . esc_attr($default_id) . '" placeholder="' . esc_attr($program['id_placeholder']) . '"></label></p>';
+            echo '<p style="margin:0;"><button class="button button-primary">Bonifica i prossimi ' . esc_html((string) min(self::BATCH_SIZE, $pending)) . ' link</button></p>';
+            echo '</form>';
         }
+        if ($failed > 0) {
+            echo '<p><span style="color:#d63638;">' . esc_html(sprintf('%d link falliti in run precedenti (esclusi dai prossimi giri).', $failed)) . '</span></p>';
+            echo '<form method="post" action="' . esc_url(admin_url('admin-post.php')) . '" style="margin-top:8px;">';
+            wp_nonce_field('alma_link_audit');
+            echo '<input type="hidden" name="action" value="alma_link_audit_retry"><button class="button">Ritenta i falliti</button></form>';
+        }
+        unset($any_pending);
         $report = get_option(self::OPTION_LAST_REPORT, null);
         if (is_array($report) && !empty($report['details'])) {
-            echo '<h3>Ultimo giro — ' . esc_html((string) $report['time']) . ' (corretti ' . esc_html((string) $report['fixed']) . ', falliti ' . esc_html((string) $report['errors']) . ', rimanenti ' . esc_html((string) $report['remaining']) . ')</h3>';
+            echo '<h3>Ultimo giro' . (!empty($report['program']) ? ' ' . esc_html((string) $report['program']) : '') . ' — ' . esc_html((string) $report['time']) . ' (corretti ' . esc_html((string) $report['fixed']) . ', falliti ' . esc_html((string) $report['errors']) . ', rimanenti ' . esc_html((string) $report['remaining']) . ')</h3>';
             echo '<table class="widefat striped"><thead><tr><th>Link</th><th>Esito</th><th>Dettaglio</th></tr></thead><tbody>';
             foreach ((array) $report['details'] as $detail) {
                 $edit = get_edit_post_link((int) $detail['post_id'], 'raw');
@@ -465,10 +554,11 @@ class ALMA_Affiliate_Link_Auditor {
         }
         echo '</div>';
 
-        // ---- Elenco tpx ancora presenti ----
-        $tpx_list = self::tpx_links(30, false);
-        if (!empty($tpx_list)) {
-            echo '<div style="' . esc_attr($card) . '"><h2 style="margin-top:0;">Link tpx.li presenti (primi 30)</h2>';
+        // ---- Elenco link bonificabili ancora presenti ----
+        foreach (self::programs() as $program) {
+            $tpx_list = self::tpx_links(30, false, $program['marker']);
+            if (empty($tpx_list)) { continue; }
+            echo '<div style="' . esc_attr($card) . '"><h2 style="margin-top:0;">Link ' . esc_html(rtrim($program['marker'], '/')) . ' presenti (primi 30)</h2>';
             echo '<table class="widefat striped"><thead><tr><th>Link</th><th>URL salvato</th></tr></thead><tbody>';
             foreach ($tpx_list as $row) {
                 echo '<tr><td><a href="' . esc_url(get_edit_post_link((int) $row['post_id'], 'raw')) . '">' . esc_html((string) $row['post_title']) . '</a></td><td style="word-break:break-all;"><code>' . esc_html((string) $row['url']) . '</code></td></tr>';
