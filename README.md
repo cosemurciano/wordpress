@@ -1,3 +1,9 @@
+## 2.72.0 - 2026-07-06
+
+### Fase 7.2 (PR D): territorio OpenStreetMap + aeroporto più vicino
+- Le schede località includono il territorio pratico entro 10 km da OpenStreetMap (spiagge, panorami, porti, campeggi, riserve, terme, sentieri) e l'aeroporto più vicino con codice IATA via Wikidata; l'agente li riceve in `scheda_localita`.
+- Versione plugin aggiornata a `2.72.0`.
+
 ## 2.71.0 - 2026-07-06
 
 ### Warmer schede località: report affidabile, turni garantiti e run in catena
