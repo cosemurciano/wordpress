@@ -1,3 +1,9 @@
+## 2.78.0 - 2026-07-06
+
+### Vista "Articoli AI" nell'elenco articoli
+- Nuova vista con conteggio accanto a Tutti | Pubblicati | Bozze per filtrare i soli post scritti dall'agente; verificato che il tracking click è indipendente dagli URL bonificati (aggancio per ID link).
+- Versione plugin aggiornata a `2.78.0`.
+
 ## 2.77.0 - 2026-07-06
 
 ### Etichetta "Scritto dall'Agente AI" negli elenchi articoli

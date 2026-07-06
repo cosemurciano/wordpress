@@ -1,3 +1,10 @@
+## 2.78.0 - 2026-07-06
+
+### Vista "Articoli AI" nell'elenco articoli + verifica tracking post-bonifica
+- **Nuova vista "🤖 Articoli AI"** accanto a Tutti | Pubblicati | Bozze negli elenchi articoli, con conteggio: un click filtra l'elenco ai soli post scritti dall'agente (meta `_alma_ai_agent_generated`). Combinabile con gli altri filtri standard (stato, data, categoria).
+- **Verifica documentata: il conteggio click resta pienamente attivo dopo le bonifiche degli URL.** Il tracking è agganciato all'ID del Link Affiliato (`data-link-id` nel markup → `link_id` nell'endpoint AJAX), mai all'URL: cambiare `_affiliate_url` (bonifica tpx.li, conversione dominio .it) non tocca né il contatore `_click_count` né la tabella analytics. La cache del widget contestuale conserva gli ID e viene comunque invalidata a ogni bonifica.
+- Versione plugin aggiornata a `2.78.0`.
+
 ## 2.77.0 - 2026-07-06
 
 ### Etichetta "Scritto dall'Agente AI" negli elenchi articoli
