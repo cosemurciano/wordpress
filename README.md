@@ -1,3 +1,9 @@
+## 2.71.0 - 2026-07-06
+
+### Warmer schede località: report affidabile, turni garantiti e run in catena
+- Il report del run non si azzera più quando il budget interrompe il lavoro a metà; ogni fonte (clima/fatti/tendenze) ha un budget dedicato per run; finché c'è lavoro il warmer si auto-programma run brevi ogni 90 secondi (max 30/giorno) — backlog smaltito in giorni invece che mesi.
+- Versione plugin aggiornata a `2.71.0`.
+
 ## 2.70.1 - 2026-07-06
 
 ### Fix precisione widget contestuale

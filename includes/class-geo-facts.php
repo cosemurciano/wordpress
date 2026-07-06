@@ -43,7 +43,11 @@ class ALMA_Geo_Facts {
     const TTL_DAYS_WIKIDATA = 180;  // fatti anagrafici: 6 mesi
     const TTL_DAYS_TRENDS = 30;     // tendenze di ricerca: 1 mese
     const TTL_DAYS_ERROR = 7;       // errore API: ritenta dopo una settimana
-    const TIME_BUDGET = 60;         // secondi per run del warmer
+    const TIME_BUDGET = 60;         // guardia totale per invocazione (hosting condiviso)
+    const SOURCE_TIME_BUDGET = 20;  // budget PER FONTE: ogni fonte ha il suo turno garantito
+    const CHAIN_DELAY = 90;         // secondi tra un run in catena e il successivo
+    const MAX_CHAINS_PER_DAY = 30;  // run di recupero auto-programmati al giorno
+    const OPTION_CHAIN_COUNTER = 'alma_geo_facts_chain_counter';
     const WIKIDATA_MATCH_KM = 100;  // distanza massima nome↔coordinate per accettare l'entità
 
     public static function init() {
@@ -555,28 +559,43 @@ class ALMA_Geo_Facts {
         return true;
     }
 
+    /**
+     * Un'invocazione del warmer: ogni fonte ha il SUO budget di tempo (niente
+     * starvation: prima Open-Meteo esauriva il budget totale e Wikidata/Trends
+     * non arrivavano mai al turno), e i contatori vengono salvati anche se
+     * il run si interrompe a metà (prima un "break" sul budget azzerava il
+     * report dell'intero run, mostrando "elaborate 0" nonostante il lavoro).
+     * Se resta lavoro, il run successivo si auto-programma tra CHAIN_DELAY
+     * secondi (max MAX_CHAINS_PER_DAY al giorno): tanti run brevi, il pattern
+     * giusto per gli hosting condivisi.
+     */
     public static function warm_batch() {
         if (!self::is_enabled() || !self::acquire_lock()) { return; }
         $started_at = time();
         $report_sources = array();
+        $total_processed = 0;
         try {
             foreach (self::sources() as $source => $ttl_days) {
-                if ($source === self::SOURCE_GOOGLE_TRENDS && get_transient(ALMA_Google_Trends::COOLDOWN_TRANSIENT)) { continue; }
-                $ok = 0;
-                $errors = 0;
-                $processed = 0;
-                $pending = self::pending_locations(self::get_batch_size(), $source);
-                foreach ($pending as $location) {
-                    if ((time() - $started_at) > self::TIME_BUDGET) { break 2; }
-                    if ($source === self::SOURCE_GOOGLE_TRENDS && get_transient(ALMA_Google_Trends::COOLDOWN_TRANSIENT)) { break; }
-                    $processed++;
-                    if (self::warm_one($location, $source, $ttl_days)) { $ok++; } else { $errors++; }
-                    // Cortesia verso le API gratuite: WDQS chiede ritmi moderati,
-                    // gli endpoint non ufficiali di Trends ancora di più.
-                    $pauses = array(self::SOURCE_WIKIDATA => 1000000, self::SOURCE_GOOGLE_TRENDS => 2000000);
-                    usleep($pauses[$source] ?? 500000);
+                $entry = array('processed' => 0, 'ok' => 0, 'errors' => 0, 'remaining' => 0);
+                $skip = ($source === self::SOURCE_GOOGLE_TRENDS && get_transient(ALMA_Google_Trends::COOLDOWN_TRANSIENT))
+                    || ((time() - $started_at) > self::TIME_BUDGET);
+                if (!$skip) {
+                    $source_started = time();
+                    $pending = self::pending_locations(self::get_batch_size(), $source);
+                    foreach ($pending as $location) {
+                        if ((time() - $source_started) > self::SOURCE_TIME_BUDGET) { break; }
+                        if ($source === self::SOURCE_GOOGLE_TRENDS && get_transient(ALMA_Google_Trends::COOLDOWN_TRANSIENT)) { break; }
+                        $entry['processed']++;
+                        if (self::warm_one($location, $source, $ttl_days)) { $entry['ok']++; } else { $entry['errors']++; }
+                        // Cortesia verso le API gratuite: WDQS chiede ritmi moderati,
+                        // gli endpoint non ufficiali di Trends ancora di più.
+                        $pauses = array(self::SOURCE_WIKIDATA => 1000000, self::SOURCE_GOOGLE_TRENDS => 2000000);
+                        usleep($pauses[$source] ?? 500000);
+                    }
                 }
-                $report_sources[$source] = array('processed' => $processed, 'ok' => $ok, 'errors' => $errors, 'remaining' => self::pending_count($source));
+                $entry['remaining'] = self::pending_count($source);
+                $report_sources[$source] = $entry;
+                $total_processed += $entry['processed'];
             }
         } finally {
             $totals = array('processed' => 0, 'ok' => 0, 'errors' => 0, 'remaining' => 0);
@@ -589,6 +608,31 @@ class ALMA_Geo_Facts {
             update_option(self::OPTION_LAST_REPORT, array_merge(array('time' => current_time('mysql'), 'sources' => $report_sources), $totals), false);
             delete_option(self::LOCK_OPTION);
         }
+        // Catena di recupero: solo se questo run ha prodotto qualcosa (evita
+        // giri a vuoto, es. Trends in cooldown come unica fonte con lavoro).
+        if ($total_processed > 0 && $totals['remaining'] > 0 && self::chain_allowed()) {
+            wp_schedule_single_event(time() + self::CHAIN_DELAY, self::CRON_HOOK);
+            if (function_exists('spawn_cron')) { spawn_cron(); }
+        }
+    }
+
+    /**
+     * Contatore giornaliero dei run in catena: consenso e incremento atomici
+     * rispetto alla giornata (si azzera al cambio data). Il tetto evita loop
+     * infiniti anche in caso di anomalie.
+     */
+    public static function chain_allowed() {
+        $counter = get_option(self::OPTION_CHAIN_COUNTER, array());
+        $today = current_time('Y-m-d');
+        if (!is_array($counter) || ($counter['date'] ?? '') !== $today) {
+            $counter = array('date' => $today, 'count' => 0);
+        }
+        if ((int) $counter['count'] >= self::MAX_CHAINS_PER_DAY) {
+            return false;
+        }
+        $counter['count'] = (int) $counter['count'] + 1;
+        update_option(self::OPTION_CHAIN_COUNTER, $counter, false);
+        return true;
     }
 
     /* ---------------------------------------------------------------------
@@ -751,7 +795,7 @@ class ALMA_Geo_Facts {
         echo '<h2>Schede località (fonti esterne)</h2>';
         echo '<div class="alma-agent-card" style="max-width:900px;"><h3>Come funziona</h3>';
         echo '<p>Per ogni località dell\'indice geografico con coordinate, il plugin costruisce una <strong>scheda</strong> con dati da fonti esterne: il <strong>clima</strong> da Open-Meteo (mesi migliori per visitare, mesi da evitare, temperature e piogge mensili), la <strong>carta d\'identità</strong> da Wikidata (descrizione, popolazione, patrimonio UNESCO, Wikipedia italiana e attrazioni notevoli entro 10 km, disambiguate per vicinanza alle coordinate) e le <strong>tendenze di ricerca</strong> da Google Trends (in quali mesi gli italiani cercano la destinazione, trend dell\'interesse, query correlate in crescita). Non si importano interi dataset: si salva solo la scheda compatta, già in italiano, riusata dall\'agente AI con lo strumento <code>scheda_localita</code>.</p>';
-        echo '<p>Le schede si riempiono da sole con un job notturno (poche località per volta, interrompibile) e restano valide 9 mesi (clima) / 6 mesi (fatti) / 1 mese (tendenze); se l\'agente chiede una località non ancora pronta, la scheda viene creata al volo.</p>';
+        echo '<p>Le schede si riempiono da sole: il job notturno lavora a run brevi (ogni fonte ha il suo turno garantito) e, finché c\'è lavoro, si <strong>auto-programma</strong> ogni ' . esc_html((string) self::CHAIN_DELAY) . ' secondi fino a ' . esc_html((string) self::MAX_CHAINS_PER_DAY) . ' run al giorno. Le schede restano valide 9 mesi (clima) / 6 mesi (fatti) / 1 mese (tendenze); se l\'agente chiede una località non ancora pronta, la scheda viene creata al volo.</p>';
         echo '<p class="description">⚠️ Google Trends non ha un\'API ufficiale: si usano gli endpoint interni del sito. Se Google limita le richieste (HTTP 429) la fonte si sospende da sola per 6 ore e riprende al run successivo; se l\'endpoint cambiasse, la fonte segnala l\'errore senza impattare il resto del plugin.</p></div>';
 
         echo '<table class="form-table" role="presentation">';
@@ -767,7 +811,9 @@ class ALMA_Geo_Facts {
             }
             echo '</td></tr>';
         }
-        echo '<tr><th scope="row">Ultimo run</th><td>' . (is_array($report) ? esc_html((string) $report['time']) : '—') . ($running ? ' — <strong>aggiornamento in corso…</strong>' : '') . '</td></tr>';
+        $chain_counter = get_option(self::OPTION_CHAIN_COUNTER, array());
+        $chains_today = (is_array($chain_counter) && ($chain_counter['date'] ?? '') === current_time('Y-m-d')) ? (int) $chain_counter['count'] : 0;
+        echo '<tr><th scope="row">Ultimo run</th><td>' . (is_array($report) ? esc_html((string) $report['time']) : '—') . ($running ? ' — <strong>aggiornamento in corso…</strong>' : '') . '<p class="description">Run di recupero auto-programmati oggi: ' . esc_html((string) $chains_today) . ' / ' . esc_html((string) self::MAX_CHAINS_PER_DAY) . '.</p></td></tr>';
         echo '</table>';
 
         echo '<form method="post" action="' . esc_url(admin_url('admin-post.php')) . '">';
