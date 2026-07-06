@@ -1,3 +1,16 @@
+## 2.79.0 - 2026-07-06
+
+### Link Health Checker (PR 1): verifica 404 e prodotti rimossi, con quarantena
+- **Nuovo job notturno** (`ALMA_Link_Health_Checker`, 02:30, run brevi in catena: 20 link per giro, budget 40s, max 30 run/giorno): verifica che ogni link affiliato pubblicato esista ancora, con ciclo completo sull'archivio e ricontrollo periodico ogni 30 giorni.
+- **Rilevamento soft-404**: le attività GetYourGuide/Viator ritirate raramente rispondono 404 — reindirizzano con 200 alla pagina città. Il checker segue i redirect e verifica che l'URL finale contenga ancora il **codice prodotto** (`t123456` GYG, `8647P347` Viator): se sparisce, il prodotto è stato rimosso. Per gli altri domini vale il classico 404/410.
+- **Anti falsi positivi**: un link diventa "morto" solo dopo **2 verifiche fallite in giorni diversi**; gli errori temporanei (5xx, 429, 403 anti-bot, timeout) **non contano mai** come fallimento. Stato, motivo e data in meta dedicati.
+- **Quarantena, mai eliminazione automatica**: un link morto viene escluso dal widget contestuale (cache invalidata) e dalla selezione candidati delle nuove bozze; negli articoli esistenti lo shortcode **degrada ad ancora di testo semplice** — il visitatore non atterra mai su una pagina inesistente, lo storico click resta intatto, il cestino è solo manuale.
+- **Verifica LIVE alla creazione dell'articolo**: prima che il Draft Builder inserisca i link scelti in una nuova bozza, i candidati vengono verificati sul momento (budget 15s) — un candidato morto viene scartato e marcato.
+- **Card "Salute dei link"** nella pagina Verifica link: conteggi (ok/sospetti/morti/mai verificati/in coda), report ultimo giro, elenco dei morti con motivo, pulsanti «Esegui ora» e «Rimetti in coda morti e sospetti».
+- `MATCHER_VERSION` a 7 (cache widget rigenerata). Test standalone 17/17 (codici prodotto, 404/410, soft-404 GYG e Viator, redirect a slug diverso ma stesso prodotto = ok, errori temporanei neutri, macchina a stati morto/sospetto/ok).
+- La sostituzione assistita dei link morti negli articoli arriverà con la PR 2.
+- Versione plugin aggiornata a `2.79.0`.
+
 ## 2.78.0 - 2026-07-06
 
 ### Vista "Articoli AI" nell'elenco articoli + verifica tracking post-bonifica

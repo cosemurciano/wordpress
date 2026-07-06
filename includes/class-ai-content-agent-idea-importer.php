@@ -472,6 +472,11 @@ class ALMA_AI_Content_Agent_Idea_Importer {
             'geo_link_ids' => $geo_link_ids,
         ));
         $candidates = array_slice((array)($search['groups']['affiliate_link'] ?? array()), 0, self::MAX_AUTO_CANDIDATES);
+        // Verifica LIVE al momento della creazione dell'articolo: i link
+        // morti vengono scartati (e marcati) prima di entrare nella bozza.
+        if (class_exists('ALMA_Link_Health_Checker')) {
+            $candidates = ALMA_Link_Health_Checker::filter_live_candidates($candidates);
+        }
         if (empty($candidates)) {
             update_post_meta($idea_id, ALMA_AI_Content_Agent_Ideas::META_EXECUTED_AT, current_time('mysql'));
             return array('success' => false, 'error' => 'Nessun link affiliato candidato per l\'idea #' . $idea_id);

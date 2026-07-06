@@ -1,3 +1,9 @@
+## 2.79.0 - 2026-07-06
+
+### Link Health Checker (PR 1)
+- Verifica notturna dell'esistenza dei link affiliati (incluso il soft-404 dei prodotti GYG/Viator ritirati), quarantena dei morti (esclusi da widget e nuove bozze, shortcode degradato a testo), verifica live dei candidati alla creazione dell'articolo, card "Salute dei link" in Verifica link. Morto solo dopo 2 conferme in giorni diversi; mai eliminazioni automatiche.
+- Versione plugin aggiornata a `2.79.0`.
+
 ## 2.78.0 - 2026-07-06
 
 ### Vista "Articoli AI" nell'elenco articoli

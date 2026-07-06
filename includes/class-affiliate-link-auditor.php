@@ -554,6 +554,11 @@ class ALMA_Affiliate_Link_Auditor {
         }
         echo '</div>';
 
+        // ---- Salute dei link (Link Health Checker) ----
+        if (class_exists('ALMA_Link_Health_Checker')) {
+            ALMA_Link_Health_Checker::render_card();
+        }
+
         // ---- Elenco link bonificabili ancora presenti ----
         foreach (self::programs() as $program) {
             $tpx_list = self::tpx_links(30, false, $program['marker']);
