@@ -3,7 +3,7 @@
  * Plugin Name: Affiliate Link Manager AI
  * Plugin URI: https://your-website.com
  * Description: Gestisce link affiliati con intelligenza artificiale per ottimizzazione e tracking automatico.
- * Version: 2.72.0
+ * Version: 2.73.0
  * Author: Cosè Murciano
  * License: GPL v2 or later
  * Text Domain: affiliate-link-manager-ai
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Definisci costanti del plugin
-define('ALMA_VERSION', '2.72.0');
+define('ALMA_VERSION', '2.73.0');
 define('ALMA_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('ALMA_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('ALMA_PLUGIN_FILE', __FILE__);
@@ -63,6 +63,7 @@ require_once ALMA_PLUGIN_DIR . 'includes/class-ai-seo-bridge.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-telegram-bot.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-ai-post-enricher.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-gsc-connector.php';
+require_once ALMA_PLUGIN_DIR . 'includes/class-affiliate-link-auditor.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-google-trends.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-geo-facts.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-affiliate-source-url-validator.php';
@@ -173,6 +174,7 @@ class AffiliateManagerAI {
         ALMA_Telegram_Bot::init();
         ALMA_AI_Post_Enricher::init();
         ALMA_GSC_Connector::init();
+        ALMA_Affiliate_Link_Auditor::init();
         ALMA_Geo_Facts::init();
         add_action('init', array($this, 'init'));
         add_action('widgets_init', array('ALMA_Contextual_Affiliate_Widget', 'register_widget'));
@@ -1175,6 +1177,16 @@ class AffiliateManagerAI {
             self::AI_CONTENT_AGENT_CAPABILITY,
             ALMA_AI_Content_Agent_Idea_Importer::PAGE_SLUG,
             array('ALMA_AI_Content_Agent_Idea_Importer', 'render_page')
+        );
+
+        // Verifica link affiliati (audit URL + bonifica tpx.li)
+        add_submenu_page(
+            'edit.php?post_type=affiliate_link',
+            __('Verifica link affiliati', 'affiliate-link-manager-ai'),
+            __('Verifica link', 'affiliate-link-manager-ai'),
+            'manage_options',
+            ALMA_Affiliate_Link_Auditor::MENU_SLUG,
+            array('ALMA_Affiliate_Link_Auditor', 'render_page')
         );
 
         // Pagina nascosta per modifica widget

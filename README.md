@@ -1,3 +1,9 @@
+## 2.73.0 - 2026-07-06
+
+### Verifica link affiliati: audit + bonifica tpx.li
+- Nuova pagina "Verifica link": mostra i domini realmente salvati nei link affiliati e bonifica gli short link Travelpayouts (tpx.li) trasformandoli nel deep link GetYourGuide ufficiale con partner_id (redirect risolti dal server, backup dell'URL originale, batch interrompibili).
+- Versione plugin aggiornata a `2.73.0`.
+
 ## 2.72.0 - 2026-07-06
 
 ### Fase 7.2 (PR D): territorio OpenStreetMap + aeroporto più vicino
