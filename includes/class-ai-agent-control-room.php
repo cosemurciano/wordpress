@@ -25,6 +25,20 @@ class ALMA_AI_Agent_Control_Room {
 
     public static function init() {
         add_action('admin_post_alma_ai_regia_advice', array(__CLASS__, 'handle_advice'));
+        add_filter('display_post_states', array(__CLASS__, 'mark_agent_posts'), 10, 2);
+    }
+
+    /**
+     * Etichetta accanto al titolo negli elenchi articoli (Bozze,
+     * Pubblicati, Tutti): rende riconoscibili a colpo d'occhio i post
+     * scritti dall'agente AI (meta impostato dal Draft Builder, lo stesso
+     * usato dai pulsanti Pubblica/Cestina di Telegram).
+     */
+    public static function mark_agent_posts($states, $post) {
+        if ($post instanceof WP_Post && $post->post_type === 'post' && get_post_meta($post->ID, '_alma_ai_agent_generated', true)) {
+            $states['alma_ai_agent'] = __('🤖 Scritto dall\'Agente AI', 'affiliate-link-manager-ai');
+        }
+        return $states;
     }
 
     /* ---------------------------------------------------------------------

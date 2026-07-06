@@ -1,3 +1,9 @@
+## 2.77.0 - 2026-07-06
+
+### Etichetta "Scritto dall'Agente AI" negli elenchi articoli
+- Negli elenchi articoli di WordPress (Tutti, Bozze, Pubblicati) i post generati dall'agente mostrano l'etichetta **🤖 Scritto dall'Agente AI** accanto al titolo (stato post standard di WordPress, come "Bozza" o "In evidenza"). Riconosce tutti i contenuti creati dal Draft Builder — piani della Regia, `/agente` da Telegram, idee programmate da CSV — tramite il meta `_alma_ai_agent_generated` già esistente (lo stesso usato dai pulsanti Pubblica/Cestina di Telegram).
+- Versione plugin aggiornata a `2.77.0`.
+
 ## 2.76.0 - 2026-07-06
 
 ### Regia AI v2: piano con data di inizio, consigli strategici accorpati, stop dell'agente, via il tetto bozze
