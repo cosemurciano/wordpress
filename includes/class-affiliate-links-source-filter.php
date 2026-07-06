@@ -31,7 +31,6 @@ class ALMA_Affiliate_Links_Source_Filter {
         foreach ($sources as $source) {
             $source_id   = (int) ($source['id'] ?? 0);
             $source_name = sanitize_text_field($source['name'] ?? '');
-            if (!empty($source['deleted_at'])) { $source_name .= ' (eliminata)'; }
 
             if ($source_id <= 0 || $source_name === '') {
                 continue;
@@ -93,8 +92,12 @@ class ALMA_Affiliate_Links_Source_Filter {
     private function get_sources() {
         global $wpdb;
 
+        // Solo le source attive: quelle archiviate (deleted_at valorizzato)
+        // non compaiono nel filtro. Il filtro per ID resta comunque
+        // applicabile via URL, così i link di una source archiviata
+        // restano raggiungibili se serve.
         return (array) $wpdb->get_results(
-            "SELECT id, name, deleted_at FROM {$wpdb->prefix}alma_affiliate_sources ORDER BY name ASC",
+            "SELECT id, name FROM {$wpdb->prefix}alma_affiliate_sources WHERE deleted_at IS NULL ORDER BY name ASC",
             ARRAY_A
         );
     }
