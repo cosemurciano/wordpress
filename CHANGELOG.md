@@ -1,3 +1,12 @@
+## 2.74.0 - 2026-07-06
+
+### Dominio ufficiale GetYourGuide: riferimento a www.getyourguide.it
+- **Nuova preferenza dominio** (`alma_gyg_preferred_domain`, default `www.getyourguide.it`): il programma partner dell'editore è italiano e i link ufficiali sono su `.it` — gli ID delle attività (`t…`) sono indipendenti dal dominio e GYG reindirizza allo slug italiano mantenendo il `partner_id`, quindi lo spostamento è una pura sostituzione dell'host (percorso, query e fragment conservati). Configurabile nella pagina "Verifica link" (`.it` consigliato / `.com` / "Mantieni il dominio originale" per il comportamento storico).
+- **Applicata ovunque si generino URL**: dentro `build_affiliate_url()` dell'import CSV, quindi vale per tutti gli import futuri E per la bonifica tpx.li (che la riusa) — i link bonificati escono direttamente su `.it`.
+- **Convertitore per l'archivio esistente**: nella pagina "Verifica link", batch da 50 link per click che sposta i link `getyourguide.*` già salvati sul dominio preferito — nessuna chiamata HTTP, backup dell'URL precedente nel meta `_alma_url_pre_bonifica` (mai sovrascritto), cache del widget contestuale invalidata a fine giro. I tpx.li restano esclusi (li gestisce la bonifica dedicata).
+- Test standalone 13/13 (conservazione path/query/fragment, host senza www, `.it` già corretto invariato, tpx.li e domini estranei non toccati, opzione invalida → fallback sicuro, "keep" → comportamento storico, integrazione nel builder dell'import CSV nei due modi).
+- Versione plugin aggiornata a `2.74.0`.
+
 ## 2.73.0 - 2026-07-06
 
 ### Verifica link affiliati: audit degli URL salvati + bonifica tpx.li

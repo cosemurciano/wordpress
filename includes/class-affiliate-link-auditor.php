@@ -35,6 +35,7 @@ class ALMA_Affiliate_Link_Auditor {
     public static function init() {
         add_action('admin_post_alma_link_audit_fix', array(__CLASS__, 'handle_fix'));
         add_action('admin_post_alma_link_audit_retry', array(__CLASS__, 'handle_retry'));
+        add_action('admin_post_alma_link_audit_domain', array(__CLASS__, 'handle_domain'));
     }
 
     /* ---------------------------------------------------------------------
@@ -289,6 +290,80 @@ class ALMA_Affiliate_Link_Auditor {
     }
 
     /* ---------------------------------------------------------------------
+     * Dominio ufficiale GetYourGuide
+     * ------------------------------------------------------------------ */
+
+    /**
+     * Link GYG pubblicati su un dominio diverso da quello preferito
+     * (es. .com quando il programma partner è italiano → .it).
+     */
+    public static function offdomain_count() {
+        global $wpdb;
+        $preferred = ALMA_Affiliate_Source_GYG_CSV_Importer::preferred_domain();
+        if ($preferred === '') { return 0; }
+        return (int) $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM {$wpdb->postmeta} pm
+             INNER JOIN {$wpdb->posts} p ON p.ID = pm.post_id
+             WHERE pm.meta_key = '_affiliate_url' AND pm.meta_value LIKE %s
+               AND pm.meta_value NOT LIKE %s AND pm.meta_value NOT LIKE %s
+               AND p.post_type = 'affiliate_link' AND p.post_status = 'publish'",
+            '%' . $wpdb->esc_like('getyourguide.') . '%',
+            '%' . $wpdb->esc_like('://' . $preferred . '/') . '%',
+            '%' . $wpdb->esc_like('.tpx.li/') . '%'
+        ));
+    }
+
+    /**
+     * Salva la preferenza dominio e/o converte un batch di link esistenti:
+     * pura sostituzione dell'host (percorso, query e partner_id restano),
+     * con backup una-tantum dell'URL precedente. Nessuna chiamata HTTP.
+     */
+    public static function handle_domain() {
+        if (!current_user_can('manage_options')) { wp_die('forbidden'); }
+        check_admin_referer('alma_link_audit');
+        global $wpdb;
+        $domain = sanitize_text_field(wp_unslash($_POST['alma_gyg_preferred_domain'] ?? 'www.getyourguide.it'));
+        if (!in_array($domain, array('www.getyourguide.it', 'www.getyourguide.com', 'keep'), true)) {
+            $domain = 'www.getyourguide.it';
+        }
+        update_option('alma_gyg_preferred_domain', $domain, false);
+        if (empty($_POST['convert_now']) || $domain === 'keep') {
+            self::redirect_back('success', 'Preferenza dominio salvata.');
+        }
+        if (!self::acquire_lock()) {
+            self::redirect_back('error', 'Un\'operazione è già in corso: riprova tra qualche istante.');
+        }
+        $converted = 0;
+        try {
+            $rows = $wpdb->get_results($wpdb->prepare(
+                "SELECT pm.post_id, pm.meta_value AS url FROM {$wpdb->postmeta} pm
+                 INNER JOIN {$wpdb->posts} p ON p.ID = pm.post_id
+                 WHERE pm.meta_key = '_affiliate_url' AND pm.meta_value LIKE %s
+                   AND pm.meta_value NOT LIKE %s AND pm.meta_value NOT LIKE %s
+                   AND p.post_type = 'affiliate_link' AND p.post_status = 'publish'
+                 ORDER BY pm.post_id ASC LIMIT 50",
+                '%' . $wpdb->esc_like('getyourguide.') . '%',
+                '%' . $wpdb->esc_like('://' . $domain . '/') . '%',
+                '%' . $wpdb->esc_like('.tpx.li/') . '%'
+            ), ARRAY_A);
+            foreach ((array) $rows as $row) {
+                $new_url = ALMA_Affiliate_Source_GYG_CSV_Importer::normalize_gyg_domain((string) $row['url'], $domain);
+                if ($new_url === (string) $row['url']) { continue; }
+                add_post_meta((int) $row['post_id'], self::META_BACKUP, (string) $row['url'], true);
+                update_post_meta((int) $row['post_id'], '_affiliate_url', esc_url_raw($new_url));
+                $converted++;
+            }
+            if ($converted > 0 && class_exists('ALMA_Contextual_Affiliate_Widget') && method_exists('ALMA_Contextual_Affiliate_Widget', 'bump_cache_version')) {
+                ALMA_Contextual_Affiliate_Widget::bump_cache_version();
+            }
+        } finally {
+            delete_option(self::LOCK_OPTION);
+        }
+        $remaining = self::offdomain_count();
+        self::redirect_back('success', sprintf('Convertiti %1$d link a %2$s; %3$d ancora da convertire.', $converted, $domain, $remaining) . ($remaining > 0 ? ' Premi di nuovo per continuare.' : ' Conversione completata!'));
+    }
+
+    /* ---------------------------------------------------------------------
      * Pagina
      * ------------------------------------------------------------------ */
 
@@ -320,6 +395,30 @@ class ALMA_Affiliate_Link_Auditor {
         if ($missing_partner > 0) {
             echo '<p style="color:#996800;">⚠️ ' . esc_html(sprintf('%d link getyourguide.* SENZA partner_id: portano traffico ma non commissioni.', $missing_partner)) . '</p>';
         }
+        echo '</div>';
+
+        // ---- Dominio ufficiale ----
+        $preferred = ALMA_Affiliate_Source_GYG_CSV_Importer::preferred_domain();
+        $offdomain = self::offdomain_count();
+        echo '<div style="' . esc_attr($card) . '"><h2 style="margin-top:0;">Dominio ufficiale GetYourGuide</h2>';
+        echo '<p class="description">Il programma partner dell\'editore è italiano: il riferimento ufficiale è <code>www.getyourguide.it</code>. Gli ID delle attività (<code>t…</code>) sono indipendenti dal dominio e GYG reindirizza allo slug italiano mantenendo il partner_id, quindi la conversione è una semplice sostituzione dell\'host — nessuna chiamata esterna. Il dominio scelto viene applicato anche a tutti gli import CSV futuri e alla bonifica tpx.li.</p>';
+        echo '<form method="post" action="' . esc_url(admin_url('admin-post.php')) . '" style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;">';
+        wp_nonce_field('alma_link_audit');
+        echo '<input type="hidden" name="action" value="alma_link_audit_domain">';
+        $current_setting = (string) get_option('alma_gyg_preferred_domain', 'www.getyourguide.it');
+        echo '<p style="margin:0;"><label><strong>Dominio preferito</strong><br><select name="alma_gyg_preferred_domain">';
+        foreach (array('www.getyourguide.it' => 'www.getyourguide.it (consigliato)', 'www.getyourguide.com' => 'www.getyourguide.com', 'keep' => 'Mantieni il dominio originale') as $value => $label) {
+            echo '<option value="' . esc_attr($value) . '"' . selected($current_setting, $value, false) . '>' . esc_html($label) . '</option>';
+        }
+        echo '</select></label></p>';
+        echo '<p style="margin:0;"><button class="button">Salva preferenza</button></p>';
+        if ($preferred !== '' && $offdomain > 0) {
+            echo '<p style="margin:0;"><button class="button button-primary" name="convert_now" value="1">Converti i prossimi ' . esc_html((string) min(50, $offdomain)) . ' link (' . esc_html((string) $offdomain) . ' su altri domini)</button></p>';
+        } elseif ($preferred !== '') {
+            echo '<p style="margin:0;">✅ Tutti i link GYG usano già ' . esc_html($preferred) . '.</p>';
+        }
+        echo '</form>';
+        echo '<p class="description" style="margin-top:8px;">Anche qui l\'URL precedente viene salvato nel meta di backup <code>' . esc_html(self::META_BACKUP) . '</code> prima della modifica.</p>';
         echo '</div>';
 
         // ---- Bonifica tpx.li ----

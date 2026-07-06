@@ -130,11 +130,46 @@ class ALMA_Affiliate_Source_GYG_CSV_Importer {
         return true;
     }
 
+    /**
+     * Dominio GetYourGuide preferito per i link generati: il programma
+     * partner dell'editore è italiano, quindi il riferimento ufficiale è
+     * www.getyourguide.it (gli ID l… e t… sono indipendenti dal dominio e
+     * GYG reindirizza allo slug locale mantenendo i parametri). Vuoto =
+     * mantieni il dominio originale (comportamento storico).
+     */
+    public static function preferred_domain() {
+        $domain = sanitize_text_field((string) get_option('alma_gyg_preferred_domain', 'www.getyourguide.it'));
+        if ($domain === 'keep') { return ''; }
+        return preg_match('/^(www\.)?getyourguide\.[a-z.]{2,6}$/', $domain) ? $domain : 'www.getyourguide.it';
+    }
+
+    /**
+     * Sposta un URL getyourguide.* sul dominio indicato, conservando
+     * percorso, query e fragment. Gli URL non-GYG (o tpx.li) e un dominio
+     * vuoto lasciano tutto invariato. Pura, testabile.
+     */
+    public static function normalize_gyg_domain($url, $domain) {
+        $url = trim((string) $url);
+        $domain = trim((string) $domain);
+        if ($url === '' || $domain === '') { return $url; }
+        $parts = wp_parse_url($url);
+        $host = strtolower((string) ($parts['host'] ?? ''));
+        if ($host === '' || strpos($host, 'getyourguide.') === false || strpos($host, 'tpx.li') !== false || $host === strtolower($domain)) {
+            return $url;
+        }
+        $rebuilt = 'https://' . $domain . (string) ($parts['path'] ?? '/');
+        if (!empty($parts['query'])) { $rebuilt .= '?' . $parts['query']; }
+        if (!empty($parts['fragment'])) { $rebuilt .= '#' . $parts['fragment']; }
+        return $rebuilt;
+    }
+
     public static function build_affiliate_url($original_url, $partner_id, $utm_medium = 'online_publisher') {
         $url = esc_url_raw(trim((string)$original_url));
         if ($url === '' || !wp_http_validate_url($url)) {
             return '';
         }
+        // Riferimento ufficiale: dominio del programma partner dell'editore.
+        $url = self::normalize_gyg_domain($url, self::preferred_domain());
         $partner_id = sanitize_text_field((string)$partner_id);
         $utm_medium = sanitize_text_field((string)($utm_medium !== '' ? $utm_medium : 'online_publisher'));
         if ($partner_id === '') {
