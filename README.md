@@ -1,3 +1,9 @@
+## 2.77.0 - 2026-07-06
+
+### Etichetta "Scritto dall'Agente AI" negli elenchi articoli
+- I post generati dall'agente sono riconoscibili a colpo d'occhio in Bozze/Pubblicati/Tutti grazie all'etichetta 🤖 accanto al titolo.
+- Versione plugin aggiornata a `2.77.0`.
+
 ## 2.76.0 - 2026-07-06
 
 ### Regia AI v2
