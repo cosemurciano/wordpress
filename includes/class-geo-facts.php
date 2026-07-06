@@ -13,9 +13,14 @@
  *   migliori per visitare", per stagionalità editoriale e coerenza consigli;
  * - Wikidata (wbsearchentities + SPARQL, nessuna API key): la "carta
  *   d'identità" della località — descrizione, popolazione, paese, UNESCO,
- *   Wikipedia italiana e attrazioni notevoli nel raggio di 10 km. La
- *   disambiguazione tra omonimi avviene per prossimità alle coordinate
- *   già geocodificate del gazetteer.
+ *   Wikipedia italiana, attrazioni notevoli nel raggio di 10 km e
+ *   aeroporto più vicino (codice IATA, entro 150 km). La disambiguazione
+ *   tra omonimi avviene per prossimità alle coordinate già geocodificate
+ *   del gazetteer;
+ * - OpenStreetMap (Overpass API, nessuna API key): il TERRITORIO pratico
+ *   entro 10 km — spiagge, punti panoramici, porti turistici, campeggi,
+ *   riserve naturali, terme, sentieri escursionistici — per gli articoli
+ *   operativi e la scoperta di gap ("12 spiagge mappate, il sito ne cita 2").
  *
  * Le risposte grezze non si salvano mai: al fetch vengono distillate in un
  * payload compatto in italiano (pochi KB) pronto per il prompt dell'agente.
@@ -33,6 +38,7 @@ class ALMA_Geo_Facts {
     const SOURCE_OPEN_METEO = 'open_meteo';
     const SOURCE_WIKIDATA = 'wikidata';
     const SOURCE_GOOGLE_TRENDS = 'google_trends';
+    const SOURCE_OSM = 'osm';
     const CRON_HOOK = 'alma_geo_facts_warm';
     const LOCK_OPTION = 'alma_geo_facts_lock';
     const LOCK_TTL = 300;
@@ -42,6 +48,9 @@ class ALMA_Geo_Facts {
     const TTL_DAYS_OK = 270;        // clima ~statico: 9 mesi
     const TTL_DAYS_WIKIDATA = 180;  // fatti anagrafici: 6 mesi
     const TTL_DAYS_TRENDS = 30;     // tendenze di ricerca: 1 mese
+    const TTL_DAYS_OSM = 90;        // POI del territorio: 3 mesi
+    const OSM_RADIUS_M = 10000;     // raggio della fotografia del territorio
+    const AIRPORT_RADIUS_KM = 150;  // raggio di ricerca dell'aeroporto più vicino
     const TTL_DAYS_ERROR = 7;       // errore API: ritenta dopo una settimana
     const TIME_BUDGET = 60;         // guardia totale per invocazione (hosting condiviso)
     const SOURCE_TIME_BUDGET = 20;  // budget PER FONTE: ogni fonte ha il suo turno garantito
@@ -245,11 +254,49 @@ class ALMA_Geo_Facts {
             return new WP_Error('alma_wikidata', sprintf(__('Wikidata: nessun candidato per "%s" entro %d km dalle coordinate note.', 'affiliate-link-manager-ai'), $name, self::WIKIDATA_MATCH_KM));
         }
         $attractions = array();
+        $airport = null;
         if ($lat !== null && $lng !== null) {
             $found = self::wikidata_attractions($lat, $lng);
             if (!is_wp_error($found)) { $attractions = $found; }
+            $airport = self::wikidata_nearest_airport($lat, $lng);
         }
-        return self::build_wikidata_payload($entity, $attractions);
+        return self::build_wikidata_payload($entity, $attractions, $airport);
+    }
+
+    /**
+     * Aeroporto più vicino alle coordinate (entro AIRPORT_RADIUS_KM):
+     * entità Wikidata con codice IATA (P238) — il filtro seleziona da solo
+     * gli aeroporti reali. Sostituisce OurAirports/OpenFlights senza
+     * importare alcun dataset. Ritorna null se non trovato o su errore.
+     */
+    public static function wikidata_nearest_airport($lat, $lng) {
+        $query = 'SELECT ?apt ?aptLabel ?iata ?coord WHERE {'
+            . ' SERVICE wikibase:around { ?apt wdt:P625 ?coord . bd:serviceParam wikibase:center "Point(' . round((float) $lng, 4) . ' ' . round((float) $lat, 4) . ')"^^geo:wktLiteral . bd:serviceParam wikibase:radius "' . self::AIRPORT_RADIUS_KM . '" . }'
+            . ' ?apt wdt:P238 ?iata .'
+            . ' SERVICE wikibase:label { bd:serviceParam wikibase:language "it,en". } } LIMIT 40';
+        $rows = self::wikidata_sparql($query);
+        if (is_wp_error($rows)) { return null; }
+        return self::nearest_airport_from_rows($rows, $lat, $lng);
+    }
+
+    /**
+     * Dalle righe SPARQL all'aeroporto più vicino. Pura, testabile.
+     */
+    public static function nearest_airport_from_rows($rows, $lat, $lng) {
+        $best = null;
+        $best_distance = null;
+        foreach ((array) $rows as $row) {
+            $coord = self::parse_wkt_point((string) self::sparql_value($row, 'coord'));
+            $name = trim((string) self::sparql_value($row, 'aptLabel'));
+            $iata = strtoupper(trim((string) self::sparql_value($row, 'iata')));
+            if (!$coord || $name === '' || !preg_match('/^[A-Z]{3}$/', $iata)) { continue; }
+            $distance = self::haversine_km($lat, $lng, $coord['lat'], $coord['lng']);
+            if ($best_distance === null || $distance < $best_distance) {
+                $best_distance = $distance;
+                $best = array('nome' => $name, 'iata' => $iata, 'distanza_km' => (int) round($distance));
+            }
+        }
+        return $best;
     }
 
     /**
@@ -419,7 +466,7 @@ class ALMA_Geo_Facts {
     /**
      * Scheda compatta in italiano dai dati grezzi. Pura, testabile.
      */
-    public static function build_wikidata_payload($entity, $attractions) {
+    public static function build_wikidata_payload($entity, $attractions, $airport = null) {
         $unesco = '';
         foreach ((array) $entity['patrimonio'] as $heritage) {
             if (stripos($heritage, 'unesco') !== false || stripos($heritage, 'patrimonio mondiale') !== false || stripos($heritage, 'world heritage') !== false) {
@@ -432,6 +479,9 @@ class ALMA_Geo_Facts {
         if (!empty($entity['popolazione'])) { $parts[] = number_format((int) $entity['popolazione'], 0, ',', '.') . ' abitanti'; }
         if ($unesco !== '') { $parts[] = 'patrimonio UNESCO (' . $unesco . ')'; }
         if (!empty($attractions)) { $parts[] = 'attrazioni notevoli: ' . implode(', ', array_slice((array) $attractions, 0, 8)); }
+        if (is_array($airport) && !empty($airport['nome'])) {
+            $parts[] = 'aeroporto più vicino: ' . $airport['nome'] . ' (' . $airport['iata'] . '), ' . (int) $airport['distanza_km'] . ' km';
+        }
         return array(
             'wikidata_id' => (string) $entity['id'],
             'descrizione' => (string) ($entity['descrizione'] ?? ''),
@@ -440,9 +490,123 @@ class ALMA_Geo_Facts {
             'altitudine_m' => $entity['altitudine_m'] ?? null,
             'patrimonio_unesco' => $unesco,
             'attrazioni' => array_slice((array) $attractions, 0, 8),
+            'aeroporto_piu_vicino' => is_array($airport) ? $airport : null,
             'wikipedia_it' => (string) ($entity['wikipedia_it'] ?? ''),
             'sintesi' => ucfirst(implode('; ', $parts)) . ($parts ? '.' : ''),
             'fonte' => 'wikidata.org',
+        );
+    }
+
+    /* ---------------------------------------------------------------------
+     * OpenStreetMap (Overpass): il territorio pratico entro 10 km
+     * ------------------------------------------------------------------ */
+
+    /**
+     * Fotografia del territorio attorno alle coordinate: POI pratici per
+     * un travel blog (spiagge, panorami, porti, campeggi, riserve, terme,
+     * sentieri). Una sola query Overpass, solo tag (niente geometrie).
+     */
+    public static function fetch_osm($lat, $lng) {
+        $around = '(around:' . self::OSM_RADIUS_M . ',' . round((float) $lat, 4) . ',' . round((float) $lng, 4) . ')';
+        $query = '[out:json][timeout:20];('
+            . 'node["natural"="beach"]' . $around . ';way["natural"="beach"]' . $around . ';'
+            . 'node["tourism"="viewpoint"]' . $around . ';'
+            . 'node["leisure"="marina"]' . $around . ';way["leisure"="marina"]' . $around . ';'
+            . 'node["tourism"="camp_site"]' . $around . ';way["tourism"="camp_site"]' . $around . ';'
+            . 'way["leisure"="nature_reserve"]' . $around . ';relation["leisure"="nature_reserve"]' . $around . ';'
+            . 'node["natural"="hot_spring"]' . $around . ';node["amenity"="public_bath"]' . $around . ';'
+            . 'relation["route"="hiking"]' . $around . ';'
+            . ');out tags 250;';
+        $response = wp_remote_post('https://overpass-api.de/api/interpreter', array(
+            'timeout' => 30,
+            'user-agent' => 'AffiliateLinkManagerAI/' . ALMA_VERSION . ' (WordPress; ' . home_url('/') . ')',
+            'body' => array('data' => $query),
+        ));
+        if (is_wp_error($response)) { return $response; }
+        $code = wp_remote_retrieve_response_code($response);
+        $data = json_decode(wp_remote_retrieve_body($response), true);
+        if ($code < 200 || $code >= 300 || !is_array($data) || !isset($data['elements'])) {
+            return new WP_Error('alma_osm', sprintf(__('Overpass (OpenStreetMap): risposta non valida (HTTP %d).', 'affiliate-link-manager-ai'), $code));
+        }
+        // Zero elementi è un risultato legittimo (territorio poco mappato),
+        // non un errore: la scheda dice "nessun POI rilevante".
+        return self::build_osm_payload(self::classify_osm_elements((array) $data['elements']));
+    }
+
+    /**
+     * Elementi Overpass → categorie con totale ed esempi (nomi). I doppioni
+     * nodo+area della stessa spiaggia si contano una volta sola quando hanno
+     * lo stesso nome. Pura, testabile.
+     */
+    public static function classify_osm_elements($elements) {
+        $defs = array(
+            'spiagge' => array('natural' => 'beach'),
+            'punti_panoramici' => array('tourism' => 'viewpoint'),
+            'porti_turistici' => array('leisure' => 'marina'),
+            'campeggi' => array('tourism' => 'camp_site'),
+            'riserve_naturali' => array('leisure' => 'nature_reserve'),
+            'terme_sorgenti' => array('natural' => 'hot_spring', 'amenity' => 'public_bath'),
+            'sentieri_escursionismo' => array('route' => 'hiking'),
+        );
+        $out = array();
+        $seen = array();
+        foreach ($defs as $category => $matchers) {
+            $out[$category] = array('totale' => 0, 'esempi' => array());
+            $seen[$category] = array();
+        }
+        foreach ((array) $elements as $element) {
+            $tags = isset($element['tags']) && is_array($element['tags']) ? $element['tags'] : array();
+            if (empty($tags)) { continue; }
+            foreach ($defs as $category => $matchers) {
+                $matched = false;
+                foreach ($matchers as $key => $value) {
+                    if (($tags[$key] ?? '') === $value) { $matched = true; break; }
+                }
+                if (!$matched) { continue; }
+                $name = trim((string) ($tags['name:it'] ?? ($tags['name'] ?? '')));
+                if ($name !== '') {
+                    $dedupe_key = mb_strtolower($name);
+                    if (isset($seen[$category][$dedupe_key])) { break; }
+                    $seen[$category][$dedupe_key] = true;
+                    if (count($out[$category]['esempi']) < 6) {
+                        $out[$category]['esempi'][] = $name;
+                    }
+                }
+                $out[$category]['totale']++;
+                break; // un elemento conta in una sola categoria
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * Scheda territorio compatta in italiano. Pura, testabile.
+     */
+    public static function build_osm_payload($categories) {
+        $labels = array(
+            'spiagge' => 'spiagge',
+            'punti_panoramici' => 'punti panoramici',
+            'porti_turistici' => 'porti turistici',
+            'campeggi' => 'campeggi',
+            'riserve_naturali' => 'riserve naturali',
+            'terme_sorgenti' => 'terme/sorgenti',
+            'sentieri_escursionismo' => 'sentieri escursionistici',
+        );
+        $parts = array();
+        foreach ($labels as $key => $label) {
+            $total = (int) ($categories[$key]['totale'] ?? 0);
+            if ($total < 1) { continue; }
+            $examples = array_slice((array) ($categories[$key]['esempi'] ?? array()), 0, 3);
+            $parts[] = $total . ' ' . $label . ($examples ? ' (es. ' . implode(', ', $examples) . ')' : '');
+        }
+        $radius_km = (int) round(self::OSM_RADIUS_M / 1000);
+        return array(
+            'raggio_km' => $radius_km,
+            'categorie' => $categories,
+            'sintesi' => $parts
+                ? 'Territorio mappato su OpenStreetMap entro ' . $radius_km . ' km: ' . implode('; ', $parts) . '.'
+                : 'Nessun POI rilevante mappato su OpenStreetMap entro ' . $radius_km . ' km.',
+            'fonte' => 'openstreetmap.org (Overpass API)',
         );
     }
 
@@ -481,6 +645,7 @@ class ALMA_Geo_Facts {
             self::SOURCE_OPEN_METEO => self::TTL_DAYS_OK,
             self::SOURCE_WIKIDATA => self::TTL_DAYS_WIKIDATA,
             self::SOURCE_GOOGLE_TRENDS => self::TTL_DAYS_TRENDS,
+            self::SOURCE_OSM => self::TTL_DAYS_OSM,
         );
     }
 
@@ -544,6 +709,8 @@ class ALMA_Geo_Facts {
             $result = self::fetch_wikidata((string) $location['canonical_name'], $location['lat'], $location['lng']);
         } elseif ($source === self::SOURCE_GOOGLE_TRENDS) {
             $result = ALMA_Google_Trends::fetch_for_keyword((string) $location['canonical_name']);
+        } elseif ($source === self::SOURCE_OSM) {
+            $result = self::fetch_osm($location['lat'], $location['lng']);
         } else {
             $result = self::fetch_open_meteo($location['lat'], $location['lng']);
         }
@@ -587,9 +754,9 @@ class ALMA_Geo_Facts {
                         if ($source === self::SOURCE_GOOGLE_TRENDS && get_transient(ALMA_Google_Trends::COOLDOWN_TRANSIENT)) { break; }
                         $entry['processed']++;
                         if (self::warm_one($location, $source, $ttl_days)) { $entry['ok']++; } else { $entry['errors']++; }
-                        // Cortesia verso le API gratuite: WDQS chiede ritmi moderati,
-                        // gli endpoint non ufficiali di Trends ancora di più.
-                        $pauses = array(self::SOURCE_WIKIDATA => 1000000, self::SOURCE_GOOGLE_TRENDS => 2000000);
+                        // Cortesia verso le API gratuite: WDQS e Overpass chiedono
+                        // ritmi moderati, gli endpoint non ufficiali di Trends di più.
+                        $pauses = array(self::SOURCE_WIKIDATA => 1000000, self::SOURCE_GOOGLE_TRENDS => 2000000, self::SOURCE_OSM => 2000000);
                         usleep($pauses[$source] ?? 500000);
                     }
                 }
@@ -738,6 +905,26 @@ class ALMA_Geo_Facts {
             $out['tendenze_ricerca'] = 'non disponibili';
         }
 
+        // Territorio OSM: cache prima, altrimenti fetch on-demand.
+        $territorio = self::get_fact($location_id, self::SOURCE_OSM);
+        if (!$territorio && $row['lat'] !== null && $row['lng'] !== null) {
+            $fetched = self::fetch_osm($row['lat'], $row['lng']);
+            if (!is_wp_error($fetched)) {
+                self::save_fact($location_id, self::SOURCE_OSM, $fetched, self::TTL_DAYS_OSM);
+                $territorio = $fetched;
+            }
+        }
+        if (is_array($territorio) && empty($territorio['errore'])) {
+            $out['territorio'] = array(
+                'sintesi' => $territorio['sintesi'] ?? '',
+                'categorie' => $territorio['categorie'] ?? array(),
+                'raggio_km' => $territorio['raggio_km'] ?? 10,
+                'fonte' => $territorio['fonte'] ?? '',
+            );
+        } else {
+            $out['territorio'] = 'non disponibile';
+        }
+
         // Dati interni: quanti asset del sito riguardano già la zona.
         $link_ids = method_exists($store, 'get_affiliate_link_ids_for_area') ? (array) $store->get_affiliate_link_ids_for_area($location_id) : array();
         $link_esempi = array();
@@ -790,12 +977,12 @@ class ALMA_Geo_Facts {
     public static function render_settings_tab() {
         $report = get_option(self::OPTION_LAST_REPORT, null);
         $running = (bool) get_option(self::LOCK_OPTION);
-        $labels = array(self::SOURCE_OPEN_METEO => 'Clima (Open-Meteo)', self::SOURCE_WIKIDATA => 'Fatti (Wikidata)', self::SOURCE_GOOGLE_TRENDS => 'Tendenze (Google Trends)');
+        $labels = array(self::SOURCE_OPEN_METEO => 'Clima (Open-Meteo)', self::SOURCE_WIKIDATA => 'Fatti (Wikidata)', self::SOURCE_GOOGLE_TRENDS => 'Tendenze (Google Trends)', self::SOURCE_OSM => 'Territorio (OpenStreetMap)');
 
         echo '<h2>Schede località (fonti esterne)</h2>';
         echo '<div class="alma-agent-card" style="max-width:900px;"><h3>Come funziona</h3>';
-        echo '<p>Per ogni località dell\'indice geografico con coordinate, il plugin costruisce una <strong>scheda</strong> con dati da fonti esterne: il <strong>clima</strong> da Open-Meteo (mesi migliori per visitare, mesi da evitare, temperature e piogge mensili), la <strong>carta d\'identità</strong> da Wikidata (descrizione, popolazione, patrimonio UNESCO, Wikipedia italiana e attrazioni notevoli entro 10 km, disambiguate per vicinanza alle coordinate) e le <strong>tendenze di ricerca</strong> da Google Trends (in quali mesi gli italiani cercano la destinazione, trend dell\'interesse, query correlate in crescita). Non si importano interi dataset: si salva solo la scheda compatta, già in italiano, riusata dall\'agente AI con lo strumento <code>scheda_localita</code>.</p>';
-        echo '<p>Le schede si riempiono da sole: il job notturno lavora a run brevi (ogni fonte ha il suo turno garantito) e, finché c\'è lavoro, si <strong>auto-programma</strong> ogni ' . esc_html((string) self::CHAIN_DELAY) . ' secondi fino a ' . esc_html((string) self::MAX_CHAINS_PER_DAY) . ' run al giorno. Le schede restano valide 9 mesi (clima) / 6 mesi (fatti) / 1 mese (tendenze); se l\'agente chiede una località non ancora pronta, la scheda viene creata al volo.</p>';
+        echo '<p>Per ogni località dell\'indice geografico con coordinate, il plugin costruisce una <strong>scheda</strong> con dati da fonti esterne: il <strong>clima</strong> da Open-Meteo (mesi migliori per visitare, mesi da evitare, temperature e piogge mensili), la <strong>carta d\'identità</strong> da Wikidata (descrizione, popolazione, patrimonio UNESCO, Wikipedia italiana, attrazioni notevoli entro 10 km e aeroporto più vicino con codice IATA), le <strong>tendenze di ricerca</strong> da Google Trends (in quali mesi gli italiani cercano la destinazione, trend dell\'interesse, query correlate in crescita) e il <strong>territorio</strong> da OpenStreetMap (spiagge, punti panoramici, porti turistici, campeggi, riserve naturali, terme e sentieri entro 10 km). Non si importano interi dataset: si salva solo la scheda compatta, già in italiano, riusata dall\'agente AI con lo strumento <code>scheda_localita</code>.</p>';
+        echo '<p>Le schede si riempiono da sole: il job notturno lavora a run brevi (ogni fonte ha il suo turno garantito) e, finché c\'è lavoro, si <strong>auto-programma</strong> ogni ' . esc_html((string) self::CHAIN_DELAY) . ' secondi fino a ' . esc_html((string) self::MAX_CHAINS_PER_DAY) . ' run al giorno. Le schede restano valide 9 mesi (clima) / 6 mesi (fatti) / 1 mese (tendenze) / 3 mesi (territorio); se l\'agente chiede una località non ancora pronta, la scheda viene creata al volo.</p>';
         echo '<p class="description">⚠️ Google Trends non ha un\'API ufficiale: si usano gli endpoint interni del sito. Se Google limita le richieste (HTTP 429) la fonte si sospende da sola per 6 ore e riprende al run successivo; se l\'endpoint cambiasse, la fonte segnala l\'errore senza impattare il resto del plugin.</p></div>';
 
         echo '<table class="form-table" role="presentation">';

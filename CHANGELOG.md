@@ -1,3 +1,14 @@
+## 2.72.0 - 2026-07-06
+
+### Fase 7.2 (PR D): territorio OpenStreetMap + aeroporto più vicino nelle schede località
+- **Quarta fonte sulle schede località: OpenStreetMap** (Overpass API, gratuita, senza chiave). Per ogni località la scheda fotografa il **territorio pratico entro 10 km**: spiagge, punti panoramici, porti turistici, campeggi, riserve naturali, terme/sorgenti e sentieri escursionistici — con totale ed esempi per categoria (nome italiano preferito, doppioni nodo+area deduplicati per nome) e sintesi in italiano. Un territorio poco mappato è un risultato legittimo ("Nessun POI rilevante"), non un errore. Una sola query per località, solo tag (niente geometrie), pausa di 2 secondi nel warmer, validità 3 mesi.
+- **Aeroporto più vicino nella scheda Wikidata**: entità con codice IATA entro 150 km via SPARQL `wikibase:around` (il filtro IATA seleziona da solo gli aeroporti reali), distanza haversine, il più vicino vince — es. Cefalù → "aeroporto più vicino: Palermo-Punta Raisi (PMO), 65 km". Sostituisce OurAirports/OpenFlights senza importare alcun dataset (le rotte OpenFlights sono ferme al 2014). Le schede fatti già salvate si arricchiranno al rinnovo naturale o al fetch on-demand.
+- Lo strumento dell'agente `scheda_localita` include la nuova sezione `territorio` (fetch on-demand mai bloccante) e l'aeroporto nei fatti; descrizione del tool aggiornata (articoli pratici + scoperta di ciò che il sito non copre).
+- Tab "Schede località" aggiornata: quarta riga di stato "Territorio (OpenStreetMap)" e TTL documentati.
+- Come deciso: scartati OurAirports/OpenFlights (dati rotte obsoleti), UNWTO/Eurostat (valore basso rispetto a GSC+Trends) e Overture/Foursquare (bulk download/API commerciale); chip faccette e affinamenti Fase 4 rimandati.
+- Test standalone 18/18 (classificazione OSM con doppioni e name:it, payload territorio pieno/vuoto, aeroporto più vicino su coordinate reali Cefalù→PMO con eliporti e IATA invalidi ignorati, retrocompatibilità payload Wikidata senza aeroporto).
+- Versione plugin aggiornata a `2.72.0`.
+
 ## 2.71.0 - 2026-07-06
 
 ### Warmer schede località: report affidabile, turni garantiti e run in catena
