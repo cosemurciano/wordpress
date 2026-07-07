@@ -1256,6 +1256,12 @@ class ALMA_AI_Content_Agent_Draft_Builder {
             $clean['content'] = $enforced['content'];
             $clean['warnings'] = array_values(array_unique(array_merge((array)$clean['warnings'], (array)$widget_result['warnings'], (array)$enforced['warnings'])));
         }
+        // Difesa: gli URL GYG con parametri di sessione (deeplink_id/page_id
+        // dai CSV) non devono entrare negli articoli — l'AI può scrivere
+        // href diretti prendendoli dal payload dei candidati.
+        if (class_exists('ALMA_Affiliate_Source_GYG_CSV_Importer')) {
+            $clean['content'] = ALMA_Affiliate_Source_GYG_CSV_Importer::strip_gyg_session_params_from_content((string) $clean['content']);
+        }
         // Pubblicazione diretta opzionale (Impostazioni → Generale): di
         // default resta bozza da revisionare.
         $auto_publish = get_option('alma_ai_auto_publish', 'no') === 'yes';
