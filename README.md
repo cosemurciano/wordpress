@@ -1,3 +1,9 @@
+## 2.87.2 - 2026-07-08
+
+### Ispettore URL salvati in Verifica link
+- Nuova card di ricerca che mostra gli URL esattamente come salvati nel database (parametri di sessione evidenziati): distingue un problema di salvataggio dal tracking che GYG aggiunge nel browser dopo il click.
+- Versione plugin aggiornata a `2.87.2`.
+
 ## 2.87.1 - 2026-07-08
 
 ### Link GYG senza parametri di sessione

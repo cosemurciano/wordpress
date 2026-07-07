@@ -1,3 +1,11 @@
+## 2.87.2 - 2026-07-08
+
+### Verifica link: Ispettore degli URL salvati
+- **Contesto**: dopo la pulizia dei parametri di sessione (2.87.1) il contatore risultava a zero. Le spiegazioni possibili sono due, e ora la pagina permette di distinguerle: (a) gli URL salvati sono davvero puliti e i `deeplink_id`/`page_id` visti nel browser li aggiunge **GetYourGuide stesso durante il redirect dopo il click** (è il loro tracking: il `partner_id` resta nell'URL e la vendita viene attribuita normalmente); (b) esistono ancora URL sporchi che la query non intercettava.
+- **Nuova card "🔎 Ispettore URL salvati"** in Verifica link: cerca per titolo o per pezzo di URL (es. `t160202`, `dubai`, `deeplink_id`) e mostra fino a 20 link con l'URL **esattamente come salvato nel database** (bozze incluse), con gli eventuali parametri di sessione evidenziati in rosso e l'indicazione se il link è già stato bonificato (backup presente).
+- Messaggio del contatore a zero riformulato per spiegare il comportamento del redirect GYG.
+- Versione plugin aggiornata a `2.87.2`.
+
 ## 2.87.1 - 2026-07-08
 
 ### Link GYG: rimossi i parametri di sessione (deeplink_id/page_id) da import e archivio
