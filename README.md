@@ -1,3 +1,9 @@
+## 2.86.1 - 2026-07-07
+
+### Elenco Articoli ripulito
+- Nascoste le colonne dei campi tema (Come, Cosa, Perché, People, Quando, Durata) nell'elenco Articoli; larghezza minima per Categorie e Geo.
+- Versione plugin aggiornata a `2.86.1`.
+
 ## 2.86.0 - 2026-07-07
 
 ### Colonna Titolo leggibile negli elenchi

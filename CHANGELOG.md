@@ -1,3 +1,10 @@
+## 2.86.1 - 2026-07-07
+
+### Elenco Articoli: nascoste le colonne dei campi tema, più spazio a Categorie e Geo
+- Nell'elenco Articoli le colonne dei campi tema **Come, Cosa, Perché, People, Quando e Durata** vengono nascoste (erano ridotte a una lettera per riga e senza utilità nella lista): la rimozione avviene per **etichetta**, così funziona qualunque sia la chiave tecnica usata dal tema. Restano visibili nella modifica dell'articolo, dove si compilano.
+- **Categorie** (min 140px) e **Geo** (min 110px) hanno ora una larghezza minima: niente più testo verticale.
+- Versione plugin aggiornata a `2.86.1`.
+
 ## 2.86.0 - 2026-07-07
 
 ### Colonna Titolo leggibile negli elenchi Articoli e Link Affiliati
