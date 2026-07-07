@@ -1,3 +1,9 @@
+## 2.84.0 - 2026-07-07
+
+### Chiave OpenAI in wp-config + Telegram completo per la regia
+- La chiave OpenAI vive solo in wp-config.php (`ALMA_OPENAI_API_KEY`): campo e salvataggio rimossi dalle Impostazioni (non può più essere persa salvando), copia nel database eliminata automaticamente quando la costante è definita. Telegram: notifica di ogni articolo pubblicato con link, nuovi comandi /piano /stato /stop /salute /immagini, /agente allineato alla Regia v2, menu comandi nativo del bot e guida riscritta.
+- Versione plugin aggiornata a `2.84.0`.
+
 ## 2.83.0 - 2026-07-07
 
 ### Widget Link v3
