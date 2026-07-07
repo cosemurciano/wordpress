@@ -3,7 +3,7 @@
  * Plugin Name: Affiliate Link Manager AI
  * Plugin URI: https://your-website.com
  * Description: Gestisce link affiliati con intelligenza artificiale per ottimizzazione e tracking automatico.
- * Version: 2.81.0
+ * Version: 2.82.0
  * Author: Cosè Murciano
  * License: GPL v2 or later
  * Text Domain: affiliate-link-manager-ai
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Definisci costanti del plugin
-define('ALMA_VERSION', '2.81.0');
+define('ALMA_VERSION', '2.82.0');
 define('ALMA_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('ALMA_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('ALMA_PLUGIN_FILE', __FILE__);
@@ -3217,7 +3217,9 @@ class AffiliateManagerAI {
 
         $instance = array_merge((array) $base_instance, array(
             'title'                    => sanitize_text_field(wp_unslash($_POST['title'] ?? '')),
-            'custom_content'           => wp_kses_post(wp_unslash($_POST['custom_content'] ?? '')),
+            // Campo "Contenuto introduttivo" rimosso dai form (2.82.0): il
+            // valore già salvato nei widget esistenti viene preservato.
+            'custom_content'           => (string) ($base_instance['custom_content'] ?? ''),
             'show_image'               => 1,
             'show_title'               => 1,
             'show_content'             => 1,
@@ -3337,10 +3339,18 @@ class AffiliateManagerAI {
      * Renderizza la selezione visuale dei layout widget.
      */
     private function render_widget_layout_preset_field($selected_layout) {
-        $presets = $this->get_widget_layout_presets();
+        $presets = class_exists('ALMA_Affiliate_Widget_Layout_Registry') ? ALMA_Affiliate_Widget_Layout_Registry::get_selectable_presets() : $this->get_widget_layout_presets();
         $selected_layout = $this->sanitize_widget_layout_preset($selected_layout);
         if (!$selected_layout) {
             $selected_layout = $this->get_default_widget_layout_preset();
+        }
+        // Widget salvato con un layout legacy a colonne: lo si mostra nel
+        // picker (con la sua etichetta) così la selezione attuale resta visibile.
+        if (!isset($presets[$selected_layout])) {
+            $all_presets = $this->get_widget_layout_presets();
+            if (isset($all_presets[$selected_layout])) {
+                $presets[$selected_layout] = $all_presets[$selected_layout];
+            }
         }
         ?>
         <tr>
@@ -3349,7 +3359,7 @@ class AffiliateManagerAI {
                 <fieldset class="alma-layout-picker" aria-describedby="alma-layout-picker-description">
                     <legend class="screen-reader-text"><span><?php _e('Scegli layout widget', 'affiliate-link-manager-ai'); ?></span></legend>
                     <p id="alma-layout-picker-description" class="description alma-layout-picker__intro">
-                        <?php _e('Preset accessibili e responsive. Il default è 3 colonne perché bilancia leggibilità e densità su desktop per utenti non tecnici.', 'affiliate-link-manager-ai'); ?>
+                        <?php _e('Layout in stile catalogo di esperienze: Card destinazione per le mete, Card esperienza per tour e attività (carosello su mobile), Vetrina per un singolo link di punta.', 'affiliate-link-manager-ai'); ?>
                     </p>
                     <div class="alma-layout-grid">
                         <?php foreach ($presets as $slug => $preset) :
@@ -3369,7 +3379,7 @@ class AffiliateManagerAI {
                                 <span class="alma-layout-card__name"><?php echo esc_html($preset['label']); ?></span>
                                 <span class="alma-layout-card__description"><?php echo esc_html($preset['description']); ?></span>
                                 <span class="alma-layout-card__meta">
-                                    <span class="alma-layout-badge"><?php printf(esc_html__('%d colonne', 'affiliate-link-manager-ai'), absint($preset['desktop'])); ?></span>
+                                    <span class="alma-layout-badge"><?php echo esc_html(!empty($preset['badge']) ? $preset['badge'] : sprintf(__('%d colonne', 'affiliate-link-manager-ai'), absint($preset['desktop']))); ?></span>
                                     <span class="alma-layout-badge alma-layout-badge--responsive"><?php esc_html_e('Responsive', 'affiliate-link-manager-ai'); ?></span>
                                 </span>
                             </label>
@@ -3597,7 +3607,6 @@ class AffiliateManagerAI {
                 <?php wp_nonce_field('alma_create_widget'); ?>
                 <table class="form-table" role="presentation"><tbody>
                     <tr><th scope="row"><label for="alma_widget_title"><?php _e('Titolo widget', 'affiliate-link-manager-ai'); ?></label></th><td><input name="title" id="alma_widget_title" type="text" value="<?php echo esc_attr($instance['title']); ?>" class="regular-text"></td></tr>
-                    <tr><th scope="row"><label for="alma_widget_content"><?php _e('Contenuto introduttivo', 'affiliate-link-manager-ai'); ?></label></th><td><textarea name="custom_content" id="alma_widget_content" rows="5" class="large-text"><?php echo esc_textarea($instance['custom_content']); ?></textarea></td></tr>
                     <?php $this->render_widget_layout_preset_field($this->get_widget_layout_preset_for_instance($instance)); ?>
                     <tr><th scope="row"><label for="alma_widget_button_text"><?php _e('Testo pulsante', 'affiliate-link-manager-ai'); ?></label></th><td><input name="button_text" type="text" id="alma_widget_button_text" value="<?php echo esc_attr($instance['button_text']); ?>" class="regular-text"><p class="description"><?php _e('Default: Scopri di più. Se vuoto, verrà salvato il default.', 'affiliate-link-manager-ai'); ?></p></td></tr>
                     <tr><th scope="row"><label for="alma_widget_manual_ids"><?php _e('ID Link affiliati', 'affiliate-link-manager-ai'); ?></label></th><td><input name="manual_ids" type="text" id="alma_widget_manual_ids" value="<?php echo esc_attr(implode(',', (array) $instance['manual_ids'])); ?>" class="regular-text"><p class="description"><?php _e('ID separati da virgola. Verranno validati come affiliate_link pubblicati, senza duplicati e nel limite di 20 link totali.', 'affiliate-link-manager-ai'); ?></p></td></tr>
@@ -3685,7 +3694,6 @@ class AffiliateManagerAI {
                 <?php wp_nonce_field('alma_edit_widget'); ?>
                 <table class="form-table" role="presentation"><tbody>
                     <tr><th scope="row"><label for="alma_widget_title"><?php _e('Titolo widget', 'affiliate-link-manager-ai'); ?></label></th><td><input name="title" id="alma_widget_title" type="text" value="<?php echo esc_attr($instance['title'] ?? ''); ?>" class="regular-text"></td></tr>
-                    <tr><th scope="row"><label for="alma_widget_content"><?php _e('Contenuto introduttivo', 'affiliate-link-manager-ai'); ?></label></th><td><textarea name="custom_content" id="alma_widget_content" rows="5" class="large-text"><?php echo esc_textarea($instance['custom_content'] ?? ''); ?></textarea></td></tr>
                     <?php $this->render_widget_layout_preset_field($this->get_widget_layout_preset_for_instance($instance)); ?>
                     <tr><th scope="row"><label for="alma_widget_button_text"><?php _e('Testo pulsante', 'affiliate-link-manager-ai'); ?></label></th><td><input name="button_text" type="text" id="alma_widget_button_text" value="<?php echo esc_attr($instance['button_text'] ?? __('Scopri di più', 'affiliate-link-manager-ai')); ?>" class="regular-text"><p class="description"><?php _e('Default: Scopri di più. Se vuoto, verrà salvato il default.', 'affiliate-link-manager-ai'); ?></p></td></tr>
                     <tr><th scope="row"><label for="alma_widget_manual_ids"><?php _e('ID Link affiliati', 'affiliate-link-manager-ai'); ?></label></th><td><input name="manual_ids" type="text" id="alma_widget_manual_ids" value="<?php echo esc_attr(implode(',', (array) ($instance['manual_ids'] ?? array()))); ?>" class="regular-text"><p class="description"><?php _e('ID separati da virgola. Verranno validati come affiliate_link pubblicati, senza duplicati e nel limite di 20 link totali.', 'affiliate-link-manager-ai'); ?></p></td></tr>

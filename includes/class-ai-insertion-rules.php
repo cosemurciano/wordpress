@@ -210,12 +210,23 @@ class ALMA_AI_Insertion_Rules {
             return array('error' => 'Pattern widget disabilitato nelle Regole inserimento.');
         }
         $request = is_array($request) ? $request : array();
+
+        // Layout scelto dall'AI (2.82.0): uno dei preset proponibili, con i
+        // suoi vincoli min/max di link. Default: card destinazione.
+        $layout = sanitize_key((string)($request['layout'] ?? ''));
+        $selectable = ALMA_Affiliate_Widget_Layout_Registry::get_selectable_presets();
+        if (!isset($selectable[$layout])) {
+            $layout = ALMA_Affiliate_Widget_Layout_Registry::get_default_preset();
+        }
+        $preset = $selectable[$layout];
+
         $link_ids = array_values(array_unique(array_filter(array_map('absint', (array)($request['link_ids'] ?? array())))));
         // Solo link candidati del payload: l'AI non può inventare ID.
         $link_ids = array_values(array_intersect($link_ids, array_map('absint', (array)$candidate_affiliate_ids)));
-        $link_ids = array_slice($link_ids, 0, $rules['widget_max_links']);
-        if (count($link_ids) < 2) {
-            return array('error' => 'widget_request ignorata: servono almeno 2 link candidati validi.');
+        $link_ids = array_slice($link_ids, 0, min(absint($rules['widget_max_links']), absint($preset['max_links'])));
+        $min_links = max(1, absint($preset['min_links']));
+        if (count($link_ids) < $min_links) {
+            return array('error' => sprintf('widget_request ignorata: il layout %s richiede almeno %d link candidati validi.', $layout, $min_links));
         }
 
         $rewritten = array();
@@ -229,7 +240,6 @@ class ALMA_AI_Insertion_Rules {
             }
         }
 
-        $columns = max(1, min(3, count($link_ids)));
         $instance = array(
             'title' => sanitize_text_field((string)($request['title'] ?? '')) ?: __('Esperienze consigliate', 'affiliate-link-manager-ai'),
             'custom_content' => '',
@@ -238,9 +248,9 @@ class ALMA_AI_Insertion_Rules {
             'show_content' => 1,
             'show_button' => 1,
             'button_text' => sanitize_text_field((string)($request['button_text'] ?? '')) ?: $rules['button_text'],
-            'template_desktop_columns' => $columns,
-            'template_mobile_columns' => 1,
-            'layout_preset' => 'columns_' . $columns,
+            'template_desktop_columns' => absint($preset['desktop']),
+            'template_mobile_columns' => absint($preset['mobile']),
+            'layout_preset' => $layout,
             'links' => $link_ids,
             'rewritten_links' => $rewritten,
             'alma_created_by' => 'ai_agent',
