@@ -1,3 +1,12 @@
+## 2.80.2 - 2026-07-07
+
+### Risolto il bug del salvataggio manuale dei Link Affiliati (causa trovata con la diagnostica 2.80.1)
+- **Causa individuata dai log della diagnostica**: la richiesta di pubblicazione arrivava a `post.php` con `action=alma_retry_affiliate_image` invece di `editpost`. Il colpevole era il pulsante **"Riprova import immagine"** nella metabox "Affiliate Source (tecnico)": era un `<form>` **annidato** dentro il form di modifica del post. I form annidati non sono validi in HTML: il browser scarta il tag interno e ne fonde i campi (incluso `action=alma_retry_affiliate_image`) nel form principale. Alla pubblicazione WordPress riceveva quindi un'azione sconosciuta: nessun salvataggio (URL affiliato, tipologie e stato di pubblicazione persi — restava solo l'autosave del titolo) e redirect di ripiego all'elenco articoli.
+- **Fix**: il form annidato è stato sostituito da **due link con nonce** verso `admin-post.php` ("Riprova import immagine" e "Riprova sovrascrivendo l'immagine esistente", quest'ultimo con conferma): nessun form dentro il form del post, il salvataggio del link non può più essere dirottato. Il comportamento del retry è invariato.
+- **Difese in profondità** (per eventuale markup vecchio ancora in cache dell'editor): l'handler del retry accetta ora sia GET sia POST e viene registrato anche su `admin_action_alma_retry_affiliate_image`, così una vecchia pagina che inviasse ancora il form fuso a `post.php` esegue comunque il retry e torna all'editor del link; la guardia sui redirect tratta inoltre `alma_retry_affiliate_image` come un salvataggio, riscrivendo ogni eventuale rimbalzo verso l'elenco.
+- Verificato che nessun'altra metabox del plugin renderizza `<form>` dentro la schermata di modifica dei post (tutti gli altri form sono in pagine admin autonome).
+- Versione plugin aggiornata a `2.80.2`.
+
 ## 2.80.1 - 2026-07-07
 
 ### Salvataggio manuale dei Link Affiliati: difese rafforzate + diagnostica visibile
