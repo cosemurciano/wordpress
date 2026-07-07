@@ -517,7 +517,40 @@ class ALMA_AI_Content_Agent_Idea_Importer {
         update_post_meta($idea_id, ALMA_AI_Content_Agent_Ideas::META_EXECUTED_AT, current_time('mysql'));
         if (!empty($result['success']) && !empty($result['post_id'])) {
             update_post_meta($idea_id, ALMA_AI_Content_Agent_Ideas::META_DRAFT_POST_ID, absint($result['post_id']));
+            self::assign_idea_location_to_post($idea_id, absint($result['post_id']));
         }
         return is_array($result) ? $result : array('success' => false, 'error' => 'Risposta generazione non valida');
+    }
+
+    /**
+     * Geolocalizza subito l'articolo generato con la località già risolta
+     * dell'idea: l'auto-indexer lavora solo sui post pubblicati, quindi le
+     * bozze dell'agente restavano senza geolocalizzazione. Mai sovrascrittura
+     * di una località già presente.
+     */
+    private static function assign_idea_location_to_post($idea_id, $post_id) {
+        if (!class_exists('ALMA_Geo_Index_Store') || $post_id < 1) { return; }
+        $location_id = absint(get_post_meta($idea_id, ALMA_AI_Content_Agent_Ideas::META_LOCATION_ID, true));
+        if ($location_id < 1) { return; }
+        if (trim((string) get_post_meta($post_id, '_alma_geo_primary_name', true)) !== '') { return; }
+        $store = new ALMA_Geo_Index_Store();
+        $row = $store->get_location($location_id);
+        if (!is_array($row) || empty($row['canonical_name'])) { return; }
+        $store->save_geo_meta_for_object($post_id, ALMA_Geo_Index_Store::OBJECT_TYPE_POST, array(
+            'primary_location' => array(
+                'location_id' => $location_id,
+                'name' => (string) $row['canonical_name'],
+                'canonical_name' => (string) $row['canonical_name'],
+                'type' => (string) ($row['type'] ?? ''),
+                'country' => (string) ($row['country'] ?? ''),
+                'country_code' => (string) ($row['country_code'] ?? ''),
+                'region' => (string) ($row['region'] ?? ''),
+                'city' => (string) ($row['city'] ?? ''),
+                'lat' => (string) ($row['lat'] ?? ''),
+                'lng' => (string) ($row['lng'] ?? ''),
+                'is_primary' => true,
+            ),
+            'derive_from_primary' => true,
+        ), 'ai_agent');
     }
 }

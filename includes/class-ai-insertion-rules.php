@@ -84,7 +84,7 @@ class ALMA_AI_Insertion_Rules {
             $lines[] = '- card prodotto: [affiliate_link id="ID" img="yes" fields="title,content" button="yes"] quando dedichi un blocco a una singola esperienza importante (max 1-2 per articolo).';
         }
         if (in_array('widget', $rules['patterns'], true)) {
-            $lines[] = '- widget di raccolta: UNA sola volta, in chiusura dell\'articolo, inserisci il segnaposto ' . self::WIDGET_PLACEHOLDER . ' e compila il campo widget_request dell\'output con: title (es. "Le migliori esperienze a X"), link_ids (2-' . $rules['widget_max_links'] . ' ID dei link più pertinenti), button_text, e per ogni link rewritten[{id,title,description}] con titolo e descrizione riscritti nel tono dell\'articolo (descrizione 1-2 frasi orientate al beneficio).';
+            $lines[] = '- widget di raccolta: inserisci SEMPRE (almeno una volta per articolo, nel punto più naturale — tipicamente prima della conclusione) il segnaposto ' . self::WIDGET_PLACEHOLDER . ' e compila il campo widget_request dell\'output con: title (es. "Le migliori esperienze a X"), layout ("destination_cards" per griglie di mete, "experience_cards" per tour/attività, "hero_spotlight" per UNA sola esperienza di punta), link_ids (fino a ' . $rules['widget_max_links'] . ' ID dei link più pertinenti, nel rispetto dei limiti del layout), button_text, e per ogni link rewritten[{id,title,description}] con titolo e descrizione riscritti nel tono dell\'articolo (descrizione 1-2 frasi orientate al beneficio).';
         }
         $lines[] = 'REGOLE DI DENSITÀ E POSIZIONE (verranno comunque applicate dal sistema):';
         $lines[] = '- massimo 1 inserimento ogni ' . $rules['density_words'] . ' parole di contenuto;';
@@ -223,7 +223,12 @@ class ALMA_AI_Insertion_Rules {
         $link_ids = array_values(array_unique(array_filter(array_map('absint', (array)($request['link_ids'] ?? array())))));
         // Solo link candidati del payload: l'AI non può inventare ID.
         $link_ids = array_values(array_intersect($link_ids, array_map('absint', (array)$candidate_affiliate_ids)));
+        // Riconciliazione col limite "Link massimi nel widget" delle Regole
+        // inserimento: il tetto è il più basso tra regola e layout, ma mai
+        // sotto il minimo del layout (es. hero=1, destinazioni=2), altrimenti
+        // la regola renderebbe impossibile un layout valido.
         $max_links = min(absint($rules['widget_max_links']), absint($preset['max_links']));
+        $max_links = max($max_links, absint($preset['min_links']));
         if (count($link_ids) > $max_links) {
             // A parità di scelta dell'AI, nel taglio sopravvivono prima i link
             // CON immagine (le card vivono di immagini); ordine stabile.

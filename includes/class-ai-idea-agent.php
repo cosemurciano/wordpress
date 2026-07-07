@@ -302,14 +302,41 @@ class ALMA_AI_Idea_Agent {
     private static function system_prompt($max_ideas, $days_span = 14, $start_date = '') {
         $prompt = 'Sei l\'agente strategico di ideazione contenuti di un blog di viaggi italiano monetizzato con link affiliati. '
             . 'Il tuo compito: analizzare i DATI REALI del sito tramite gli strumenti disponibili e creare fino a ' . (int)$max_ideas . ' nuove idee di articolo ad alto potenziale. '
-            . 'Metodo obbligatorio: 1) analizza le performance, i gap geografici e — se disponibile — le ricerche reali con analizza_ricerche_google (le "opportunità" con impression alte e posizione debole sono il segnale più prezioso: domanda dimostrata senza contenuto adeguato); 2) per ogni opportunità verifica con cerca_link_affiliati che esistano link da monetizzare, con elenca_articoli_esistenti che il tema non sia già coperto (evita duplicati) e con cerca_media se la Media Library ha già immagini utilizzabili sul tema (se sì, segnalalo nel prompt dell\'idea); per le idee legate a una destinazione consulta scheda_localita e usa il clima reale per il taglio stagionale (es. proponi "quando andare" o contenuti per i mesi migliori in arrivo, citando i mesi consigliati nel prompt dell\'idea) e i fatti Wikidata (patrimonio UNESCO, attrazioni notevoli) per angoli accurati e non ancora coperti; per validare un tema usa tendenze_google (Italia, 5 anni): domanda in crescita e mesi di picco delle ricerche indicano COSA proporre e QUANDO pubblicare (prima del picco); 3) crea le idee con crea_idea, includendo località (se pertinente), un prompt editoriale ricco che citi le query target, e una data programmata (data_programmata) distribuita ' . ($start_date !== '' ? 'tra il ' . $start_date . ' e i successivi ' . (int)$days_span . ' giorni' : 'nei prossimi ' . (int)$days_span . ' giorni') . ', al massimo una idea per giorno quando possibile. '
+            . 'Metodo obbligatorio: 1) analizza le performance, i gap geografici e — se disponibile — le ricerche reali con analizza_ricerche_google (le "opportunità" con impression alte e posizione debole sono il segnale più prezioso: domanda dimostrata senza contenuto adeguato); 2) per ogni opportunità verifica con cerca_link_affiliati che esistano link da monetizzare, con elenca_articoli_esistenti che il tema non sia già coperto (evita duplicati) e con cerca_media se la Media Library ha già immagini utilizzabili sul tema (se sì, segnalalo nel prompt dell\'idea); per le idee legate a una destinazione consulta scheda_localita e usa il clima reale per il taglio stagionale (es. proponi "quando andare" o contenuti per i mesi migliori in arrivo, citando i mesi consigliati nel prompt dell\'idea) e i fatti Wikidata (patrimonio UNESCO, attrazioni notevoli) per angoli accurati e non ancora coperti; per validare un tema usa tendenze_google (Italia, 5 anni): domanda in crescita e mesi di picco delle ricerche indicano COSA proporre e QUANDO pubblicare (prima del picco); 3) crea le idee con crea_idea, includendo località (se pertinente), un prompt editoriale ricco che citi le query target, e una data programmata (data_programmata) distribuita ' . ($start_date !== '' ? 'tra il ' . $start_date . ' e i successivi ' . (int)$days_span . ' giorni' : 'nei prossimi ' . (int)$days_span . ' giorni') . '. '
             . 'Privilegia: località con link affiliati ma senza click (offerta inutilizzata), località con molti articoli ma senza copertura pratica/commerciale, trend di click in crescita. '
             . 'Non inventare dati: basa ogni decisione sugli output degli strumenti. Non superare il numero massimo di idee. '
             . 'Alla fine rispondi in italiano con un riepilogo: per ogni idea creata, titolo e motivazione basata sui numeri.';
+        $profiles_hint = self::instruction_profiles_hint();
+        if ($profiles_hint !== '') {
+            $prompt .= ' ' . $profiles_hint;
+        }
         if (self::get_vector_store_id() !== '') {
             $prompt .= ' Hai inoltre accesso allo storage documenti dell\'editore su OpenAI tramite file_search: consultalo per linee guida editoriali, brief e materiali di contesto prima di decidere le idee.';
         }
         return $prompt;
+    }
+
+    /**
+     * Profili istruzioni attivi da proporre all'agente: per ogni idea deve
+     * scegliere STRATEGICAMENTE il profilo editoriale più adatto.
+     */
+    private static function instruction_profiles_hint() {
+        if (!class_exists('ALMA_AI_Content_Agent_Instructions_Manager')) { return ''; }
+        $profiles = ALMA_AI_Content_Agent_Instructions_Manager::get_active_profiles(15);
+        if (empty($profiles)) { return ''; }
+        $rows = array();
+        foreach ($profiles as $profile) {
+            $summary_parts = array_filter(array(
+                trim(wp_strip_all_tags((string) ($profile['tone_of_voice'] ?? ''))),
+                trim(wp_strip_all_tags((string) ($profile['target_audience'] ?? ''))),
+            ));
+            $summary = wp_trim_words(implode(' · ', $summary_parts), 20, '…');
+            $rows[] = 'id ' . (int) $profile['id'] . ': "' . sanitize_text_field((string) $profile['profile_name']) . '"'
+                . (!empty($profile['is_default']) ? ' (default)' : '')
+                . ($summary !== '' ? ' — ' . $summary : '');
+        }
+        return 'PROFILI ISTRUZIONI DISPONIBILI (Istruzioni AI → Profili): ' . implode('; ', $rows) . '. '
+            . 'Per OGNI idea scegli strategicamente il profilo più adatto al taglio dell\'articolo e passane l\'id in profilo_id a crea_idea: la bozza verrà scritta con quel tono, target e regole.';
     }
 
     private static function get_vector_store_id() {
@@ -325,7 +352,9 @@ class ALMA_AI_Idea_Agent {
             $window = $start_date !== ''
                 ? 'tra il ' . $start_date . ' e il ' . gmdate('Y-m-d', strtotime($start_date) + ($days - 1) * DAY_IN_SECONDS) . ' (incluse)'
                 : 'nei prossimi ' . $days . ' giorni';
-            $base = 'Piano editoriale richiesto dall\'editore: crea ESATTAMENTE ' . (int)$num_ideas . ' idee di contenuto, con date programmate (data_programmata) distribuite in modo sensato ' . $window . ', mai più di una al giorno se possibile.';
+            // Nessun vincolo "una al giorno": la distribuzione finale viene
+            // comunque imposta da enforce_schedule sul piano richiesto.
+            $base = 'Piano editoriale richiesto dall\'editore: crea ESATTAMENTE ' . (int)$num_ideas . ' idee di contenuto, con date programmate (data_programmata) distribuite in modo sensato ' . $window . '.';
         }
         return $objective !== '' ? $base . ' Obiettivo e suggerimenti dell\'editore: ' . $objective : $base;
     }
@@ -357,6 +386,7 @@ class ALMA_AI_Idea_Agent {
                 'prompt' => array('type' => 'string', 'description' => 'Istruzioni editoriali per la bozza: taglio, cosa includere, perché l\'idea è promettente'),
                 'keywords' => array('type' => 'array', 'items' => array('type' => 'string'), 'description' => 'Keyword SEO (max 5)'),
                 'data_programmata' => array('type' => 'string', 'description' => 'Data generazione bozza YYYY-MM-DD (opzionale)'),
+                'profilo_id' => array('type' => 'integer', 'description' => 'ID del profilo istruzioni più adatto (dall\'elenco PROFILI ISTRUZIONI DISPONIBILI): la bozza verrà scritta con quel tono e quelle regole'),
             ), 'required' => array('titolo', 'prompt'), 'additionalProperties' => false)),
         ));
     }
@@ -485,7 +515,15 @@ class ALMA_AI_Idea_Agent {
         $prompt = sanitize_textarea_field((string)($arguments['prompt'] ?? ''));
         if ($title === '' || $prompt === '') { return array('error' => 'titolo e prompt sono obbligatori.'); }
 
-        $idea_id = ALMA_AI_Content_Agent_Ideas::create($title);
+        // Profilo istruzioni scelto strategicamente dall'agente: validato
+        // contro i profili attivi; 0 = istruzioni globali.
+        $profile_id = absint($arguments['profilo_id'] ?? 0);
+        if ($profile_id > 0) {
+            $profile = class_exists('ALMA_AI_Content_Agent_Instructions_Manager') ? ALMA_AI_Content_Agent_Instructions_Manager::get_profile($profile_id) : array();
+            if (empty($profile) || empty($profile['is_active'])) { $profile_id = 0; }
+        }
+
+        $idea_id = ALMA_AI_Content_Agent_Ideas::create($title, $profile_id);
         if ($idea_id < 1) { return array('error' => 'Errore creazione idea.'); }
         update_post_meta($idea_id, ALMA_AI_Content_Agent_Ideas::META_PROMPT, $prompt);
         update_post_meta($idea_id, ALMA_AI_Content_Agent_Ideas::META_SOURCE, 'agent');

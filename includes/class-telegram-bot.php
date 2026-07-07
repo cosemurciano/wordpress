@@ -401,15 +401,31 @@ class ALMA_Telegram_Bot {
     public static function format_agent_report($report) {
         $ideas = (array) ($report['ideas_created'] ?? array());
         $drafts = array_filter((array) ($report['drafts_created'] ?? array()), function ($d) { return !empty($d['post_id']); });
+        $auto_publish = get_option('alma_ai_auto_publish', 'no') === 'yes';
         $text = "<b>🤖 Report agente ideazione</b>\n";
         $text .= 'Avviato: ' . self::esc($report['started_at'] ?? '') . "\n";
         $text .= 'Idee create: <b>' . count($ideas) . '</b> · Bozze: <b>' . count($drafts) . '</b> · Costo stimato: ~$' . number_format((float) ($report['cost_total'] ?? 0), 4) . "\n";
-        foreach (array_slice($ideas, 0, 8) as $idea) {
-            $text .= '• ' . self::esc($idea['titolo']) . (!empty($idea['localita']) ? ' — 📍 ' . self::esc($idea['localita']) : '') . "\n";
-        }
-        foreach (array_slice($drafts, 0, 5) as $draft) {
-            $preview = get_preview_post_link((int) $draft['post_id']);
-            $text .= '📝 <a href="' . esc_url($preview) . '">' . self::esc($draft['titolo']) . "</a>\n";
+        if ($auto_publish) {
+            // Pubblicazione automatica attiva: niente elenco idee (ridondante),
+            // per ogni articolo pubblicato titolo + link + modifica.
+            foreach (array_slice($drafts, 0, 10) as $draft) {
+                $post_id = (int) $draft['post_id'];
+                $edit_url = admin_url('post.php?post=' . $post_id . '&action=edit');
+                if (get_post_status($post_id) === 'publish') {
+                    $text .= '📣 <a href="' . esc_url(get_permalink($post_id)) . '">' . self::esc($draft['titolo']) . '</a> · <a href="' . esc_url($edit_url) . '">✏️ Modifica</a>' . "\n";
+                } else {
+                    $preview = get_preview_post_link($post_id);
+                    $text .= '📝 <a href="' . esc_url($preview ?: $edit_url) . '">' . self::esc($draft['titolo']) . '</a> · <a href="' . esc_url($edit_url) . '">✏️ Modifica</a>' . "\n";
+                }
+            }
+        } else {
+            foreach (array_slice($ideas, 0, 8) as $idea) {
+                $text .= '• ' . self::esc($idea['titolo']) . (!empty($idea['localita']) ? ' — 📍 ' . self::esc($idea['localita']) : '') . "\n";
+            }
+            foreach (array_slice($drafts, 0, 5) as $draft) {
+                $preview = get_preview_post_link((int) $draft['post_id']);
+                $text .= '📝 <a href="' . esc_url($preview) . '">' . self::esc($draft['titolo']) . "</a>\n";
+            }
         }
         if (!empty($report['error'])) { $text .= '⚠️ ' . self::esc($report['error']) . "\n"; }
         if (!empty($report['summary'])) { $text .= "\n" . self::esc(wp_trim_words($report['summary'], 80, '…')); }
@@ -556,7 +572,10 @@ class ALMA_Telegram_Bot {
         $text = '📣 <b>Articolo pubblicato</b>' . ($is_ai ? ' · 🤖 scritto dall\'Agente AI' : '') . "\n"
             . '<b>' . self::esc(html_entity_decode(get_the_title($post), ENT_QUOTES, 'UTF-8')) . "</b>\n"
             . self::esc($excerpt);
-        $keyboard = array(array(array('text' => '🔗 Apri articolo', 'url' => get_permalink($post))));
+        $keyboard = array(array(
+            array('text' => '🔗 Apri articolo', 'url' => get_permalink($post)),
+            array('text' => '✏️ Modifica', 'url' => admin_url('post.php?post=' . (int) $post->ID . '&action=edit')),
+        ));
         self::broadcast($text, $keyboard);
     }
 
