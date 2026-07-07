@@ -407,7 +407,7 @@ class ALMA_AI_Content_Agent_Admin {
 
         echo '<tr><th scope="row"><label for="'.esc_attr(ALMA_AI_Insertion_Rules::OPTION_WIDGET_MAX_LINKS).'">Link massimi nel widget</label></th><td>';
         echo '<input type="number" min="2" max="8" class="small-text" name="'.esc_attr(ALMA_AI_Insertion_Rules::OPTION_WIDGET_MAX_LINKS).'" id="'.esc_attr(ALMA_AI_Insertion_Rules::OPTION_WIDGET_MAX_LINKS).'" value="'.esc_attr((string)$rules['widget_max_links']).'">';
-        echo '<p class="description">Il widget di raccolta finale contiene da 2 a N link; massimo un widget per articolo (applicato dal QA).</p></td></tr>';
+        echo '<p class="description">Tetto per i widget creati dall\'AI (massimo un widget per articolo, applicato dal QA). Vale insieme ai limiti del layout scelto: Vetrina in evidenza usa sempre 1 link, Card destinazione 2-6, Card esperienza 2-8 — il limite più basso vince, senza mai scendere sotto il minimo del layout. Non riguarda i widget creati manualmente in Crea Widget Link (fino a 20 link).</p></td></tr>';
 
         echo '<tr><th scope="row"><label for="'.esc_attr(ALMA_AI_Insertion_Rules::OPTION_BUTTON_TEXT).'">Testo bottone di default</label></th><td>';
         echo '<input type="text" class="regular-text" name="'.esc_attr(ALMA_AI_Insertion_Rules::OPTION_BUTTON_TEXT).'" id="'.esc_attr(ALMA_AI_Insertion_Rules::OPTION_BUTTON_TEXT).'" value="'.esc_attr($rules['button_text']).'"></td></tr>';

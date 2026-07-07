@@ -655,6 +655,10 @@ class ALMA_Geo_Auto_Indexer {
     public function init_hooks() {
         add_action('save_post_affiliate_link', array($this, 'queue_deferred_index'), 200);
         add_action('save_post_post', array($this, 'queue_deferred_index'), 200);
+        // Alla pubblicazione: copre wp_publish_post (es. pulsante Pubblica su
+        // Telegram) che non passa da save_post, e le bozze che al salvataggio
+        // erano ancora draft (l'indexer lavora solo sui post pubblicati).
+        add_action('transition_post_status', array($this, 'queue_index_on_publish'), 20, 3);
         add_action('shutdown', array($this, 'run_deferred_index'));
 
         if (is_admin()) {
@@ -743,6 +747,16 @@ class ALMA_Geo_Auto_Indexer {
      * (destinazione inclusa) dopo wp_insert_post: durante save_post i dati
      * del provider non sono ancora disponibili.
      */
+    public function queue_index_on_publish($new_status, $old_status, $post) {
+        if ($new_status !== 'publish' || $old_status === 'publish') {
+            return;
+        }
+        if (!($post instanceof WP_Post) || !in_array($post->post_type, array('post', 'affiliate_link'), true)) {
+            return;
+        }
+        $this->queue_deferred_index($post->ID);
+    }
+
     public function queue_deferred_index($post_id) {
         if (wp_is_post_autosave($post_id) || wp_is_post_revision($post_id)) {
             return;

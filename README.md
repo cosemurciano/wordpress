@@ -1,3 +1,9 @@
+## 2.85.0 - 2026-07-07
+
+### Agente più affidabile
+- Report Telegram su misura con auto-pubblicazione (articoli con link e Modifica, senza elenco idee); "Link massimi nel widget" riconciliato con i limiti dei layout; l'agente sceglie strategicamente il Profilo di Istruzioni per ogni idea; widget garantito in ogni articolo (fallback deterministico); rimosso il vincolo "una al giorno"; risolta la geolocalizzazione mancante degli articoli dell'agente (località dell'idea assegnata alla bozza + indicizzazione alla pubblicazione, anche da Telegram).
+- Versione plugin aggiornata a `2.85.0`.
+
 ## 2.84.0 - 2026-07-07
 
 ### Chiave OpenAI in wp-config + Telegram completo per la regia

@@ -1,3 +1,15 @@
+## 2.85.0 - 2026-07-07
+
+### Agente più affidabile: profili strategici, widget garantito, geolocalizzazione degli articoli, report su misura
+- **Report Telegram con pubblicazione automatica attiva**: niente più elenco delle idee create (ridondante); per ogni articolo pubblicato il report mostra **titolo, link all'articolo e link ✏️ Modifica**. Anche la notifica "Articolo pubblicato" ha ora il pulsante **✏️ Modifica** accanto ad "Apri articolo".
+- **Conflitto "Link massimi nel widget" risolto**: il limite delle Regole inserimento vale solo per i widget creati dall'AI e viene riconciliato con i limiti del layout scelto — il più basso vince ma **mai sotto il minimo del layout** (prima, con limite basso, un layout valido poteva diventare impossibile). Descrizione del campo aggiornata (i widget manuali di Crea Widget Link non c'entrano, fino a 20 link).
+- **L'agente ora usa i Profili di Istruzioni AI e sceglie quale strategicamente**: il prompt dell'agente elenca i profili attivi (nome, tono, target) e `crea_idea` accetta `profilo_id` — per ogni idea l'agente indica il profilo più adatto al taglio dell'articolo (validato contro i profili attivi) e la bozza viene scritta con quel tono e quelle regole. Prima le idee dell'agente nascevano sempre senza profilo.
+- **Widget garantito in ogni articolo dell'agente**: se l'AI non compila la `widget_request` (o la compila male), il sistema crea comunque un widget deterministico dai migliori candidati (Vetrina con 1 candidato, Card esperienza con 2-4) e lo aggiunge all'articolo; le istruzioni al modello ora dicono di inserire SEMPRE il segnaposto, con la scelta del layout.
+- **Rimosso il vincolo "mai più di una al giorno se possibile"** dai prompt dell'agente: era inutile (la distribuzione viene comunque imposta da `enforce_schedule` sul piano richiesto) e produceva note operative confuse nei riepiloghi.
+- **Geolocalizzazione degli articoli dell'agente (bug risolto)**: l'auto-indexer geografico lavora solo sui post *pubblicati*, quindi le bozze dell'agente restavano senza località; inoltre la pubblicazione dal pulsante Telegram (`wp_publish_post`) non passa da `save_post` e non veniva mai indicizzata. Ora: (1) alla creazione della bozza la **località già risolta dell'idea** viene assegnata direttamente all'articolo (fonte `ai_agent`, mai sovrascrittura di località esistenti); (2) nuovo hook alla **pubblicazione** che indicizza qualsiasi post/link che arrivi a publish senza località, incluso il percorso Telegram.
+- Test standalone 13/13 sui sei interventi + 46/46 Telegram invariati.
+- Versione plugin aggiornata a `2.85.0`.
+
 ## 2.84.0 - 2026-07-07
 
 ### Chiave OpenAI solo in wp-config.php + Telegram riallineato con regia completa

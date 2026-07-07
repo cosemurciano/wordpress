@@ -1233,7 +1233,26 @@ class ALMA_AI_Content_Agent_Draft_Builder {
             $widget_request = is_array($parsed['widget_request'] ?? null) ? $parsed['widget_request'] : array();
             $widget_result = ALMA_AI_Insertion_Rules::apply_widget_request($clean['content'], $widget_request, $candidate_affiliate_ids);
             $ai_widget_id = (int) $widget_result['widget_id'];
-            $enforced = ALMA_AI_Insertion_Rules::enforce($widget_result['content'], ALMA_AI_Insertion_Rules::get_rules());
+            $clean['content'] = $widget_result['content'];
+            // Garanzia: almeno UN widget per articolo. Se l'AI non lo ha
+            // richiesto (o la richiesta era invalida) e il pattern widget è
+            // abilitato, se ne crea uno deterministico dai migliori candidati.
+            $rules_snapshot = ALMA_AI_Insertion_Rules::get_rules();
+            if ($ai_widget_id < 1 && in_array('widget', (array) $rules_snapshot['patterns'], true) && !empty($candidate_affiliate_ids)) {
+                $fallback_ids = array_slice(array_map('absint', (array) $candidate_affiliate_ids), 0, 4);
+                $fallback_request = array(
+                    'title' => __('Esperienze consigliate', 'affiliate-link-manager-ai'),
+                    'layout' => count($fallback_ids) === 1 ? 'hero_spotlight' : 'experience_cards',
+                    'link_ids' => $fallback_ids,
+                );
+                $fallback_result = ALMA_AI_Insertion_Rules::apply_widget_request($clean['content'], $fallback_request, $candidate_affiliate_ids);
+                if ((int) $fallback_result['widget_id'] > 0) {
+                    $ai_widget_id = (int) $fallback_result['widget_id'];
+                    $clean['content'] = $fallback_result['content'];
+                    $widget_result['warnings'][] = 'Widget non richiesto dall\'AI: aggiunto automaticamente con i migliori candidati.';
+                }
+            }
+            $enforced = ALMA_AI_Insertion_Rules::enforce($clean['content'], $rules_snapshot);
             $clean['content'] = $enforced['content'];
             $clean['warnings'] = array_values(array_unique(array_merge((array)$clean['warnings'], (array)$widget_result['warnings'], (array)$enforced['warnings'])));
         }
