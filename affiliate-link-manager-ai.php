@@ -3,7 +3,7 @@
  * Plugin Name: Affiliate Link Manager AI
  * Plugin URI: https://your-website.com
  * Description: Gestisce link affiliati con intelligenza artificiale per ottimizzazione e tracking automatico.
- * Version: 2.82.0
+ * Version: 2.83.0
  * Author: Cosè Murciano
  * License: GPL v2 or later
  * Text Domain: affiliate-link-manager-ai
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Definisci costanti del plugin
-define('ALMA_VERSION', '2.82.0');
+define('ALMA_VERSION', '2.83.0');
 define('ALMA_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('ALMA_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('ALMA_PLUGIN_FILE', __FILE__);
@@ -3502,6 +3502,32 @@ class AffiliateManagerAI {
         <?php
     }
 
+    /**
+     * Anteprima live del widget nel builder: rendering reale (stessi markup e
+     * CSS del frontend) con i click disabilitati per evitare tracking/navigazioni.
+     */
+    private function render_widget_preview($instance) {
+        $links = array_filter(array_map('absint', (array) ($instance['links'] ?? array())));
+        ?>
+        <div class="alma-widget-builder-section alma-widget-preview">
+            <h2><?php _e('Anteprima', 'affiliate-link-manager-ai'); ?></h2>
+            <?php if (empty($links)) : ?>
+                <p class="description"><?php _e('Aggiungi almeno un link per vedere l\'anteprima del widget.', 'affiliate-link-manager-ai'); ?></p>
+            <?php else :
+                $preview = class_exists('ALMA_Affiliate_Links_Widget') ? ALMA_Affiliate_Links_Widget::render_links($instance) : '';
+                if ($preview === '') : ?>
+                    <p class="description"><?php _e('Nessun link renderizzabile (link non pubblicati, senza URL o in quarantena).', 'affiliate-link-manager-ai'); ?></p>
+                <?php else : ?>
+                    <div style="pointer-events:none;background:#fff;border:1px dashed #c3c4c7;border-radius:8px;padding:16px;max-width:1100px;">
+                        <?php echo $preview; // Markup generato ed escapato dal renderer del widget. ?>
+                    </div>
+                    <p class="description"><?php _e('Anteprima indicativa (i font finali dipendono dal tema); i click qui sono disabilitati. Ricarica la pagina dopo aver aggiunto o rimosso link per aggiornarla.', 'affiliate-link-manager-ai'); ?></p>
+                <?php endif;
+            endif; ?>
+        </div>
+        <?php
+    }
+
     private function get_widget_ai_rewrite_logs($limit = 10) {
         global $wpdb;
         $table = ALMA_AI_Usage_Logger::table_name();
@@ -3613,6 +3639,7 @@ class AffiliateManagerAI {
                 </tbody></table>
                 <?php $this->render_widget_affiliate_search($search, $instance['links']); ?>
                 <?php $this->render_widget_selected_links($instance['links']); ?>
+                <?php $this->render_widget_preview($instance); ?>
                 <?php if (!$created) : ?><p><input type="submit" name="alma_create_widget" class="button-primary" value="<?php esc_attr_e('Crea widget', 'affiliate-link-manager-ai'); ?>"></p><?php endif; ?>
             </form>
         </div>
@@ -3700,6 +3727,7 @@ class AffiliateManagerAI {
                 </tbody></table>
                 <?php $this->render_widget_affiliate_search($search, $instance['links'] ?? array()); ?>
                 <?php $this->render_widget_selected_links($instance['links'] ?? array()); ?>
+                <?php $this->render_widget_preview($instance); ?>
                 <p><input type="submit" name="alma_save_widget" class="button-primary" value="<?php esc_attr_e('Salva widget', 'affiliate-link-manager-ai'); ?>"></p>
             </form>
         </div>
@@ -3746,20 +3774,52 @@ class AffiliateManagerAI {
             }
         }
 
+        if (isset($_POST['alma_save_widget_accent']) && check_admin_referer('alma_widget_accent')) {
+            $accent = sanitize_text_field(wp_unslash($_POST['alma_widget_accent_color'] ?? ''));
+            if (preg_match('/^#[0-9a-fA-F]{6}$/', $accent)) {
+                update_option('alma_widget_accent_color', $accent, false);
+                echo '<div class="notice notice-success"><p>' . esc_html__('Colore accento salvato: verrà usato da pulsanti e CTA di tutti i widget a card.', 'affiliate-link-manager-ai') . '</p></div>';
+            } else {
+                echo '<div class="notice notice-error"><p>' . esc_html__('Colore non valido: usa il formato esadecimale (#RRGGBB).', 'affiliate-link-manager-ai') . '</p></div>';
+            }
+        }
+
+        // Solo le istanze numeriche, dal più recente al più vecchio (gli ID
+        // sono progressivi; created_at può mancare nei widget storici).
+        $rows = array();
+        foreach ((array) $instances as $id => $instance) {
+            if (is_numeric($id)) {
+                $rows[(int) $id] = $instance;
+            }
+        }
+        krsort($rows, SORT_NUMERIC);
+
+        // Click degli ultimi 30 giorni provenienti dai widget, per link.
+        $widget_clicks_by_link = array();
+        $all_link_ids = array();
+        foreach ($rows as $instance) {
+            foreach ((array) ($instance['links'] ?? array()) as $lid) {
+                $all_link_ids[] = absint($lid);
+            }
+        }
+        $all_link_ids = array_values(array_unique(array_filter($all_link_ids)));
+        if (!empty($all_link_ids)) {
+            global $wpdb;
+            $table = $wpdb->prefix . 'alma_analytics';
+            if ($wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $table)) === $table) {
+                $placeholders = implode(',', array_fill(0, count($all_link_ids), '%d'));
+                $cutoff = gmdate('Y-m-d H:i:s', current_time('timestamp') - 30 * DAY_IN_SECONDS);
+                $click_rows = $wpdb->get_results($wpdb->prepare("SELECT link_id, COUNT(*) AS clicks FROM {$table} WHERE source = 'widget' AND click_time >= %s AND link_id IN ({$placeholders}) GROUP BY link_id", array_merge(array($cutoff), $all_link_ids)), ARRAY_A);
+                foreach ((array) $click_rows as $click_row) {
+                    $widget_clicks_by_link[(int) $click_row['link_id']] = (int) $click_row['clicks'];
+                }
+            }
+        }
+
         ?>
         <div class="wrap">
             <h1><?php _e('Elenco Widget Link', 'affiliate-link-manager-ai'); ?></h1>
-            <?php
-            $has_items = false;
-            if (is_array($instances)) {
-                foreach ($instances as $id => $instance) {
-                    if (is_numeric($id)) {
-                        $has_items = true;
-                        break;
-                    }
-                }
-            }
-            if (!$has_items) : ?>
+            <?php if (empty($rows)) : ?>
                 <p><?php _e('Nessun widget configurato.', 'affiliate-link-manager-ai'); ?></p>
             <?php else : ?>
                 <table class="widefat">
@@ -3769,26 +3829,31 @@ class AffiliateManagerAI {
                             <th><?php _e('Titolo', 'affiliate-link-manager-ai'); ?></th>
                             <th><?php _e('Creato il', 'affiliate-link-manager-ai'); ?></th>
                             <th><?php _e('Layout', 'affiliate-link-manager-ai'); ?></th>
+                            <th><?php _e('Link', 'affiliate-link-manager-ai'); ?></th>
+                            <th><?php _e('Click 30gg', 'affiliate-link-manager-ai'); ?></th>
                             <th><?php _e('Shortcode', 'affiliate-link-manager-ai'); ?></th>
                             <th><?php _e('Azioni', 'affiliate-link-manager-ai'); ?></th>
                         </tr>
                     </thead>
                     <tbody>
-                        <?php foreach ($instances as $id => $instance) :
-                            if (!is_numeric($id)) {
-                                continue;
-                            }
+                        <?php foreach ($rows as $id => $instance) :
                             $title        = $instance['title'] ?? '';
                             $shortcode    = '[affiliate_links_widget id="' . $id . '"]';
                             $created_at   = $instance['created_at'] ?? '';
                             $created_disp = $created_at ? mysql2date(get_option('date_format'), $created_at) : '-';
                             $layout_label = $this->get_widget_layout_label($this->get_widget_layout_preset_for_instance($instance));
+                            $link_ids     = array_values(array_unique(array_filter(array_map('absint', (array) ($instance['links'] ?? array())))));
+                            $clicks       = 0;
+                            foreach ($link_ids as $lid) { $clicks += $widget_clicks_by_link[$lid] ?? 0; }
+                            $is_ai        = !empty($instance['alma_created_by']) && $instance['alma_created_by'] === 'ai_agent';
                         ?>
                         <tr>
                             <td><?php echo esc_html($id); ?></td>
-                            <td><?php echo esc_html($title); ?></td>
+                            <td><?php echo esc_html($title); ?><?php if ($is_ai) : ?> <span title="<?php esc_attr_e('Creato dall\'Agente AI', 'affiliate-link-manager-ai'); ?>">🤖</span><?php endif; ?></td>
                             <td><?php echo esc_html($created_disp); ?></td>
                             <td><span class="alma-layout-badge"><?php echo esc_html($layout_label); ?></span></td>
+                            <td><?php echo esc_html(count($link_ids)); ?></td>
+                            <td><?php echo esc_html($clicks); ?></td>
                             <td><code><?php echo esc_html($shortcode); ?></code></td>
                             <td>
                                 <a href="<?php echo esc_url(admin_url('admin.php?page=alma-edit-widget&widget_id=' . $id)); ?>"><?php _e('Modifica', 'affiliate-link-manager-ai'); ?></a> |
@@ -3798,7 +3863,18 @@ class AffiliateManagerAI {
                         <?php endforeach; ?>
                     </tbody>
                 </table>
+                <p class="description"><?php _e('Click 30gg: click con provenienza "widget" sui link contenuti nel widget negli ultimi 30 giorni. Se lo stesso link è presente in più widget, i click contano in ciascuno.', 'affiliate-link-manager-ai'); ?></p>
             <?php endif; ?>
+
+            <div class="postbox" style="margin-top:16px;max-width:720px;"><div class="inside">
+                <h3 style="margin-top:8px;"><?php _e('Colore accento dei widget a card', 'affiliate-link-manager-ai'); ?></h3>
+                <p class="description"><?php _e('Usato da pulsanti e CTA dei layout Card esperienza e Vetrina in evidenza. Sovrascrivibile via CSS con la variabile --alma-wgt-accent.', 'affiliate-link-manager-ai'); ?></p>
+                <form method="post" style="display:flex;gap:10px;align-items:center;">
+                    <?php wp_nonce_field('alma_widget_accent'); ?>
+                    <input type="color" name="alma_widget_accent_color" value="<?php echo esc_attr(class_exists('ALMA_Affiliate_Links_Widget') ? ALMA_Affiliate_Links_Widget::accent_color() : '#1a6ee0'); ?>">
+                    <button type="submit" name="alma_save_widget_accent" value="1" class="button button-primary"><?php esc_html_e('Salva colore', 'affiliate-link-manager-ai'); ?></button>
+                </form>
+            </div></div>
         </div>
         <?php
     }

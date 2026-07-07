@@ -220,8 +220,20 @@ class ALMA_AI_Post_Enricher {
         }
         // Paragrafi decrescenti: gli inserimenti non spostano gli indici successivi.
         usort($additions, function ($a, $b) { return (int)$b['paragraph'] <=> (int)$a['paragraph']; });
+        $inserted_link_ids = array();
         foreach ($additions as $proposal) {
-            $content = ALMA_AI_Post_Optimizer::insert_after_paragraph($content, (int)$proposal['paragraph'], (string)$proposal['insertion'], !empty($proposal['inline']));
+            $insertion = (string)$proposal['insertion'];
+            if (($proposal['pattern'] ?? '') === 'widget') {
+                // L'istanza widget reale viene creata solo ora che la proposta
+                // viene applicata (visibile in Elenco Widget Link).
+                $created = ALMA_AI_Post_Optimizer::materialize_widget_proposal($proposal);
+                if (!empty($created['error'])) { continue; }
+                $insertion = $created['shortcode'];
+                $inserted_link_ids = array_merge($inserted_link_ids, array_map('absint', (array)($proposal['widget_request']['link_ids'] ?? array())));
+            } else {
+                $inserted_link_ids[] = absint($proposal['link_id'] ?? 0);
+            }
+            $content = ALMA_AI_Post_Optimizer::insert_after_paragraph($content, (int)$proposal['paragraph'], $insertion, !empty($proposal['inline']));
             $entry['added']++;
         }
 
@@ -237,6 +249,10 @@ class ALMA_AI_Post_Enricher {
             $entry['error'] = sanitize_text_field($updated->get_error_message());
         } else {
             $entry['updated'] = true;
+            // Immagini AI on-demand per i link appena inseriti senza immagine.
+            if (class_exists('ALMA_AI_Image_Generator') && !empty($inserted_link_ids)) {
+                ALMA_AI_Image_Generator::queue_links($inserted_link_ids);
+            }
         }
         self::log_entry($entry);
         return $entry;

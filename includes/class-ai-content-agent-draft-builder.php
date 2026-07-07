@@ -1244,6 +1244,12 @@ class ALMA_AI_Content_Agent_Draft_Builder {
         $post_id = wp_insert_post(array('post_type'=>'post','post_status'=>$post_status,'post_author'=>$user_id,'post_title'=>$clean['title'],'post_name'=>$clean['slug'],'post_excerpt'=>$clean['excerpt'],'post_content'=>$clean['content']), true);
         if (is_wp_error($post_id) || !$post_id) { return self::fail('Errore creazione bozza.', $res['model'] ?? '', 'session:user:'.$user_id); }
         if (!empty($ai_widget_id)) { update_post_meta($post_id, '_alma_ai_agent_widget_id', (int) $ai_widget_id); }
+        // I link affiliati usati nell'articolo senza immagine in evidenza vanno
+        // nella coda prioritaria di generazione immagini AI (quelli del widget
+        // sono già accodati alla creazione del widget).
+        if (class_exists('ALMA_AI_Image_Generator') && preg_match_all('/\[affiliate_link[^\]]*\bid="?(\d+)/', (string) $clean['content'], $used_link_matches)) {
+            ALMA_AI_Image_Generator::queue_links(array_map('absint', $used_link_matches[1]));
+        }
         $taxonomy_applied = self::apply_taxonomies_to_post($post_id, $taxonomy_clean);
         $taxonomy_warnings = array_values(array_unique(array_merge((array)$taxonomy_clean['warnings'], (array)$taxonomy_applied['warnings'])));
 

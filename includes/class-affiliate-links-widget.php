@@ -247,8 +247,16 @@ class ALMA_Affiliate_Links_Widget extends WP_Widget {
         return $attrs;
     }
 
+    /**
+     * Colore accento delle card (pulsanti/CTA): opzione admin, esadecimale.
+     */
+    public static function accent_color() {
+        $color = trim((string) get_option('alma_widget_accent_color', ''));
+        return preg_match('/^#[0-9a-fA-F]{6}$/', $color) ? $color : '#1a6ee0';
+    }
+
     private static function card_styles_css() {
-        return '.alma-wgt{--alma-wgt-accent:#1a6ee0;--alma-wgt-ink:#1a2b49;margin:24px 0;}'
+        return '.alma-wgt{--alma-wgt-accent:' . self::accent_color() . ';--alma-wgt-ink:#1a2b49;margin:24px 0;}'
             . '.alma-wgt a{text-decoration:none;box-shadow:none;}'
             // Card destinazione: immagine piena + gradiente + titolo/località.
             . '.alma-wgt--dest{display:grid;gap:16px;grid-template-columns:repeat(3,minmax(0,1fr));}'

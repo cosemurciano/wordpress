@@ -401,6 +401,12 @@ class ALMA_AI_Post_Optimizer {
         }
 
         $allowed_patterns = array_values(array_intersect($rules['patterns'], array('anchor', 'button', 'card')));
+        // Pattern widget (2.83.0): proponibile solo se abilitato nelle regole
+        // e l'articolo non contiene già un widget di link affiliati.
+        $widget_allowed = in_array('widget', $rules['patterns'], true)
+            && !preg_match('/\[affiliate_links_widget[\s\]]/', $post->post_content)
+            && class_exists('ALMA_Affiliate_Widget_Layout_Registry');
+        if ($widget_allowed) { $allowed_patterns[] = 'widget'; }
         $context = array(
             'titolo_articolo' => html_entity_decode(get_the_title($post), ENT_QUOTES, 'UTF-8'),
             'paragrafi' => array_map(function ($text, $i) { return array('indice' => $i, 'testo' => mb_substr($text, 0, 320)); }, $paragraphs, array_keys($paragraphs)),
@@ -412,6 +418,9 @@ class ALMA_AI_Post_Optimizer {
         );
         $prompt = 'Analizza l\'articolo e proponi al massimo ' . $budget . ' inserimenti di link affiliati che aumentino la conversione SENZA rompere il flusso di lettura. '
             . 'Rispondi SOLO JSON: {"proposte":[{"paragrafo":int (indice del paragrafo DOPO il quale inserire, >= primo_paragrafo_utilizzabile),"pattern":"anchor|button|card","link_id":int (solo da link_candidati),"frase":string (SOLO per anchor: una frase completa e naturale che prosegue il paragrafo e contiene lo shortcode [affiliate_link id="ID" text="anchor descrittiva"]),"button_text":string (per button/card),"motivo":string (perché qui, orientato alla conversione)}]}. ';
+        if ($widget_allowed) {
+            $prompt .= 'Puoi inoltre proporre AL MASSIMO UN widget di link affiliati (blocco grafico a card) se l\'articolo si presta: aggiungi alle proposte {"pattern":"widget","paragrafo":int,"layout":"destination_cards|experience_cards|hero_spotlight","link_ids":[int (solo da link_candidati)],"titolo":string,"button_text":string,"motivo":string}. Layout: destination_cards = griglia di mete/destinazioni (2-6 link); experience_cards = card di tour/attività specifiche (2-8 link); hero_spotlight = UNA sola esperienza di punta (1 link). ';
+        }
         if ($allow_replacements) {
             $existing_analysis = self::analyze_content($post->ID, $post->post_content);
             $existing_links = array();
@@ -537,6 +546,7 @@ class ALMA_AI_Post_Optimizer {
         $candidate_map = array();
         foreach ($candidates as $candidate) { $candidate_map[(int)$candidate['id']] = $candidate['titolo']; }
         $proposals = array();
+        $widget_proposed = false;
         foreach ((array)$raw as $row) {
             if (count($proposals) >= $budget) { break; }
             if (!is_array($row)) { continue; }
@@ -544,8 +554,43 @@ class ALMA_AI_Post_Optimizer {
             $link_id = absint($row['link_id'] ?? 0);
             $paragraph = absint($row['paragrafo'] ?? 0);
             if (!in_array($pattern, $allowed_patterns, true)) { continue; }
-            if (!isset($candidate_map[$link_id])) { continue; }
             if ($paragraph < (int)$rules['min_paragraphs_before'] || $paragraph >= count($paragraphs)) { continue; }
+
+            if ($pattern === 'widget') {
+                // Max 1 widget per articolo; l'istanza reale viene creata solo
+                // all'applicazione (mai widget orfani per proposte rifiutate).
+                if ($widget_proposed) { continue; }
+                $widget_link_ids = array_values(array_unique(array_filter(array_map('absint', (array)($row['link_ids'] ?? array())))));
+                $widget_link_ids = array_values(array_filter($widget_link_ids, function ($id) use ($candidate_map) { return isset($candidate_map[$id]); }));
+                $layout = sanitize_key((string)($row['layout'] ?? ''));
+                $selectable = ALMA_Affiliate_Widget_Layout_Registry::get_selectable_presets();
+                if (!isset($selectable[$layout])) { $layout = ALMA_Affiliate_Widget_Layout_Registry::get_default_preset(); }
+                $preset = $selectable[$layout];
+                $widget_link_ids = array_slice($widget_link_ids, 0, absint($preset['max_links']));
+                if (count($widget_link_ids) < max(1, absint($preset['min_links']))) { continue; }
+                $titles = array_map(function ($id) use ($candidate_map) { return $candidate_map[$id]; }, $widget_link_ids);
+                $proposal = array(
+                    'pattern' => 'widget',
+                    'link_id' => $widget_link_ids[0],
+                    'link_title' => implode(', ', array_slice($titles, 0, 3)) . (count($titles) > 3 ? '…' : ''),
+                    'paragraph' => $paragraph,
+                    'insertion' => sprintf('Widget "%s" (%s) con %d link', sanitize_text_field((string)($row['titolo'] ?? '')), $preset['label'], count($widget_link_ids)),
+                    'inline' => false,
+                    'widget_request' => array(
+                        'title' => sanitize_text_field((string)($row['titolo'] ?? '')),
+                        'layout' => $layout,
+                        'link_ids' => $widget_link_ids,
+                        'button_text' => sanitize_text_field((string)($row['button_text'] ?? '')),
+                    ),
+                    'reason' => sanitize_text_field((string)($row['motivo'] ?? '')),
+                    'created_at' => current_time('mysql'),
+                );
+                $proposals[md5(wp_json_encode(array('widget', $widget_link_ids, $paragraph, $layout)))] = $proposal;
+                $widget_proposed = true;
+                continue;
+            }
+
+            if (!isset($candidate_map[$link_id])) { continue; }
 
             if ($pattern === 'anchor') {
                 $sentence = sanitize_text_field((string)($row['frase'] ?? ''));
@@ -577,6 +622,23 @@ class ALMA_AI_Post_Optimizer {
         return $proposals;
     }
 
+    /**
+     * Crea l'istanza widget di una proposta 'widget' e ritorna lo shortcode
+     * da inserire (o un errore). Chiamata SOLO all'applicazione.
+     */
+    public static function materialize_widget_proposal($proposal) {
+        $request = is_array($proposal['widget_request'] ?? null) ? $proposal['widget_request'] : array();
+        $link_ids = array_map('absint', (array)($request['link_ids'] ?? array()));
+        if (empty($link_ids) || !class_exists('ALMA_AI_Insertion_Rules')) {
+            return array('error' => __('Proposta widget non valida.', 'affiliate-link-manager-ai'));
+        }
+        $created = ALMA_AI_Insertion_Rules::create_widget_from_request($request, $link_ids);
+        if (!empty($created['error'])) {
+            return array('error' => sanitize_text_field((string)$created['error']));
+        }
+        return array('shortcode' => (string)$created['shortcode'], 'widget_id' => (int)$created['widget_id']);
+    }
+
     public static function ajax_apply() {
         $post_id = self::verify_request();
         $key = sanitize_text_field(wp_unslash($_POST['proposal'] ?? ''));
@@ -588,7 +650,15 @@ class ALMA_AI_Post_Optimizer {
         $post = get_post($post_id);
         if (!$post) { wp_send_json_error(array('message' => __('Post non trovato.', 'affiliate-link-manager-ai')), 404); }
 
-        $new_content = self::insert_after_paragraph($post->post_content, (int)$proposal['paragraph'], (string)$proposal['insertion'], !empty($proposal['inline']));
+        $insertion = (string)$proposal['insertion'];
+        if (($proposal['pattern'] ?? '') === 'widget') {
+            $created = self::materialize_widget_proposal($proposal);
+            if (!empty($created['error'])) {
+                wp_send_json_error(array('message' => $created['error']));
+            }
+            $insertion = $created['shortcode'];
+        }
+        $new_content = self::insert_after_paragraph($post->post_content, (int)$proposal['paragraph'], $insertion, !empty($proposal['inline']));
         // wp_update_post crea automaticamente una revisione: rollback nativo.
         $updated = wp_update_post(array('ID' => $post_id, 'post_content' => $new_content), true);
         if (is_wp_error($updated)) {
@@ -596,6 +666,13 @@ class ALMA_AI_Post_Optimizer {
         }
         $stored[$key]['applied'] = current_time('mysql');
         update_post_meta($post_id, self::META_PROPOSALS, $stored);
+        // Immagini AI on-demand per i link inseriti senza immagine in evidenza.
+        if (class_exists('ALMA_AI_Image_Generator')) {
+            $applied_ids = ($proposal['pattern'] ?? '') === 'widget'
+                ? array_map('absint', (array)($proposal['widget_request']['link_ids'] ?? array()))
+                : array(absint($proposal['link_id'] ?? 0));
+            ALMA_AI_Image_Generator::queue_links($applied_ids);
+        }
         wp_send_json_success(array('applied' => true));
     }
 
