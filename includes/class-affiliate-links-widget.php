@@ -17,6 +17,12 @@ class ALMA_Affiliate_Links_Widget extends WP_Widget {
         $links = isset($instance['links']) ? array_map('intval', (array) $instance['links']) : array();
         $has_preset = !empty($instance['layout_preset']) && class_exists('ALMA_Affiliate_Widget_Layout_Registry') && ALMA_Affiliate_Widget_Layout_Registry::is_valid_preset($instance['layout_preset']);
 
+        // Nuovi layout a card (2.82.0): rendering dedicato in stile catalogo
+        // esperienze. I preset legacy columns_* proseguono nel percorso storico.
+        if ($has_preset && ALMA_Affiliate_Widget_Layout_Registry::is_card_preset($instance['layout_preset'])) {
+            return self::render_card_layout($instance, ALMA_Affiliate_Widget_Layout_Registry::sanitize_preset($instance['layout_preset']));
+        }
+
         if ($has_preset) {
             $preset = ALMA_Affiliate_Widget_Layout_Registry::get_preset($instance['layout_preset']);
             $show_image = true;
@@ -135,6 +141,211 @@ class ALMA_Affiliate_Links_Widget extends WP_Widget {
 
         $output .= '</div>';
 
+        return $output;
+    }
+
+    /* ---------------------------------------------------------------------
+     * Layout a card (2.82.0) — stile catalogo esperienze, senza loghi
+     * ------------------------------------------------------------------ */
+
+    /**
+     * Tronca un testo a fine parola aggiungendo l'ellissi. Funzione pura.
+     */
+    public static function truncate_text($text, $max_chars) {
+        $text = trim(preg_replace('/\s+/', ' ', (string) $text));
+        $max_chars = max(1, (int) $max_chars);
+        $length = function_exists('mb_strlen') ? mb_strlen($text) : strlen($text);
+        if ($length <= $max_chars) {
+            return $text;
+        }
+        $cut = function_exists('mb_substr') ? mb_substr($text, 0, $max_chars) : substr($text, 0, $max_chars);
+        $space = function_exists('mb_strrpos') ? mb_strrpos($cut, ' ') : strrpos($cut, ' ');
+        if ($space !== false && $space > $max_chars * 0.6) {
+            $cut = function_exists('mb_substr') ? mb_substr($cut, 0, $space) : substr($cut, 0, $space);
+        }
+        return rtrim($cut, " \t.,;:") . '…';
+    }
+
+    /**
+     * Etichetta località per le card: città (o località primaria), con il
+     * paese solo se diverso. Funzione pura.
+     */
+    public static function format_location($city, $name, $country) {
+        $primary = trim((string) $city);
+        if ($primary === '') {
+            $primary = trim((string) $name);
+        }
+        $country = trim((string) $country);
+        if ($primary === '') {
+            return $country;
+        }
+        if ($country === '' || strcasecmp($primary, $country) === 0) {
+            return $primary;
+        }
+        return $primary . ', ' . $country;
+    }
+
+    /**
+     * Raccoglie i dati card dei link del widget: salta i link non pubblicati,
+     * senza URL o in quarantena (Link Health).
+     */
+    private static function collect_card_items($instance) {
+        $links = isset($instance['links']) ? array_map('intval', (array) $instance['links']) : array();
+        $rewritten = self::normalize_rewritten_links($instance['rewritten_links'] ?? array());
+        $items = array();
+        foreach ($links as $id) {
+            $id = absint($id);
+            if ($id < 1 || get_post_status($id) !== 'publish') { continue; }
+            if (class_exists('ALMA_Link_Health_Checker') && ALMA_Link_Health_Checker::is_dead($id)) { continue; }
+            $url = trim((string) get_post_meta($id, '_affiliate_url', true));
+            if ($url === '') { continue; }
+
+            $rewrite = $rewritten[(string) $id] ?? array();
+            $title = trim((string) ($rewrite['title'] ?? ''));
+            if ($title === '') { $title = (string) get_the_title($id); }
+            $description = trim((string) ($rewrite['description'] ?? ''));
+            if ($description === '') {
+                $post = get_post($id);
+                $description = trim(wp_strip_all_tags((string) ($post->post_content ?? '')));
+            }
+            $location = self::format_location(
+                get_post_meta($id, '_alma_geo_primary_city', true),
+                get_post_meta($id, '_alma_geo_primary_name', true),
+                get_post_meta($id, '_alma_geo_primary_country', true)
+            );
+
+            $link_rel = get_post_meta($id, '_link_rel', true);
+            if ($link_rel === '') {
+                // Link interno: nessun attributo rel.
+            } elseif (!$link_rel) {
+                $link_rel = 'sponsored noopener';
+            }
+
+            $items[] = array(
+                'id' => $id,
+                'url' => $url,
+                'title' => $title,
+                'description' => $description,
+                'location' => $location,
+                'image' => (string) get_the_post_thumbnail_url($id, 'large'),
+                'rel' => (string) $link_rel,
+                'target' => get_post_meta($id, '_link_target', true) ?: '_blank',
+            );
+        }
+        return $items;
+    }
+
+    /**
+     * Attributi comuni dei link card: tracking click identico agli shortcode.
+     */
+    private static function card_link_attrs($item) {
+        $attrs = ' href="' . esc_url($item['url']) . '" data-link-id="' . esc_attr($item['id']) . '" data-track="1" data-source="widget"';
+        if ($item['rel'] !== '') {
+            $attrs .= ' rel="' . esc_attr($item['rel']) . '"';
+        }
+        $attrs .= ' target="' . esc_attr($item['target']) . '" title="' . esc_attr($item['title']) . '"';
+        return $attrs;
+    }
+
+    private static function card_styles_css() {
+        return '.alma-wgt{--alma-wgt-accent:#1a6ee0;--alma-wgt-ink:#1a2b49;margin:24px 0;}'
+            . '.alma-wgt a{text-decoration:none;box-shadow:none;}'
+            // Card destinazione: immagine piena + gradiente + titolo/località.
+            . '.alma-wgt--dest{display:grid;gap:16px;grid-template-columns:repeat(3,minmax(0,1fr));}'
+            . '.alma-wgt--dest.alma-wgt--n2{grid-template-columns:repeat(2,minmax(0,1fr));}'
+            . '.alma-wgt-dest{position:relative;display:block;border-radius:12px;overflow:hidden;aspect-ratio:4/3;background:#31435f center/cover no-repeat;}'
+            . '.alma-wgt-dest::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(12,22,38,.04) 42%,rgba(12,22,38,.74) 100%);}'
+            . '.alma-wgt-dest__body{position:absolute;left:18px;right:18px;bottom:16px;z-index:1;color:#fff;}'
+            . '.alma-wgt-dest__title{display:block;font-size:1.5em;font-weight:800;line-height:1.15;color:#fff;}'
+            . '.alma-wgt-dest__meta{display:block;margin-top:6px;font-size:.95em;font-weight:600;color:#fff;opacity:.95;}'
+            . '@media(max-width:782px){.alma-wgt--dest,.alma-wgt--dest.alma-wgt--n2{grid-template-columns:1fr;}.alma-wgt-dest{aspect-ratio:16/10;}}'
+            // Card esperienza: immagine, località, titolo, pulsante.
+            . '.alma-wgt--exp{display:grid;gap:16px;grid-template-columns:repeat(4,minmax(0,1fr));}'
+            . '.alma-wgt--exp.alma-wgt--n2{grid-template-columns:repeat(2,minmax(0,1fr));}'
+            . '.alma-wgt--exp.alma-wgt--n3{grid-template-columns:repeat(3,minmax(0,1fr));}'
+            . '.alma-wgt-exp{background:#fff;border:1px solid #e6e8ef;border-radius:12px;overflow:hidden;display:flex;flex-direction:column;min-width:0;}'
+            . '.alma-wgt-exp__img{display:block;aspect-ratio:16/10;background:#31435f center/cover no-repeat;}'
+            . '.alma-wgt-exp__body{padding:14px 16px 16px;display:flex;flex-direction:column;gap:8px;flex:1;}'
+            . '.alma-wgt-exp__loc{font-size:.78em;letter-spacing:.06em;text-transform:uppercase;color:#63687a;}'
+            . '.alma-wgt-exp__title{font-weight:700;color:var(--alma-wgt-ink)!important;line-height:1.3;}'
+            . '.alma-wgt-exp__btn{margin-top:auto;display:block;text-align:center;background:var(--alma-wgt-accent);color:#fff!important;border-radius:8px;padding:10px 14px;font-weight:600;}'
+            . '@media(max-width:1024px){.alma-wgt--exp{grid-template-columns:repeat(3,minmax(0,1fr));}}'
+            . '@media(max-width:782px){.alma-wgt--exp,.alma-wgt--exp.alma-wgt--n2,.alma-wgt--exp.alma-wgt--n3{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;padding-bottom:8px;scrollbar-width:thin;}.alma-wgt-exp{flex:0 0 76%;scroll-snap-align:start;}}'
+            // Vetrina in evidenza: testo + grande immagine.
+            . '.alma-wgt--hero{display:flex;border:1px solid #e6e8ef;border-radius:14px;overflow:hidden;background:#fff;}'
+            . '.alma-wgt-hero__text{flex:0 0 42%;padding:28px;display:flex;flex-direction:column;gap:14px;justify-content:center;min-width:0;}'
+            . '.alma-wgt-hero__title{font-size:1.8em;font-weight:800;color:var(--alma-wgt-ink);line-height:1.12;margin:0;}'
+            . '.alma-wgt-hero__desc{color:#3c4257;line-height:1.55;margin:0;}'
+            . '.alma-wgt-hero__btn{display:inline-block;align-self:flex-start;border:2px solid var(--alma-wgt-accent);color:var(--alma-wgt-accent)!important;border-radius:999px;padding:10px 22px;font-weight:700;}'
+            . '.alma-wgt-hero__img{flex:1;min-height:280px;background:#31435f center/cover no-repeat;display:block;}'
+            . '@media(max-width:782px){.alma-wgt--hero{flex-direction:column-reverse;}.alma-wgt-hero__img{min-height:0;aspect-ratio:16/10;width:100%;}.alma-wgt-hero__text{flex:auto;padding:20px;}}';
+    }
+
+    private static function render_card_layout($instance, $preset_key) {
+        $preset = ALMA_Affiliate_Widget_Layout_Registry::get_preset($preset_key);
+        $items = array_slice(self::collect_card_items($instance), 0, max(1, absint($preset['max_links'] ?? 20)));
+        if (empty($items)) {
+            return '';
+        }
+        $button_text = sanitize_text_field((string) ($instance['button_text'] ?? ''));
+        if ($button_text === '') {
+            $button_text = __('Scopri di più', 'affiliate-link-manager-ai');
+        }
+
+        static $card_styles_printed = false;
+        $output = '';
+        if (!$card_styles_printed) {
+            $card_styles_printed = true;
+            $output .= '<style id="alma-affiliate-widget-card-styles">' . self::card_styles_css() . '</style>';
+        }
+
+        $style = (string) ($preset['style'] ?? '');
+        if ($style === 'destination_cards') {
+            $count_class = count($items) === 2 || count($items) === 4 ? ' alma-wgt--n2' : '';
+            $output .= '<div class="alma-wgt alma-wgt--dest' . esc_attr($count_class) . '">';
+            foreach ($items as $item) {
+                $bg = $item['image'] !== '' ? ' style="background-image:url(' . esc_url($item['image']) . ');"' : '';
+                $meta = $item['location'] !== '' ? $item['location'] : self::truncate_text($item['description'], 60);
+                $output .= '<a class="alma-wgt-dest"' . self::card_link_attrs($item) . $bg . '>'
+                    . '<span class="alma-wgt-dest__body">'
+                    . '<span class="alma-wgt-dest__title">' . esc_html($item['title']) . '</span>'
+                    . ($meta !== '' ? '<span class="alma-wgt-dest__meta">' . esc_html($meta) . '</span>' : '')
+                    . '</span></a>';
+            }
+            $output .= '</div>';
+            return $output;
+        }
+
+        if ($style === 'experience_cards') {
+            $n = count($items);
+            $count_class = $n === 2 ? ' alma-wgt--n2' : ($n === 3 ? ' alma-wgt--n3' : '');
+            $output .= '<div class="alma-wgt alma-wgt--exp' . esc_attr($count_class) . '">';
+            foreach ($items as $item) {
+                $bg = $item['image'] !== '' ? ' style="background-image:url(' . esc_url($item['image']) . ');"' : '';
+                $output .= '<div class="alma-wgt-exp">'
+                    . '<a class="alma-wgt-exp__img"' . self::card_link_attrs($item) . $bg . ' aria-hidden="true" tabindex="-1"></a>'
+                    . '<div class="alma-wgt-exp__body">'
+                    . ($item['location'] !== '' ? '<span class="alma-wgt-exp__loc">' . esc_html($item['location']) . '</span>' : '')
+                    . '<a class="alma-wgt-exp__title"' . self::card_link_attrs($item) . '>' . esc_html($item['title']) . '</a>'
+                    . '<a class="alma-wgt-exp__btn"' . self::card_link_attrs($item) . '>' . esc_html($button_text) . '</a>'
+                    . '</div></div>';
+            }
+            $output .= '</div>';
+            return $output;
+        }
+
+        // hero_spotlight: solo il primo link.
+        $item = $items[0];
+        $bg = $item['image'] !== '' ? ' style="background-image:url(' . esc_url($item['image']) . ');"' : '';
+        $description = self::truncate_text($item['description'], 280);
+        $output .= '<div class="alma-wgt alma-wgt--hero">'
+            . '<div class="alma-wgt-hero__text">'
+            . '<p class="alma-wgt-hero__title">' . esc_html($item['title']) . '</p>'
+            . ($description !== '' ? '<p class="alma-wgt-hero__desc">' . esc_html($description) . '</p>' : '')
+            . '<a class="alma-wgt-hero__btn"' . self::card_link_attrs($item) . '>' . esc_html($button_text) . '</a>'
+            . '</div>'
+            . '<a class="alma-wgt-hero__img"' . self::card_link_attrs($item) . $bg . ' aria-label="' . esc_attr($item['title']) . '"></a>'
+            . '</div>';
         return $output;
     }
 

@@ -1,3 +1,17 @@
+## 2.82.0 - 2026-07-07
+
+### Widget Link v2: layout in stile catalogo esperienze, scelti anche dall'Agente AI
+- **Tre nuovi layout** (ispirati alle card GetYourGuide, senza loghi, adattati ai contenuti dei Link Affiliati: titolo, testo, località, immagine):
+  - **Card destinazione** (`destination_cards`): immagine a tutta card con gradiente, titolo e località in sovraimpressione; griglia 3 colonne su desktop, card impilate su mobile. Per mete e luoghi (2-6 link).
+  - **Card esperienza** (`experience_cards`): card compatte con immagine, località in maiuscolo, titolo e pulsante CTA; 4 per riga su desktop, **carosello scorrevole con scroll-snap su mobile**. Per tour e attività specifiche (2-8 link).
+  - **Vetrina in evidenza** (`hero_spotlight`): un solo link di punta con titolo grande, descrizione e pulsante outline accanto a una grande immagine; su mobile immagine sopra e testo sotto.
+- **Rendering dedicato**: card interamente cliccabili con lo **stesso tracking click** degli shortcode (`data-link-id`/`data-source=widget`), testi riscritti dall'AI quando presenti, località dall'indice geo (città/paese), **link morti (Link Health) esclusi automaticamente** dalle card, CSS inline con variabile `--alma-wgt-accent` personalizzabile dal tema.
+- **L'Agente AI sceglie il layout**: la `widget_request` delle bozze accetta ora `layout` con la guida su quando usare ciascuno (griglia di mete / tour specifici / singola esperienza di punta) e rispetta i vincoli min/max di link del layout (la Vetrina accetta 1 solo link, prima il widget AI richiedeva sempre almeno 2).
+- **Retrocompatibilità totale**: i widget già salvati con i layout a colonne (`columns_1..6`) continuano a renderizzare identici; quei preset non sono più proponibili nella creazione ma restano visibili (etichettati) quando si modifica un widget che li usa.
+- **Pagina Crea/Modifica Widget**: nuovo selettore con anteprime dei tre layout; **campo "Contenuto introduttivo" rimosso** dai form (il valore già salvato nei widget esistenti viene preservato e continua a essere mostrato in pagina).
+- Test standalone 23/23 (registry: default, proponibili, legacy validi, vincoli, inferenza; helper card: troncamento a parola, etichetta località senza doppioni).
+- Versione plugin aggiornata a `2.82.0`.
+
 ## 2.81.0 - 2026-07-07
 
 ### Immagini AI (PR 1): generazione delle immagini in evidenza mancanti dei Link Affiliati

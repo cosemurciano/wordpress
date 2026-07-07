@@ -1,3 +1,9 @@
+## 2.82.0 - 2026-07-07
+
+### Widget Link v2: layout in stile catalogo esperienze
+- Tre nuovi layout senza loghi con titolo, testo e località dei link: Card destinazione (griglia di mete con titolo sull'immagine), Card esperienza (tour/attività con pulsante, carosello su mobile), Vetrina in evidenza (singolo link di punta). L'Agente AI sceglie il layout adatto nella widget_request; i widget a colonne esistenti restano identici; campo "Contenuto introduttivo" rimosso dai form.
+- Versione plugin aggiornata a `2.82.0`.
+
 ## 2.81.0 - 2026-07-07
 
 ### Immagini AI (PR 1): immagini in evidenza generate per i link che ne sono privi
