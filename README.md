@@ -1,3 +1,9 @@
+## 2.79.1 - 2026-07-07
+
+### Import CSV GetYourGuide: recupero righe a delimitatore misto
+- Le righe con delimitatore diverso dal resto del file (virgole in un CSV a punto e virgola) non vengono più scartate: recupero automatico per riga con ricompattazione delle virgole nella descrizione. Verificato sul file reale: 583/583 righe importabili (prima 395).
+- Versione plugin aggiornata a `2.79.1`.
+
 ## 2.79.0 - 2026-07-06
 
 ### Link Health Checker (PR 1)

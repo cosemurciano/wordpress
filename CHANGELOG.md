@@ -1,3 +1,12 @@
+## 2.79.1 - 2026-07-07
+
+### Import CSV GetYourGuide: recupero delle righe a delimitatore misto
+- **Caso reale (File_3.csv)**: un CSV con 583 righe dati conteneva 188 righe con **delimitatore virgola** incollate dentro un file a punto e virgola (blocchi provenienti da esportazioni diverse) più 3 righe vuote. Lette col delimitatore del file, le righe a virgola collassavano in una sola cella e venivano scartate come "URL non valido" — **188 record validi persi silenziosamente**.
+- **Nuovo recupero per riga** (`recover_mixed_delimiter_row`, puro e testato): se una riga ha una sola cella piena che contiene l'altro delimitatore e un URL, viene ri-divisa; le eventuali virgole eccedenti (dentro la descrizione non quotata) vengono ricompattate nella colonna descrizione preservando il titolo. Applicato a tutti i punti di lettura: riepilogo upload, anteprima, conteggi e import batch. Le righe normali, vuote o senza URL restano intatte.
+- **Verifica completa dell'importazione simulata sul file reale**: colonne rilevate per nome con la colonna extra "File origine" correttamente ignorata; con il fix **583/583 righe importabili** (prima 395), 0 URL invalidi, 0 senza descrizione/città/regione/titolo, 0 duplicati interni; link affiliato costruito correttamente (`www.getyourguide.it/...?partner_id=...&utm_medium=online_publisher`). Confermati i feedback di processo già presenti: conteggi per esito (importati/aggiornati/già presenti/saltati/URL invalidi), log per record scartato con external_id, stato sessione persistito con ultimo errore, batch con cursore ripristinabile.
+- Test standalone 10/10 (riga reale ricostruita, virgole nella descrizione ricompattate senza doppi spazi, titolo preservato, righe normali/vuote/note senza URL intatte).
+- Versione plugin aggiornata a `2.79.1`.
+
 ## 2.79.0 - 2026-07-06
 
 ### Link Health Checker (PR 1): verifica 404 e prodotti rimossi, con quarantena
