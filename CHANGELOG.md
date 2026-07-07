@@ -1,3 +1,9 @@
+## 2.86.0 - 2026-07-07
+
+### Colonna Titolo leggibile negli elenchi Articoli e Link Affiliati
+- Con le molte colonne aggiunte dai plugin (SEO, campi tema, Geo…) la colonna **Titolo** negli elenchi admin si riduceva a una parola per riga. Ora ha una **larghezza garantita** (28% della tabella, minimo 280px; 34% sotto i 1400px di viewport) tramite CSS mirato alle liste di Articoli e Link Affiliati — le tabelle di WordPress usano `table-layout: fixed`, quindi la larghezza è rispettata e le altre colonne si adattano.
+- Versione plugin aggiornata a `2.86.0`.
+
 ## 2.85.0 - 2026-07-07
 
 ### Agente più affidabile: profili strategici, widget garantito, geolocalizzazione degli articoli, report su misura
