@@ -414,6 +414,54 @@ class ALMA_Affiliate_Source_GYG_CSV_Importer {
         return substr_count($line, ';') > substr_count($line, ',') ? ';' : ',';
     }
 
+    /**
+     * Recupero delle righe a delimitatore misto: le esportazioni reali a
+     * volte incollano blocchi con delimitatore diverso dal resto del file
+     * (righe a virgola in un CSV a punto e virgola). Letta col delimitatore
+     * del file, una riga così collassa in una sola cella e verrebbe
+     * scartata come "URL non valido" pur essendo valida. Se la riga ha una
+     * sola cella piena che contiene l'altro delimitatore e un URL, viene
+     * ri-divisa; le eventuali virgole eccedenti (dentro la descrizione)
+     * vengono ricompattate nella penultima colonna. Pura, testabile.
+     */
+    public static function recover_mixed_delimiter_row($row, $delimiter, $expected_columns) {
+        $non_empty = 0;
+        foreach ((array)$row as $cell) {
+            if (trim((string)$cell) !== '') { $non_empty++; }
+        }
+        if ($non_empty > 1) { return $row; }
+        $first = trim((string)($row[0] ?? ''));
+        $alt = $delimiter === ';' ? ',' : ';';
+        if ($first === '' || strpos($first, $alt) === false || stripos($first, 'http') === false) {
+            return $row;
+        }
+        $parts = str_getcsv($first, $alt);
+        $expected_columns = max(3, (int)$expected_columns);
+        if (count($parts) > $expected_columns) {
+            // Delimitatori extra quasi sempre dentro la descrizione
+            // (penultima colonna): l'ultima colonna è il titolo, il centro
+            // eccedente torna nella descrizione.
+            $title = (string) array_pop($parts);
+            $head = array_slice($parts, 0, $expected_columns - 2);
+            $description = implode($alt . ' ', array_map('trim', array_slice($parts, $expected_columns - 2)));
+            $parts = array_merge($head, array($description, $title));
+        }
+        $last = count($parts) - 1;
+        if ($last >= 0) {
+            // Coda di delimitatori originali rimasta attaccata (riga mista).
+            $parts[$last] = rtrim((string)$parts[$last], $delimiter);
+        }
+        return array_map('strval', $parts);
+    }
+
+    /**
+     * Numero di colonne atteso dal mapping (indice massimo + 1).
+     */
+    private static function expected_columns_from_mapping($columns) {
+        $columns = array_map('absint', (array)$columns);
+        return empty($columns) ? 0 : (max($columns) + 1);
+    }
+
 
     public function get_column_example($path, $column_index) {
         $column_index = absint($column_index);
@@ -437,7 +485,9 @@ class ALMA_Affiliate_Source_GYG_CSV_Importer {
         $summary = array('types'=>array(), 'total'=>0, 'invalid_urls'=>0, 'without_city'=>0, 'without_region'=>0);
         $handle = fopen($path, 'r'); if (!$handle) return $summary;
         $delimiter = $this->delimiter($path); fgetcsv($handle, 0, $delimiter);
+        $expected = self::expected_columns_from_mapping($columns);
         while (($row = fgetcsv($handle, 0, $delimiter)) !== false) {
+            $row = self::recover_mixed_delimiter_row($row, $delimiter, $expected);
             $summary['total']++;
             $type = sanitize_text_field((string)($row[$columns['activity_type']] ?? ''));
             if ($type === '') $type = __('(vuota)', 'affiliate-link-manager-ai');
@@ -562,7 +612,9 @@ class ALMA_Affiliate_Source_GYG_CSV_Importer {
         $region_filter = strtolower(sanitize_text_field((string)($filters['region'] ?? '')));
         $search = strtolower(sanitize_text_field((string)($filters['search'] ?? '')));
         $show_existing = !empty($filters['show_existing']);
+        $expected = self::expected_columns_from_mapping($columns);
         while (($row = fgetcsv($handle, 0, $delimiter)) !== false) {
+            $row = self::recover_mixed_delimiter_row($row, $delimiter, $expected);
             $item = $this->row_to_item($row, $columns, $source, $partner_id, $utm);
             if ($activity_type !== '' && $item['activity_type'] !== $activity_type) continue;
             if ($city_filter !== '' && strpos(strtolower($item['city']), $city_filter) === false) continue;
@@ -731,10 +783,12 @@ class ALMA_Affiliate_Source_GYG_CSV_Importer {
         $activity_type = sanitize_text_field((string)$activity_type);
         $delimiter = $this->delimiter($path);
         fgetcsv($handle, 0, $delimiter);
+        $expected = self::expected_columns_from_mapping($columns);
         while (($row = fgetcsv($handle, 0, $delimiter)) !== false) {
             if ($this->is_empty_csv_row($row)) {
                 continue;
             }
+            $row = self::recover_mixed_delimiter_row($row, $delimiter, $expected);
             $item = $this->row_to_item($row, $columns, $source_for_count, $partner_id, $utm);
             if ($activity_type !== '' && $item['activity_type'] !== $activity_type) {
                 continue;
@@ -832,8 +886,10 @@ class ALMA_Affiliate_Source_GYG_CSV_Importer {
         $delimiter = $this->delimiter($path);
         fgetcsv($handle, 0, $delimiter);
         $matched_index = 0;
+        $expected = self::expected_columns_from_mapping($columns);
         while (($row = fgetcsv($handle, 0, $delimiter)) !== false) {
             if ($this->is_empty_csv_row($row)) continue;
+            $row = self::recover_mixed_delimiter_row($row, $delimiter, $expected);
             $item = $this->row_to_item($row, $columns, $source, $partner_id, $utm);
             if ($activity_type !== '' && $item['activity_type'] !== $activity_type) continue;
             if ($matched_index++ < $cursor) continue;
