@@ -1021,7 +1021,7 @@ class ALMA_AI_Content_Agent_Draft_Builder {
             'posts'=>array(),'documents'=>array(),'sources_online'=>array(),'pages'=>array(),'media'=>array(),
             'affiliate_rules'=>$affiliate_rules,
             'seo_rules'=>$seo_rules,
-            'media_rules'=>array_filter(array('Usa massimo '.$max_editorial_media_used.' immagini editoriali dalla Media Library nel corpo dell’articolo.','Usare immagini affiliate solo se pertinenti alla sezione.','Non inventare URL immagini.','Usare solo immagini presenti nei link affiliati selezionati.','Non duplicare troppe volte la stessa immagine.','Non scaricare immagini durante la generazione bozza.', $profile_payload['instruction_profile_rules']['image_rules'] ?? '')),
+            'media_rules'=>array_filter(array('Usa massimo '.$max_editorial_media_used.' immagini editoriali dalla Media Library nel corpo dell’articolo.','Usare immagini affiliate solo se pertinenti alla sezione.','Non inventare URL immagini.','Usare solo immagini presenti nei link affiliati selezionati.','Non duplicare troppe volte la stessa immagine.','Non scaricare immagini durante la generazione bozza.','Se nessuna immagine della Media Library è adatta a una sezione, puoi inserire su una riga a sé un segnaposto [Immagine: descrizione fotografica dettagliata della scena] (massimo 3 per articolo): verrà generato dall\'AI e sostituito automaticamente dopo la creazione.', $profile_payload['instruction_profile_rules']['image_rules'] ?? '')),
             'output_contract'=>array('title','slug','excerpt','content','seo_title','seo_description','featured_image_id','affiliate_shortcodes_used','affiliate_urls_used','internal_urls_used','media_used','category_ids','tag_ids','new_tags','warnings'),
             'widget_request_contract'=>'Campo OPZIONALE widget_request nell\'output JSON: {"title":string,"layout":string,"link_ids":[int],"button_text":string,"rewritten":[{"id":int,"title":string,"description":string}]}. Scegli il layout adatto al contesto dell\'articolo: "destination_cards" = griglia di mete/destinazioni con titolo e località sull\'immagine (2-6 link); "experience_cards" = card compatte per tour e attività specifiche con pulsante, carosello su mobile (2-8 link); "hero_spotlight" = UNA sola esperienza di punta in grande evidenza con testo e pulsante (esattamente 1 link). Compilalo SOLO se hai inserito il segnaposto [[ALMA_WIDGET]] nel content; il sistema creerà il widget reale e sostituirà il segnaposto.',
             'warnings'=>array_values(array_unique($warnings)),
@@ -1269,6 +1269,11 @@ class ALMA_AI_Content_Agent_Draft_Builder {
         if (class_exists('ALMA_AI_Image_Generator') && preg_match_all('/\[affiliate_link[^\]]*\bid="?(\d+)/', (string) $clean['content'], $used_link_matches)) {
             ALMA_AI_Image_Generator::queue_links(array_map('absint', $used_link_matches[1]));
         }
+        // Segnaposto [Immagine: …] scritti dal modello: generazione AI in
+        // background e sostituzione nel contenuto (max 3 per articolo).
+        if (class_exists('ALMA_AI_Image_Generator')) {
+            ALMA_AI_Image_Generator::queue_editorial_images($post_id);
+        }
         $taxonomy_applied = self::apply_taxonomies_to_post($post_id, $taxonomy_clean);
         $taxonomy_warnings = array_values(array_unique(array_merge((array)$taxonomy_clean['warnings'], (array)$taxonomy_applied['warnings'])));
 
@@ -1283,24 +1288,19 @@ class ALMA_AI_Content_Agent_Draft_Builder {
         update_post_meta($post_id, '_alma_ai_agent_selected_media_ids', wp_json_encode($candidate_image_ids));
         update_post_meta($post_id, '_alma_ai_agent_featured_image_candidates', wp_json_encode($featured_candidates));
         update_post_meta($post_id, '_alma_ai_agent_media_candidates', wp_json_encode($editorial_media_candidates));
-        // Immagine in evidenza: quella scelta dall'AI, con fallback alla prima
-        // candidata disponibile (prima l'ID veniva solo annotato in meta e la
-        // bozza restava SENZA thumbnail).
+        // Immagine in evidenza: SOLO quella scelta esplicitamente dall'AI.
+        // Il vecchio fallback "prima candidata della Media Library" produceva
+        // featured incoerenti (es. Torre Eiffel su un articolo su Dubai):
+        // se l'AI non sceglie, l'immagine viene GENERATA dall'AI sul
+        // titolo/località dell'articolo (coda editoriale in background).
         $selected_featured_id = absint($clean['featured_image_id'] ?? 0);
-        if ($selected_featured_id < 1) {
-            foreach (array_merge($featured_candidates, $editorial_media_candidates) as $featured_fallback) {
-                $fallback_id = is_array($featured_fallback) ? absint($featured_fallback['attachment_id'] ?? 0) : 0;
-                if ($fallback_id > 0 && wp_attachment_is_image($fallback_id)) {
-                    $selected_featured_id = $fallback_id;
-                    $clean['warnings'][] = 'Immagine in evidenza non indicata dall\'AI: usata la prima candidata della Media Library.';
-                    break;
-                }
-            }
-        }
         if ($selected_featured_id > 0) {
             set_post_thumbnail($post_id, $selected_featured_id);
+        } elseif (class_exists('ALMA_AI_Image_Generator') && ALMA_AI_Image_Generator::is_editorial_enabled()) {
+            ALMA_AI_Image_Generator::queue_featured_generation($post_id, (string) $clean['title']);
+            $clean['warnings'][] = 'Immagine in evidenza non indicata dall\'AI: verrà generata dall\'AI in background (coda editoriale).';
         } else {
-            $clean['warnings'][] = 'Nessuna immagine candidata disponibile: bozza senza immagine in evidenza.';
+            $clean['warnings'][] = 'Immagine in evidenza non indicata dall\'AI e generazione immagini AI disattivata: bozza senza immagine in evidenza.';
         }
         update_post_meta($post_id, '_alma_ai_agent_selected_featured_image_id', $selected_featured_id);
         if ($selected_featured_id > 0) {

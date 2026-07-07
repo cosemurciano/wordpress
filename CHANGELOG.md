@@ -1,3 +1,14 @@
+## 2.87.0 - 2026-07-08
+
+### Immagini AI PR2: segnaposto editoriali generati davvero, featured coerente, bozze mancate spiegate e ritentate
+- **Analisi del run segnalato** (3 idee, 2 bozze, avvio 23:55): la terza bozza è fallita ma il motivo era invisibile su Telegram (il report elencava solo le bozze riuscite) e — peggio — l'idea veniva marcata **eseguita anche in caso di fallimento**, quindi il runner non la ritentava mai: il piano restava monco in silenzio.
+- **Bozze mancate: spiegate e ritentate.** L'idea viene marcata eseguita **solo a bozza creata**; i fallimenti (timeout OpenAI, interruzioni a cavallo di mezzanotte…) restano ritentabili dal runner programmato fino a **3 tentativi** (poi si arrende con errore registrato sull'idea). Il report Telegram ora mostra sempre il PERCHÉ: `⚠️ Bozza NON creata per "titolo": motivo — verrà ritentata automaticamente` e `📅 in programma il …`; dopo un run con fallimenti il runner viene schedulato subito (+5 minuti), niente attese silenziose.
+- **Segnaposto `[Immagine: …]` generati davvero** (nuova coda editoriale in `ALMA_AI_Image_Generator`): i segnaposto scritti dal modello negli articoli dell'Agente vengono ora **generati con gpt-image-1 e sostituiti nel contenuto** con la foto reale (figure con alt, salvate in `uploads/ai/`, WebP, revisione per il rollback), max 3 per articolo, fuori dal cap giornaliero. La regola media ora autorizza ufficialmente il modello a usarli quando la Media Library non ha immagini adatte. **Rete di sicurezza frontend**: i segnaposto non ancora generati non vengono mai mostrati ai lettori. **Recupero articoli esistenti** (es. i due su Dubai): basta aggiornarli/salvarli e i segnaposto residui entrano in coda.
+- **Featured image coerente (bug Parigi su Dubai risolto)**: eliminato il fallback cieco "prima candidata della Media Library" — era la causa della Torre Eiffel su un articolo su Dubai. Se l'AI non sceglie una featured tra le candidate, l'immagine in evidenza viene **generata dall'AI** su titolo e località dell'articolo (coda editoriale); mai più immagini a caso.
+- Nuova spunta **"Immagini editoriali articoli"** nella tab Immagini AI (default attiva) con conteggio coda; costi tracciati con task dedicato `ai_image_editorial`.
+- Test standalone 26/26 (aggiunti: estrazione segnaposto con limite/case/scarti, prompt editoriale, pulizia frontend).
+- Versione plugin aggiornata a `2.87.0`.
+
 ## 2.86.1 - 2026-07-07
 
 ### Elenco Articoli: nascoste le colonne dei campi tema, più spazio a Categorie e Geo

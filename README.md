@@ -1,3 +1,9 @@
+## 2.87.0 - 2026-07-08
+
+### Immagini AI PR2 + bozze mancate spiegate
+- I segnaposto [Immagine: …] degli articoli dell'Agente vengono generati con l'AI e sostituiti nel contenuto (max 3, coda dedicata, mai mostrati ai lettori se non risolti; per gli articoli esistenti basta aggiornarli). Featured image: via il fallback cieco che metteva immagini incoerenti (Parigi su Dubai) — se l'AI non sceglie, viene generata su titolo e località. Le bozze fallite non vengono più marcate eseguite: ritentate fino a 3 volte e il report Telegram spiega sempre il perché.
+- Versione plugin aggiornata a `2.87.0`.
+
 ## 2.86.1 - 2026-07-07
 
 ### Elenco Articoli ripulito
