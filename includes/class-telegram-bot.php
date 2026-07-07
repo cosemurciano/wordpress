@@ -427,6 +427,16 @@ class ALMA_Telegram_Bot {
                 $text .= '📝 <a href="' . esc_url($preview) . '">' . self::esc($draft['titolo']) . "</a>\n";
             }
         }
+        // Il PERCHÉ delle bozze mancate, sempre visibile: programmate per un
+        // altro giorno o fallite (queste ultime vengono ritentate in automatico).
+        foreach ((array) ($report['drafts_created'] ?? array()) as $draft_row) {
+            if (!empty($draft_row['post_id'])) { continue; }
+            if (!empty($draft_row['programmata'])) {
+                $text .= '📅 ' . self::esc((string) $draft_row['titolo']) . ' — bozza in programma il ' . self::esc((string) $draft_row['programmata']) . "\n";
+            } elseif (!empty($draft_row['error'])) {
+                $text .= '⚠️ Bozza NON creata per "' . self::esc((string) $draft_row['titolo']) . '": ' . self::esc((string) $draft_row['error']) . ' — verrà ritentata automaticamente entro pochi minuti (max 3 tentativi).' . "\n";
+            }
+        }
         if (!empty($report['error'])) { $text .= '⚠️ ' . self::esc($report['error']) . "\n"; }
         if (!empty($report['summary'])) { $text .= "\n" . self::esc(wp_trim_words($report['summary'], 80, '…')); }
         return $text;

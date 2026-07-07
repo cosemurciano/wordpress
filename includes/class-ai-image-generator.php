@@ -25,10 +25,15 @@ if (!defined('ABSPATH')) {
 class ALMA_AI_Image_Generator {
     const CRON_HOOK = 'alma_ai_image_generator_run';
     const PRIORITY_CRON_HOOK = 'alma_ai_image_generator_priority_run';
+    const EDITORIAL_CRON_HOOK = 'alma_ai_image_generator_editorial_run';
     const OPTION_ENABLED = 'alma_ai_images_enabled';
     const OPTION_PRIORITY_ENABLED = 'alma_ai_images_priority_enabled';
     const OPTION_PRIORITY_QUEUE = 'alma_ai_images_priority_queue';
+    const OPTION_EDITORIAL_ENABLED = 'alma_ai_images_editorial_enabled';
+    const OPTION_EDITORIAL_QUEUE = 'alma_ai_images_editorial_queue';
     const PRIORITY_LOCK_OPTION = 'alma_ai_images_priority_lock';
+    const EDITORIAL_LOCK_OPTION = 'alma_ai_images_editorial_lock';
+    const MAX_EDITORIAL_PER_POST = 3;
     const OPTION_DAILY = 'alma_ai_images_daily_limit';
     const OPTION_QUALITY = 'alma_ai_images_quality';
     const OPTION_COUNTER = 'alma_ai_images_counter';
@@ -51,6 +56,14 @@ class ALMA_AI_Image_Generator {
         add_action('init', array(__CLASS__, 'maybe_schedule_cron'));
         add_action(self::CRON_HOOK, array(__CLASS__, 'run'));
         add_action(self::PRIORITY_CRON_HOOK, array(__CLASS__, 'run_priority_queue'));
+        add_action(self::EDITORIAL_CRON_HOOK, array(__CLASS__, 'run_editorial_queue'));
+        // I segnaposto [Immagine: …] non ancora generati non devono MAI
+        // arrivare ai lettori.
+        add_filter('the_content', array(__CLASS__, 'strip_unresolved_placeholders'), 8);
+        // Recupero: al salvataggio/pubblicazione di un articolo dell'Agente i
+        // segnaposto ancora presenti vengono (ri)accodati — copre anche gli
+        // articoli creati prima di questa versione: basta aggiornarli.
+        add_action('transition_post_status', array(__CLASS__, 'queue_editorial_on_save'), 10, 3);
         add_action('admin_post_alma_ai_images_save_settings', array(__CLASS__, 'handle_save_settings'));
         add_action('admin_post_alma_ai_images_run_now', array(__CLASS__, 'handle_run_now'));
         add_action('admin_post_alma_ai_images_generate_single', array(__CLASS__, 'handle_generate_single'));
@@ -67,6 +80,15 @@ class ALMA_AI_Image_Generator {
     public static function unschedule() {
         wp_clear_scheduled_hook(self::CRON_HOOK);
         wp_clear_scheduled_hook(self::PRIORITY_CRON_HOOK);
+        wp_clear_scheduled_hook(self::EDITORIAL_CRON_HOOK);
+    }
+
+    /**
+     * Le immagini editoriali degli articoli dell'Agente (segnaposto
+     * [Immagine: …] e featured mancante) sono attive?
+     */
+    public static function is_editorial_enabled() {
+        return get_option(self::OPTION_EDITORIAL_ENABLED, '1') === '1' && trim((string) get_option('alma_openai_api_key', '')) !== '';
     }
 
     /**
@@ -255,6 +277,226 @@ class ALMA_AI_Image_Generator {
     }
 
     /* ---------------------------------------------------------------------
+     * Coda editoriale: immagini per gli ARTICOLI dell'Agente.
+     * Due tipi di lavoro: 'placeholder' (i segnaposto [Immagine: …] scritti
+     * dal modello vengono generati e sostituiti nel contenuto) e 'featured'
+     * (immagine in evidenza generata quando nessuna candidata è coerente).
+     * Fuori dal cap giornaliero del runner notturno dei link.
+     * ------------------------------------------------------------------ */
+
+    /**
+     * Prompt fotografico per un'immagine editoriale da descrizione. Pura.
+     */
+    public static function build_editorial_prompt($description, $article_title = '', $location = '') {
+        $description = trim(preg_replace('/\s+/', ' ', (string) $description));
+        $article_title = trim(preg_replace('/\s+/', ' ', (string) $article_title));
+        $location = trim(preg_replace('/\s+/', ' ', (string) $location));
+        $lines = array();
+        $lines[] = 'Fotografia di viaggio realistica: ' . $description . '.';
+        if ($location !== '') {
+            $lines[] = 'Luogo reale: ' . $location . '. La scena deve essere riconoscibile e coerente con questo luogo.';
+        }
+        if ($article_title !== '') {
+            $lines[] = 'Contesto editoriale: immagine per un articolo intitolato "' . $article_title . '".';
+        }
+        $lines[] = 'Stile: fotografia professionale da magazine di viaggio, scatto reale e credibile, luce naturale, colori vividi ma naturali, composizione orizzontale.';
+        $lines[] = 'Vietato assolutamente: testi, scritte, numeri, loghi, watermark, cornici, collage, volti riconoscibili in primo piano, aspetto da illustrazione, rendering 3D o cartone animato.';
+        return implode("\n", $lines);
+    }
+
+    /**
+     * Estrae i segnaposto [Immagine: descrizione] da un contenuto. Pura.
+     * Ritorna array di array('placeholder' => stringa esatta, 'description').
+     */
+    public static function extract_image_placeholders($content, $max = self::MAX_EDITORIAL_PER_POST) {
+        $out = array();
+        if (!preg_match_all('/\[[Ii]mmagine:\s*([^\]]{5,300})\]/u', (string) $content, $matches, PREG_SET_ORDER)) {
+            return $out;
+        }
+        foreach ($matches as $match) {
+            $out[] = array('placeholder' => $match[0], 'description' => trim($match[1]));
+            if (count($out) >= max(1, (int) $max)) { break; }
+        }
+        return $out;
+    }
+
+    /**
+     * Rete di sicurezza frontend: i segnaposto non ancora generati non
+     * devono comparire ai lettori.
+     */
+    public static function strip_unresolved_placeholders($content) {
+        if (is_admin() || strpos((string) $content, '[') === false) { return $content; }
+        return preg_replace('/<p>\s*\[[Ii]mmagine:[^\]]*\]\s*<\/p>|\[[Ii]mmagine:[^\]]*\]/u', '', (string) $content);
+    }
+
+    /**
+     * Accoda i segnaposto [Immagine: …] di un articolo per la generazione.
+     */
+    public static function queue_editorial_images($post_id) {
+        $post_id = absint($post_id);
+        $post = get_post($post_id);
+        if (!self::is_editorial_enabled() || !$post || $post->post_type !== 'post') { return 0; }
+        $placeholders = self::extract_image_placeholders($post->post_content);
+        if (empty($placeholders)) { return 0; }
+        $jobs = array();
+        foreach ($placeholders as $item) {
+            $jobs[] = array('post_id' => $post_id, 'type' => 'placeholder', 'placeholder' => $item['placeholder'], 'description' => $item['description']);
+        }
+        return self::push_editorial_jobs($jobs);
+    }
+
+    public static function queue_editorial_on_save($new_status, $old_status, $post) {
+        if (!in_array($new_status, array('publish', 'draft', 'pending', 'future'), true)) { return; }
+        if (!($post instanceof WP_Post) || $post->post_type !== 'post') { return; }
+        if (get_post_meta($post->ID, '_alma_ai_agent_generated', true) !== '1') { return; }
+        self::queue_editorial_images($post->ID);
+    }
+
+    /**
+     * Accoda la generazione dell'immagine in evidenza per un articolo.
+     */
+    public static function queue_featured_generation($post_id, $description = '') {
+        $post_id = absint($post_id);
+        if (!self::is_editorial_enabled() || get_post_type($post_id) !== 'post') { return 0; }
+        $description = trim((string) $description);
+        if ($description === '') { $description = (string) get_the_title($post_id); }
+        return self::push_editorial_jobs(array(array('post_id' => $post_id, 'type' => 'featured', 'placeholder' => '', 'description' => $description)));
+    }
+
+    private static function push_editorial_jobs($jobs) {
+        $queue = (array) get_option(self::OPTION_EDITORIAL_QUEUE, array());
+        $added = 0;
+        foreach ((array) $jobs as $job) {
+            $duplicate = false;
+            foreach ($queue as $existing) {
+                if (is_array($existing) && (int) $existing['post_id'] === (int) $job['post_id']
+                    && (string) ($existing['type'] ?? '') === (string) $job['type']
+                    && (string) ($existing['placeholder'] ?? '') === (string) $job['placeholder']) {
+                    $duplicate = true;
+                    break;
+                }
+            }
+            if ($duplicate) { continue; }
+            $queue[] = $job;
+            $added++;
+        }
+        if ($added < 1) { return 0; }
+        update_option(self::OPTION_EDITORIAL_QUEUE, array_values($queue), false);
+        if (!wp_next_scheduled(self::EDITORIAL_CRON_HOOK)) {
+            wp_schedule_single_event(time() + 10, self::EDITORIAL_CRON_HOOK);
+        }
+        if (function_exists('spawn_cron')) { spawn_cron(); }
+        return $added;
+    }
+
+    /**
+     * Runner della coda editoriale: budget di tempo + catena; ogni lavoro
+     * genera un'immagine e la applica (sostituzione segnaposto o featured).
+     */
+    public static function run_editorial_queue() {
+        if (trim((string) get_option('alma_openai_api_key', '')) === '') { return; }
+        if (!add_option(self::EDITORIAL_LOCK_OPTION, (string) time(), '', 'no')) {
+            $lock_started = absint(get_option(self::EDITORIAL_LOCK_OPTION, 0));
+            if ($lock_started < 1 || (time() - $lock_started) <= self::LOCK_TTL) { return; }
+            update_option(self::EDITORIAL_LOCK_OPTION, (string) time(), false);
+        }
+        $started = time();
+        try {
+            while (true) {
+                $queue = array_values(array_filter((array) get_option(self::OPTION_EDITORIAL_QUEUE, array()), 'is_array'));
+                if (empty($queue)) { break; }
+                if ((time() - $started) > self::TIME_BUDGET_SECONDS) {
+                    wp_schedule_single_event(time() + 60, self::EDITORIAL_CRON_HOOK);
+                    if (function_exists('spawn_cron')) { spawn_cron(); }
+                    break;
+                }
+                $job = array_shift($queue);
+                update_option(self::OPTION_EDITORIAL_QUEUE, $queue, false);
+                self::process_editorial_job($job);
+            }
+        } finally {
+            delete_option(self::EDITORIAL_LOCK_OPTION);
+        }
+    }
+
+    private static function process_editorial_job($job) {
+        $post_id = absint($job['post_id'] ?? 0);
+        $type = sanitize_key((string) ($job['type'] ?? ''));
+        $placeholder = (string) ($job['placeholder'] ?? '');
+        $description = trim((string) ($job['description'] ?? ''));
+        $post = get_post($post_id);
+        if (!$post || $post->post_type !== 'post' || $description === '') { return; }
+        if ($type === 'placeholder' && strpos($post->post_content, $placeholder) === false) {
+            return; // Il contenuto è cambiato: segnaposto non più presente.
+        }
+        if ($type === 'featured' && has_post_thumbnail($post_id)) {
+            return; // Featured arrivata da altra strada: non sovrascrivere.
+        }
+
+        $location = trim((string) get_post_meta($post_id, '_alma_geo_primary_name', true));
+        $prompt = self::build_editorial_prompt($description, (string) get_the_title($post_id), $location);
+        $image = self::request_image($prompt);
+        if (!class_exists('ALMA_AI_Usage_Logger')) { /* logger sempre presente nel plugin */ }
+        ALMA_AI_Usage_Logger::log(array(
+            'model' => self::MODEL,
+            'task' => 'ai_image_editorial',
+            'input_tokens' => is_array($image['usage']) ? absint($image['usage']['input_tokens'] ?? 0) : null,
+            'output_tokens' => is_array($image['usage']) ? absint($image['usage']['output_tokens'] ?? 0) : null,
+            'estimated_cost' => $image['cost'],
+            'response_time' => (int) $image['rt'],
+            'success' => !empty($image['success']),
+            'error' => (string) $image['error'],
+            'reference_id' => 'post:' . $post_id,
+        ));
+        if (empty($image['success'])) {
+            self::log_entry($post_id, array('status' => $image['status'], 'error' => $image['error'], 'response_time' => (int) $image['rt']));
+            return;
+        }
+
+        $stored = self::store_image_file($image['binary'], 'ai-editoriale-' . $post_id . '-' . substr(md5($description), 0, 8));
+        if (is_wp_error($stored)) {
+            self::log_entry($post_id, array('status' => 'save_failed', 'error' => $stored->get_error_message()));
+            return;
+        }
+        $uploads = wp_upload_dir();
+        $attachment_id = wp_insert_attachment(array(
+            'post_mime_type' => $stored['mime'],
+            'post_title' => sanitize_text_field($description),
+            'post_status' => 'inherit',
+            'guid' => trailingslashit($uploads['baseurl']) . 'ai/' . wp_basename($stored['path']),
+        ), $stored['path'], $post_id, true);
+        if (is_wp_error($attachment_id)) {
+            @unlink($stored['path']);
+            self::log_entry($post_id, array('status' => 'save_failed', 'error' => $attachment_id->get_error_message()));
+            return;
+        }
+        $attachment_id = absint($attachment_id);
+        wp_update_attachment_metadata($attachment_id, wp_generate_attachment_metadata($attachment_id, $stored['path']));
+        update_post_meta($attachment_id, '_wp_attachment_image_alt', sanitize_text_field($description));
+        update_post_meta($attachment_id, self::ATTACHMENT_FLAG, '1');
+        update_post_meta($attachment_id, self::META_PROMPT, sanitize_textarea_field($prompt));
+        update_post_meta($attachment_id, '_alma_media_origin', 'ai_generated_editorial');
+        update_post_meta($attachment_id, '_alma_related_post_id', $post_id);
+        update_post_meta($attachment_id, '_alma_related_post_type', 'post');
+
+        if ($type === 'featured') {
+            set_post_thumbnail($post_id, $attachment_id);
+            update_post_meta($post_id, '_alma_ai_agent_selected_featured_image_id', $attachment_id);
+        } else {
+            // Sostituzione del segnaposto con l'immagine reale: wp_update_post
+            // crea la revisione (rollback nativo).
+            $fresh = get_post($post_id);
+            $figure = '<figure class="wp-block-image size-large alma-ai-editorial-image">' . wp_get_attachment_image($attachment_id, 'large') . '</figure>';
+            $new_content = str_replace($placeholder, $figure, (string) $fresh->post_content);
+            if ($new_content !== $fresh->post_content) {
+                wp_update_post(array('ID' => $post_id, 'post_content' => $new_content));
+            }
+        }
+        self::log_entry($post_id, array('status' => 'generated', 'attachment_id' => $attachment_id, 'cost' => $image['cost'], 'response_time' => (int) $image['rt']));
+        do_action('alma_ai_editorial_image_generated', $post_id, $attachment_id, $type);
+    }
+
+    /* ---------------------------------------------------------------------
      * Generazione singola
      * ------------------------------------------------------------------ */
 
@@ -277,43 +519,16 @@ class ALMA_AI_Image_Generator {
         }
 
         $prompt = self::build_prompt(self::prompt_data($post_id));
-        $start = microtime(true);
-        $response = wp_remote_post('https://api.openai.com/v1/images/generations', array(
-            'headers' => array('Authorization' => 'Bearer ' . $api_key, 'Content-Type' => 'application/json'),
-            'body' => wp_json_encode(array(
-                'model' => self::MODEL,
-                'prompt' => $prompt,
-                'size' => self::IMAGE_SIZE,
-                'quality' => self::get_quality(),
-                'n' => 1,
-                // PNG dall'API: la compressione WebP la fa WordPress al salvataggio.
-                'output_format' => 'png',
-            )),
-            'timeout' => 120,
-        ));
-        $rt = (int) round((microtime(true) - $start) * 1000);
-
-        if (is_wp_error($response)) {
-            return self::record_failure($post_id, 'connection_error', $response->get_error_message(), null, $rt, $prompt);
+        $image = self::request_image($prompt);
+        $rt = (int) $image['rt'];
+        $usage = $image['usage'];
+        if (empty($image['success'])) {
+            return self::record_failure($post_id, $image['status'], $image['error'], $usage, $rt, $prompt);
         }
-        $code = (int) wp_remote_retrieve_response_code($response);
-        $data = json_decode(wp_remote_retrieve_body($response), true);
-        if ($code < 200 || $code >= 300) {
-            $message = sanitize_text_field((string) ($data['error']['message'] ?? sprintf(__('Errore OpenAI (HTTP %d).', 'affiliate-link-manager-ai'), $code)));
-            return self::record_failure($post_id, 'api_error', $message, is_array($data['usage'] ?? null) ? $data['usage'] : null, $rt, $prompt);
-        }
-        $b64 = (string) ($data['data'][0]['b64_json'] ?? '');
-        $usage = is_array($data['usage'] ?? null) ? $data['usage'] : null;
-        if ($b64 === '') {
-            return self::record_failure($post_id, 'empty_image', __('Risposta OpenAI senza immagine.', 'affiliate-link-manager-ai'), $usage, $rt, $prompt);
-        }
-        $binary = base64_decode($b64, true);
-        if ($binary === false || strlen($binary) < 1000) {
-            return self::record_failure($post_id, 'invalid_image', __('Immagine ricevuta non valida.', 'affiliate-link-manager-ai'), $usage, $rt, $prompt);
-        }
+        $binary = $image['binary'];
 
         // La chiamata è riuscita (e ha un costo): loggala subito, poi salva.
-        $cost = self::estimate_image_cost($usage);
+        $cost = $image['cost'];
         self::log_usage($post_id, true, '', $usage, $cost, $rt);
 
         $attachment_id = self::save_image_attachment($post_id, $binary, $prompt);
@@ -331,6 +546,64 @@ class ALMA_AI_Image_Generator {
         self::log_entry($post_id, $result);
         do_action('alma_ai_image_generated', $post_id, (int) $attachment_id, $result);
         return $result;
+    }
+
+    /**
+     * Chiamata all'API OpenAI Images: ritorna sempre un array con success,
+     * binary (PNG: la compressione WebP la fa WordPress), usage, cost, rt,
+     * status ed error. Usata da tutti i percorsi (link, coda editoriale).
+     */
+    private static function request_image($prompt) {
+        $out = array('success' => false, 'binary' => '', 'usage' => null, 'cost' => null, 'rt' => 0, 'status' => 'api_error', 'error' => '');
+        $api_key = trim((string) get_option('alma_openai_api_key', ''));
+        if ($api_key === '') {
+            $out['status'] = 'no_api_key';
+            $out['error'] = __('OpenAI non configurato.', 'affiliate-link-manager-ai');
+            return $out;
+        }
+        $start = microtime(true);
+        $response = wp_remote_post('https://api.openai.com/v1/images/generations', array(
+            'headers' => array('Authorization' => 'Bearer ' . $api_key, 'Content-Type' => 'application/json'),
+            'body' => wp_json_encode(array(
+                'model' => self::MODEL,
+                'prompt' => (string) $prompt,
+                'size' => self::IMAGE_SIZE,
+                'quality' => self::get_quality(),
+                'n' => 1,
+                'output_format' => 'png',
+            )),
+            'timeout' => 120,
+        ));
+        $out['rt'] = (int) round((microtime(true) - $start) * 1000);
+        if (is_wp_error($response)) {
+            $out['status'] = 'connection_error';
+            $out['error'] = sanitize_text_field($response->get_error_message());
+            return $out;
+        }
+        $code = (int) wp_remote_retrieve_response_code($response);
+        $data = json_decode(wp_remote_retrieve_body($response), true);
+        $out['usage'] = is_array($data['usage'] ?? null) ? $data['usage'] : null;
+        $out['cost'] = self::estimate_image_cost($out['usage']);
+        if ($code < 200 || $code >= 300) {
+            $out['error'] = sanitize_text_field((string) ($data['error']['message'] ?? sprintf(__('Errore OpenAI (HTTP %d).', 'affiliate-link-manager-ai'), $code)));
+            return $out;
+        }
+        $b64 = (string) ($data['data'][0]['b64_json'] ?? '');
+        if ($b64 === '') {
+            $out['status'] = 'empty_image';
+            $out['error'] = __('Risposta OpenAI senza immagine.', 'affiliate-link-manager-ai');
+            return $out;
+        }
+        $binary = base64_decode($b64, true);
+        if ($binary === false || strlen($binary) < 1000) {
+            $out['status'] = 'invalid_image';
+            $out['error'] = __('Immagine ricevuta non valida.', 'affiliate-link-manager-ai');
+            return $out;
+        }
+        $out['success'] = true;
+        $out['status'] = 'generated';
+        $out['binary'] = $binary;
+        return $out;
     }
 
     private static function record_failure($post_id, $status, $message, $usage, $rt, $prompt, $log_usage = true) {
@@ -449,7 +722,12 @@ class ALMA_AI_Image_Generator {
      * Salvataggio in uploads/ai/ con conversione WebP di WordPress
      * ------------------------------------------------------------------ */
 
-    private static function save_image_attachment($post_id, $binary, $prompt) {
+    /**
+     * Scrive il binario in uploads/ai con conversione WebP di WordPress
+     * (fallback JPEG; PNG originale se manca l'editor immagini).
+     * Ritorna array('path','mime') o WP_Error.
+     */
+    private static function store_image_file($binary, $base) {
         $uploads = wp_upload_dir();
         if (!empty($uploads['error'])) {
             return new WP_Error('uploads_error', sanitize_text_field((string) $uploads['error']));
@@ -470,8 +748,6 @@ class ALMA_AI_Image_Generator {
             return new WP_Error('invalid_image', __('Il file generato non è un\'immagine valida.', 'affiliate-link-manager-ai'));
         }
 
-        $slug = sanitize_title(get_the_title($post_id));
-        $base = 'ai-' . ($slug !== '' ? $slug . '-' : '') . $post_id;
         $mime = 'image/webp';
         $path = '';
         $editor = wp_get_image_editor($tmp);
@@ -502,6 +778,18 @@ class ALMA_AI_Image_Generator {
             if (!empty($saved['mime-type'])) { $mime = (string) $saved['mime-type']; }
         }
         @unlink($tmp);
+        return array('path' => $path, 'mime' => $mime);
+    }
+
+    private static function save_image_attachment($post_id, $binary, $prompt) {
+        $slug = sanitize_title(get_the_title($post_id));
+        $stored = self::store_image_file($binary, 'ai-' . ($slug !== '' ? $slug . '-' : '') . $post_id);
+        if (is_wp_error($stored)) {
+            return $stored;
+        }
+        $path = $stored['path'];
+        $mime = $stored['mime'];
+        $uploads = wp_upload_dir();
 
         $attachment_id = wp_insert_attachment(array(
             'post_mime_type' => $mime,
@@ -556,6 +844,7 @@ class ALMA_AI_Image_Generator {
         check_admin_referer('alma_ai_images_admin');
         update_option(self::OPTION_ENABLED, empty($_POST[self::OPTION_ENABLED]) ? '0' : '1', false);
         update_option(self::OPTION_PRIORITY_ENABLED, empty($_POST[self::OPTION_PRIORITY_ENABLED]) ? '0' : '1', false);
+        update_option(self::OPTION_EDITORIAL_ENABLED, empty($_POST[self::OPTION_EDITORIAL_ENABLED]) ? '0' : '1', false);
         update_option(self::OPTION_DAILY, max(0, min(20, absint($_POST[self::OPTION_DAILY] ?? 5))), false);
         $quality = sanitize_key($_POST[self::OPTION_QUALITY] ?? 'medium');
         update_option(self::OPTION_QUALITY, in_array($quality, array('low', 'medium', 'high'), true) ? $quality : 'medium', false);
@@ -622,6 +911,7 @@ class ALMA_AI_Image_Generator {
         echo '<table class="form-table" role="presentation">';
         echo '<tr><th scope="row">Attiva generazione</th><td><label><input type="checkbox" name="' . esc_attr(self::OPTION_ENABLED) . '" value="1" ' . checked($enabled, true, false) . '> Genera in background ogni notte le immagini mancanti</label></td></tr>';
         echo '<tr><th scope="row">Link scelti dall\'Agente</th><td><label><input type="checkbox" name="' . esc_attr(self::OPTION_PRIORITY_ENABLED) . '" value="1" ' . checked(self::is_priority_enabled(), true, false) . '> Genera subito le immagini per i link senza immagine inseriti dall\'Agente AI in widget e articoli</label><p class="description">Coda prioritaria in background, indipendente dal runner notturno e dal suo limite giornaliero. In coda ora: ' . count((array) get_option(self::OPTION_PRIORITY_QUEUE, array())) . '.</p></td></tr>';
+        echo '<tr><th scope="row">Immagini editoriali articoli</th><td><label><input type="checkbox" name="' . esc_attr(self::OPTION_EDITORIAL_ENABLED) . '" value="1" ' . checked(get_option(self::OPTION_EDITORIAL_ENABLED, '1') === '1', true, false) . '> Genera le immagini editoriali degli articoli dell\'Agente: i segnaposto <code>[Immagine: descrizione]</code> vengono sostituiti con foto AI (max ' . (int) self::MAX_EDITORIAL_PER_POST . ' per articolo) e l\'immagine in evidenza viene generata quando nessuna candidata è coerente</label><p class="description">Fuori dal limite giornaliero. In coda ora: ' . count((array) get_option(self::OPTION_EDITORIAL_QUEUE, array())) . '. I segnaposto non ancora generati non vengono mai mostrati ai lettori.</p></td></tr>';
         echo '<tr><th scope="row"><label for="' . esc_attr(self::OPTION_DAILY) . '">Immagini al giorno</label></th><td><input type="number" min="0" max="20" class="small-text" name="' . esc_attr(self::OPTION_DAILY) . '" id="' . esc_attr(self::OPTION_DAILY) . '" value="' . esc_attr((string) $limit) . '"> <span class="description">Oggi: ' . (int) $today . ' / ' . (int) $limit . '. Ogni immagine è una chiamata OpenAI a pagamento.</span></td></tr>';
         echo '<tr><th scope="row"><label for="' . esc_attr(self::OPTION_QUALITY) . '">Qualità immagine</label></th><td><select name="' . esc_attr(self::OPTION_QUALITY) . '" id="' . esc_attr(self::OPTION_QUALITY) . '">';
         foreach (array('low' => 'Bassa (≈ $0.02)', 'medium' => 'Media (≈ $0.07) — consigliata', 'high' => 'Alta (≈ $0.30)') as $value => $label) {

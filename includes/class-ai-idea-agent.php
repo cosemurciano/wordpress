@@ -242,8 +242,19 @@ class ALMA_AI_Idea_Agent {
                         'idea_id' => (int)$idea['id'],
                         'titolo' => $idea['titolo'],
                         'post_id' => (int)($draft['post_id'] ?? 0),
-                        'error' => empty($draft['success']) ? sanitize_text_field((string)($draft['error'] ?? '')) : '',
+                        'error' => empty($draft['success']) ? sanitize_text_field((string)($draft['error'] ?? 'Errore generazione bozza')) : '',
                     );
+                }
+                // Bozze mancate (errori, interruzioni, cavallo di mezzanotte):
+                // niente attese silenziose, il runner programmato riparte tra
+                // pochi minuti e le ritenta; il motivo resta nel report.
+                $has_failures = false;
+                foreach ((array) $report['drafts_created'] as $draft_row) {
+                    if (empty($draft_row['post_id']) && !empty($draft_row['error'])) { $has_failures = true; break; }
+                }
+                if ($has_failures) {
+                    wp_schedule_single_event(time() + 300, ALMA_AI_Content_Agent_Idea_Importer::CRON_HOOK);
+                    if (function_exists('spawn_cron')) { spawn_cron(); }
                 }
             }
         } catch (Throwable $e) {

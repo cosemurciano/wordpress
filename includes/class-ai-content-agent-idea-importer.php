@@ -502,7 +502,7 @@ class ALMA_AI_Content_Agent_Idea_Importer {
             }
         }
         if (empty($candidates)) {
-            update_post_meta($idea_id, ALMA_AI_Content_Agent_Ideas::META_EXECUTED_AT, current_time('mysql'));
+            self::mark_idea_failure($idea_id, 'Nessun link affiliato candidato');
             return array('success' => false, 'error' => 'Nessun link affiliato candidato per l\'idea #' . $idea_id);
         }
         foreach ($candidates as &$candidate) { $candidate['selected'] = true; }
@@ -514,12 +514,33 @@ class ALMA_AI_Content_Agent_Idea_Importer {
         ALMA_AI_Content_Agent_Selection_Session::load_from_idea(ALMA_AI_Content_Agent_Ideas::get($idea_id));
 
         $result = ALMA_AI_Content_Agent_Draft_Builder::generate_from_selection_session($author_id);
-        update_post_meta($idea_id, ALMA_AI_Content_Agent_Ideas::META_EXECUTED_AT, current_time('mysql'));
         if (!empty($result['success']) && !empty($result['post_id'])) {
+            // Solo a SUCCESSO l'idea è eseguita: i fallimenti (timeout OpenAI,
+            // interruzioni a cavallo di mezzanotte…) restano ritentabili dal
+            // runner programmato, fino a 3 tentativi.
+            update_post_meta($idea_id, ALMA_AI_Content_Agent_Ideas::META_EXECUTED_AT, current_time('mysql'));
+            delete_post_meta($idea_id, '_alma_idea_generation_attempts');
+            delete_post_meta($idea_id, '_alma_idea_generation_last_error');
             update_post_meta($idea_id, ALMA_AI_Content_Agent_Ideas::META_DRAFT_POST_ID, absint($result['post_id']));
             self::assign_idea_location_to_post($idea_id, absint($result['post_id']));
+        } else {
+            self::mark_idea_failure($idea_id, (string) ($result['error'] ?? 'Errore generazione bozza'));
         }
         return is_array($result) ? $result : array('success' => false, 'error' => 'Risposta generazione non valida');
+    }
+
+    /**
+     * Fallimento di generazione: l'idea NON viene marcata come eseguita, così
+     * il runner programmato la ritenta; dopo 3 tentativi si arrende (eseguita
+     * con errore registrato, visibile in Tutte le idee e nei report).
+     */
+    private static function mark_idea_failure($idea_id, $error) {
+        $attempts = absint(get_post_meta($idea_id, '_alma_idea_generation_attempts', true)) + 1;
+        update_post_meta($idea_id, '_alma_idea_generation_attempts', $attempts);
+        update_post_meta($idea_id, '_alma_idea_generation_last_error', sanitize_text_field($error));
+        if ($attempts >= 3) {
+            update_post_meta($idea_id, ALMA_AI_Content_Agent_Ideas::META_EXECUTED_AT, current_time('mysql'));
+        }
     }
 
     /**
