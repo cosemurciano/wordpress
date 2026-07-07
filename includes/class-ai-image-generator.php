@@ -24,7 +24,11 @@ if (!defined('ABSPATH')) {
 
 class ALMA_AI_Image_Generator {
     const CRON_HOOK = 'alma_ai_image_generator_run';
+    const PRIORITY_CRON_HOOK = 'alma_ai_image_generator_priority_run';
     const OPTION_ENABLED = 'alma_ai_images_enabled';
+    const OPTION_PRIORITY_ENABLED = 'alma_ai_images_priority_enabled';
+    const OPTION_PRIORITY_QUEUE = 'alma_ai_images_priority_queue';
+    const PRIORITY_LOCK_OPTION = 'alma_ai_images_priority_lock';
     const OPTION_DAILY = 'alma_ai_images_daily_limit';
     const OPTION_QUALITY = 'alma_ai_images_quality';
     const OPTION_COUNTER = 'alma_ai_images_counter';
@@ -46,6 +50,7 @@ class ALMA_AI_Image_Generator {
     public static function init() {
         add_action('init', array(__CLASS__, 'maybe_schedule_cron'));
         add_action(self::CRON_HOOK, array(__CLASS__, 'run'));
+        add_action(self::PRIORITY_CRON_HOOK, array(__CLASS__, 'run_priority_queue'));
         add_action('admin_post_alma_ai_images_save_settings', array(__CLASS__, 'handle_save_settings'));
         add_action('admin_post_alma_ai_images_run_now', array(__CLASS__, 'handle_run_now'));
         add_action('admin_post_alma_ai_images_generate_single', array(__CLASS__, 'handle_generate_single'));
@@ -61,6 +66,15 @@ class ALMA_AI_Image_Generator {
 
     public static function unschedule() {
         wp_clear_scheduled_hook(self::CRON_HOOK);
+        wp_clear_scheduled_hook(self::PRIORITY_CRON_HOOK);
+    }
+
+    /**
+     * La generazione immediata per i link scelti dall'Agente AI è attiva?
+     * Indipendente dal runner notturno e dal suo cap giornaliero.
+     */
+    public static function is_priority_enabled() {
+        return get_option(self::OPTION_PRIORITY_ENABLED, '1') === '1';
     }
 
     public static function is_enabled() {
@@ -174,6 +188,69 @@ class ALMA_AI_Image_Generator {
             }
         } finally {
             delete_option(self::LOCK_OPTION);
+        }
+    }
+
+    /* ---------------------------------------------------------------------
+     * Coda prioritaria: link scelti dall'Agente AI (widget/articoli).
+     * Fuori dal cap giornaliero del runner notturno: le immagini servono
+     * subito perché il contenuto che le usa è appena stato creato.
+     * ------------------------------------------------------------------ */
+
+    /**
+     * Accoda link senza immagine per la generazione immediata in background.
+     * Chiamata quando l'agente inserisce link in widget o articoli.
+     */
+    public static function queue_links($link_ids) {
+        if (!self::is_priority_enabled() || trim((string) get_option('alma_openai_api_key', '')) === '') { return 0; }
+        $queue = array_map('absint', (array) get_option(self::OPTION_PRIORITY_QUEUE, array()));
+        $added = 0;
+        foreach ((array) $link_ids as $id) {
+            $id = absint($id);
+            if ($id < 1 || in_array($id, $queue, true)) { continue; }
+            if (get_post_type($id) !== 'affiliate_link' || has_post_thumbnail($id)) { continue; }
+            if (class_exists('ALMA_Link_Health_Checker') && ALMA_Link_Health_Checker::is_dead($id)) { continue; }
+            $queue[] = $id;
+            $added++;
+        }
+        if ($added < 1) { return 0; }
+        update_option(self::OPTION_PRIORITY_QUEUE, array_values($queue), false);
+        if (!wp_next_scheduled(self::PRIORITY_CRON_HOOK)) {
+            wp_schedule_single_event(time() + 5, self::PRIORITY_CRON_HOOK);
+        }
+        if (function_exists('spawn_cron')) { spawn_cron(); }
+        return $added;
+    }
+
+    /**
+     * Runner della coda prioritaria: budget di tempo + catena, NON tocca il
+     * contatore giornaliero (il cap vale solo per il runner notturno).
+     */
+    public static function run_priority_queue() {
+        if (trim((string) get_option('alma_openai_api_key', '')) === '') { return; }
+        if (!add_option(self::PRIORITY_LOCK_OPTION, (string) time(), '', 'no')) {
+            $lock_started = absint(get_option(self::PRIORITY_LOCK_OPTION, 0));
+            if ($lock_started < 1 || (time() - $lock_started) <= self::LOCK_TTL) { return; }
+            update_option(self::PRIORITY_LOCK_OPTION, (string) time(), false);
+        }
+        $started = time();
+        try {
+            while (true) {
+                $queue = array_values(array_map('absint', (array) get_option(self::OPTION_PRIORITY_QUEUE, array())));
+                if (empty($queue)) { break; }
+                if ((time() - $started) > self::TIME_BUDGET_SECONDS) {
+                    wp_schedule_single_event(time() + 60, self::PRIORITY_CRON_HOOK);
+                    if (function_exists('spawn_cron')) { spawn_cron(); }
+                    break;
+                }
+                $post_id = array_shift($queue);
+                update_option(self::OPTION_PRIORITY_QUEUE, $queue, false);
+                if ($post_id < 1 || has_post_thumbnail($post_id)) { continue; }
+                if (absint(get_post_meta($post_id, self::META_FAILS, true)) >= self::MAX_FAILS) { continue; }
+                self::generate_for_link($post_id, false);
+            }
+        } finally {
+            delete_option(self::PRIORITY_LOCK_OPTION);
         }
     }
 
@@ -478,6 +555,7 @@ class ALMA_AI_Image_Generator {
         if (!current_user_can('manage_options')) { wp_die('forbidden'); }
         check_admin_referer('alma_ai_images_admin');
         update_option(self::OPTION_ENABLED, empty($_POST[self::OPTION_ENABLED]) ? '0' : '1', false);
+        update_option(self::OPTION_PRIORITY_ENABLED, empty($_POST[self::OPTION_PRIORITY_ENABLED]) ? '0' : '1', false);
         update_option(self::OPTION_DAILY, max(0, min(20, absint($_POST[self::OPTION_DAILY] ?? 5))), false);
         $quality = sanitize_key($_POST[self::OPTION_QUALITY] ?? 'medium');
         update_option(self::OPTION_QUALITY, in_array($quality, array('low', 'medium', 'high'), true) ? $quality : 'medium', false);
@@ -543,6 +621,7 @@ class ALMA_AI_Image_Generator {
         echo '<input type="hidden" name="action" value="alma_ai_images_save_settings">';
         echo '<table class="form-table" role="presentation">';
         echo '<tr><th scope="row">Attiva generazione</th><td><label><input type="checkbox" name="' . esc_attr(self::OPTION_ENABLED) . '" value="1" ' . checked($enabled, true, false) . '> Genera in background ogni notte le immagini mancanti</label></td></tr>';
+        echo '<tr><th scope="row">Link scelti dall\'Agente</th><td><label><input type="checkbox" name="' . esc_attr(self::OPTION_PRIORITY_ENABLED) . '" value="1" ' . checked(self::is_priority_enabled(), true, false) . '> Genera subito le immagini per i link senza immagine inseriti dall\'Agente AI in widget e articoli</label><p class="description">Coda prioritaria in background, indipendente dal runner notturno e dal suo limite giornaliero. In coda ora: ' . count((array) get_option(self::OPTION_PRIORITY_QUEUE, array())) . '.</p></td></tr>';
         echo '<tr><th scope="row"><label for="' . esc_attr(self::OPTION_DAILY) . '">Immagini al giorno</label></th><td><input type="number" min="0" max="20" class="small-text" name="' . esc_attr(self::OPTION_DAILY) . '" id="' . esc_attr(self::OPTION_DAILY) . '" value="' . esc_attr((string) $limit) . '"> <span class="description">Oggi: ' . (int) $today . ' / ' . (int) $limit . '. Ogni immagine è una chiamata OpenAI a pagamento.</span></td></tr>';
         echo '<tr><th scope="row"><label for="' . esc_attr(self::OPTION_QUALITY) . '">Qualità immagine</label></th><td><select name="' . esc_attr(self::OPTION_QUALITY) . '" id="' . esc_attr(self::OPTION_QUALITY) . '">';
         foreach (array('low' => 'Bassa (≈ $0.02)', 'medium' => 'Media (≈ $0.07) — consigliata', 'high' => 'Alta (≈ $0.30)') as $value => $label) {

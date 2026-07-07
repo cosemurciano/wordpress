@@ -1,3 +1,15 @@
+## 2.83.0 - 2026-07-07
+
+### Widget Link v3: anteprima live, widget nell'arricchimento, click per widget, immagini AI on-demand
+- **Anteprima live nel builder**: Crea/Modifica Widget mostra il rendering reale del widget (stessi markup e CSS del frontend) con i click disabilitati; si aggiorna a ogni ricarica/aggiunta di link.
+- **Widget anche nell'arricchimento notturno e nella metabox "AI Affiliati"**: il motore di proposte condiviso può ora proporre **al massimo un widget** per gli articoli pubblicati che non ne hanno (pattern `widget` abilitato nelle Regole inserimento), scegliendo layout e link candidati; l'istanza reale viene creata **solo all'applicazione** (mai widget orfani da proposte rifiutate) ed è visibile in Elenco Widget Link.
+- **Elenco Widget Link**: ordine invertito (**dal più recente al più vecchio**), nuova colonna **Click 30gg** (click con provenienza "widget" sui link contenuti, ultimi 30 giorni), colonna numero link e badge 🤖 sui widget creati dall'Agente.
+- **Colore accento configurabile**: nuova card in Elenco Widget Link con color picker per pulsanti/CTA dei layout a card (opzione `alma_widget_accent_color`, validata esadecimale, default blu; resta sovrascrivibile via CSS con `--alma-wgt-accent`).
+- **Immagini AI on-demand per i link scelti dall'Agente** (nuova coda prioritaria in `ALMA_AI_Image_Generator`): quando l'Agente inserisce in widget o articoli link **senza immagine in evidenza**, questi entrano in una coda prioritaria che genera subito le immagini in background, **indipendente dal runner notturno e dal suo limite giornaliero** (lock dedicato, budget di tempo, catena di run; le card le mostrano appena pronte). Attivabile/disattivabile con la nuova spunta "Link scelti dall'Agente" nella tab Immagini AI (default attiva). Agganciata a: creazione widget AI, bozze dell'Agente (shortcode usati), arricchimento notturno e applicazione proposte dalla metabox.
+- **Preferenza immagini nel taglio**: se l'AI propone più link del massimo del layout, nel taglio sopravvivono prima i link con immagine.
+- Test standalone 26/26 (aggiunti: colore accento default/valido/injection respinta).
+- Versione plugin aggiornata a `2.83.0`.
+
 ## 2.82.0 - 2026-07-07
 
 ### Widget Link v2: layout in stile catalogo esperienze, scelti anche dall'Agente AI

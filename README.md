@@ -1,3 +1,9 @@
+## 2.83.0 - 2026-07-07
+
+### Widget Link v3
+- Anteprima live nel builder; proposte widget anche nell'arricchimento notturno e nella metabox AI Affiliati (istanza creata solo all'applicazione); Elenco Widget Link dal più recente con colonna Click 30gg e badge 🤖; color picker per l'accento delle card; coda prioritaria immagini AI per i link senza immagine scelti dall'Agente, fuori dal limite giornaliero.
+- Versione plugin aggiornata a `2.83.0`.
+
 ## 2.82.0 - 2026-07-07
 
 ### Widget Link v2: layout in stile catalogo esperienze

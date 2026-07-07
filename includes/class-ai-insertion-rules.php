@@ -223,7 +223,15 @@ class ALMA_AI_Insertion_Rules {
         $link_ids = array_values(array_unique(array_filter(array_map('absint', (array)($request['link_ids'] ?? array())))));
         // Solo link candidati del payload: l'AI non può inventare ID.
         $link_ids = array_values(array_intersect($link_ids, array_map('absint', (array)$candidate_affiliate_ids)));
-        $link_ids = array_slice($link_ids, 0, min(absint($rules['widget_max_links']), absint($preset['max_links'])));
+        $max_links = min(absint($rules['widget_max_links']), absint($preset['max_links']));
+        if (count($link_ids) > $max_links) {
+            // A parità di scelta dell'AI, nel taglio sopravvivono prima i link
+            // CON immagine (le card vivono di immagini); ordine stabile.
+            usort($link_ids, function ($a, $b) {
+                return (int) has_post_thumbnail($b) <=> (int) has_post_thumbnail($a);
+            });
+        }
+        $link_ids = array_slice($link_ids, 0, $max_links);
         $min_links = max(1, absint($preset['min_links']));
         if (count($link_ids) < $min_links) {
             return array('error' => sprintf('widget_request ignorata: il layout %s richiede almeno %d link candidati validi.', $layout, $min_links));
@@ -265,6 +273,13 @@ class ALMA_AI_Insertion_Rules {
         $instances[$next_id] = $instance;
         $instances['_multiwidget'] = $multiwidget;
         update_option('widget_affiliate_links_widget', $instances);
+
+        // I link del widget senza immagine entrano nella coda prioritaria di
+        // generazione immagini AI (fuori dal cap giornaliero): le card le
+        // mostreranno appena pronte.
+        if (class_exists('ALMA_AI_Image_Generator')) {
+            ALMA_AI_Image_Generator::queue_links($link_ids);
+        }
 
         return array(
             'widget_id' => $next_id,
