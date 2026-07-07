@@ -16,6 +16,7 @@ class ALMA_Assets {
     public function init() {
         add_action('admin_enqueue_scripts', array($this, 'admin_enqueue_scripts'));
         add_action('admin_head-edit.php', array($this, 'print_posts_list_css'));
+        add_filter('manage_edit-post_columns', array($this, 'hide_theme_posts_columns'), PHP_INT_MAX);
         add_action('wp_enqueue_scripts', array($this, 'enqueue_frontend_scripts'));
         add_action('wp_head', array($this, 'output_custom_css'), 100);
     }
@@ -67,7 +68,24 @@ class ALMA_Assets {
         if (!$screen || !in_array($screen->post_type, array('post', 'affiliate_link'), true)) {
             return;
         }
-        echo '<style id="alma-posts-list-title-width">.wp-list-table .column-title{width:28%;min-width:280px;}@media screen and (max-width:1400px){.wp-list-table .column-title{width:34%;}}</style>';
+        echo '<style id="alma-posts-list-title-width">.wp-list-table .column-title{width:28%;min-width:280px;}.wp-list-table .column-categories{width:14%;min-width:140px;}.wp-list-table .column-alma_geo{width:120px;min-width:110px;}@media screen and (max-width:1400px){.wp-list-table .column-title{width:34%;}}</style>';
+    }
+
+    /**
+     * Nasconde nell'elenco Articoli le colonne dei campi tema (Come, Cosa,
+     * Perché, People, Quando, Durata): con tutte le colonne di SEO e plugin
+     * il contenuto diventava illeggibile (una lettera per riga). Il match è
+     * sull'ETICHETTA, così funziona qualunque sia la chiave usata dal tema.
+     */
+    public function hide_theme_posts_columns($columns) {
+        $hidden_labels = array('come', 'cosa', 'perché', 'perche', 'people', 'quando', 'durata');
+        foreach ((array) $columns as $key => $label) {
+            $plain = trim(function_exists('mb_strtolower') ? mb_strtolower(wp_strip_all_tags((string) $label)) : strtolower(wp_strip_all_tags((string) $label)));
+            if (in_array($plain, $hidden_labels, true)) {
+                unset($columns[$key]);
+            }
+        }
+        return $columns;
     }
 
     public function admin_enqueue_scripts($hook) {
