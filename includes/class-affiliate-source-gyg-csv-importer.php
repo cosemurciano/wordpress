@@ -192,6 +192,24 @@ class ALMA_Affiliate_Source_GYG_CSV_Importer {
         return $base . ($query !== '' ? '?' . $query : '') . $fragment;
     }
 
+    /**
+     * Applica strip_gyg_session_params a TUTTI gli URL getyourguide.* dentro
+     * un contenuto HTML (href e testo), preservando lo stile di encoding
+     * degli ampersand (& oppure &amp;). Pura.
+     */
+    public static function strip_gyg_session_params_from_content($content) {
+        $content = (string) $content;
+        if ($content === '' || stripos($content, 'getyourguide.') === false) { return $content; }
+        return preg_replace_callback('~https?://[^\s"\'<>]*getyourguide\.[^\s"\'<>]*~i', function ($match) {
+            $original = $match[0];
+            $uses_entities = strpos($original, '&amp;') !== false;
+            $decoded = $uses_entities ? str_replace('&amp;', '&', $original) : $original;
+            $cleaned = self::strip_gyg_session_params($decoded);
+            if ($cleaned === $decoded) { return $original; }
+            return $uses_entities ? str_replace('&', '&amp;', $cleaned) : $cleaned;
+        }, $content);
+    }
+
     public static function build_affiliate_url($original_url, $partner_id, $utm_medium = 'online_publisher') {
         $url = esc_url_raw(trim((string)$original_url));
         if ($url === '' || !wp_http_validate_url($url)) {

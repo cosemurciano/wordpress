@@ -1,3 +1,21 @@
+## 2.87.3 - 2026-07-08
+
+### Parametri di sessione GYG: pulizia anche negli ARTICOLI e sui link in ogni stato
+- **Percorso completo del problema ricostruito** (grazie al "copia link senza cliccare" dell'editore): i deep link del CSV contenevano `deeplink_id`/`page_id` → salvati nel meta dei Link Affiliati (prima della 2.87.1) → il payload dei candidati passa all'AI l'`affiliate_url` grezzo → l'AI può scrivere **href diretti nel corpo dell'articolo** con l'URL sporco. Risultato: URL sporco *dentro il post_content*, che la pulizia dei soli meta non toccava; in più il contatore guardava solo i link `publish`. Nota: quei parametri NON sono tracking del plugin (il click tracking del plugin usa `data-link-id` e una tabella propria, mai parametri URL) e la stringa `deeplink_id` non esiste nel codice: sono gli ID di sessione dell'export GetYourGuide (il nome della source "GetYourGuide Deep Link" è una coincidenza lessicale).
+- **Batch di pulizia esteso**: ora pulisce sia i **Link Affiliati in ogni stato** (publish/draft/pending/private, con backup) sia il **contenuto di articoli e pagine** che contengono URL getyourguide.* con parametri di sessione (fino a 20 articoli per click, con revisione WordPress per il rollback); contatori separati per link e articoli nella card e nel messaggio di esito.
+- **Nuova funzione pura `strip_gyg_session_params_from_content()`**: ripulisce tutti gli URL GYG dentro un HTML preservando lo stile degli ampersand (`&` o `&amp;`); altri domini mai toccati.
+- **Prevenzione alla fonte**: il draft-builder applica la pulizia al contenuto di OGNI nuova bozza prima del salvataggio — anche se l'AI incolla un URL sporco dal payload, non arriva mai nell'articolo.
+- Test standalone 13/13 (aggiunti: href nel contenuto ripulito, `&amp;` preservato, altri domini/contenuti senza GYG invariati).
+- Versione plugin aggiornata a `2.87.3`.
+
+## 2.87.2 - 2026-07-08
+
+### Verifica link: Ispettore degli URL salvati
+- **Contesto**: dopo la pulizia dei parametri di sessione (2.87.1) il contatore risultava a zero. Le spiegazioni possibili sono due, e ora la pagina permette di distinguerle: (a) gli URL salvati sono davvero puliti e i `deeplink_id`/`page_id` visti nel browser li aggiunge **GetYourGuide stesso durante il redirect dopo il click** (è il loro tracking: il `partner_id` resta nell'URL e la vendita viene attribuita normalmente); (b) esistono ancora URL sporchi che la query non intercettava.
+- **Nuova card "🔎 Ispettore URL salvati"** in Verifica link: cerca per titolo o per pezzo di URL (es. `t160202`, `dubai`, `deeplink_id`) e mostra fino a 20 link con l'URL **esattamente come salvato nel database** (bozze incluse), con gli eventuali parametri di sessione evidenziati in rosso e l'indicazione se il link è già stato bonificato (backup presente).
+- Messaggio del contatore a zero riformulato per spiegare il comportamento del redirect GYG.
+- Versione plugin aggiornata a `2.87.2`.
+
 ## 2.87.1 - 2026-07-08
 
 ### Link GYG: rimossi i parametri di sessione (deeplink_id/page_id) da import e archivio
