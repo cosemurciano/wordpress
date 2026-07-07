@@ -1,3 +1,11 @@
+## 2.80.1 - 2026-07-07
+
+### Salvataggio manuale dei Link Affiliati: difese rafforzate + diagnostica visibile
+- **Contesto**: segnalato un caso in cui, pubblicando un nuovo Link Affiliato, la pagina finiva sull'elenco articoli e il link risultava senza URL affiliato, senza tipologia e da ripubblicare. La firma dei dati (titolo salvato, tutto il resto no, stato bozza) indica che la richiesta di pubblicazione non è stata processata (solo l'autosave era andato a buon fine); nel codice del plugin nessun hook del flusso di salvataggio esegue redirect o exit.
+- **Difese rafforzate**: i filtri che riportano il salvataggio di un Link Affiliato sulla sua schermata di modifica (`redirect_post_location` e la guardia su `wp_redirect` contro i rimbalzi verso `edit.php`) passano da priorità 99 a **priorità massima**: nessun altro filtro può più scavalcarli.
+- **Diagnostica sempre attiva e visibile in admin**: gli eventi del flusso di salvataggio (marker, valutazioni dei filtri di redirect con destinazione finale, ricezione del salvataggio meta con validità del nonce) vengono ora registrati in un buffer (ultimi 40) **indipendente da WP_DEBUG e dall'error_log**, più una **fotografia di fine richiesta** per ogni editpost: stato del post, URL affiliato salvato sì/no, numero tipologie, handler eseguiti, header Location reale inviato al browser, presenza dei campi nel POST. Nuova card **"🧪 Diagnostica salvataggio link"** nella pagina Verifica link con gli eventi e il pulsante Svuota: per indagare basta svuotare, riprodurre il salvataggio e ricaricare.
+- Versione plugin aggiornata a `2.80.1`.
+
 ## 2.80.0 - 2026-07-07
 
 ### Tipologie universali: Assicurazioni, eSIM e simili valide per qualsiasi articolo

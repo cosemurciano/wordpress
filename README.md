@@ -1,3 +1,9 @@
+## 2.80.1 - 2026-07-07
+
+### Salvataggio manuale link: difese rafforzate + diagnostica visibile
+- Filtri anti-rimbalzo verso l'elenco a priorità massima; nuova card "Diagnostica salvataggio link" in Verifica link che registra ogni passaggio dei salvataggi manuali (destinazione reale, esito meta/tipologie, nonce) per individuare il colpevole alla prossima riproduzione.
+- Versione plugin aggiornata a `2.80.1`.
+
 ## 2.80.0 - 2026-07-07
 
 ### Tipologie universali (Assicurazioni, eSIM…)

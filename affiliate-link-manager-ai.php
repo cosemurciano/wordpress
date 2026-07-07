@@ -3,7 +3,7 @@
  * Plugin Name: Affiliate Link Manager AI
  * Plugin URI: https://your-website.com
  * Description: Gestisce link affiliati con intelligenza artificiale per ottimizzazione e tracking automatico.
- * Version: 2.80.0
+ * Version: 2.80.1
  * Author: Cosè Murciano
  * License: GPL v2 or later
  * Text Domain: affiliate-link-manager-ai
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Definisci costanti del plugin
-define('ALMA_VERSION', '2.80.0');
+define('ALMA_VERSION', '2.80.1');
 define('ALMA_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('ALMA_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('ALMA_PLUGIN_FILE', __FILE__);
@@ -568,8 +568,11 @@ class AffiliateManagerAI {
         add_action('save_post_affiliate_link', array($this, 'remember_affiliate_link_editor_save'), 1, 3);
         add_action('save_post_affiliate_link', array($this, 'save_link_meta'));
         add_action('admin_init', array($this, 'maybe_recover_affiliate_link_wrong_edit_redirect'), 1);
-        add_filter('redirect_post_location', array($this, 'normalize_affiliate_link_update_redirect'), 99, 2);
-        add_filter('wp_redirect', array($this, 'guard_affiliate_link_editpost_redirect'), 99, 2);
+        // Priorità massima: nessun altro filtro deve poter riportare il
+        // salvataggio di un Link Affiliato sull'elenco articoli.
+        add_filter('redirect_post_location', array($this, 'normalize_affiliate_link_update_redirect'), PHP_INT_MAX, 2);
+        add_filter('wp_redirect', array($this, 'guard_affiliate_link_editpost_redirect'), PHP_INT_MAX, 2);
+        add_action('shutdown', array($this, 'record_affiliate_link_editpost_shutdown'), 1);
         add_action('admin_post_alma_export_affiliate_links_csv', array($this, 'export_affiliate_links_csv'));
         
         // Colonne personalizzate nella lista
@@ -2046,7 +2049,60 @@ class AffiliateManagerAI {
         return false;
     }
 
+    /**
+     * Traccia visibile in admin degli eventi di salvataggio dei Link
+     * Affiliati (ring buffer in option, sempre attivo): una riproduzione
+     * del problema basta per leggere l'intera catena nella card
+     * "Diagnostica salvataggio" della pagina Verifica link.
+     */
+    public static function record_link_save_event($message, $context = array()) {
+        $events = get_option('alma_link_save_diag_events', array());
+        if (!is_array($events)) { $events = array(); }
+        $compact = array();
+        foreach ((array) $context as $key => $value) {
+            if (is_scalar($value) || $value === null) {
+                $compact[$key] = is_string($value) ? mb_substr($value, 0, 200) : $value;
+            }
+        }
+        array_unshift($events, array('time' => current_time('mysql'), 'message' => (string) $message, 'context' => $compact));
+        update_option('alma_link_save_diag_events', array_slice($events, 0, 40), false);
+    }
+
+    /**
+     * Fotografia di fine richiesta per gli editpost dei Link Affiliati:
+     * registra dove il browser è stato mandato davvero (header Location),
+     * lo stato del post e quanti handler di salvataggio sono girati —
+     * l'evidenza che serve quando un salvataggio "sparisce".
+     */
+    public function record_affiliate_link_editpost_shutdown() {
+        if (!is_admin() || (isset($_POST['action']) ? sanitize_key(wp_unslash($_POST['action'])) : '') !== 'editpost') {
+            return;
+        }
+        $post_id = isset($_POST['post_ID']) ? absint(wp_unslash($_POST['post_ID'])) : 0;
+        if (!$post_id || get_post_type($post_id) !== 'affiliate_link') {
+            return;
+        }
+        $location = '';
+        if (function_exists('headers_list')) {
+            foreach ((array) headers_list() as $header) {
+                if (stripos($header, 'Location:') === 0) { $location = trim(substr($header, 9)); }
+            }
+        }
+        self::record_link_save_event('Fine richiesta editpost (shutdown).', array(
+            'post_id' => $post_id,
+            'post_status' => (string) get_post_status($post_id),
+            'affiliate_url_salvato' => trim((string) get_post_meta($post_id, '_affiliate_url', true)) !== '' ? 'sì' : 'NO',
+            'tipologie_salvate' => count((array) wp_get_post_terms($post_id, 'link_type', array('fields' => 'ids'))),
+            'save_post_affiliate_link_eseguiti' => (int) did_action('save_post_affiliate_link'),
+            'header_location' => $location !== '' ? $location : '(nessuno)',
+            'nonce_link_presente' => isset($_POST['affiliate_link_nonce']) ? 'sì' : 'NO',
+            'campo_affiliate_url_in_post' => isset($_POST['affiliate_url']) ? 'sì' : 'NO',
+        ));
+    }
+
     private function log_affiliate_link_save_diagnostic($message, $context = array()) {
+        // Cattura sempre nel buffer visibile in admin (indipendente da WP_DEBUG).
+        self::record_link_save_event($message, $context);
         if (!$this->is_affiliate_link_save_diagnostic_enabled()) {
             return;
         }
