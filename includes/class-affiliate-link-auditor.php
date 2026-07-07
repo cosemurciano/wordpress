@@ -42,6 +42,7 @@ class ALMA_Affiliate_Link_Auditor {
         add_action('admin_post_alma_link_audit_fix', array(__CLASS__, 'handle_fix'));
         add_action('admin_post_alma_link_audit_retry', array(__CLASS__, 'handle_retry'));
         add_action('admin_post_alma_link_audit_domain', array(__CLASS__, 'handle_domain'));
+        add_action('admin_post_alma_link_audit_strip_session', array(__CLASS__, 'handle_strip_session'));
         add_action('admin_post_alma_link_audit_clear_diag', array(__CLASS__, 'handle_clear_diag'));
     }
 
@@ -456,6 +457,64 @@ class ALMA_Affiliate_Link_Auditor {
         self::redirect_back('success', sprintf('Convertiti %1$d link a %2$s; %3$d ancora da convertire.', $converted, $domain, $remaining) . ($remaining > 0 ? ' Premi di nuovo per continuare.' : ' Conversione completata!'));
     }
 
+    /**
+     * Link getyourguide.* pubblicati che contengono ancora parametri di
+     * SESSIONE dell'export (deeplink_id/page_id/visitor_id): il link apre
+     * la pagina giusta ma può non essere convalidato dal programma partner.
+     */
+    public static function session_params_count() {
+        global $wpdb;
+        return (int) $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM {$wpdb->postmeta} pm
+             INNER JOIN {$wpdb->posts} p ON p.ID = pm.post_id
+             WHERE pm.meta_key = '_affiliate_url' AND pm.meta_value LIKE %s
+               AND (pm.meta_value LIKE %s OR pm.meta_value LIKE %s OR pm.meta_value LIKE %s)
+               AND p.post_type = 'affiliate_link' AND p.post_status = 'publish'",
+            '%' . $wpdb->esc_like('getyourguide.') . '%',
+            '%' . $wpdb->esc_like('deeplink_id=') . '%',
+            '%' . $wpdb->esc_like('page_id=') . '%',
+            '%' . $wpdb->esc_like('visitor_id=') . '%'
+        ));
+    }
+
+    public static function handle_strip_session() {
+        if (!current_user_can('manage_options')) { wp_die('forbidden'); }
+        check_admin_referer('alma_link_audit');
+        if (!self::acquire_lock()) {
+            self::redirect_back('error', 'Un\'operazione è già in corso: riprova tra qualche istante.');
+        }
+        global $wpdb;
+        $cleaned = 0;
+        try {
+            $rows = $wpdb->get_results($wpdb->prepare(
+                "SELECT pm.post_id, pm.meta_value AS url FROM {$wpdb->postmeta} pm
+                 INNER JOIN {$wpdb->posts} p ON p.ID = pm.post_id
+                 WHERE pm.meta_key = '_affiliate_url' AND pm.meta_value LIKE %s
+                   AND (pm.meta_value LIKE %s OR pm.meta_value LIKE %s OR pm.meta_value LIKE %s)
+                   AND p.post_type = 'affiliate_link' AND p.post_status = 'publish'
+                 ORDER BY pm.post_id ASC LIMIT 50",
+                '%' . $wpdb->esc_like('getyourguide.') . '%',
+                '%' . $wpdb->esc_like('deeplink_id=') . '%',
+                '%' . $wpdb->esc_like('page_id=') . '%',
+                '%' . $wpdb->esc_like('visitor_id=') . '%'
+            ), ARRAY_A);
+            foreach ((array) $rows as $row) {
+                $new_url = ALMA_Affiliate_Source_GYG_CSV_Importer::strip_gyg_session_params((string) $row['url']);
+                if ($new_url === (string) $row['url'] || $new_url === '') { continue; }
+                add_post_meta((int) $row['post_id'], self::META_BACKUP, (string) $row['url'], true);
+                update_post_meta((int) $row['post_id'], '_affiliate_url', esc_url_raw($new_url));
+                $cleaned++;
+            }
+            if ($cleaned > 0 && class_exists('ALMA_Contextual_Affiliate_Widget') && method_exists('ALMA_Contextual_Affiliate_Widget', 'bump_cache_version')) {
+                ALMA_Contextual_Affiliate_Widget::bump_cache_version();
+            }
+        } finally {
+            delete_option(self::LOCK_OPTION);
+        }
+        $remaining = self::session_params_count();
+        self::redirect_back('success', sprintf('Puliti %1$d link dai parametri di sessione; %2$d ancora da pulire.', $cleaned, $remaining) . ($remaining > 0 ? ' Premi di nuovo per continuare.' : ' Pulizia completata!'));
+    }
+
     /* ---------------------------------------------------------------------
      * Pagina
      * ------------------------------------------------------------------ */
@@ -517,6 +576,20 @@ class ALMA_Affiliate_Link_Auditor {
             echo '<p style="margin:0;">✅ Tutti i link GYG usano già ' . esc_html($preferred) . '.</p>';
         }
         echo '</form>';
+
+        // ---- Parametri di sessione GYG (deeplink_id / page_id / visitor_id) ----
+        $session_count = self::session_params_count();
+        echo '<hr style="margin:14px 0;">';
+        echo '<p class="description">I deep link esportati da GetYourGuide possono contenere <strong>ID di sessione</strong> (<code>deeplink_id</code>, <code>page_id</code>, <code>visitor_id</code>): il link apre la pagina giusta ma può <strong>non essere convalidato</strong> come vendita partner. Dagli import futuri vengono rimossi automaticamente; qui si puliscono quelli già in archivio (solo domini getyourguide.*, con backup dell\'URL originale — gli altri domini e i link manuali non vengono toccati).</p>';
+        if ($session_count > 0) {
+            echo '<form method="post" action="' . esc_url(admin_url('admin-post.php')) . '" style="margin:0;">';
+            wp_nonce_field('alma_link_audit');
+            echo '<input type="hidden" name="action" value="alma_link_audit_strip_session">';
+            echo '<p style="margin:0;"><button class="button button-primary">Pulisci i prossimi ' . esc_html((string) min(50, $session_count)) . ' link (' . esc_html((string) $session_count) . ' con parametri di sessione)</button></p>';
+            echo '</form>';
+        } else {
+            echo '<p style="margin:0;">✅ Nessun link GYG con parametri di sessione.</p>';
+        }
         echo '<p class="description" style="margin-top:8px;">Anche qui l\'URL precedente viene salvato nel meta di backup <code>' . esc_html(self::META_BACKUP) . '</code> prima della modifica.</p>';
         echo '</div>';
 

@@ -1,3 +1,9 @@
+## 2.87.1 - 2026-07-08
+
+### Link GYG senza parametri di sessione
+- I deep link dei CSV GetYourGuide contengono ID di sessione (deeplink_id, page_id) che possono impedire la convalida della vendita: ora vengono rimossi automaticamente all'import e un nuovo batch in Verifica link pulisce l'archivio esistente (solo domini getyourguide.*, con backup; link manuali intatti).
+- Versione plugin aggiornata a `2.87.1`.
+
 ## 2.87.0 - 2026-07-08
 
 ### Immagini AI PR2 + bozze mancate spiegate
