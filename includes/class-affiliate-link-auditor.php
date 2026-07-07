@@ -42,6 +42,14 @@ class ALMA_Affiliate_Link_Auditor {
         add_action('admin_post_alma_link_audit_fix', array(__CLASS__, 'handle_fix'));
         add_action('admin_post_alma_link_audit_retry', array(__CLASS__, 'handle_retry'));
         add_action('admin_post_alma_link_audit_domain', array(__CLASS__, 'handle_domain'));
+        add_action('admin_post_alma_link_audit_clear_diag', array(__CLASS__, 'handle_clear_diag'));
+    }
+
+    public static function handle_clear_diag() {
+        if (!current_user_can('manage_options')) { wp_die('forbidden'); }
+        check_admin_referer('alma_link_audit');
+        delete_option('alma_link_save_diag_events');
+        self::redirect_back('success', 'Diagnostica salvataggio azzerata: riproduci ora il problema e ricarica questa pagina.');
     }
 
     /* ---------------------------------------------------------------------
@@ -558,6 +566,28 @@ class ALMA_Affiliate_Link_Auditor {
         if (class_exists('ALMA_Link_Health_Checker')) {
             ALMA_Link_Health_Checker::render_card();
         }
+
+        // ---- Diagnostica salvataggio manuale ----
+        $diag_events = get_option('alma_link_save_diag_events', array());
+        echo '<div style="' . esc_attr($card) . '"><h2 style="margin-top:0;">🧪 Diagnostica salvataggio link (manuale)</h2>';
+        echo '<p class="description">Registra automaticamente ogni passaggio dei salvataggi manuali dei Link Affiliati (marker, filtri di redirect, fine richiesta con destinazione reale, esito del salvataggio di URL e tipologie). Per indagare un problema: <strong>Svuota</strong>, riproduci il salvataggio che fallisce, poi ricarica questa pagina e leggi gli eventi (il più recente in alto).</p>';
+        echo '<form method="post" action="' . esc_url(admin_url('admin-post.php')) . '" style="margin:0 0 10px;">';
+        wp_nonce_field('alma_link_audit');
+        echo '<input type="hidden" name="action" value="alma_link_audit_clear_diag"><button class="button">Svuota diagnostica</button></form>';
+        if (empty($diag_events) || !is_array($diag_events)) {
+            echo '<p class="description">Nessun evento registrato.</p>';
+        } else {
+            echo '<table class="widefat striped"><thead><tr><th style="width:140px;">Quando</th><th>Evento</th><th>Dettagli</th></tr></thead><tbody>';
+            foreach (array_slice($diag_events, 0, 25) as $event) {
+                $details = array();
+                foreach ((array) ($event['context'] ?? array()) as $key => $value) {
+                    $details[] = $key . '=' . (is_scalar($value) ? (string) $value : wp_json_encode($value));
+                }
+                echo '<tr><td>' . esc_html((string) ($event['time'] ?? '')) . '</td><td>' . esc_html((string) ($event['message'] ?? '')) . '</td><td style="word-break:break-all;"><code style="font-size:11px;">' . esc_html(implode(' · ', $details)) . '</code></td></tr>';
+            }
+            echo '</tbody></table>';
+        }
+        echo '</div>';
 
         // ---- Elenco link bonificabili ancora presenti ----
         foreach (self::programs() as $program) {
