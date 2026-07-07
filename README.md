@@ -1,3 +1,9 @@
+## 2.86.0 - 2026-07-07
+
+### Colonna Titolo leggibile negli elenchi
+- Larghezza minima garantita alla colonna Titolo negli elenchi Articoli e Link Affiliati, che veniva schiacciata dalle colonne di altri plugin.
+- Versione plugin aggiornata a `2.86.0`.
+
 ## 2.85.0 - 2026-07-07
 
 ### Agente più affidabile

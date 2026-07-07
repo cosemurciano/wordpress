@@ -15,6 +15,7 @@ class ALMA_Assets {
 
     public function init() {
         add_action('admin_enqueue_scripts', array($this, 'admin_enqueue_scripts'));
+        add_action('admin_head-edit.php', array($this, 'print_posts_list_css'));
         add_action('wp_enqueue_scripts', array($this, 'enqueue_frontend_scripts'));
         add_action('wp_head', array($this, 'output_custom_css'), 100);
     }
@@ -53,6 +54,20 @@ class ALMA_Assets {
         if (!empty($css)) {
             echo "<style id='alma-custom-css'>" . wp_strip_all_tags($css) . '</style>';
         }
+    }
+
+    /**
+     * Negli elenchi Articoli/Link Affiliati le molte colonne aggiunte dai
+     * plugin (SEO, campi tema, Geo…) schiacciano il Titolo fino a una parola
+     * per riga: gli si garantisce una larghezza minima leggibile. La tabella
+     * di WordPress usa table-layout fixed, quindi la larghezza è rispettata.
+     */
+    public function print_posts_list_css() {
+        $screen = function_exists('get_current_screen') ? get_current_screen() : null;
+        if (!$screen || !in_array($screen->post_type, array('post', 'affiliate_link'), true)) {
+            return;
+        }
+        echo '<style id="alma-posts-list-title-width">.wp-list-table .column-title{width:28%;min-width:280px;}@media screen and (max-width:1400px){.wp-list-table .column-title{width:34%;}}</style>';
     }
 
     public function admin_enqueue_scripts($hook) {
