@@ -1,3 +1,14 @@
+## 2.81.0 - 2026-07-07
+
+### Immagini AI (PR 1): generazione delle immagini in evidenza mancanti dei Link Affiliati
+- **Nuovo generatore di immagini AI** (`ALMA_AI_Image_Generator`, OpenAI `gpt-image-1`, formato orizzontale 1536×1024): ogni notte (03:40) genera gradualmente le immagini in evidenza per i Link Affiliati pubblicati che ne sono privi (prevalentemente GetYourGuide). Il prompt è costruito da titolo, descrizione, località geolocalizzata (città/regione/paese dall'indice geo) e tipologia, con stile imposto: **fotografia realistica da catalogo di esperienze di viaggio ispirata a GetYourGuide** (luce naturale, colori vividi ma reali, composizione professionale) e divieti espliciti di testi, loghi, watermark, volti riconoscibili e stile illustrazione.
+- **Salvataggio in `uploads/ai/`** (cartella dedicata) con **conversione WebP fatta da WordPress** via `WP_Image_Editor` (qualità 82; fallback JPEG se il server non supporta WebP, PNG originale se manca l'editor immagini). L'attachment riceve alt text, flag `_alma_ai_generated_image`, il prompt usato e i meta di origine (`ai_generated`); il link riceve attachment ID, prompt e data di generazione.
+- **Gradualità e controllo dei costi**: cap giornaliero configurabile (default **5 immagini/giorno**, max 20), qualità configurabile (bassa/media/alta con costi indicativi), coda ordinata per **click decrescenti**, esclusi i link **morti** (Link Health) e quelli con **3 tentativi falliti** (riprovabili manualmente); batch con lock atomico, budget di tempo e catena di run ("mai job invisibili"). **Nessuna immagine esistente viene mai sovrascritta automaticamente**.
+- **Nuova tab "Immagini AI"** in Impostazioni AI Content: impostazioni, stato (link senza immagine, generate oggi, prossima esecuzione, **costo totale reale** dal log usi AI), pulsante **Esegui ora**, generazione immediata per **singolo link per ID** (con sovrascrittura opzionale) e report attività con anteprime, esito e costo per immagine. Ogni chiamata è tracciata in `ALMA_AI_Usage_Logger` (task `ai_image_generation`, costo stimato dai token reali: testo $5/M, output immagine $40/M).
+- PR 2 (successiva): gli articoli dell'Agente AI useranno queste immagini al posto di quelle della Media Library.
+- Test standalone 15/15 (prompt: titolo/descrizione/luogo deduplicato/tipologie/stile/divieti, troncamenti, righe assenti senza dati; costi: con dettagli token, fallback, usage assente).
+- Versione plugin aggiornata a `2.81.0`.
+
 ## 2.80.2 - 2026-07-07
 
 ### Risolto il bug del salvataggio manuale dei Link Affiliati (causa trovata con la diagnostica 2.80.1)

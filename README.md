@@ -1,3 +1,9 @@
+## 2.81.0 - 2026-07-07
+
+### Immagini AI (PR 1): immagini in evidenza generate per i link che ne sono privi
+- Generazione notturna graduale con OpenAI gpt-image-1: fotografie realistiche in stile GetYourGuide coerenti con titolo, descrizione, località e tipologia del link; salvate in `uploads/ai/` e convertite in WebP da WordPress. Cap giornaliero configurabile (default 5), priorità ai link con più click, esclusi i morti, mai sovrascritture automatiche. Nuova tab "Immagini AI" con Esegui ora, generazione per singolo ID, report con anteprime e costi reali.
+- Versione plugin aggiornata a `2.81.0`.
+
 ## 2.80.2 - 2026-07-07
 
 ### Risolto il bug del salvataggio manuale dei Link Affiliati
