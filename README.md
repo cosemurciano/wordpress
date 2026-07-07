@@ -1,3 +1,9 @@
+## 2.80.2 - 2026-07-07
+
+### Risolto il bug del salvataggio manuale dei Link Affiliati
+- Causa trovata con la diagnostica 2.80.1: il pulsante "Riprova import immagine" nella metabox tecnica era un form annidato nel form del post e ne dirottava la pubblicazione (dati persi + redirect all'elenco). Sostituito con link con nonce; handler compatibile GET/POST e guardia estesa come difese per markup in cache.
+- Versione plugin aggiornata a `2.80.2`.
+
 ## 2.80.1 - 2026-07-07
 
 ### Salvataggio manuale link: difese rafforzate + diagnostica visibile

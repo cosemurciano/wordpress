@@ -26,6 +26,10 @@ class ALMA_Affiliate_Source_Manager {
         add_action('admin_post_alma_gyg_csv_download_session_file', array($this, 'handle_gyg_csv_download_session_file'));
         add_action(ALMA_Affiliate_Source_GYG_CSV_Import_Job_Service::CRON_HOOK, array($this, 'cron_run_gyg_csv_import_job_batch'));
         add_action('admin_post_alma_retry_affiliate_image', array($this, 'handle_single_image_retry'));
+        // Difesa: se markup vecchio (form annidato) finisce su post.php con
+        // action=alma_retry_affiliate_image, gestiamo comunque la richiesta
+        // invece di lasciare che WordPress reindirizzi all'elenco post.
+        add_action('admin_action_alma_retry_affiliate_image', array($this, 'handle_single_image_retry'));
         add_action('admin_notices', array($this, 'render_image_retry_notice'));
     }
     public static function create_tables() { global $wpdb; require_once ABSPATH.'wp-admin/includes/upgrade.php'; $c=$wpdb->get_charset_collate();
@@ -542,18 +546,26 @@ class ALMA_Affiliate_Source_Manager {
         echo '<p><strong>'.esc_html__('Hash immagine:','affiliate-link-manager-ai').'</strong> '.esc_html($hash?substr((string)$hash,0,16).'…':'—').'</p>';
         if($attachment_id>0 && current_user_can('edit_post',$attachment_id)){ $media_url=get_edit_post_link($attachment_id,''); if($media_url) echo '<p><a class="button button-small" href="'.esc_url($media_url).'">'.esc_html__('Apri immagine in Media Library','affiliate-link-manager-ai').'</a></p>'; }
         if(current_user_can('edit_post',$post_id)){
-            echo '<form method="post" action="'.esc_url(admin_url('admin-post.php')).'">'; wp_nonce_field('alma_retry_affiliate_image_'.$post_id,'alma_retry_affiliate_image_nonce'); echo '<input type="hidden" name="action" value="alma_retry_affiliate_image"/><input type="hidden" name="post_id" value="'.intval($post_id).'"/>';
-            echo '<p><label><input type="checkbox" name="overwrite_existing" value="1"/> '.esc_html__('Sovrascrivi l’immagine in evidenza esistente','affiliate-link-manager-ai').'</label></p>';
-            echo '<p><button type="submit" class="button">'.esc_html__('Riprova import immagine','affiliate-link-manager-ai').'</button></p>';
+            // Niente <form> qui: la metabox vive DENTRO il form di modifica del post
+            // e un form annidato viene fuso dal browser, dirottando il salvataggio
+            // del link (action=alma_retry_affiliate_image al posto di editpost).
+            // Si usano link con nonce verso admin-post.php.
+            $retry_base=admin_url('admin-post.php?action=alma_retry_affiliate_image&post_id='.intval($post_id));
+            $retry_url=wp_nonce_url($retry_base,'alma_retry_affiliate_image_'.$post_id,'alma_retry_affiliate_image_nonce');
+            $retry_overwrite_url=wp_nonce_url($retry_base.'&overwrite_existing=1','alma_retry_affiliate_image_'.$post_id,'alma_retry_affiliate_image_nonce');
+            echo '<p><a class="button" href="'.esc_url($retry_url).'">'.esc_html__('Riprova import immagine','affiliate-link-manager-ai').'</a></p>';
+            echo '<p><a class="button" href="'.esc_url($retry_overwrite_url).'" onclick="return confirm(\''.esc_js(__('Sovrascrivere l’immagine in evidenza esistente?','affiliate-link-manager-ai')).'\');">'.esc_html__('Riprova sovrascrivendo l’immagine esistente','affiliate-link-manager-ai').'</a></p>';
             if($source_url==='') echo '<p class="description">'.esc_html__('Il retry richiede _alma_featured_image_source_url oppure _alma_featured_image_url.','affiliate-link-manager-ai').'</p>';
-            echo '</form>';
         }
         echo '</div>';
     }
 
     public function handle_single_image_retry(){
-        $post_id=absint($_POST['post_id']??0); if($post_id<1 || !current_user_can('edit_post',$post_id)) wp_die('Unauthorized'); if(!wp_verify_nonce($_POST['alma_retry_affiliate_image_nonce']??'','alma_retry_affiliate_image_'.$post_id)) wp_die('Nonce non valido');
-        $result=$this->retry_featured_image_for_post($post_id,!empty($_POST['overwrite_existing'])); $status=is_array($result)?sanitize_key($result['status']??'error'):'error'; $success=(is_array($result)&&!empty($result['success'])) || in_array($status,array('skipped_existing_thumbnail'),true); do_action('alma_affiliate_source_image_admin_event','single_retry_'.($success?'ok':'failed'),array('post_id'=>$post_id,'status'=>$status));
+        // Accetta GET (nuovi link con nonce) e POST (eventuale markup vecchio
+        // in cache dell'editor): in entrambi i casi si esegue il retry e si
+        // torna SEMPRE all'editor del link, mai all'elenco post.
+        $post_id=absint($_REQUEST['post_id']??($_REQUEST['post_ID']??0)); if($post_id<1 || !current_user_can('edit_post',$post_id)) wp_die('Unauthorized'); if(!wp_verify_nonce($_REQUEST['alma_retry_affiliate_image_nonce']??'','alma_retry_affiliate_image_'.$post_id)) wp_die('Nonce non valido');
+        $result=$this->retry_featured_image_for_post($post_id,!empty($_REQUEST['overwrite_existing'])); $status=is_array($result)?sanitize_key($result['status']??'error'):'error'; $success=(is_array($result)&&!empty($result['success'])) || in_array($status,array('skipped_existing_thumbnail'),true); do_action('alma_affiliate_source_image_admin_event','single_retry_'.($success?'ok':'failed'),array('post_id'=>$post_id,'status'=>$status));
         $redirect=get_edit_post_link($post_id,''); if(!$redirect) $redirect=admin_url('edit.php?post_type=affiliate_link'); wp_safe_redirect(add_query_arg(array('alma_image_retry'=>($success?'success':'error'),'alma_image_status'=>$status),$redirect)); exit;
     }
 
