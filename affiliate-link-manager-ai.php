@@ -3,7 +3,7 @@
  * Plugin Name: Affiliate Link Manager AI
  * Plugin URI: https://your-website.com
  * Description: Gestisce link affiliati con intelligenza artificiale per ottimizzazione e tracking automatico.
- * Version: 2.83.0
+ * Version: 2.84.0
  * Author: Cosè Murciano
  * License: GPL v2 or later
  * Text Domain: affiliate-link-manager-ai
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Definisci costanti del plugin
-define('ALMA_VERSION', '2.83.0');
+define('ALMA_VERSION', '2.84.0');
 define('ALMA_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('ALMA_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('ALMA_PLUGIN_FILE', __FILE__);
@@ -2351,27 +2351,9 @@ class AffiliateManagerAI {
             $analysis_types = array_map('sanitize_text_field', $_POST['alma_content_analysis_post_types'] ?? array());
             update_option('alma_content_analysis_post_types', $analysis_types);
 
-            // OpenAI API settings
-            if (!empty($_POST['alma_clear_openai_api_key'])) {
-                delete_option('alma_openai_api_key');
-            } elseif (!empty($_POST['openai_api_key'])) {
-                // Il filtro pre_option (costante wp-config) va sospeso durante la
-                // scrittura: altrimenti add_option/update_option confrontano il valore
-                // della costante e non salvano nulla nel database.
-                remove_filter('pre_option_alma_openai_api_key', array(__CLASS__, 'filter_openai_api_key_constant'));
-                $new_api_key = sanitize_text_field(wp_unslash($_POST['openai_api_key']));
-                if (false === get_option('alma_openai_api_key', false)) {
-                    // Nuova option: creata direttamente con autoload=no, senza
-                    // finestra delete→add in cui la chiave non esiste.
-                    add_option('alma_openai_api_key', $new_api_key, '', 'no');
-                } else {
-                    update_option('alma_openai_api_key', $new_api_key);
-                    if (function_exists('wp_set_option_autoload')) {
-                        wp_set_option_autoload('alma_openai_api_key', false);
-                    }
-                }
-                add_filter('pre_option_alma_openai_api_key', array(__CLASS__, 'filter_openai_api_key_constant'));
-            }
+            // OpenAI API key: vive SOLO in wp-config.php (ALMA_OPENAI_API_KEY).
+            // Nessun salvataggio dal form: così il salvataggio delle
+            // impostazioni non può più toccarla né cancellarla.
             $selected_model = sanitize_text_field($_POST['openai_model'] ?? 'gpt-5.4-mini');
             $custom_model = sanitize_text_field($_POST['openai_model_custom'] ?? '');
             update_option('alma_openai_model', $custom_model !== '' ? $custom_model : $selected_model);
@@ -2393,6 +2375,18 @@ class AffiliateManagerAI {
             echo '<div class="notice notice-success"><p>' . __('Impostazioni salvate!', 'affiliate-link-manager-ai') . '</p></div>';
         }
         
+        // La chiave OpenAI vive in wp-config.php: se la costante è definita,
+        // l'eventuale copia storica nel database viene eliminata per sicurezza.
+        $openai_constant_defined = defined('ALMA_OPENAI_API_KEY') && ALMA_OPENAI_API_KEY !== '';
+        remove_filter('pre_option_alma_openai_api_key', array(__CLASS__, 'filter_openai_api_key_constant'));
+        $openai_db_key = trim((string) get_option('alma_openai_api_key', ''));
+        add_filter('pre_option_alma_openai_api_key', array(__CLASS__, 'filter_openai_api_key_constant'));
+        if ($openai_constant_defined && $openai_db_key !== '') {
+            delete_option('alma_openai_api_key');
+            $openai_db_key = '';
+            echo '<div class="notice notice-success"><p>' . __('Chiave OpenAI rimossa dal database: ora viene usata solo la costante ALMA_OPENAI_API_KEY di wp-config.php.', 'affiliate-link-manager-ai') . '</p></div>';
+        }
+
         // Recupera impostazioni attuali
         $track_logged_out = get_option('alma_track_logged_out', 'yes');
         $enable_ai = get_option('alma_enable_ai', 'yes');
@@ -2481,19 +2475,21 @@ class AffiliateManagerAI {
                     <h2>🧠 OpenAI API Configuration</h2>
                     <table class="form-table">
                         <tr>
-                            <th scope="row">
-                                <label for="openai_api_key">API Key</label>
-                            </th>
+                            <th scope="row">API Key</th>
                             <td>
-                                <input type="password" 
-                                       name="openai_api_key" 
-                                       id="openai_api_key" 
-                                       value="" 
-                                       class="regular-text" />
-                                <button type="button" class="button alma-toggle-api-key">👁 Mostra</button>
-                                <label><input type="checkbox" name="alma_clear_openai_api_key" value="1" /> Cancella API key salvata</label><p class="description">Ottieni la tua API key da 
-                                    <a href="https://platform.openai.com/" target="_blank">OpenAI Platform</a>
-                                </p>
+                                <?php if ($openai_constant_defined) : ?>
+                                    <p><span class="alma-badge is-success">✅ Configurata in wp-config.php</span> <code>ALMA_OPENAI_API_KEY</code></p>
+                                    <p class="description"><?php _e('La chiave vive solo in wp-config.php, mai nel database: non può essere letta dall\'admin né persa salvando le impostazioni.', 'affiliate-link-manager-ai'); ?></p>
+                                <?php else : ?>
+                                    <p><span class="alma-badge is-warning">Non configurata in wp-config.php</span></p>
+                                    <p><?php _e('Aggiungi a', 'affiliate-link-manager-ai'); ?> <code>wp-config.php</code> (<?php _e('sopra la riga', 'affiliate-link-manager-ai'); ?> <code>/* That's all, stop editing! */</code>):</p>
+                                    <p><code>define( 'ALMA_OPENAI_API_KEY', 'sk-...' );</code></p>
+                                    <?php if ($openai_db_key !== '') : ?>
+                                        <p class="description">⚠️ <?php _e('È presente una chiave salvata nel database (funziona ancora, per retrocompatibilità): appena definisci la costante, la copia nel database verrà eliminata automaticamente.', 'affiliate-link-manager-ai'); ?></p>
+                                    <?php else : ?>
+                                        <p class="description"><?php printf(__('Ottieni la tua API key da %s.', 'affiliate-link-manager-ai'), '<a href="https://platform.openai.com/" target="_blank" rel="noopener">OpenAI Platform</a>'); ?></p>
+                                    <?php endif; ?>
+                                <?php endif; ?>
                             </td>
                         </tr>
                         <tr>
@@ -2720,14 +2716,6 @@ class AffiliateManagerAI {
 
                 $('.alma-settings-section').hide();
                 $(target).show();
-            });
-
-            // Toggle API key visibility
-            $('.alma-toggle-api-key').on('click', function() {
-                var $input = $('#openai_api_key');
-                var type = $input.attr('type') === 'password' ? 'text' : 'password';
-                $input.attr('type', type);
-                $(this).text(type === 'password' ? '👁 Mostra' : '🙈 Nascondi');
             });
 
             // Verifica accesso allo Storage OpenAI (Vector Store)

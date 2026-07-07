@@ -1,3 +1,18 @@
+## 2.84.0 - 2026-07-07
+
+### Chiave OpenAI solo in wp-config.php + Telegram riallineato con regia completa
+- **Chiave API OpenAI solo in `wp-config.php`** (costante `ALMA_OPENAI_API_KEY`, già supportata in lettura): il campo nel form Impostazioni è stato **rimosso** insieme al suo salvataggio — così il salvataggio delle impostazioni non può più toccarla né cancellarla (bug segnalato). Quando la costante è definita, l'**eventuale copia storica nel database viene eliminata automaticamente** (con notice di conferma). Retrocompatibilità: senza costante, una chiave già salvata nel DB continua a funzionare, con avviso che invita a spostarla in wp-config (istruzioni con lo snippet `define(...)` direttamente nella pagina).
+- **Notifica Telegram a ogni articolo pubblicato** (manuale o AI): titolo, estratto, badge 🤖 se scritto dall'Agente e pulsante **"🔗 Apri articolo"**; una sola notifica per articolo (meta di deduplica); attivabile/disattivabile con la nuova spunta "Notifica pubblicazioni" (default attiva).
+- **Telegram riallineato alle funzioni attuali**:
+  - `/agente` ora schedula con la **firma a 7 argomenti** della Regia v2 (prima mancava la data di inizio) e azzera un eventuale stop precedente; testo aggiornato (niente più riferimenti al vecchio limite bozze).
+  - Nuovo **`/piano <articoli> <giorni> <tema>`** — programma un piano editoriale come «Applica il piano» in Regia AI (es. `/piano 5 10 borghi siciliani`).
+  - Nuovo **`/stato`** — agente in esecuzione/in arresto, bozze programmate in attesa, immagini AI (oggi/limite, coda prioritaria, link senza immagine), salute link (ok/sospetti/morti), arricchimento articoli.
+  - Nuovo **`/stop`** — ferma l'agente in corso (stesso meccanismo del pulsante in Regia AI).
+  - Nuovi **`/salute`** (sintesi Link Health con data ultima verifica) e **`/immagini`** (stato generatore, ultime immagini generate con costo).
+- **Usabilità Telegram**: «Registra webhook» ora imposta anche il **menu comandi nativo** del bot (`setMyCommands`, il pulsante «/» in chat mostra tutti i comandi con descrizione); `/help` riorganizzato per sezioni (🎬 Regia AI, 📝 Contenuti, 📊 Strategia, 🛠 Manutenzione); guida nella tab Telegram riscritta con esempi per gestire l'AI e la regia dal telefono.
+- Test standalone 46/46 (ogni comando del menu documentato in /help e gestito dal router, firma cron a 7 argomenti, notifica pubblicazione con deduplica e link).
+- Versione plugin aggiornata a `2.84.0`.
+
 ## 2.83.0 - 2026-07-07
 
 ### Widget Link v3: anteprima live, widget nell'arricchimento, click per widget, immagini AI on-demand

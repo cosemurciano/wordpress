@@ -23,6 +23,8 @@ class ALMA_Telegram_Bot {
     const OPTION_CHAT_IDS = 'alma_telegram_chat_ids';
     const OPTION_RECENT_CHATS = 'alma_telegram_recent_chats';
     const OPTION_NOTIFY_DRAFTS = 'alma_telegram_notify_drafts';
+    const OPTION_NOTIFY_PUBLISH = 'alma_telegram_notify_publish';
+    const META_PUBLISH_NOTIFIED = '_alma_telegram_publish_notified';
     const REST_NAMESPACE = 'alma/v1';
     const REST_ROUTE = '/telegram';
 
@@ -32,6 +34,8 @@ class ALMA_Telegram_Bot {
         add_action('admin_post_alma_telegram_check_webhook', array(__CLASS__, 'handle_check_webhook'));
         add_action('admin_post_alma_telegram_send_instructions', array(__CLASS__, 'handle_send_instructions'));
         add_action('admin_post_alma_telegram_add_chat', array(__CLASS__, 'handle_add_chat'));
+        // Notifica di OGNI articolo pubblicato (manuale o AI) con link.
+        add_action('transition_post_status', array(__CLASS__, 'notify_post_published'), 10, 3);
     }
 
     public static function get_token() {
@@ -181,6 +185,15 @@ class ALMA_Telegram_Bot {
             case '/idea':
                 self::command_agent($chat_id, $argument);
                 break;
+            case '/piano':
+                self::command_plan($chat_id, $argument);
+                break;
+            case '/stato':
+                self::command_status($chat_id);
+                break;
+            case '/stop':
+                self::command_stop($chat_id);
+                break;
             case '/report':
                 self::command_report($chat_id);
                 break;
@@ -193,27 +206,62 @@ class ALMA_Telegram_Bot {
             case '/consigli':
                 self::command_advice($chat_id);
                 break;
+            case '/salute':
+                self::command_health($chat_id);
+                break;
+            case '/immagini':
+                self::command_images($chat_id);
+                break;
             default:
                 self::send_message($chat_id, 'Comando non riconosciuto. ' . "\n" . self::instructions_text());
         }
     }
 
     public static function instructions_text() {
-        return "<b>Comandi disponibili</b>\n"
-            . "/agente &lt;argomento&gt; — avvia l'agente: crea idee E bozze sul tema indicato (opzionale); parte anche oltre il limite giornaliero\n"
-            . "/report — esito dell'ultima esecuzione dell'agente\n"
+        return "<b>🎬 Regia AI</b>\n"
+            . "/agente &lt;tema&gt; — avvia subito l'agente: crea idee E bozze sul tema (opzionale); parte anche oltre il limite giornaliero\n"
+            . "/piano &lt;articoli&gt; &lt;giorni&gt; &lt;tema&gt; — programma un piano editoriale, es. <code>/piano 5 10 borghi siciliani</code> (come «Applica il piano» in Regia AI)\n"
+            . "/stato — l'agente è in esecuzione? bozze programmate, immagini AI, salute link\n"
+            . "/stop — ferma l'esecuzione dell'agente in corso\n"
+            . "/report — esito dell'ultima esecuzione\n"
+            . "\n<b>📝 Contenuti</b>\n"
             . "/bozze — ultime bozze AI con pulsanti Pubblica/Cestina\n"
-            . "/top — report sintetico: click e gap geografici\n"
+            . "<i>In automatico ricevi: nuove bozze AI (con pulsanti) e ogni articolo pubblicato (con link).</i>\n"
+            . "\n<b>📊 Strategia</b>\n"
+            . "/top — click e gap geografici\n"
             . "/consigli — ultimi consigli strategici AI\n"
+            . "\n<b>🛠 Manutenzione</b>\n"
+            . "/salute — stato dei link affiliati (morti/sospetti)\n"
+            . "/immagini — immagini AI: generate oggi, coda, ultime create\n"
             . "/id — mostra la tua Chat ID\n"
             . "/help — questo elenco";
+    }
+
+    /**
+     * Elenco comandi per il menu nativo di Telegram (setMyCommands).
+     */
+    public static function bot_commands() {
+        return array(
+            array('command' => 'agente', 'description' => 'Avvia l\'agente AI (tema opzionale)'),
+            array('command' => 'piano', 'description' => 'Piano editoriale: articoli giorni tema'),
+            array('command' => 'stato', 'description' => 'Stato agente, bozze, immagini, link'),
+            array('command' => 'stop', 'description' => 'Ferma l\'agente in esecuzione'),
+            array('command' => 'report', 'description' => 'Report ultima esecuzione'),
+            array('command' => 'bozze', 'description' => 'Bozze AI con Pubblica/Cestina'),
+            array('command' => 'top', 'description' => 'Click e gap geografici'),
+            array('command' => 'consigli', 'description' => 'Consigli strategici AI'),
+            array('command' => 'salute', 'description' => 'Salute dei link affiliati'),
+            array('command' => 'immagini', 'description' => 'Stato immagini AI'),
+            array('command' => 'id', 'description' => 'Mostra la tua Chat ID'),
+            array('command' => 'help', 'description' => 'Elenco comandi'),
+        );
     }
 
     /* ---------------------------------------------------------------------
      * Comandi
      * ------------------------------------------------------------------ */
 
-    private static function command_agent($chat_id, $objective) {
+    private static function command_agent($chat_id, $objective, $num_ideas = 0, $days_span = 0) {
         if (!class_exists('ALMA_AI_Idea_Agent')) {
             self::send_message($chat_id, 'Agente non disponibile.');
             return;
@@ -228,16 +276,117 @@ class ALMA_Telegram_Bot {
         }
         // Lancio dalla regia Telegram: force=1 (parte anche oltre il limite
         // giornaliero) e bozze immediate attive, come dalla pagina Regia AI.
-        $over_limit = ALMA_AI_Idea_Agent::runs_today() >= ALMA_AI_Idea_Agent::get_daily_runs_limit();
+        // Firma allineata a run() a 7 argomenti (num/giorni/data del piano).
+        $num_ideas = max(0, min(10, absint($num_ideas)));
+        $days_span = max(0, min(60, absint($days_span)));
         // Autore delle idee: il primo amministratore.
         $admins = get_users(array('role' => 'administrator', 'number' => 1, 'fields' => 'ID'));
         $user_id = !empty($admins) ? (int) $admins[0] : 1;
-        wp_schedule_single_event(time() + 5, ALMA_AI_Idea_Agent::CRON_HOOK, array($user_id, sanitize_textarea_field($objective), 1, 1, 0, 0));
+        delete_option(ALMA_AI_Idea_Agent::OPTION_CANCEL);
+        wp_schedule_single_event(time() + 5, ALMA_AI_Idea_Agent::CRON_HOOK, array($user_id, sanitize_textarea_field($objective), 1, 1, $num_ideas, $days_span, ''));
         if (function_exists('spawn_cron')) { spawn_cron(); }
+        $plan_note = $num_ideas > 0 ? sprintf("\n📋 Piano: %d articoli in %d giorni a partire da oggi.", $num_ideas, max(1, $days_span)) : '';
         self::send_message($chat_id, '🤖 Agente di ideazione avviato' . ($objective !== '' ? ' sul tema: <i>' . self::esc($objective) . '</i>' : '')
-            . "\nCreerà idee e le relative bozze (nel rispetto del limite giornaliero bozze)."
-            . ($over_limit ? "\n✋ Limite esecuzioni giornaliere già raggiunto: il lancio manuale viene eseguito comunque." : '')
-            . "\nRiceverai qui il report al termine (2-5 minuti).");
+            . $plan_note
+            . "\nOgni idea creerà la sua bozza nel giorno programmato."
+            . "\nRiceverai qui il report al termine (2-5 minuti). Usa /stato per seguirlo o /stop per fermarlo.");
+    }
+
+    /**
+     * /piano <articoli> <giorni> <tema…> — come «Applica il piano» in Regia AI.
+     */
+    private static function command_plan($chat_id, $argument) {
+        if (!preg_match('/^(\d{1,2})\s+(\d{1,2})\s*(.*)$/s', trim($argument), $m)) {
+            self::send_message($chat_id, "Formato: <code>/piano articoli giorni tema</code>\nEs. <code>/piano 5 10 borghi siciliani</code> = 5 articoli in 10 giorni sul tema indicato (tema opzionale).");
+            return;
+        }
+        self::command_agent($chat_id, trim((string) $m[3]), absint($m[1]), absint($m[2]));
+    }
+
+    /**
+     * /stato — fotografia operativa: agente, bozze programmate, immagini, link.
+     */
+    private static function command_status($chat_id) {
+        $running = class_exists('ALMA_AI_Idea_Agent') && get_option(ALMA_AI_Idea_Agent::LOCK_OPTION);
+        $stopping = class_exists('ALMA_AI_Idea_Agent') && get_option(ALMA_AI_Idea_Agent::OPTION_CANCEL);
+        $text = "<b>📡 Stato operativo</b>\n";
+        $text .= '🤖 Agente: ' . ($running ? ($stopping ? '<b>in arresto…</b>' : '<b>in esecuzione</b> (usa /stop per fermarlo)') : 'fermo') . "\n";
+        if (class_exists('ALMA_AI_Content_Agent_Idea_Importer') && method_exists('ALMA_AI_Content_Agent_Idea_Importer', 'due_ideas_count')) {
+            $text .= '📋 Bozze programmate in attesa: <b>' . (int) ALMA_AI_Content_Agent_Idea_Importer::due_ideas_count() . "</b>\n";
+        }
+        if (class_exists('ALMA_AI_Image_Generator')) {
+            $queue = count((array) get_option(ALMA_AI_Image_Generator::OPTION_PRIORITY_QUEUE, array()));
+            $text .= '🖼 Immagini AI: oggi ' . (int) ALMA_AI_Image_Generator::generated_today() . '/' . (int) ALMA_AI_Image_Generator::get_daily_limit()
+                . ' · link senza immagine: ' . (int) ALMA_AI_Image_Generator::pending_count()
+                . ($queue > 0 ? ' · in coda prioritaria: ' . $queue : '') . "\n";
+        }
+        if (class_exists('ALMA_Link_Health_Checker')) {
+            $counts = ALMA_Link_Health_Checker::status_counts();
+            $text .= '🩺 Link: ✅ ' . (int) ($counts['ok'] ?? 0) . ' · ⚠️ sospetti ' . (int) ($counts['suspect'] ?? 0) . ' · ❌ morti ' . (int) ($counts['dead'] ?? 0) . "\n";
+        }
+        if (class_exists('ALMA_AI_Post_Enricher')) {
+            $text .= '🔗 Arricchimento articoli: oggi ' . (int) ALMA_AI_Post_Enricher::processed_today() . '/' . (int) ALMA_AI_Post_Enricher::get_daily_limit() . ' (' . (ALMA_AI_Post_Enricher::is_enabled() ? 'attivo' : 'spento') . ")\n";
+        }
+        $text .= "\n/report per l'ultima esecuzione · /bozze per revisionare";
+        self::send_message($chat_id, $text);
+    }
+
+    /**
+     * /stop — richiede l'arresto dell'agente (come il pulsante in Regia AI).
+     */
+    private static function command_stop($chat_id) {
+        if (!class_exists('ALMA_AI_Idea_Agent')) {
+            self::send_message($chat_id, 'Agente non disponibile.');
+            return;
+        }
+        if (!get_option(ALMA_AI_Idea_Agent::LOCK_OPTION)) {
+            self::send_message($chat_id, 'ℹ️ Nessuna esecuzione dell\'agente in corso.');
+            return;
+        }
+        update_option(ALMA_AI_Idea_Agent::OPTION_CANCEL, (string) time(), false);
+        self::send_message($chat_id, '🛑 Arresto richiesto: l\'agente si fermerà al prossimo punto sicuro (le idee già create restano).');
+    }
+
+    /**
+     * /salute — sintesi Link Health.
+     */
+    private static function command_health($chat_id) {
+        if (!class_exists('ALMA_Link_Health_Checker')) {
+            self::send_message($chat_id, 'Link Health non disponibile.');
+            return;
+        }
+        $counts = ALMA_Link_Health_Checker::status_counts();
+        $report = (array) get_option(ALMA_Link_Health_Checker::OPTION_LAST_REPORT, array());
+        $text = "<b>🩺 Salute dei link affiliati</b>\n";
+        $text .= '✅ OK: <b>' . (int) ($counts['ok'] ?? 0) . '</b> · ⚠️ Sospetti: <b>' . (int) ($counts['suspect'] ?? 0) . '</b> · ❌ Morti: <b>' . (int) ($counts['dead'] ?? 0) . '</b> · ⏳ Mai verificati: <b>' . (int) ($counts['mai-verificato'] ?? 0) . "</b>\n";
+        if (!empty($report['finished_at'])) {
+            $text .= 'Ultima verifica: ' . self::esc((string) $report['finished_at']) . "\n";
+        }
+        $text .= "\nI link morti sono esclusi da widget e nuove bozze. Dettagli e bonifica: Link Affiliati → Verifica link.";
+        self::send_message($chat_id, $text);
+    }
+
+    /**
+     * /immagini — stato del generatore di immagini AI.
+     */
+    private static function command_images($chat_id) {
+        if (!class_exists('ALMA_AI_Image_Generator')) {
+            self::send_message($chat_id, 'Generatore immagini non disponibile.');
+            return;
+        }
+        $queue = count((array) get_option(ALMA_AI_Image_Generator::OPTION_PRIORITY_QUEUE, array()));
+        $log = (array) get_option(ALMA_AI_Image_Generator::OPTION_LOG, array());
+        $text = "<b>🖼 Immagini AI</b>\n";
+        $text .= 'Notturno: ' . (ALMA_AI_Image_Generator::is_enabled() ? 'attivo' : 'spento') . ' · oggi ' . (int) ALMA_AI_Image_Generator::generated_today() . '/' . (int) ALMA_AI_Image_Generator::get_daily_limit() . "\n";
+        $text .= 'Link pubblicati senza immagine: <b>' . (int) ALMA_AI_Image_Generator::pending_count() . '</b>' . ($queue > 0 ? ' · coda prioritaria: <b>' . $queue . '</b>' : '') . "\n";
+        $recent = array_slice(array_filter($log, function ($e) { return is_array($e) && ($e['status'] ?? '') === 'generated'; }), 0, 3);
+        if (!empty($recent)) {
+            $text .= "\n<b>Ultime generate</b>\n";
+            foreach ($recent as $entry) {
+                $text .= '• ' . self::esc((string) ($entry['title'] ?? '')) . (isset($entry['cost']) && $entry['cost'] !== null ? ' — $' . number_format((float) $entry['cost'], 4) : '') . "\n";
+            }
+        }
+        self::send_message($chat_id, $text);
     }
 
     private static function command_report($chat_id) {
@@ -390,6 +539,27 @@ class ALMA_Telegram_Bot {
         self::broadcast(self::format_agent_report((array) $report));
     }
 
+    /**
+     * Ogni articolo pubblicato (manuale o AI) arriva in chat con il link
+     * alla visualizzazione. Una sola notifica per articolo.
+     */
+    public static function notify_post_published($new_status, $old_status, $post) {
+        if ($new_status !== 'publish' || $old_status === 'publish') { return; }
+        if (!($post instanceof WP_Post) || $post->post_type !== 'post') { return; }
+        if (wp_is_post_revision($post->ID) || wp_is_post_autosave($post->ID)) { return; }
+        if (!self::is_enabled() || get_option(self::OPTION_NOTIFY_PUBLISH, '1') !== '1') { return; }
+        if (get_post_meta($post->ID, self::META_PUBLISH_NOTIFIED, true) !== '') { return; }
+        update_post_meta($post->ID, self::META_PUBLISH_NOTIFIED, current_time('mysql'));
+
+        $is_ai = get_post_meta($post->ID, '_alma_ai_agent_generated', true) === '1';
+        $excerpt = wp_trim_words(wp_strip_all_tags($post->post_excerpt ?: $post->post_content), 30, '…');
+        $text = '📣 <b>Articolo pubblicato</b>' . ($is_ai ? ' · 🤖 scritto dall\'Agente AI' : '') . "\n"
+            . '<b>' . self::esc(html_entity_decode(get_the_title($post), ENT_QUOTES, 'UTF-8')) . "</b>\n"
+            . self::esc($excerpt);
+        $keyboard = array(array(array('text' => '🔗 Apri articolo', 'url' => get_permalink($post))));
+        self::broadcast($text, $keyboard);
+    }
+
     /* ---------------------------------------------------------------------
      * Azioni admin (webhook, istruzioni, chat)
      * ------------------------------------------------------------------ */
@@ -416,7 +586,9 @@ class ALMA_Telegram_Bot {
             'allowed_updates' => array('message', 'callback_query'),
         ));
         if (!empty($result['ok'])) {
-            self::redirect_back('success', 'Webhook registrato: ' . self::webhook_url());
+            // Menu comandi nativo di Telegram (pulsante "/" nella chat).
+            self::api_request('setMyCommands', array('commands' => self::bot_commands()));
+            self::redirect_back('success', 'Webhook registrato e menu comandi aggiornato: ' . self::webhook_url());
         }
         self::redirect_back('error', 'Registrazione webhook fallita: ' . sanitize_text_field((string)($result['description'] ?? 'errore sconosciuto')));
     }
@@ -462,6 +634,7 @@ class ALMA_Telegram_Bot {
     public static function save_settings($post) {
         update_option(self::OPTION_ENABLED, empty($post[self::OPTION_ENABLED]) ? '0' : '1', false);
         update_option(self::OPTION_NOTIFY_DRAFTS, empty($post[self::OPTION_NOTIFY_DRAFTS]) ? '0' : '1', false);
+        update_option(self::OPTION_NOTIFY_PUBLISH, empty($post[self::OPTION_NOTIFY_PUBLISH]) ? '0' : '1', false);
         $chat_ids = array_values(array_unique(array_filter(array_map('trim', explode(',', sanitize_text_field(wp_unslash($post['alma_telegram_chat_ids_raw'] ?? '')))), function ($id) {
             return preg_match('/^-?\d{1,20}$/', $id);
         })));
@@ -488,7 +661,14 @@ class ALMA_Telegram_Bot {
         echo '<li>Spunta "Abilita Telegram", salva, poi clicca <strong>Registra webhook</strong> e <strong>Verifica stato webhook</strong> per conferma.</li>';
         echo '<li>Scopri la tua Chat ID: apri il bot su Telegram e invia <code>/id</code> (il bot risponde con l\'ID). L\'ID comparirà anche qui sotto in "Chat ID viste di recente", con un pulsante <strong>Aggiungi</strong>.</li>';
         echo '<li>Aggiungi le Chat ID autorizzate e salva di nuovo le impostazioni.</li></ol>';
-        echo '<p><strong>Cosa puoi fare dal bot:</strong> avviare l\'agente di ideazione con un obiettivo (<code>/agente idee per l\'estate in Puglia</code>), ricevere il report di idee e bozze create, ottenere i link alle bozze con pulsanti <em>Pubblica/Cestina</em> (<code>/bozze</code>), un report sintetico su click e gap (<code>/top</code>) e i consigli strategici AI (<code>/consigli</code>). Le nuove bozze AI arrivano in chat automaticamente con i pulsanti di revisione.</p>';
+        echo '<p><strong>Cosa puoi fare dal bot (il pulsante <code>/</code> in chat mostra il menu completo):</strong></p>';
+        echo '<ul style="list-style:disc;margin-left:20px;">';
+        echo '<li><strong>Regia AI</strong>: <code>/agente borghi siciliani</code> avvia subito l\'agente sul tema; <code>/piano 5 10 borghi siciliani</code> programma 5 articoli in 10 giorni (come «Applica il piano» in Regia AI); <code>/stato</code> mostra agente in esecuzione, bozze programmate, immagini AI e salute link; <code>/stop</code> ferma l\'esecuzione; <code>/report</code> l\'esito dell\'ultima.</li>';
+        echo '<li><strong>Contenuti</strong>: <code>/bozze</code> con pulsanti <em>Pubblica/Cestina</em>; in automatico ricevi ogni nuova bozza AI e <strong>ogni articolo pubblicato</strong> con il link.</li>';
+        echo '<li><strong>Strategia</strong>: <code>/top</code> click e gap geografici; <code>/consigli</code> i consigli strategici AI.</li>';
+        echo '<li><strong>Manutenzione</strong>: <code>/salute</code> link morti/sospetti; <code>/immagini</code> stato del generatore di immagini AI.</li>';
+        echo '</ul>';
+        echo '<p class="description">«Registra webhook» aggiorna anche il menu comandi nativo del bot su Telegram.</p>';
         echo '</div>';
 
         echo '<table class="form-table" role="presentation">';
@@ -506,6 +686,7 @@ class ALMA_Telegram_Bot {
         echo '<table class="form-table" role="presentation">';
         echo '<tr><th scope="row">Abilita Telegram</th><td><label><input type="checkbox" name="'.esc_attr(self::OPTION_ENABLED).'" value="1" '.checked($enabled, true, false).'> Attiva webhook, comandi e notifiche</label></td></tr>';
         echo '<tr><th scope="row">Notifica nuove bozze</th><td><label><input type="checkbox" name="'.esc_attr(self::OPTION_NOTIFY_DRAFTS).'" value="1" '.checked(get_option(self::OPTION_NOTIFY_DRAFTS, '1'), '1', false).'> Invia in chat ogni nuova bozza AI con i pulsanti Pubblica/Cestina</label></td></tr>';
+        echo '<tr><th scope="row">Notifica pubblicazioni</th><td><label><input type="checkbox" name="'.esc_attr(self::OPTION_NOTIFY_PUBLISH).'" value="1" '.checked(get_option(self::OPTION_NOTIFY_PUBLISH, '1'), '1', false).'> Invia in chat ogni articolo pubblicato (manuale o AI) con il link alla visualizzazione</label></td></tr>';
         echo '<tr><th scope="row"><label for="alma_telegram_chat_ids_raw">Chat ID autorizzate</label></th><td>';
         echo '<input type="text" class="regular-text" id="alma_telegram_chat_ids_raw" name="alma_telegram_chat_ids_raw" value="'.esc_attr(implode(', ', $chat_ids)).'" placeholder="Es. 123456789, -100987654321">';
         echo '<p class="description">Separate da virgola. Solo queste chat possono usare i comandi e ricevere le notifiche.</p></td></tr>';
