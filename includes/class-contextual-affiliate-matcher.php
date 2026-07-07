@@ -18,7 +18,7 @@ class ALMA_Contextual_Affiliate_Matcher {
     const MAX_POOL_SIZE = 300;
     // Inclusa nell'hash della cache del widget: cambiarla invalida i risultati
     // calcolati con versioni precedenti dell'algoritmo.
-    const MATCHER_VERSION = 6;
+    const MATCHER_VERSION = 7;
     // Sopra questa soglia il segnale geografico è "locale" (stessa città,
     // contenimento paese/regione o stessa regione): quando almeno un
     // risultato è locale, quelli senza segnale locale vengono scartati.
@@ -311,6 +311,11 @@ class ALMA_Contextual_Affiliate_Matcher {
 
         $affiliate_url = trim((string) get_post_meta($candidate->ID, '_affiliate_url', true));
         if ($affiliate_url === '') {
+            return null;
+        }
+
+        // Mai proporre link in quarantena (prodotto rimosso/404 confermato).
+        if (class_exists('ALMA_Link_Health_Checker') && ALMA_Link_Health_Checker::is_dead($candidate->ID)) {
             return null;
         }
 

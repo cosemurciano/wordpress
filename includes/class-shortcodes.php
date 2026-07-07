@@ -67,6 +67,14 @@ class ALMA_Shortcodes {
             return '<span style="color:red;">[Affiliate Link: URL non configurato]</span>';
         }
 
+        // Link in quarantena (prodotto rimosso/404 confermato dal Link
+        // Health Checker): degrada ad ancora di testo semplice — il
+        // visitatore non atterra mai su una pagina inesistente.
+        if (class_exists('ALMA_Link_Health_Checker') && ALMA_Link_Health_Checker::is_dead($atts['id'])) {
+            $fallback_text = trim((string) $atts['text']) !== '' ? (string) $atts['text'] : get_the_title($atts['id']);
+            return esc_html($fallback_text);
+        }
+
         $link_rel = get_post_meta($atts['id'], '_link_rel', true);
 
         if ($link_rel === '') {
