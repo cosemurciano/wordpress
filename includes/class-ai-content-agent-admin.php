@@ -536,7 +536,7 @@ class ALMA_AI_Content_Agent_Admin {
         if (!current_user_can('manage_options')) { return; }
         // La tab "Idee contenuto" non esiste più: il workspace vive nella
         // pagina "Aggiungi idea", l'elenco nella pagina "Tutte le idee".
-        $tabs = array('dashboard'=>'Dashboard','istruzioni-ai'=>'Istruzioni AI','inserimento'=>'Regole inserimento','arricchimento'=>'Arricchimento','search-console'=>'Search Console','schede-localita'=>'Schede località','telegram'=>'Telegram','documenti'=>'Documenti TXT','fonti'=>'Fonti online AI','reindex'=>'Reindicizza','log'=>'Stato/log');
+        $tabs = array('dashboard'=>'Dashboard','istruzioni-ai'=>'Istruzioni AI','inserimento'=>'Regole inserimento','arricchimento'=>'Arricchimento','immagini-ai'=>'Immagini AI','search-console'=>'Search Console','schede-localita'=>'Schede località','telegram'=>'Telegram','documenti'=>'Documenti TXT','fonti'=>'Fonti online AI','reindex'=>'Reindicizza','log'=>'Stato/log');
         $legacy_map = array('overview'=>'dashboard','idee'=>'dashboard','reindirizza'=>'reindex','knowledge'=>'dashboard','media'=>'dashboard','bozze'=>'log','programmazione'=>'log',);
         $tab = sanitize_key($_GET['tab'] ?? 'dashboard');
         if (isset($legacy_map[$tab])) { $tab = $legacy_map[$tab]; }
@@ -546,6 +546,7 @@ class ALMA_AI_Content_Agent_Admin {
         if ($tab === 'istruzioni-ai') { self::render_instructions_tab(); }
         elseif ($tab === 'inserimento') { self::render_insertion_rules_tab(); }
         elseif ($tab === 'arricchimento') { ALMA_AI_Post_Enricher::render_settings_tab(); }
+        elseif ($tab === 'immagini-ai') { ALMA_AI_Image_Generator::render_settings_tab(); }
         elseif ($tab === 'search-console') { ALMA_GSC_Connector::render_settings_tab(); }
         elseif ($tab === 'schede-localita') { ALMA_Geo_Facts::render_settings_tab(); }
         elseif ($tab === 'telegram') { ALMA_Telegram_Bot::render_settings_tab(); }
