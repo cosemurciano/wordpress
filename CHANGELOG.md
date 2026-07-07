@@ -1,3 +1,13 @@
+## 2.80.0 - 2026-07-07
+
+### Tipologie universali: Assicurazioni, eSIM e simili valide per qualsiasi articolo
+- **Nuovo flag "Tipologia universale"** sui termini di Tipologie Link (checkbox in creazione/modifica + colonna 🌍 nell'elenco): i link della tipologia lo ereditano automaticamente, nessuna migrazione. Da spuntare su Assicurazioni, eSim e future tipologie senza geolocalizzazione.
+- **Widget contestuale — slot universale**: i link universali sono **esenti dalla dominanza geografica** (prima venivano scartati sugli articoli localizzati) e ricevono un bonus di compatibilità neutro-positivo; nei risultati entra però **al massimo 1 link universale** (le esperienze locali restano protagoniste), con **rotazione giornaliera deterministica** tra gli universali quasi a pari punteggio per non mostrare sempre la stessa assicurazione ovunque. `MATCHER_VERSION` a 8 (cache rigenerata; anche al salvataggio del flag).
+- **Nuove bozze AI**: il miglior link universale (per click, vivo) viene sempre aggiunto ai candidati di ogni bozza, marcato con la motivazione "Tipologia universale"; le **regole di inserimento** istruiscono l'AI: massimo UN link universale per articolo, nel punto più naturale (consigli pratici o prima della conclusione), e solo se pertinente.
+- **Auto-indexer geo**: i link di tipologie universali vengono saltati (stato "universal", niente geocoding a vuoto) e la colonna Geo mostra "🌍 Universale" invece del falso "—".
+- Test standalone 8/8 (esenzione dalla dominanza, universale che non attiva la dominanza altrui, slot max 1, rotazione col giorno solo tra quasi-migliori, lista senza universali invariata, slot 0).
+- Versione plugin aggiornata a `2.80.0`.
+
 ## 2.79.1 - 2026-07-07
 
 ### Import CSV GetYourGuide: recupero delle righe a delimitatore misto

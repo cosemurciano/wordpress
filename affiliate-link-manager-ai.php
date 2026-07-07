@@ -3,7 +3,7 @@
  * Plugin Name: Affiliate Link Manager AI
  * Plugin URI: https://your-website.com
  * Description: Gestisce link affiliati con intelligenza artificiale per ottimizzazione e tracking automatico.
- * Version: 2.79.1
+ * Version: 2.80.0
  * Author: Cosè Murciano
  * License: GPL v2 or later
  * Text Domain: affiliate-link-manager-ai
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Definisci costanti del plugin
-define('ALMA_VERSION', '2.79.1');
+define('ALMA_VERSION', '2.80.0');
 define('ALMA_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('ALMA_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('ALMA_PLUGIN_FILE', __FILE__);
@@ -65,6 +65,7 @@ require_once ALMA_PLUGIN_DIR . 'includes/class-ai-post-enricher.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-gsc-connector.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-affiliate-link-auditor.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-link-health-checker.php';
+require_once ALMA_PLUGIN_DIR . 'includes/class-universal-link-types.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-google-trends.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-geo-facts.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-affiliate-source-url-validator.php';
@@ -177,6 +178,7 @@ class AffiliateManagerAI {
         ALMA_GSC_Connector::init();
         ALMA_Affiliate_Link_Auditor::init();
         ALMA_Link_Health_Checker::init();
+        ALMA_Universal_Link_Types::init();
         ALMA_Geo_Facts::init();
         add_action('init', array($this, 'init'));
         add_action('widgets_init', array('ALMA_Contextual_Affiliate_Widget', 'register_widget'));
