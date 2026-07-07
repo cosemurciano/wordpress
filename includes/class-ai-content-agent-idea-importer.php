@@ -477,6 +477,30 @@ class ALMA_AI_Content_Agent_Idea_Importer {
         if (class_exists('ALMA_Link_Health_Checker')) {
             $candidates = ALMA_Link_Health_Checker::filter_live_candidates($candidates);
         }
+        // Candidato universale: il miglior link di tipologia universale
+        // (assicurazioni, eSIM…) è sempre disponibile all'AI, per qualsiasi
+        // destinazione — deciderà lei se e dove inserirlo (max 1 per
+        // articolo, come da regole di inserimento).
+        if (class_exists('ALMA_Universal_Link_Types')) {
+            $existing_ids = array();
+            foreach ($candidates as $candidate) { $existing_ids[] = absint($candidate['source_id'] ?? 0); }
+            foreach (ALMA_Universal_Link_Types::top_universal_links(1, $existing_ids) as $universal_id) {
+                $term_labels = array();
+                $terms = get_the_terms($universal_id, 'link_type');
+                if (!is_wp_error($terms) && !empty($terms)) {
+                    foreach ($terms as $term) { $term_labels[] = $term->name; }
+                }
+                $candidates[] = array(
+                    'source_id' => (int) $universal_id,
+                    'title' => html_entity_decode(get_the_title($universal_id), ENT_QUOTES, 'UTF-8'),
+                    'link_types' => implode(', ', $term_labels),
+                    'score' => 1,
+                    'reason' => __('Tipologia universale: valido per qualsiasi articolo (inserire solo se naturale, max 1).', 'affiliate-link-manager-ai'),
+                    'selected' => true,
+                    'universal' => true,
+                );
+            }
+        }
         if (empty($candidates)) {
             update_post_meta($idea_id, ALMA_AI_Content_Agent_Ideas::META_EXECUTED_AT, current_time('mysql'));
             return array('success' => false, 'error' => 'Nessun link affiliato candidato per l\'idea #' . $idea_id);

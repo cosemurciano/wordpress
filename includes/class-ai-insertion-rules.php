@@ -90,6 +90,7 @@ class ALMA_AI_Insertion_Rules {
         $lines[] = '- massimo 1 inserimento ogni ' . $rules['density_words'] . ' parole di contenuto;';
         $lines[] = '- nessun inserimento nei primi ' . $rules['min_paragraphs_before'] . ' paragrafi (l\'introduzione crea fiducia, non vende);';
         $lines[] = '- mai due shortcode consecutivi senza testo tra loro; distribuisci gli inserimenti lungo l\'articolo;';
+        $lines[] = '- se tra i link selezionati ce n\'è uno di TIPOLOGIA UNIVERSALE (assicurazione viaggio, eSIM…): puoi inserirne al massimo UNO per articolo, nel punto più naturale (sezione consigli pratici o prima della conclusione), come anchor o bottone; se non è pertinente al taglio dell\'articolo, non inserirlo;';
         $lines[] = '- l\'eleganza della lettura viene prima della conversione: se un inserimento non è naturale, non farlo.';
         return $lines;
     }

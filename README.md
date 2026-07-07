@@ -1,3 +1,9 @@
+## 2.80.0 - 2026-07-07
+
+### Tipologie universali (Assicurazioni, eSIM…)
+- Flag sulla tipologia: link validi per qualsiasi articolo — esenti dai filtri geografici, slot dedicato nel widget contestuale (max 1, con rotazione giornaliera), sempre candidati nelle nuove bozze AI, esclusi dall'indicizzazione geografica.
+- Versione plugin aggiornata a `2.80.0`.
+
 ## 2.79.1 - 2026-07-07
 
 ### Import CSV GetYourGuide: recupero righe a delimitatore misto

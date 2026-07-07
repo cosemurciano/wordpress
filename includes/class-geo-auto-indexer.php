@@ -224,6 +224,14 @@ class ALMA_Geo_Auto_Indexer {
             return array('outcome' => 'auto_applied', 'method' => 'already_indexed', 'location_label' => '');
         }
 
+        // Tipologie universali (assicurazioni, eSIM…): per definizione senza
+        // geolocalizzazione — niente tentativi di indicizzazione né
+        // geocoding a vuoto, e nessun falso "senza località".
+        if ($post->post_type === 'affiliate_link' && class_exists('ALMA_Universal_Link_Types') && ALMA_Universal_Link_Types::is_universal_link($post->ID)) {
+            update_post_meta($post->ID, self::STATUS_META, 'universal');
+            return array('outcome' => 'auto_applied', 'method' => 'universal_type', 'location_label' => '');
+        }
+
         // Livello 1: meta strutturati del provider (solo link affiliati).
         if ($post->post_type === 'affiliate_link') {
             $provider_locations = $this->locations_from_provider_meta($post->ID);
@@ -678,7 +686,9 @@ class ALMA_Geo_Auto_Indexer {
             return;
         }
         $status = get_post_meta($post_id, self::STATUS_META, true);
-        if ($status === 'suggested') {
+        if ($status === 'universal') {
+            echo '<span title="' . esc_attr__('Tipologia universale: valido per qualsiasi articolo', 'affiliate-link-manager-ai') . '">🌍 ' . esc_html__('Universale', 'affiliate-link-manager-ai') . '</span>';
+        } elseif ($status === 'suggested') {
             echo '<span style="color:#996800;">' . esc_html__('In revisione', 'affiliate-link-manager-ai') . '</span>';
         } else {
             echo '<span style="color:#999;">—</span>';

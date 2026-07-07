@@ -18,11 +18,17 @@ class ALMA_Contextual_Affiliate_Matcher {
     const MAX_POOL_SIZE = 300;
     // Inclusa nell'hash della cache del widget: cambiarla invalida i risultati
     // calcolati con versioni precedenti dell'algoritmo.
-    const MATCHER_VERSION = 7;
+    const MATCHER_VERSION = 8;
     // Sopra questa soglia il segnale geografico è "locale" (stessa città,
     // contenimento paese/regione o stessa regione): quando almeno un
     // risultato è locale, quelli senza segnale locale vengono scartati.
     const GEO_DOMINANCE_THRESHOLD = 20;
+    // Bonus di compatibilità dei link di tipologia UNIVERSALE (assicurazioni,
+    // eSIM…): neutro-positivo, competono con le keyword ovunque.
+    const UNIVERSAL_GEO_SCORE = 15;
+    // Nel widget al massimo 1 link universale: le esperienze locali restano
+    // protagoniste, l'universale è il complemento.
+    const MAX_UNIVERSAL_RESULTS = 1;
 
     private $settings;
     private $geo_store = null;
@@ -81,8 +87,11 @@ class ALMA_Contextual_Affiliate_Matcher {
         $results = array();
         $min_score = max(0, min(100, absint($settings['min_score'])));
         foreach ($profiles as $profile) {
+            $universal = class_exists('ALMA_Universal_Link_Types') && ALMA_Universal_Link_Types::is_universal_link($profile['id']);
             $link_locations = $geo_map[$profile['id']] ?? array();
-            $geo = $this->geo_score($signals['locations'], $link_locations);
+            // Tipologia universale: nessuna località per definizione, riceve
+            // un bonus di compatibilità neutro invece del punteggio geo.
+            $geo = $universal ? self::UNIVERSAL_GEO_SCORE : $this->geo_score($signals['locations'], $link_locations);
             $score = $this->score_profile($profile, $signals, $df, $pool_size, $geo);
             if ($score < $min_score) {
                 continue;
@@ -91,6 +100,7 @@ class ALMA_Contextual_Affiliate_Matcher {
                 'id' => $profile['id'],
                 'score' => $score,
                 'geo' => $geo,
+                'universal' => $universal,
                 'click_count' => $profile['click_count'],
                 'title' => $profile['display_title'],
                 'affiliate_url' => $profile['affiliate_url'],
@@ -101,11 +111,14 @@ class ALMA_Contextual_Affiliate_Matcher {
         // Dominanza geografica: su un articolo localizzato (es. Cefalù), se
         // esistono risultati locali non devono comparire link di altre zone
         // saliti solo con keyword generiche ("tour", "centro storico"…).
+        // I link universali sono esenti (validi ovunque per definizione).
         $results = self::apply_geo_dominance($results, self::GEO_DOMINANCE_THRESHOLD);
 
         usort($results, array($this, 'sort_results'));
 
-        return array_slice($results, 0, max(1, absint($settings['max_links'])));
+        // Slot universale: al massimo 1 nei risultati, con rotazione
+        // giornaliera tra gli universali quasi a pari punteggio.
+        return self::apply_universal_slot($results, max(1, absint($settings['max_links'])), (int) current_time('z'), self::MAX_UNIVERSAL_RESULTS);
     }
 
     public function extract_post_signals($post) {
@@ -355,14 +368,48 @@ class ALMA_Contextual_Affiliate_Matcher {
     public static function apply_geo_dominance($results, $threshold = self::GEO_DOMINANCE_THRESHOLD) {
         $best_geo = 0;
         foreach ((array) $results as $result) {
+            if (!empty($result['universal'])) { continue; }
             $best_geo = max($best_geo, (int) ($result['geo'] ?? 0));
         }
         if ($best_geo < $threshold) {
             return $results;
         }
         return array_values(array_filter((array) $results, function ($result) use ($threshold) {
-            return (int) ($result['geo'] ?? 0) >= $threshold;
+            return !empty($result['universal']) || (int) ($result['geo'] ?? 0) >= $threshold;
         }));
+    }
+
+    /**
+     * Slot universale: nei primi $max_links risultati possono entrare al
+     * massimo $max_universal link di tipologie universali. Tra gli
+     * universali quasi a pari punteggio (entro 5 punti dal migliore) si
+     * ruota in modo deterministico col giorno dell'anno, per non mostrare
+     * sempre la stessa assicurazione ovunque. Pura, testabile.
+     */
+    public static function apply_universal_slot($results, $max_links, $day_seed = 0, $max_universal = self::MAX_UNIVERSAL_RESULTS) {
+        $results = array_values((array) $results);
+        $universal_indexes = array();
+        foreach ($results as $i => $result) {
+            if (!empty($result['universal'])) { $universal_indexes[] = $i; }
+        }
+        if (count($universal_indexes) > $max_universal && $max_universal >= 1) {
+            // Rotazione tra i quasi-migliori.
+            $best_score = (int) $results[$universal_indexes[0]]['score'];
+            $near_best = array();
+            foreach ($universal_indexes as $i) {
+                if ((int) $results[$i]['score'] >= $best_score - 5) { $near_best[] = $i; }
+            }
+            $chosen = $near_best[absint($day_seed) % count($near_best)];
+            $keep = array_slice(array_merge(array($chosen), array_values(array_diff($universal_indexes, array($chosen)))), 0, $max_universal);
+            foreach ($universal_indexes as $i) {
+                if (!in_array($i, $keep, true)) { unset($results[$i]); }
+            }
+            $results = array_values($results);
+        } elseif ($max_universal < 1 && !empty($universal_indexes)) {
+            foreach ($universal_indexes as $i) { unset($results[$i]); }
+            $results = array_values($results);
+        }
+        return array_slice($results, 0, max(1, absint($max_links)));
     }
 
     private function score_profile($profile, $signals, $df, $pool_size, $geo_score) {
