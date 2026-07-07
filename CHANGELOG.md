@@ -1,3 +1,12 @@
+## 2.87.1 - 2026-07-08
+
+### Link GYG: rimossi i parametri di sessione (deeplink_id/page_id) da import e archivio
+- **Verifica sul link segnalato**: il plugin NON riscrive gli URL — i parametri extra arrivano dai **CSV esportati da GetYourGuide**, i cui deep link contengono ID di sessione (`deeplink_id`, `page_id`, a volte `visitor_id`). `build_affiliate_url` conservava i parametri esistenti, quindi finivano salvati nel link: la pagina si apre ma la vendita può **non essere convalidata** al partner (l'attribuzione corretta è solo `partner_id` + `utm_medium`).
+- **Import futuri**: nuova funzione pura `strip_gyg_session_params()` applicata in `build_affiliate_url` — i parametri di sessione vengono eliminati alla costruzione del link, preservando tutto il resto (partner, utm, eventuali parametri custom, fragment). Agisce SOLO sui domini getyourguide.*: link manuali Travelpayouts e ogni altro dominio restano intatti.
+- **Archivio esistente**: nuovo batch in **Verifica link** ("Pulisci i prossimi 50 link…") con conteggio dei link getyourguide.* che contengono parametri di sessione, backup dell'URL originale (`_alma_url_pre_bonifica`, mai sovrascritto) e rigenerazione cache del widget contestuale.
+- Test standalone 9/9 (link reale segnalato ripulito esattamente al formato corretto, link puliti invariati, tpx.li/viator mai toccati, fragment preservato, import CSV con sessione → URL pulito senza duplicare partner_id).
+- Versione plugin aggiornata a `2.87.1`.
+
 ## 2.87.0 - 2026-07-08
 
 ### Immagini AI PR2: segnaposto editoriali generati davvero, featured coerente, bozze mancate spiegate e ritentate

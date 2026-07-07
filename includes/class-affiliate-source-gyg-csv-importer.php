@@ -163,6 +163,35 @@ class ALMA_Affiliate_Source_GYG_CSV_Importer {
         return $rebuilt;
     }
 
+    /**
+     * Rimuove dai link getyourguide.* i parametri di SESSIONE dell'export
+     * (deeplink_id, page_id, visitor_id): sono ID di una sessione altrui e
+     * non vanno pubblicati staticamente — il tracking partner corretto è
+     * partner_id + utm_medium. Ogni altro dominio resta intatto. Pura.
+     */
+    public static function strip_gyg_session_params($url) {
+        $url = trim((string)$url);
+        if ($url === '') { return $url; }
+        $host = strtolower((string) wp_parse_url($url, PHP_URL_HOST));
+        if ($host === '' || strpos($host, 'getyourguide.') === false) { return $url; }
+        $fragment = '';
+        $hash_pos = strpos($url, '#');
+        if ($hash_pos !== false) {
+            $fragment = substr($url, $hash_pos);
+            $url = substr($url, 0, $hash_pos);
+        }
+        $query_pos = strpos($url, '?');
+        if ($query_pos === false) { return $url . $fragment; }
+        $base = substr($url, 0, $query_pos);
+        $params = array();
+        wp_parse_str(substr($url, $query_pos + 1), $params);
+        foreach (array('deeplink_id', 'page_id', 'visitor_id') as $session_param) {
+            unset($params[$session_param]);
+        }
+        $query = http_build_query($params, '', '&', PHP_QUERY_RFC3986);
+        return $base . ($query !== '' ? '?' . $query : '') . $fragment;
+    }
+
     public static function build_affiliate_url($original_url, $partner_id, $utm_medium = 'online_publisher') {
         $url = esc_url_raw(trim((string)$original_url));
         if ($url === '' || !wp_http_validate_url($url)) {
@@ -170,6 +199,9 @@ class ALMA_Affiliate_Source_GYG_CSV_Importer {
         }
         // Riferimento ufficiale: dominio del programma partner dell'editore.
         $url = self::normalize_gyg_domain($url, self::preferred_domain());
+        // I CSV di GYG possono contenere ID di sessione (deeplink_id, page_id):
+        // vanno eliminati PRIMA di salvare, o il link non viene convalidato.
+        $url = self::strip_gyg_session_params($url);
         $partner_id = sanitize_text_field((string)$partner_id);
         $utm_medium = sanitize_text_field((string)($utm_medium !== '' ? $utm_medium : 'online_publisher'));
         if ($partner_id === '') {
