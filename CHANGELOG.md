@@ -1,3 +1,10 @@
+## 2.90.1 - 2026-07-08
+
+### Fix: mappa articolo inserita più volte
+- **Causa** (segnalata sull'articolo Dubai): BeTheme/WPBakery e i plugin SEO applicano il filtro `the_content` **più volte sulla stessa pagina** (contenuto principale, generazione schema/meta, sezioni del builder) e ogni passaggio superava i controlli, accodando una mappa a ciascuno.
+- **Fix — tripla difesa**: (1) nessun inserimento nei passaggi eseguiti **prima di `wp_head`** (generatori SEO/schema); (2) se il contenuto contiene già `alma-article-map` non si aggiunge nulla; (3) guardia statica **una-sola-volta per articolo per richiesta**. La mappa compare ora una sola volta, in fondo al contenuto principale.
+- Versione plugin aggiornata a `2.90.1`.
+
 ## 2.90.0 - 2026-07-08
 
 ### Mappa articolo, fase 2: "Tour e attività" nel popup — la mappa diventa canale di conversione

@@ -1,3 +1,9 @@
+## 2.90.1 - 2026-07-08
+
+### Fix mappa duplicata
+- La mappa articolo veniva accodata a ogni applicazione di the_content (BeTheme/builder/SEO): ora una sola volta per articolo, mai nei passaggi prima di wp_head.
+- Versione plugin aggiornata a `2.90.1`.
+
 ## 2.90.0 - 2026-07-08
 
 ### Mappa articolo fase 2: monetizzazione nel popup
