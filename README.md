@@ -1,3 +1,9 @@
+## 2.91.0 - 2026-07-08
+
+### Link universale garantito nell'arricchimento
+- Se l'AI non propone un link universale (Assicurazioni/eSIM), il sistema aggiunge una proposta button deterministica a ~70% dell'articolo; prompt rafforzato; mai doppioni.
+- Versione plugin aggiornata a `2.91.0`.
+
 ## 2.90.3 - 2026-07-08
 
 ### Fix tipologie universali mai cliccate

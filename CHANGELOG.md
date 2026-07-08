@@ -1,3 +1,13 @@
+## 2.91.0 - 2026-07-08
+
+### Arricchimento: link universale GARANTITO in ogni articolo (non più a discrezione dell'AI)
+- **Segnalazione**: 6 link Assicurazioni universali disponibili, 10 articoli arricchiti, zero usi. Le cause possibili (esclusione dei mai-cliccati fixata in 2.90.3 + modello che ignora l'istruzione "se coerente") vengono superate alla radice con la stessa ricetta dei widget garantiti: **se l'AI non lo propone, lo propone il sistema**.
+- **Garanzia deterministica** (`ensure_universal_proposal`, motore condiviso arricchimento + metabox AI Affiliati): se nessuna proposta usa un link universale E l'articolo non ne contiene già uno (né in shortcode né nel widget proposto), viene aggiunta una **proposta button col miglior universale a ~70% dell'articolo** (zona consigli pratici), con motivazione esplicita "proposta garantita dal sistema". Mai doppioni: salta se l'AI l'ha proposto, se è già nel contenuto o se non esistono candidati universali.
+- **Prompt rafforzato**: da "se coerente, includi sempre" a "**DEVI includere** una proposta con un universale; omettilo SOLO se l'articolo lo rende assurdo".
+- Nota: i 10 articoli già arricchiti non verranno rianalizzati prima del cooldown — per quelli si può usare la metabox "AI Affiliati" (le proposte ora includono sempre l'universale garantito).
+- Test standalone 10/10 (aggiunta garantita con posizione ~70% e clamp, skip se già proposto/nell'articolo/nel widget, senza candidati, con zero proposte AI).
+- Versione plugin aggiornata a `2.91.0`.
+
 ## 2.90.3 - 2026-07-08
 
 ### Fix: tipologie universali mai cliccate escluse da bozze, arricchimento e mappa
