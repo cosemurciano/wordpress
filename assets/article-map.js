@@ -104,7 +104,36 @@
         return escapeHtml(value).replace(/"/g, '&quot;');
     }
 
+    /**
+     * Con i temi a builder (BeTheme) the_content viene applicato più volte e
+     * il blocco mappa può finire in un frammento sbagliato (posizione e
+     * larghezza errate). Prima dell'inizializzazione il wrapper viene
+     * SPOSTATO in coda al contenitore principale del contenuto del tema.
+     */
+    function relocate() {
+        var wrap = document.querySelector('.alma-article-map-wrap');
+        if (!wrap) {
+            return;
+        }
+        var selectors = ['.the_content_wrapper', '.entry-content', '.post-content', 'article .content', 'article'];
+        for (var i = 0; i < selectors.length; i++) {
+            var target = document.querySelector(selectors[i]);
+            if (target && !target.contains(wrap)) {
+                target.appendChild(wrap);
+                return;
+            }
+            if (target && target.lastElementChild !== wrap) {
+                target.appendChild(wrap); // già dentro ma non in coda
+                return;
+            }
+            if (target) {
+                return; // già dentro e in coda: posizione corretta
+            }
+        }
+    }
+
     function setup() {
+        relocate();
         var maps = document.querySelectorAll('.alma-article-map');
         if (!maps.length) {
             return;

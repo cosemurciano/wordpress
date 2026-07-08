@@ -1,3 +1,11 @@
+## 2.90.2 - 2026-07-08
+
+### Fix: mappa articolo in chiusura e a larghezza piena
+- Con BeTheme il primo passaggio **visualizzato** di `the_content` non coincide con la fine del corpo articolo: la mappa (una sola dopo la 2.90.1) poteva comparire nel punto sbagliato e in un contenitore stretto.
+- **Fix**: prima dell'inizializzazione il JS **sposta il blocco mappa in coda al contenitore principale del contenuto** del tema — `.the_content_wrapper` (BeTheme) con fallback `.entry-content`, `.post-content`, `article .content`, `article`; se è già in coda non fa nulla. La mappa Leaflet si inizializza dopo lo spostamento (lazy allo scroll), quindi calcola le dimensioni nel contenitore giusto.
+- **Larghezza garantita**: wrapper con `clear:both; width:100%; max-width:100%; box-sizing:border-box` — mai più schiacciato da float o colonne del builder.
+- Versione plugin aggiornata a `2.90.2`.
+
 ## 2.90.1 - 2026-07-08
 
 ### Fix: mappa articolo inserita più volte
