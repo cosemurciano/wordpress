@@ -76,28 +76,30 @@ class ALMA_Universal_Link_Types {
     public static function top_universal_links($limit = 3, $exclude_ids = array()) {
         $universal = self::universal_term_ids();
         if (empty($universal)) { return array(); }
+        // NIENTE meta_key nella query: con meta_key WordPress fa INNER JOIN
+        // sul meta e i link MAI cliccati (senza _click_count, che nasce al
+        // primo click) sparivano del tutto — proprio gli universali nuovi
+        // (Assicurazioni, eSIM) restavano fuori da bozze e arricchimento.
+        // L'ordinamento per click avviene in PHP, con 0 per i mai cliccati.
         $ids = get_posts(array(
             'post_type' => 'affiliate_link',
             'post_status' => 'publish',
-            'posts_per_page' => max(1, absint($limit)) + count((array) $exclude_ids) + 5,
+            'posts_per_page' => max(1, absint($limit)) + count((array) $exclude_ids) + 10,
             'fields' => 'ids',
-            'orderby' => 'meta_value_num',
-            'meta_key' => '_click_count',
-            'order' => 'DESC',
             'no_found_rows' => true,
             'tax_query' => array(array('taxonomy' => 'link_type', 'field' => 'term_id', 'terms' => $universal)),
         ));
-        $out = array();
         $exclude_ids = array_map('absint', (array) $exclude_ids);
+        $rows = array();
         foreach ((array) $ids as $id) {
             $id = (int) $id;
             if (in_array($id, $exclude_ids, true)) { continue; }
             if (trim((string) get_post_meta($id, '_affiliate_url', true)) === '') { continue; }
             if (class_exists('ALMA_Link_Health_Checker') && ALMA_Link_Health_Checker::is_dead($id)) { continue; }
-            $out[] = $id;
-            if (count($out) >= max(1, absint($limit))) { break; }
+            $rows[] = array('id' => $id, 'clicks' => (int) get_post_meta($id, '_click_count', true));
         }
-        return $out;
+        usort($rows, function ($a, $b) { return $b['clicks'] <=> $a['clicks']; });
+        return array_slice(wp_list_pluck($rows, 'id'), 0, max(1, absint($limit)));
     }
 
     /* ---------------------------------------------------------------------

@@ -1,3 +1,12 @@
+## 2.90.3 - 2026-07-08
+
+### Fix: tipologie universali mai cliccate escluse da bozze, arricchimento e mappa
+- **Verifica richiesta sull'uso degli universali in Arricchimento**: il collegamento c'era già (candidati marcati `universale` + istruzione nel prompt del motore condiviso, v2.88.0), ma la verifica ha scoperto un **bug silenzioso a monte**: `top_universal_links()` ordinava con `meta_key = _click_count`, e quel meta **nasce solo al primo click** — con `meta_key` WordPress fa INNER JOIN sul meta, quindi i link universali **mai cliccati** (tipico di Assicurazioni/eSIM appena create) sparivano del tutto dalla selezione: zero candidati universali in bozze, arricchimento e metabox AI Affiliati.
+- **Fix**: query senza `meta_key` (tutti gli universali pubblicati) e **ordinamento per click in PHP** con 0 per i mai cliccati; filtri esistenti invariati (URL presente, non morti, esclusioni). Ora un link universale nuovo entra subito in gara.
+- Beneficiano tutti i chiamanti: candidati delle bozze AI, candidati dell'arricchimento/metabox (v2.88.0) e ogni uso futuro.
+- Test standalone 7/7 (query senza meta_key, ordinamento PHP, filtri, integrazione arricchimento con flag e prompt).
+- Versione plugin aggiornata a `2.90.3`.
+
 ## 2.90.2 - 2026-07-08
 
 ### Fix: mappa articolo in chiusura e a larghezza piena
