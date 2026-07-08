@@ -1,3 +1,9 @@
+## 2.90.0 - 2026-07-08
+
+### Mappa articolo fase 2: monetizzazione nel popup
+- Ogni marker mostra i 2 migliori link affiliati dell'area (vivi, per click) sotto il pulsante Google Maps, con tracking dedicato (provenienza article_map) e cache 12h.
+- Versione plugin aggiornata a `2.90.0`.
+
 ## 2.89.0 - 2026-07-08
 
 ### Mappa "I luoghi di questo articolo"
