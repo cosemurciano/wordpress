@@ -848,14 +848,16 @@ class ALMA_Geo_Auto_Indexer {
      *
      * @return array{added:int,skipped:string} Esito sintetico.
      */
-    public function integrate_post_locations($post_id) {
-        $none = array('added' => 0, 'skipped' => '');
+    public function integrate_post_locations($post_id, $force = false) {
+        $none = array('added' => 0, 'skipped' => '', 'names' => array());
         $post = get_post($post_id);
         if (!$post instanceof WP_Post || $post->post_type !== 'post' || $post->post_status !== 'publish') {
             $none['skipped'] = 'post_non_valido';
             return $none;
         }
-        if (get_option(self::INTEGRATION_OPTION, '1') !== '1') {
+        // Il force salta l'opzione globale: è un'azione admin esplicita
+        // (revisione dal metabox "AI Affiliati").
+        if (!$force && get_option(self::INTEGRATION_OPTION, '1') !== '1') {
             $none['skipped'] = 'disabilitata';
             return $none;
         }
@@ -868,7 +870,7 @@ class ALMA_Geo_Auto_Indexer {
             return $none;
         }
         $hash = md5($post->post_title . '|' . $post->post_content);
-        if (get_post_meta($post->ID, self::INTEGRATION_HASH_META, true) === $hash) {
+        if (!$force && get_post_meta($post->ID, self::INTEGRATION_HASH_META, true) === $hash) {
             $none['skipped'] = 'contenuto_invariato';
             return $none;
         }
@@ -924,7 +926,57 @@ class ALMA_Geo_Auto_Indexer {
             empty($added) ? __('Nessuna località aggiuntiva trovata nel contenuto', 'affiliate-link-manager-ai') : sprintf(__('+%d località dal contenuto: %s', 'affiliate-link-manager-ai'), count($added), implode(', ', wp_list_pluck($added, 'name'))),
             current_time('mysql')
         ));
-        return array('added' => count($added), 'skipped' => '');
+        return array('added' => count($added), 'skipped' => '', 'names' => wp_list_pluck($added, 'name'));
+    }
+
+    /**
+     * Revisione geo ON-DEMAND dal metabox "AI Affiliati": stabilisce la
+     * località primaria se manca (livelli deterministici + AI su azione
+     * esplicita) e completa l'articolo con le altre destinazioni citate.
+     * A differenza del cron, forza l'analisi (ignora hash e opzione globale).
+     *
+     * @return array{ok:bool,message:string,primary:string,added:array,pending_geocoding:int}
+     */
+    public function review_post_locations($post_id) {
+        $post = get_post($post_id);
+        if (!$post instanceof WP_Post || $post->post_type !== 'post') {
+            return array('ok' => false, 'message' => __('Articolo non valido.', 'affiliate-link-manager-ai'), 'primary' => '', 'added' => array(), 'pending_geocoding' => 0);
+        }
+        if ($post->post_status !== 'publish') {
+            return array('ok' => false, 'message' => __('La revisione geo è disponibile solo per gli articoli pubblicati.', 'affiliate-link-manager-ai'), 'primary' => '', 'added' => array(), 'pending_geocoding' => 0);
+        }
+        // Nessuna località primaria: prova prima i livelli deterministici e,
+        // se non bastano, l'estrazione AI (qui l'azione è esplicita).
+        if (!$this->object_is_indexed($post->ID, ALMA_Geo_Index_Store::OBJECT_TYPE_POST)) {
+            $this->resolve_object($post->ID, true);
+        }
+        if (!$this->object_is_indexed($post->ID, ALMA_Geo_Index_Store::OBJECT_TYPE_POST)) {
+            return array('ok' => false, 'message' => __('Nessuna località riconosciuta nel titolo o nel contenuto: aggiungine una dalla metabox Geo per popolare la mappa.', 'affiliate-link-manager-ai'), 'primary' => '', 'added' => array(), 'pending_geocoding' => 0);
+        }
+        $primary = html_entity_decode((string) get_post_meta($post->ID, '_alma_geo_primary_name', true), ENT_QUOTES, 'UTF-8');
+        $integration = $this->integrate_post_locations($post->ID, true);
+        $added = (array) ($integration['names'] ?? array());
+
+        // Quante località dell'articolo attendono ancora coordinate: finché
+        // sono in geocoding pending non compaiono sulla mappa.
+        $pending = 0;
+        if ($this->store->tables_exist()) {
+            global $wpdb;
+            $pending = (int) $wpdb->get_var($wpdb->prepare(
+                "SELECT COUNT(DISTINCT l.id) FROM {$this->store->table_content_index()} ci
+                 INNER JOIN {$this->store->table_locations()} l ON l.id = ci.location_id
+                 WHERE ci.object_id = %d AND ci.object_type = %s AND l.geocoding_status = 'pending'",
+                $post->ID,
+                ALMA_Geo_Index_Store::OBJECT_TYPE_POST
+            ));
+        }
+        $parts = array();
+        if ($primary !== '') { $parts[] = sprintf(__('Località primaria: %s.', 'affiliate-link-manager-ai'), $primary); }
+        $parts[] = empty($added)
+            ? __('Nessuna nuova località trovata nel contenuto.', 'affiliate-link-manager-ai')
+            : sprintf(__('Aggiunte %d località dal contenuto: %s.', 'affiliate-link-manager-ai'), count($added), implode(', ', $added));
+        if ($pending > 0) { $parts[] = sprintf(__('%d in attesa di geocoding: compariranno sulla mappa una volta ottenute le coordinate.', 'affiliate-link-manager-ai'), $pending); }
+        return array('ok' => true, 'message' => implode(' ', $parts), 'primary' => $primary, 'added' => $added, 'pending_geocoding' => $pending);
     }
 
     /**

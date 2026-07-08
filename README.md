@@ -1,3 +1,9 @@
+## 2.96.0 - 2026-07-08
+
+### Revisione geo dal metabox articolo
+- Nuovo pulsante "Analizza località dal contenuto" nella metabox AI Affiliati: estrae le destinazioni citate, le aggiunge all'indice (senza toccare la primaria né il testo) e le avvia al geocoding per popolare la mappa di fine articolo. Azione admin forzata, con nonce e capability.
+- Versione plugin aggiornata a `2.96.0`.
+
 ## 2.95.0 - 2026-07-08
 
 ### L'agente scrive con i dati reali della località

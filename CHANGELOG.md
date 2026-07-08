@@ -1,3 +1,15 @@
+## 2.96.0 - 2026-07-08
+
+### Revisione geo dal metabox "AI Affiliati": località e mappa on-demand
+- **Richiesta**: rendere il pulsante di ottimizzazione un vero strumento di revisione dell'articolo (link affiliati + contenuti + geo). Questa release aggiunge l'**asse geo**, riusando l'integrazione località della 2.93.0.
+- **Nuova sezione "Località e mappa"** nella metabox degli articoli: il pulsante **"Analizza località dal contenuto"** estrae le destinazioni citate nell'articolo, le aggiunge all'indice geografico come località secondarie (senza toccare la primaria né il testo) e le avvia al geocoding — così popolano la mappa di fine articolo. Utile per gli articoli multi-destinazione (es. "Stati Uniti in 3 giorni") dove la mappa restava con la sola località principale.
+- **Revisione forzata** (`review_post_locations`): a differenza del cron automatico, l'azione admin ignora l'hash del contenuto e l'opzione globale, e se l'articolo non ha ancora una località primaria la ricava (livelli deterministici + estrazione AI su azione esplicita). Riporta località primaria, quante ne ha aggiunte e quante sono in attesa di geocoding.
+- **Sicurezza**: stesso controllo nonce + capability delle altre azioni della metabox (`verify_request`); nessuna modifica al contenuto dell'articolo. La sezione compare solo se la mappa articolo è attiva.
+- Esito dell'ultima analisi mostrato nella metabox (nota `_alma_geo_integration_note`).
+- Nota: la revisione dei CONTENUTI testuali (grassetti, link interni, riscrittura) resta un'evoluzione successiva; la qualità del testo è già rafforzata alla creazione (2.94.0/2.95.0) e le proposte affiliati della metabox includono già l'universale garantito e le descrizioni (2.92.0).
+- Test standalone 19/19 (parametro force, review_post_locations, wiring AJAX/metabox, gating sull'opzione mappa, JS).
+- Versione plugin aggiornata a `2.96.0`.
+
 ## 2.95.0 - 2026-07-08
 
 ### Schede località nella scrittura: l'agente usa i dati reali (clima, fatti, territorio)

@@ -28,6 +28,7 @@ class ALMA_AI_Post_Optimizer {
         add_action('wp_ajax_alma_post_optimizer_propose', array(__CLASS__, 'ajax_propose'));
         add_action('wp_ajax_alma_post_optimizer_apply', array(__CLASS__, 'ajax_apply'));
         add_action('wp_ajax_alma_post_optimizer_reject', array(__CLASS__, 'ajax_reject'));
+        add_action('wp_ajax_alma_post_optimizer_geo', array(__CLASS__, 'ajax_geo_review'));
     }
 
     public static function register_metabox() {
@@ -157,6 +158,23 @@ class ALMA_AI_Post_Optimizer {
         self::render_proposals_rows($proposals);
         echo '</div>';
 
+        // Revisione geo/mappa: estrae le località citate nell'articolo, le
+        // aggiunge all'indice (senza toccare la primaria) e le avvia al
+        // geocoding, così popolano la mappa di fine articolo.
+        if (get_option('alma_article_map_enabled', '1') === '1' && class_exists('ALMA_Geo_Auto_Indexer')) {
+            $map_note = trim((string) get_post_meta($post->ID, '_alma_geo_integration_note', true));
+            echo '<h4 style="margin:16px 0 6px;">'.esc_html__('Località e mappa', 'affiliate-link-manager-ai').'</h4>';
+            echo '<p class="description" style="margin-top:0;">'.esc_html__('Analizza il contenuto ed estrae le destinazioni citate (oltre alla località principale), le aggiunge all\'indice geografico e le avvia al geocoding: compaiono sulla mappa di fine articolo. Non modifica il testo dell\'articolo né la località primaria.', 'affiliate-link-manager-ai').'</p>';
+            if ($post->post_status !== 'publish') {
+                echo '<p class="description">'.esc_html__('Disponibile dopo la pubblicazione dell\'articolo.', 'affiliate-link-manager-ai').'</p>';
+            } else {
+                echo '<p><button type="button" class="button" id="alma-optimizer-geo">🗺️ '.esc_html__('Analizza località dal contenuto', 'affiliate-link-manager-ai').'</button> <span id="alma-optimizer-geo-feedback" style="color:#2271b1;"></span></p>';
+            }
+            if ($map_note !== '') {
+                echo '<p class="description" style="font-style:italic;">'.esc_html__('Ultima analisi:', 'affiliate-link-manager-ai').' '.esc_html($map_note).'</p>';
+            }
+        }
+
         ?>
         <script>
         (function(){
@@ -199,6 +217,19 @@ class ALMA_AI_Post_Optimizer {
                             document.getElementById('alma-optimizer-proposals').innerHTML = resp.data.html || '';
                         } else if (feedback) {
                             feedback.textContent = (resp && resp.data && resp.data.message) ? resp.data.message : 'Errore.';
+                        }
+                    });
+                    return;
+                }
+                if (target.id === 'alma-optimizer-geo') {
+                    var geoFeedback = document.getElementById('alma-optimizer-geo-feedback');
+                    target.disabled = true;
+                    if (geoFeedback) { geoFeedback.textContent = 'Analisi delle località in corso…'; }
+                    post('alma_post_optimizer_geo', {}, function (resp) {
+                        target.disabled = false;
+                        if (geoFeedback) {
+                            geoFeedback.textContent = (resp && resp.data && resp.data.message) ? resp.data.message : 'Errore analisi località.';
+                            geoFeedback.style.color = (resp && resp.success) ? '#1a7f37' : '#d63638';
                         }
                     });
                     return;
@@ -776,5 +807,22 @@ class ALMA_AI_Post_Optimizer {
             update_post_meta($post_id, self::META_PROPOSALS, $stored);
         }
         wp_send_json_success(array('rejected' => true));
+    }
+
+    /**
+     * Revisione geo on-demand: estrae e indicizza le località citate
+     * nell'articolo (senza toccare la primaria) e le avvia al geocoding.
+     */
+    public static function ajax_geo_review() {
+        $post_id = self::verify_request();
+        if (!class_exists('ALMA_Geo_Auto_Indexer')) {
+            wp_send_json_error(array('message' => __('Indicizzazione geografica non disponibile.', 'affiliate-link-manager-ai')));
+        }
+        $indexer = new ALMA_Geo_Auto_Indexer();
+        $result = $indexer->review_post_locations($post_id);
+        if (empty($result['ok'])) {
+            wp_send_json_error(array('message' => sanitize_text_field((string) ($result['message'] ?? __('Analisi non riuscita.', 'affiliate-link-manager-ai')))));
+        }
+        wp_send_json_success(array('message' => sanitize_text_field((string) $result['message']), 'added' => (array) $result['added'], 'pending_geocoding' => (int) $result['pending_geocoding']));
     }
 }
