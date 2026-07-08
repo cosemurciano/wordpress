@@ -421,7 +421,7 @@ class ALMA_AI_Post_Optimizer {
         if ($widget_allowed) {
             $prompt .= 'DOVE POSSIBILE proponi anche UN widget di link affiliati (blocco grafico a card, massimo uno): serve a SPEZZARE VISIVAMENTE il testo, quindi scegli un paragrafo INTERMEDIO dell\'articolo (dopo una sezione centrale pertinente), NON necessariamente la chiusura. Aggiungi alle proposte {"pattern":"widget","paragrafo":int,"layout":"destination_cards|experience_cards|hero_spotlight","link_ids":[int (solo da link_candidati)],"titolo":string,"button_text":string,"motivo":string}. Layout: destination_cards = griglia di mete/destinazioni (2-6 link); experience_cards = card di tour/attività specifiche (2-8 link); hero_spotlight = UNA sola esperienza di punta (1 link). ';
         }
-        $prompt .= 'I link_candidati con "universale":true (assicurazione viaggio, eSIM…) valgono per QUALSIASI articolo: se coerente col contenuto, includi SEMPRE uno di questi tra le proposte (massimo 1, pattern anchor o button, nel punto più naturale, es. consigli pratici o preparativi). ';
+        $prompt .= 'I link_candidati con "universale":true (assicurazione viaggio, eSIM…) sono pertinenti in QUALSIASI articolo di viaggio: DEVI includere UNA proposta con uno di questi (pattern anchor o button), nel punto più naturale — consigli pratici, preparativi, informazioni utili. Ometti l\'universale SOLO se l\'articolo lo rende assurdo. ';
         if ($allow_replacements) {
             $existing_analysis = self::analyze_content($post->ID, $post->post_content);
             $existing_links = array();
@@ -457,10 +457,56 @@ class ALMA_AI_Post_Optimizer {
         if ($allow_replacements) {
             $proposals = array_merge($proposals, self::validate_replacements($raw_proposals, $candidates, $post->post_content));
         }
+        // Garanzia deterministica: se l'AI ha ignorato i link universali
+        // (assicurazioni/eSIM) e l'articolo non ne contiene già uno, la
+        // proposta viene aggiunta dal sistema — come per i widget garantiti.
+        $proposals = self::ensure_universal_proposal($proposals, $candidates, $paragraphs, $rules, $post);
         if (empty($proposals)) {
             return array('proposals' => array(), 'error' => __('L\'AI non ha prodotto proposte valide per questo articolo.', 'affiliate-link-manager-ai'));
         }
         return array('proposals' => $proposals, 'error' => '');
+    }
+
+    /**
+     * Se nessuna proposta usa un link di tipologia universale e il contenuto
+     * non ne contiene già uno, aggiunge una proposta button deterministica
+     * col miglior universale, a circa due terzi dell'articolo (zona consigli
+     * pratici), oltre il budget di densità se necessario (max 1).
+     */
+    private static function ensure_universal_proposal($proposals, $candidates, $paragraphs, $rules, $post) {
+        $universal_ids = array();
+        foreach ((array) $candidates as $candidate) {
+            if (!empty($candidate['universale'])) { $universal_ids[(int) $candidate['id']] = sanitize_text_field((string) $candidate['titolo']); }
+        }
+        if (empty($universal_ids)) { return $proposals; }
+        foreach ((array) $proposals as $proposal) {
+            if (isset($universal_ids[(int) ($proposal['link_id'] ?? 0)])) { return $proposals; }
+            foreach ((array) ($proposal['widget_request']['link_ids'] ?? array()) as $wid) {
+                if (isset($universal_ids[(int) $wid])) { return $proposals; }
+            }
+        }
+        // L'articolo contiene già uno shortcode con un link universale?
+        foreach (array_keys($universal_ids) as $uid) {
+            if (preg_match('/\[affiliate_link[^\]]*\bid="?' . $uid . '"?[\s"\]]/', $post->post_content)) { return $proposals; }
+        }
+        reset($universal_ids);
+        $link_id = (int) key($universal_ids);
+        $min_paragraph = (int) $rules['min_paragraphs_before'];
+        $paragraph = max($min_paragraph, (int) floor(count($paragraphs) * 0.7));
+        $paragraph = min($paragraph, max($min_paragraph, count($paragraphs) - 1));
+        $button_text = sanitize_text_field((string) $rules['button_text']);
+        $proposal = array(
+            'pattern' => 'button',
+            'link_id' => $link_id,
+            'link_title' => $universal_ids[$link_id],
+            'paragraph' => $paragraph,
+            'insertion' => '[affiliate_link id="' . $link_id . '" button="yes" button_text="' . esc_attr($button_text) . '"]',
+            'inline' => false,
+            'reason' => __('Tipologia universale (assicurazioni/eSIM): pertinente in ogni articolo di viaggio — proposta garantita dal sistema perché l\'AI non l\'aveva inclusa.', 'affiliate-link-manager-ai'),
+            'created_at' => current_time('mysql'),
+        );
+        $proposals[md5(wp_json_encode(array('universal_guarantee', $link_id, $paragraph)))] = $proposal;
+        return $proposals;
     }
 
     /**
