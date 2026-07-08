@@ -417,11 +417,11 @@ class ALMA_AI_Post_Optimizer {
             'regole_anchor' => $rules['anchor_rules'],
         );
         $prompt = 'Analizza l\'articolo e proponi al massimo ' . $budget . ' inserimenti di link affiliati che aumentino la conversione SENZA rompere il flusso di lettura. '
-            . 'Rispondi SOLO JSON: {"proposte":[{"paragrafo":int (indice del paragrafo DOPO il quale inserire, >= primo_paragrafo_utilizzabile),"pattern":"anchor|button|card","link_id":int (solo da link_candidati),"frase":string (SOLO per anchor: una frase completa e naturale che prosegue il paragrafo e contiene lo shortcode [affiliate_link id="ID" text="anchor descrittiva"]),"button_text":string (per button/card),"motivo":string (perché qui, orientato alla conversione)}]}. ';
+            . 'Rispondi SOLO JSON: {"proposte":[{"paragrafo":int (indice del paragrafo DOPO il quale inserire, >= primo_paragrafo_utilizzabile),"pattern":"anchor|button|card","link_id":int (solo da link_candidati),"frase":string (SOLO per anchor: una frase completa e naturale che prosegue il paragrafo e contiene lo shortcode [affiliate_link id="ID" text="anchor descrittiva"]),"button_text":string (per button/card),"frase_intro":string (per button/card: 1-2 frasi nel tono dell\'articolo che introducono il link partendo dalla sua "descrizione" — RISCRIVILA adattandola al contesto, non copiarla; niente shortcode né parentesi quadre),"motivo":string (perché qui, orientato alla conversione)}]}. ';
         if ($widget_allowed) {
             $prompt .= 'DOVE POSSIBILE proponi anche UN widget di link affiliati (blocco grafico a card, massimo uno): serve a SPEZZARE VISIVAMENTE il testo, quindi scegli un paragrafo INTERMEDIO dell\'articolo (dopo una sezione centrale pertinente), NON necessariamente la chiusura. Aggiungi alle proposte {"pattern":"widget","paragrafo":int,"layout":"destination_cards|experience_cards|hero_spotlight","link_ids":[int (solo da link_candidati)],"titolo":string,"button_text":string,"motivo":string}. Layout: destination_cards = griglia di mete/destinazioni (2-6 link); experience_cards = card di tour/attività specifiche (2-8 link); hero_spotlight = UNA sola esperienza di punta (1 link). ';
         }
-        $prompt .= 'I link_candidati con "universale":true (assicurazione viaggio, eSIM…) sono pertinenti in QUALSIASI articolo di viaggio: DEVI includere UNA proposta con uno di questi (pattern anchor o button), nel punto più naturale — consigli pratici, preparativi, informazioni utili. Ometti l\'universale SOLO se l\'articolo lo rende assurdo. ';
+        $prompt .= 'I link_candidati con "universale":true (assicurazione viaggio, eSIM…) sono pertinenti in QUALSIASI articolo di viaggio: DEVI includere UNA proposta con uno di questi, nel punto più naturale — consigli pratici, preparativi, informazioni utili. Usa il pattern card (mostra immagine, titolo e descrizione del link) SEMPRE con frase_intro che riscrive la descrizione nel tono dell\'articolo, oppure anchor con una frase che integra il servizio nel discorso. MAI un bottone nudo senza contesto. Ometti l\'universale SOLO se l\'articolo lo rende assurdo. ';
         if ($allow_replacements) {
             $existing_analysis = self::analyze_content($post->ID, $post->post_content);
             $existing_links = array();
@@ -469,8 +469,9 @@ class ALMA_AI_Post_Optimizer {
 
     /**
      * Se nessuna proposta usa un link di tipologia universale e il contenuto
-     * non ne contiene già uno, aggiunge una proposta button deterministica
-     * col miglior universale, a circa due terzi dell'articolo (zona consigli
+     * non ne contiene già uno, aggiunge una proposta card deterministica
+     * (immagine + titolo + descrizione del link, non un bottone nudo) col
+     * miglior universale, a circa due terzi dell'articolo (zona consigli
      * pratici), oltre il budget di densità se necessario (max 1).
      */
     private static function ensure_universal_proposal($proposals, $candidates, $paragraphs, $rules, $post) {
@@ -496,13 +497,13 @@ class ALMA_AI_Post_Optimizer {
         $paragraph = min($paragraph, max($min_paragraph, count($paragraphs) - 1));
         $button_text = sanitize_text_field((string) $rules['button_text']);
         $proposal = array(
-            'pattern' => 'button',
+            'pattern' => 'card',
             'link_id' => $link_id,
             'link_title' => $universal_ids[$link_id],
             'paragraph' => $paragraph,
-            'insertion' => '[affiliate_link id="' . $link_id . '" button="yes" button_text="' . esc_attr($button_text) . '"]',
+            'insertion' => '[affiliate_link id="' . $link_id . '" img="yes" fields="title,content" button="yes" button_text="' . esc_attr($button_text) . '"]',
             'inline' => false,
-            'reason' => __('Tipologia universale (assicurazioni/eSIM): pertinente in ogni articolo di viaggio — proposta garantita dal sistema perché l\'AI non l\'aveva inclusa.', 'affiliate-link-manager-ai'),
+            'reason' => __('Tipologia universale (assicurazioni/eSIM): card con immagine, titolo e descrizione — proposta garantita dal sistema perché l\'AI non l\'aveva inclusa.', 'affiliate-link-manager-ai'),
             'created_at' => current_time('mysql'),
         );
         $proposals[md5(wp_json_encode(array('universal_guarantee', $link_id, $paragraph)))] = $proposal;
@@ -584,6 +585,7 @@ class ALMA_AI_Post_Optimizer {
                 'id' => (int)$row['source_id'],
                 'titolo' => sanitize_text_field((string)$row['title']),
                 'tipologie' => is_array($row['link_types'] ?? null) ? implode(', ', $row['link_types']) : '',
+                'descrizione' => self::candidate_description((int)$row['source_id']),
             );
         }
         // I migliori link di tipologia UNIVERSALE (Assicurazioni, eSIM…)
@@ -596,11 +598,39 @@ class ALMA_AI_Post_Optimizer {
                     'id' => (int) $universal_id,
                     'titolo' => sanitize_text_field((string) get_the_title($universal_id)),
                     'tipologie' => (is_array($terms) ? implode(', ', wp_list_pluck($terms, 'name')) : ''),
+                    'descrizione' => self::candidate_description((int) $universal_id),
                     'universale' => true,
                 );
             }
         }
         return $candidates;
+    }
+
+    /**
+     * Estratto breve della descrizione del link: è il materiale con cui
+     * l'AI scrive la frase introduttiva nel tono dell'articolo.
+     */
+    private static function candidate_description($link_id) {
+        $text = trim(wp_strip_all_tags((string) get_post_field('post_content', $link_id)));
+        $text = preg_replace('/\s+/u', ' ', $text);
+        if (mb_strlen($text) > 240) {
+            $text = rtrim(mb_substr($text, 0, 239)) . '…';
+        }
+        return $text;
+    }
+
+    /**
+     * Antepone la frase introduttiva scritta dall'AI (tono dell'articolo)
+     * al blocco button/card: paragrafo autonomo, senza shortcode né markup.
+     */
+    private static function prepend_intro_sentence($insertion, $row) {
+        $intro = sanitize_text_field((string)($row['frase_intro'] ?? ''));
+        $intro = trim(str_replace(array('[', ']'), '', $intro));
+        if ($intro === '') { return $insertion; }
+        if (mb_strlen($intro) > 400) {
+            $intro = rtrim(mb_substr($intro, 0, 399)) . '…';
+        }
+        return '<p>' . esc_html($intro) . '</p>' . "\n" . $insertion;
     }
 
     private static function validate_proposals($raw, $candidates, $paragraphs, $rules, $budget, $allowed_patterns) {
@@ -661,11 +691,11 @@ class ALMA_AI_Post_Optimizer {
                 $inline = true;
             } elseif ($pattern === 'button') {
                 $button_text = sanitize_text_field((string)($row['button_text'] ?? '')) ?: $rules['button_text'];
-                $insertion = '[affiliate_link id="' . $link_id . '" button="yes" button_text="' . esc_attr($button_text) . '"]';
+                $insertion = self::prepend_intro_sentence('[affiliate_link id="' . $link_id . '" button="yes" button_text="' . esc_attr($button_text) . '"]', $row);
                 $inline = false;
             } else { // card
                 $button_text = sanitize_text_field((string)($row['button_text'] ?? '')) ?: $rules['button_text'];
-                $insertion = '[affiliate_link id="' . $link_id . '" img="yes" fields="title,content" button="yes" button_text="' . esc_attr($button_text) . '"]';
+                $insertion = self::prepend_intro_sentence('[affiliate_link id="' . $link_id . '" img="yes" fields="title,content" button="yes" button_text="' . esc_attr($button_text) . '"]', $row);
                 $inline = false;
             }
             $proposal = array(

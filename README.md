@@ -1,3 +1,9 @@
+## 2.92.0 - 2026-07-08
+
+### Inserimento universale di qualità
+- La proposta universale garantita è ora una card (immagine + titolo + descrizione del link); i candidati inviati all'AI includono la descrizione e il nuovo campo frase_intro antepone 1-2 frasi riscritte nel tono dell'articolo ai blocchi button/card. Verificata la generazione AI delle immagini per widget e link inseriti in arricchimento (catena già attiva).
+- Versione plugin aggiornata a `2.92.0`.
+
 ## 2.91.0 - 2026-07-08
 
 ### Link universale garantito nell'arricchimento
