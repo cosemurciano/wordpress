@@ -1,3 +1,9 @@
+## 2.89.0 - 2026-07-08
+
+### Mappa "I luoghi di questo articolo"
+- Mappa interattiva automatica a fine articolo con le località geocodificate citate (primaria evidenziata); i marker aprono la scheda Google Maps del luogo in nuova scheda (place_id quando disponibile). Leaflet locale, caricamento pigro allo scroll, shortcode [alma_mappa_articolo], opzione globale e esclusione per articolo.
+- Versione plugin aggiornata a `2.89.0`.
+
 ## 2.88.1 - 2026-07-08
 
 ### "Esegui ora" dell'arricchimento affidabile
