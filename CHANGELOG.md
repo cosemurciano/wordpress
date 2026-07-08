@@ -1,3 +1,13 @@
+## 2.89.0 - 2026-07-08
+
+### Mappa interattiva "I luoghi di questo articolo" a fine articolo
+- **Nuova mappa automatica a fine articolo** (`ALMA_Article_Locations_Map`): mostra le località citate nell'articolo prese dall'indice geografico (solo quelle con coordinate geocodificate, max 10, deduplicate), con la **località primaria evidenziata** nel colore accento e le secondarie in grigio. Se l'articolo non ha località geocodificate non compare nulla.
+- **Marker → Google Maps**: ogni marker apre un popup con nome, paese e pulsante **"Apri in Google Maps"** in nuova scheda; quando la località ha il **place_id di Google** salvato si apre la **scheda esatta del luogo** (foto, recensioni, indicazioni), altrimenti le coordinate. URL ufficiali `google.com/maps/search/?api=1` — nessuna API key.
+- **Prestazioni**: Leaflet incluso nel plugin (stesso stack e stesse tile della mappa Trova Viaggio, colore accento condiviso); la mappa viene inizializzata **solo quando l'utente ci scrolla vicino** (IntersectionObserver, margine 400px) — zero impatto sul caricamento; dati dei marker inline, nessuna chiamata AJAX; marker a cerchio senza immagini. Elenco testuale in `<noscript>`.
+- **Controlli**: opzione globale in Impostazioni → Generale (default attiva, solo articoli); shortcode `[alma_mappa_articolo]` per il posizionamento manuale (disattiva l'append automatico in quel post); metabox "📍 Mappa località" per escludere il singolo articolo (mostra anche quante località geocodificate ha il post).
+- Test standalone 5/5 sugli URL Google Maps (place_id, fallback coordinate, encoding, precisione 7 decimali).
+- Versione plugin aggiornata a `2.89.0`.
+
 ## 2.88.1 - 2026-07-08
 
 ### Arricchimento: "Esegui ora" tracciato, forzato e mai più muto

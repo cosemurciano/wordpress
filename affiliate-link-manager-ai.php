@@ -3,7 +3,7 @@
  * Plugin Name: Affiliate Link Manager AI
  * Plugin URI: https://your-website.com
  * Description: Gestisce link affiliati con intelligenza artificiale per ottimizzazione e tracking automatico.
- * Version: 2.88.1
+ * Version: 2.89.0
  * Author: Cosè Murciano
  * License: GPL v2 or later
  * Text Domain: affiliate-link-manager-ai
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Definisci costanti del plugin
-define('ALMA_VERSION', '2.88.1');
+define('ALMA_VERSION', '2.89.0');
 define('ALMA_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('ALMA_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('ALMA_PLUGIN_FILE', __FILE__);
@@ -67,6 +67,7 @@ require_once ALMA_PLUGIN_DIR . 'includes/class-affiliate-link-auditor.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-link-health-checker.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-universal-link-types.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-ai-image-generator.php';
+require_once ALMA_PLUGIN_DIR . 'includes/class-article-locations-map.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-google-trends.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-geo-facts.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-affiliate-source-url-validator.php';
@@ -181,6 +182,7 @@ class AffiliateManagerAI {
         ALMA_Link_Health_Checker::init();
         ALMA_Universal_Link_Types::init();
         ALMA_AI_Image_Generator::init();
+        ALMA_Article_Locations_Map::init();
         ALMA_Geo_Facts::init();
         add_action('init', array($this, 'init'));
         add_action('widgets_init', array('ALMA_Contextual_Affiliate_Widget', 'register_widget'));
@@ -2344,6 +2346,7 @@ class AffiliateManagerAI {
             update_option('alma_track_logged_out', sanitize_text_field($_POST['track_logged_out'] ?? 'yes'));
             update_option('alma_enable_ai', sanitize_text_field($_POST['enable_ai'] ?? 'yes'));
             update_option('alma_ai_auto_publish', ($_POST['alma_ai_auto_publish'] ?? 'no') === 'yes' ? 'yes' : 'no');
+            update_option('alma_article_map_enabled', empty($_POST['alma_article_map_enabled']) ? '0' : '1', false);
 
             $selected_types = array_map('sanitize_text_field', $_POST['alma_link_post_types'] ?? array());
             update_option('alma_link_post_types', $selected_types);
@@ -2446,6 +2449,13 @@ class AffiliateManagerAI {
                                     <option value="yes" <?php selected(get_option('alma_ai_auto_publish', 'no'), 'yes'); ?>><?php _e('Sì — pubblica subito gli articoli generati', 'affiliate-link-manager-ai'); ?></option>
                                 </select>
                                 <p class="description"><?php _e('⚠️ Con "Sì" TUTTI gli articoli generati dall\'AI (workspace, runner programmato, agente) vanno online immediatamente senza revisione umana, con immagine in evidenza e meta SEO già applicati. Attivalo solo quando la qualità delle bozze ti soddisfa costantemente.', 'affiliate-link-manager-ai'); ?></p>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><?php _e('Mappa località negli articoli', 'affiliate-link-manager-ai'); ?></th>
+                            <td>
+                                <label><input type="checkbox" name="alma_article_map_enabled" value="1" <?php checked(get_option('alma_article_map_enabled', '1'), '1'); ?>> <?php _e('Mostra a fine articolo la mappa interattiva delle località citate (solo articoli con località geocodificate)', 'affiliate-link-manager-ai'); ?></label>
+                                <p class="description"><?php _e('I marker aprono la scheda Google Maps del luogo in una nuova scheda. Shortcode per posizionarla a mano: [alma_mappa_articolo]; esclusione per singolo articolo dalla metabox "📍 Mappa località".', 'affiliate-link-manager-ai'); ?></p>
                             </td>
                         </tr>
                     </table>
