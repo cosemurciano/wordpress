@@ -29,6 +29,14 @@ class ALMA_Geo_Auto_Indexer {
     const SOURCE_AI = 'auto_ai';
     const SOURCE_CONFIRMED = 'auto_confirmed';
 
+    // Integrazione delle località citate nel contenuto dei post già
+    // indicizzati (per la mappa articolo): cron asincrono, mai in save_post.
+    const INTEGRATION_CRON_HOOK = 'alma_geo_integrate_post_locations';
+    const INTEGRATION_OPTION = 'alma_geo_post_integration';
+    const INTEGRATION_HASH_META = '_alma_geo_integration_hash';
+    const INTEGRATION_NOTE_META = '_alma_geo_integration_note';
+    const INTEGRATION_MAX_ADDITIONS = 8;
+
     const CONFIDENCE_HIGH = 0.9;
     const CONFIDENCE_MEDIUM = 0.6;
     const CONFIDENCE_LOW = 0.4;
@@ -660,6 +668,7 @@ class ALMA_Geo_Auto_Indexer {
         // erano ancora draft (l'indexer lavora solo sui post pubblicati).
         add_action('transition_post_status', array($this, 'queue_index_on_publish'), 20, 3);
         add_action('shutdown', array($this, 'run_deferred_index'));
+        add_action(self::INTEGRATION_CRON_HOOK, array(__CLASS__, 'cron_integrate_post'));
 
         if (is_admin()) {
             foreach (array('post', 'affiliate_link') as $post_type) {
@@ -778,13 +787,172 @@ class ALMA_Geo_Auto_Indexer {
             if (!$post instanceof WP_Post || $post->post_status !== 'publish') {
                 continue;
             }
-            // Deterministico soltanto: mai chiamate AI fuori dai batch espliciti.
+            // Gli ARTICOLI già indicizzati (es. località dell'idea assegnata
+            // dall'agent) venivano saltati del tutto: le altre destinazioni
+            // citate nel contenuto non finivano mai su indice e mappa.
+            // L'integrazione gira in un cron asincrono dedicato (mai qui a
+            // shutdown: può chiamare OpenAI) e non tocca la primaria.
+            if ($post->post_type === 'post') {
+                self::schedule_integration($post_id);
+            }
+            // Deterministico soltanto: mai chiamate AI fuori dai batch
+            // espliciti e dal cron di integrazione.
             $status = get_post_meta($post_id, self::STATUS_META, true);
             if (in_array($status, array('suggested', 'rejected'), true)) {
                 continue;
             }
             $this->resolve_object($post_id, false);
         }
+    }
+
+    /* ---------------------------------------------------------------------
+     * Integrazione località dal contenuto (mappa articolo)
+     * ------------------------------------------------------------------ */
+
+    /**
+     * Programma l'integrazione asincrona delle località citate da un post.
+     * Idempotente: se un evento per lo stesso post è già in coda non ne
+     * aggiunge un altro; il cambio-contenuto è gestito dall'hash nel cron.
+     */
+    public static function schedule_integration($post_id) {
+        $post_id = absint($post_id);
+        if ($post_id < 1 || get_option(self::INTEGRATION_OPTION, '1') !== '1') {
+            return false;
+        }
+        if (wp_next_scheduled(self::INTEGRATION_CRON_HOOK, array($post_id))) {
+            return false;
+        }
+        $scheduled = wp_schedule_single_event(time() + 15, self::INTEGRATION_CRON_HOOK, array($post_id));
+        if (false !== $scheduled && function_exists('spawn_cron')) {
+            spawn_cron();
+        }
+        return false !== $scheduled;
+    }
+
+    public static function cron_integrate_post($post_id) {
+        $indexer = new self();
+        $indexer->integrate_post_locations($post_id);
+    }
+
+    /**
+     * Completa l'indice geografico di un ARTICOLO già indicizzato con le
+     * altre località citate nel contenuto, senza toccare le associazioni
+     * esistenti (la primaria — es. località dell'idea — resta intatta).
+     *
+     * Fonti: gazetteer sul testo (solo match non ambigui) + estrattore AI
+     * (con i titoli H2/H3, dove vivono le destinazioni degli elenchi).
+     * Le località nuove nascono in geocoding "pending": è il geocoding a
+     * validarle, e la mappa mostra solo quelle con coordinate verificate.
+     * Un hash del contenuto evita ri-scansioni (e costi AI) sui salvataggi
+     * senza modifiche.
+     *
+     * @return array{added:int,skipped:string} Esito sintetico.
+     */
+    public function integrate_post_locations($post_id) {
+        $none = array('added' => 0, 'skipped' => '');
+        $post = get_post($post_id);
+        if (!$post instanceof WP_Post || $post->post_type !== 'post' || $post->post_status !== 'publish') {
+            $none['skipped'] = 'post_non_valido';
+            return $none;
+        }
+        if (get_option(self::INTEGRATION_OPTION, '1') !== '1') {
+            $none['skipped'] = 'disabilitata';
+            return $none;
+        }
+        // Solo post GIÀ indicizzati: i non indicizzati seguono il flusso
+        // normale (resolve/suggerimenti); integrare senza primaria
+        // creerebbe associazioni orfane che il flusso di revisione
+        // cancellerebbe alla conferma.
+        if (!$this->object_is_indexed($post->ID, ALMA_Geo_Index_Store::OBJECT_TYPE_POST)) {
+            $none['skipped'] = 'non_indicizzato';
+            return $none;
+        }
+        $hash = md5($post->post_title . '|' . $post->post_content);
+        if (get_post_meta($post->ID, self::INTEGRATION_HASH_META, true) === $hash) {
+            $none['skipped'] = 'contenuto_invariato';
+            return $none;
+        }
+
+        $seen = $this->associated_location_norms($post->ID, ALMA_Geo_Index_Store::OBJECT_TYPE_POST);
+        $additions = array();
+
+        // Fonte 1 — gazetteer sul testo: solo nomi che risolvono su UNA
+        // località (i toponimi ambigui non vanno auto-applicati alla mappa).
+        $gazetteer_result = $this->resolve_via_gazetteer($post);
+        $by_name = array();
+        foreach ((array) $gazetteer_result['locations'] as $location) {
+            $norm = $this->normalize_text((string) ($location['name'] ?? ''));
+            if ($norm === '') { continue; }
+            $by_name[$norm][] = $location;
+        }
+        foreach ($by_name as $norm => $rows) {
+            if (count($rows) !== 1 || isset($seen[$norm])) { continue; }
+            $location = $rows[0];
+            $location['is_primary'] = false;
+            $location['role'] = 'mentioned_destination';
+            $additions[] = $location;
+            $seen[$norm] = true;
+        }
+
+        // Fonte 2 — estrattore AI con i titoli di sezione (una sola chiamata
+        // per versione del contenuto grazie all'hash; costi nel log AI).
+        if (class_exists('ALMA_Geo_AI_Location_Extractor') && count($additions) < self::INTEGRATION_MAX_ADDITIONS) {
+            $ai_locations = ALMA_Geo_AI_Location_Extractor::extract($post, array(
+                'max_locations' => self::INTEGRATION_MAX_ADDITIONS,
+                'include_headings' => true,
+            ));
+            $ai_locations = $this->enrich_with_gazetteer($ai_locations);
+            foreach ($ai_locations as $location) {
+                $norm = $this->normalize_text((string) ($location['name'] ?? ''));
+                if ($norm === '' || isset($seen[$norm])) { continue; }
+                $location['is_primary'] = false;
+                $location['role'] = 'mentioned_destination';
+                $location['source'] = self::SOURCE_AI;
+                $additions[] = $location;
+                $seen[$norm] = true;
+            }
+        }
+
+        $added = array();
+        if (!empty($additions)) {
+            $additions = array_slice($additions, 0, self::INTEGRATION_MAX_ADDITIONS);
+            $added = $this->store->append_locations_for_object($post->ID, ALMA_Geo_Index_Store::OBJECT_TYPE_POST, $additions, 'auto_content');
+        }
+        update_post_meta($post->ID, self::INTEGRATION_HASH_META, $hash);
+        update_post_meta($post->ID, self::INTEGRATION_NOTE_META, sprintf(
+            '%s — %s',
+            empty($added) ? __('Nessuna località aggiuntiva trovata nel contenuto', 'affiliate-link-manager-ai') : sprintf(__('+%d località dal contenuto: %s', 'affiliate-link-manager-ai'), count($added), implode(', ', wp_list_pluck($added, 'name'))),
+            current_time('mysql')
+        ));
+        return array('added' => count($added), 'skipped' => '');
+    }
+
+    /**
+     * Nomi normalizzati (canonico + alias) delle località già associate a un
+     * oggetto: base di dedup dell'integrazione.
+     */
+    private function associated_location_norms($object_id, $object_type) {
+        global $wpdb;
+        $rows = $wpdb->get_results($wpdb->prepare(
+            "SELECT l.canonical_name, l.aliases FROM {$this->store->table_content_index()} ci
+             INNER JOIN {$this->store->table_locations()} l ON l.id = ci.location_id
+             WHERE ci.object_id = %d AND ci.object_type = %s",
+            absint($object_id),
+            sanitize_key($object_type)
+        ), ARRAY_A);
+        $norms = array();
+        foreach ((array) $rows as $row) {
+            $names = array((string) ($row['canonical_name'] ?? ''));
+            $aliases = json_decode((string) ($row['aliases'] ?? ''), true);
+            if (is_array($aliases)) {
+                foreach ($aliases as $alias) { $names[] = (string) $alias; }
+            }
+            foreach ($names as $name) {
+                $norm = $this->normalize_text($name);
+                if ($norm !== '') { $norms[$norm] = true; }
+            }
+        }
+        return $norms;
     }
 
     /* ---------------------------------------------------------------------

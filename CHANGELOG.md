@@ -1,3 +1,17 @@
+## 2.93.0 - 2026-07-08
+
+### Geo/mappa: le destinazioni citate nell'articolo entrano nell'indice (e sulla mappa)
+- **Segnalazione** (articolo "Stati Uniti in 3 giorni"): l'articolo parla di diverse destinazioni ma nessuna finiva in geo né sulla mappa. **Causa radice**: gli articoli dell'agent ricevono la località dell'idea alla creazione, quindi risultano "già indicizzati" e l'auto-indexer li saltava del tutto (`already_indexed`, "mai sovrascrivere associazioni esistenti") — il contenuto non veniva mai scansionato.
+- **Nuova integrazione automatica** (`integrate_post_locations`): per gli articoli GIÀ indicizzati, un cron asincrono dedicato (mai in save_post) scansiona il contenuto e AGGIUNGE le altre destinazioni come località secondarie (`mentioned_destination`), **senza mai toccare la primaria né le associazioni esistenti**. Due fonti: gazetteer sul testo (solo toponimi che risolvono su UNA località: gli ambigui non vanno auto-applicati alla mappa) + estrattore AI potenziato con i titoli H2/H3 (dove vivono le destinazioni degli articoli-elenco) e fino a 8 località.
+- **Nuovo metodo non distruttivo nello store** (`append_locations_for_object`): accoda righe secondarie al content index con dedup su località già associate (anche via alias); `save_geo_meta_for_object` sarebbe stato distruttivo (cancella e riscrive tutto).
+- **Geocoding e mappa automatici**: le località nuove nascono "pending" ed entrano nella coda di geocoding automatico esistente; la mappa mostra solo quelle con coordinate verificate — è il geocoding a fare da validatore delle estrazioni AI.
+- **Copertura**: (1) alla pubblicazione e al salvataggio degli articoli (hook differiti esistenti); (2) durante l'**arricchimento**, che scorre l'archivio dai post più vecchi: gli articoli storici vengono coperti progressivamente senza lavoro manuale.
+- **Costi sotto controllo**: hash del contenuto in meta (`_alma_geo_integration_hash`) — una sola analisi AI per versione del contenuto, esito leggibile in `_alma_geo_integration_note`; costi tracciati nel log AI (task `geo_location_extraction`).
+- **Opzione dedicata** in Impostazioni → Generale ("Completa automaticamente le località degli articoli dal contenuto", attiva di default, disattivabile).
+- Estrattore AI retrocompatibile: nuovi parametri opzionali `max_locations` e `include_headings`, comportamento invariato per i batch esistenti.
+- Test standalone 17/17 (prompt con SEZIONI, clamp max località, smoke test su guardie, dedup, non-distruttività e wiring).
+- Versione plugin aggiornata a `2.93.0`.
+
 ## 2.92.0 - 2026-07-08
 
 ### Inserimento universale di qualità: card con descrizione + frase introduttiva nel tono dell'articolo

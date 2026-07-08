@@ -2,10 +2,11 @@
 /**
  * Estrazione località via OpenAI per l'indicizzazione geografica automatica.
  *
- * Usato solo nei batch admin espliciti (mai su richieste frontend né su save_post)
- * e solo per i contenuti che i livelli deterministici non hanno risolto.
- * I risultati non vengono mai applicati automaticamente: finiscono nella coda
- * di revisione dell'auto-indexer.
+ * Usato nei batch admin espliciti e nell'integrazione asincrona via WP-Cron
+ * delle località citate dagli articoli (mai su richieste frontend, mai in
+ * modo sincrono dentro save_post). Nei batch i risultati finiscono nella coda
+ * di revisione dell'auto-indexer; nell'integrazione vengono aggiunti come
+ * località secondarie e validati dal geocoding prima di comparire sulla mappa.
  */
 if (!defined('ABSPATH')) {
     exit;
@@ -16,20 +17,35 @@ class ALMA_Geo_AI_Location_Extractor {
     const MAX_LOCATIONS = 4;
 
     /**
+     * @param array $args Opzionali: 'max_locations' (int, default 4, max 10)
+     *                    e 'include_headings' (bool: aggiunge i titoli H2/H3,
+     *                    dove vivono le destinazioni degli articoli-elenco).
      * @return array Elenco di località proposte (può essere vuoto) nel formato
      *               accettato da ALMA_Geo_Auto_Indexer::save_suggestion().
      */
-    public static function extract($post) {
+    public static function extract($post, $args = array()) {
         if (!$post instanceof WP_Post) {
             $post = get_post($post);
         }
         if (!$post instanceof WP_Post || trim((string) get_option('alma_openai_api_key', '')) === '') {
             return array();
         }
+        $max_locations = max(1, min(10, absint($args['max_locations'] ?? self::MAX_LOCATIONS)));
 
         $title = wp_strip_all_tags(get_the_title($post));
         $excerpt = wp_strip_all_tags(strip_shortcodes((string) ($post->post_excerpt ?: $post->post_content)));
         $excerpt = mb_substr(preg_replace('/\s+/', ' ', $excerpt), 0, self::MAX_CONTENT_CHARS);
+        $headings_line = '';
+        if (!empty($args['include_headings']) && preg_match_all('/<h[23][^>]*>(.*?)<\/h[23]>/is', (string) $post->post_content, $m)) {
+            $headings = array();
+            foreach (array_slice($m[1], 0, 20) as $h) {
+                $h = trim(preg_replace('/\s+/', ' ', wp_strip_all_tags($h)));
+                if ($h !== '') { $headings[] = $h; }
+            }
+            if (!empty($headings)) {
+                $headings_line = "\nSEZIONI: " . mb_substr(implode(' | ', $headings), 0, 800);
+            }
+        }
 
         $schema = array(
             'type' => 'object',
@@ -37,7 +53,7 @@ class ALMA_Geo_AI_Location_Extractor {
             'properties' => array(
                 'locations' => array(
                     'type' => 'array',
-                    'maxItems' => self::MAX_LOCATIONS,
+                    'maxItems' => $max_locations,
                     'items' => array(
                         'type' => 'object',
                         'additionalProperties' => false,
@@ -59,7 +75,7 @@ class ALMA_Geo_AI_Location_Extractor {
 
         $res = ALMA_OpenAI_Service::request(array(
             'system_prompt' => 'Sei un estrattore di località geografiche per un sito di viaggi. Individua solo le località di cui il contenuto parla realmente (destinazioni del viaggio), non luoghi citati di passaggio. Se il contenuto non riguarda una località specifica restituisci un elenco vuoto. country_code in formato ISO 3166-1 alpha-2, vuoto se incerto.',
-            'user_prompt' => "TITOLO: {$title}\nESTRATTO: {$excerpt}",
+            'user_prompt' => "TITOLO: {$title}{$headings_line}\nESTRATTO: {$excerpt}",
             'response_format' => array(
                 'type' => 'json_schema',
                 'name' => 'geo_locations',
@@ -95,7 +111,7 @@ class ALMA_Geo_AI_Location_Extractor {
         }
 
         $locations = array();
-        foreach (array_slice($parsed['locations'], 0, self::MAX_LOCATIONS) as $location) {
+        foreach (array_slice($parsed['locations'], 0, $max_locations) as $location) {
             if (!is_array($location)) {
                 continue;
             }

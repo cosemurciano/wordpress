@@ -264,6 +264,13 @@ class ALMA_AI_Post_Enricher {
         }
         update_post_meta($post_id, self::META_LAST_RUN, current_time('mysql'));
 
+        // Integrazione geo dal contenuto (mappa articolo): l'arricchimento
+        // scorre l'archivio dai post più vecchi, quindi copre progressivamente
+        // anche gli articoli pubblicati prima dell'integrazione automatica.
+        if (class_exists('ALMA_Geo_Auto_Indexer')) {
+            ALMA_Geo_Auto_Indexer::schedule_integration($post_id);
+        }
+
         $has_links = (bool) preg_match('/\[affiliate_link(?:s_widget)?[\s\]]/', $post->post_content);
         $result = ALMA_AI_Post_Optimizer::generate_proposals($post, array(
             'allow_replacements' => $has_links,

@@ -1,3 +1,9 @@
+## 2.93.0 - 2026-07-08
+
+### Destinazioni citate → indice geo e mappa
+- Gli articoli già indicizzati (es. creati dall'agent con la località dell'idea) ora vengono completati in automatico con le altre destinazioni citate nel contenuto: cron asincrono con gazetteer + estrattore AI (titoli H2/H3), località secondarie aggiunte senza toccare la primaria, geocoding automatico e mappa popolata. Copertura alla pubblicazione, al salvataggio e progressivamente sull'archivio via arricchimento. Opzione dedicata nelle impostazioni.
+- Versione plugin aggiornata a `2.93.0`.
+
 ## 2.92.0 - 2026-07-08
 
 ### Inserimento universale di qualità
