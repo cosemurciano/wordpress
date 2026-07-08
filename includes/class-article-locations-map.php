@@ -151,13 +151,21 @@ class ALMA_Article_Locations_Map {
         if (!self::is_enabled() || is_admin() || !is_singular('post') || !in_the_loop() || !is_main_query()) {
             return $content;
         }
+        // Temi e builder (BeTheme/WPBakery) applicano the_content più volte
+        // sulla stessa pagina: la mappa va aggiunta UNA sola volta.
+        if (!did_action('wp_head')) { return $content; } // passaggi in <head> (SEO/schema)
+        if (strpos((string) $content, 'alma-article-map') !== false) { return $content; }
         $post_id = get_the_ID();
         if (!$post_id) { return $content; }
+        static $rendered = array();
+        if (isset($rendered[$post_id])) { return $content; }
         if (get_post_meta($post_id, self::META_DISABLE, true) === '1') { return $content; }
         // Posizionamento manuale via shortcode: niente doppioni in coda.
         if (has_shortcode((string) get_post_field('post_content', $post_id), self::SHORTCODE)) { return $content; }
         $map = self::render_map($post_id);
-        return $map === '' ? $content : $content . "\n" . $map;
+        if ($map === '') { return $content; }
+        $rendered[$post_id] = true;
+        return $content . "\n" . $map;
     }
 
     private static function render_map($post_id) {
