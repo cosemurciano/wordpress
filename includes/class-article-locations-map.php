@@ -188,7 +188,7 @@ class ALMA_Article_Locations_Map {
         $instance++;
         $map_id = 'alma-article-map-' . $instance;
 
-        $output = '<div class="alma-article-map-wrap" style="margin:28px 0 8px;">';
+        $output = '<div class="alma-article-map-wrap" style="clear:both;width:100%;max-width:100%;box-sizing:border-box;margin:28px 0 8px;">';
         $output .= '<h3 class="alma-article-map-title" style="margin:0 0 10px;">📍 ' . esc_html__('I luoghi di questo articolo', 'affiliate-link-manager-ai') . '</h3>';
         $output .= '<div id="' . esc_attr($map_id) . '" class="alma-article-map"'
             . ' data-locations="' . esc_attr(wp_json_encode($locations)) . '"'

@@ -1,3 +1,9 @@
+## 2.90.2 - 2026-07-08
+
+### Fix posizione e larghezza mappa articolo
+- Il blocco mappa viene spostato via JS in coda al contenitore del contenuto del tema (.the_content_wrapper di BeTheme, con fallback) prima dell'inizializzazione; larghezza piena garantita.
+- Versione plugin aggiornata a `2.90.2`.
+
 ## 2.90.1 - 2026-07-08
 
 ### Fix mappa duplicata
