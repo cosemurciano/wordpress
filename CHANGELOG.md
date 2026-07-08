@@ -1,3 +1,11 @@
+## 2.88.1 - 2026-07-08
+
+### Arricchimento: "Esegui ora" tracciato, forzato e mai più muto
+- **Cause del "dice di avviarsi ma non fa nulla" trovate**: (1) l'evento cron veniva programmato senza argomenti e WordPress **scarta in silenzio** un secondo evento identico entro 10 minuti — i click ripetuti non facevano nulla; (2) il runner usciva **senza lasciare traccia** se il limite giornaliero era già consumato, se un lock era attivo, se OpenAI non era configurata o se la coda era vuota; (3) nessuna verifica che la programmazione fosse riuscita.
+- **Fix**: l'evento manuale ha un argomento unico (niente più dedup silenziosa) e la programmazione viene verificata (errore visibile se fallisce); l'esecuzione manuale **ignora il contatore giornaliero** (l'admin ha chiesto ORA: elabora fino a "Articoli al giorno" articoli); ogni run — manuale o notturno — registra **richiesta, avvio, fine ed esito con il motivo** in un riquadro "Ultima esecuzione" nella tab: completata (con i conteggi), saltata (limite raggiunto, lock, disattivato, OpenAI mancante, coda vuota) o errore (eccezione catturata).
+- **Diagnosi WP-Cron**: se la richiesta resta "in attesa di WP-Cron" per oltre 3 minuti, il riquadro avvisa che WP-Cron non sta girando (loopback bloccato dall'hosting) con le istruzioni per innescarlo.
+- Versione plugin aggiornata a `2.88.1`.
+
 ## 2.88.0 - 2026-07-08
 
 ### Arricchimento: si parte dagli articoli più vecchi, con link universali e widget a metà testo
