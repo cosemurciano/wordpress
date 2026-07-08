@@ -1,3 +1,9 @@
+## 2.94.0 - 2026-07-08
+
+### Bozze dell'agente più complete
+- Link universale garantito anche in creazione (card a ~70%), universali esentati dalla coerenza geografica, widget inserito a metà articolo invece che in coda, nuova regola per i grassetti sui concetti chiave, regola link interni rafforzata con avviso in diagnostica quando assenti.
+- Versione plugin aggiornata a `2.94.0`.
+
 ## 2.93.0 - 2026-07-08
 
 ### Destinazioni citate → indice geo e mappa

@@ -408,7 +408,10 @@ class ALMA_AI_Content_Agent_Draft_Builder {
             'Esempio HTML esatto per immagini affiliate: <a href="{affiliate_url}" target="_blank" rel="nofollow sponsored noopener"><img class="aligncenter size-full" src="{image.image_url}" alt="{image.image_alt}" /></a>',
             'Fallback HTML esatto per immagini affiliate: <a href="{affiliate_url}" target="_blank" rel="nofollow sponsored noopener"><img class="aligncenter size-full" src="{image.image_url}" alt="{title}" /></a>',
             'Usa solo link interni presenti in internal_links e compila internal_urls_used.',
+            'Inserisci da 2 a 5 link interni pertinenti (se internal_links ne contiene): sono utili per la navigazione e la SEO; non forzarne di non pertinenti.',
             'Usa category_ids, tag_ids e new_tags secondo taxonomy_rules.',
+            'Formatta il testo per la lettura sul web: evidenzia in <strong> i concetti chiave, i nomi di luoghi/attrazioni e i dati pratici (prezzi, periodi consigliati, durate) — con misura, indicativamente una-due evidenziazioni per paragrafo, mai interi periodi.',
+            'I link affiliati di tipologia universale (assicurazione viaggio, eSIM, ecc.) sono pertinenti in QUALSIASI articolo di viaggio, anche multi-destinazione: la coerenza geografica NON si applica a loro. Se ne hai uno tra affiliate_links, inseriscilo nel punto più naturale (consigli pratici, preparativi).',
         );
         $affiliate_rules = self::compact_rule_list(array_merge((array)($payload['affiliate_rules'] ?? array()), array($profile_rules['affiliate_rules'] ?? '')));
         $seo_rules = self::compact_rule_list(array_merge((array)($payload['seo_rules'] ?? array()), array($profile_rules['seo_rules'] ?? '')));
@@ -517,6 +520,44 @@ class ALMA_AI_Content_Agent_Draft_Builder {
             'Non forzare link non pertinenti.',
             'Compila internal_urls_used con gli URL interni realmente usati nel contenuto.',
         );
+    }
+
+    /**
+     * Garantisce un link di tipologia universale (assicurazioni/eSIM) nel
+     * contenuto: se non ne contiene già uno e ne esiste uno pubblicato, lo
+     * inserisce come card (immagine + titolo + descrizione) a circa due terzi
+     * dell'articolo. Deterministico, indipendente dai candidati selezionati:
+     * gli universali valgono per qualsiasi articolo di viaggio.
+     *
+     * @return array{content:string,added:bool,link_id:int}
+     */
+    private static function guarantee_universal_link($content) {
+        $result = array('content' => $content, 'added' => false, 'link_id' => 0);
+        if (!class_exists('ALMA_Universal_Link_Types') || !class_exists('ALMA_AI_Post_Optimizer')) {
+            return $result;
+        }
+        $universal_ids = ALMA_Universal_Link_Types::top_universal_links(3);
+        if (empty($universal_ids)) { return $result; }
+        // Già presente nel contenuto (shortcode con uno degli ID universali)?
+        foreach ($universal_ids as $uid) {
+            if (preg_match('/\[affiliate_link[^\]]*\bid="?' . (int) $uid . '"?[\s"\]]/', $content)) {
+                return $result;
+            }
+        }
+        $link_id = (int) $universal_ids[0];
+        $paragraphs = ALMA_AI_Post_Optimizer::paragraph_texts($content);
+        $count = count($paragraphs);
+        if ($count < 3) { return $result; }
+        $rules = class_exists('ALMA_AI_Insertion_Rules') ? ALMA_AI_Insertion_Rules::get_rules() : array('min_paragraphs_before' => 2, 'button_text' => __('Scopri di più', 'affiliate-link-manager-ai'));
+        $min_paragraph = (int) ($rules['min_paragraphs_before'] ?? 2);
+        $paragraph = max($min_paragraph, (int) floor($count * 0.7));
+        $paragraph = min($paragraph, $count - 1);
+        $button_text = sanitize_text_field((string) ($rules['button_text'] ?? __('Scopri di più', 'affiliate-link-manager-ai')));
+        $card = '[affiliate_link id="' . $link_id . '" img="yes" fields="title,content" button="yes" button_text="' . esc_attr($button_text) . '"]';
+        $result['content'] = ALMA_AI_Post_Optimizer::insert_after_paragraph($content, $paragraph, $card, false);
+        $result['added'] = true;
+        $result['link_id'] = $link_id;
+        return $result;
     }
 
     private static function candidate_affiliate_images($affiliate_links) {
@@ -1023,7 +1064,7 @@ class ALMA_AI_Content_Agent_Draft_Builder {
             'seo_rules'=>$seo_rules,
             'media_rules'=>array_filter(array('Usa massimo '.$max_editorial_media_used.' immagini editoriali dalla Media Library nel corpo dell’articolo.','Usare immagini affiliate solo se pertinenti alla sezione.','Non inventare URL immagini.','Usare solo immagini presenti nei link affiliati selezionati.','Non duplicare troppe volte la stessa immagine.','Non scaricare immagini durante la generazione bozza.','Se nessuna immagine della Media Library è adatta a una sezione, puoi inserire su una riga a sé un segnaposto [Immagine: descrizione fotografica dettagliata della scena] (massimo 3 per articolo): verrà generato dall\'AI e sostituito automaticamente dopo la creazione.', $profile_payload['instruction_profile_rules']['image_rules'] ?? '')),
             'output_contract'=>array('title','slug','excerpt','content','seo_title','seo_description','featured_image_id','affiliate_shortcodes_used','affiliate_urls_used','internal_urls_used','media_used','category_ids','tag_ids','new_tags','warnings'),
-            'widget_request_contract'=>'Campo OPZIONALE widget_request nell\'output JSON: {"title":string,"layout":string,"link_ids":[int],"button_text":string,"rewritten":[{"id":int,"title":string,"description":string}]}. Scegli il layout adatto al contesto dell\'articolo: "destination_cards" = griglia di mete/destinazioni con titolo e località sull\'immagine (2-6 link); "experience_cards" = card compatte per tour e attività specifiche con pulsante, carosello su mobile (2-8 link); "hero_spotlight" = UNA sola esperienza di punta in grande evidenza con testo e pulsante (esattamente 1 link). Compilalo SOLO se hai inserito il segnaposto [[ALMA_WIDGET]] nel content; il sistema creerà il widget reale e sostituirà il segnaposto.',
+            'widget_request_contract'=>'Campo OPZIONALE widget_request nell\'output JSON: {"title":string,"layout":string,"link_ids":[int],"button_text":string,"rewritten":[{"id":int,"title":string,"description":string}]}. Scegli il layout adatto al contesto dell\'articolo: "destination_cards" = griglia di mete/destinazioni con titolo e località sull\'immagine (2-6 link); "experience_cards" = card compatte per tour e attività specifiche con pulsante, carosello su mobile (2-8 link); "hero_spotlight" = UNA sola esperienza di punta in grande evidenza con testo e pulsante (esattamente 1 link). Compilalo SOLO se hai inserito il segnaposto [[ALMA_WIDGET]] nel content; il sistema creerà il widget reale e sostituirà il segnaposto. Posiziona il segnaposto [[ALMA_WIDGET]] in un punto INTERMEDIO dell\'articolo (dopo una sezione centrale pertinente) per spezzare visivamente il testo — NON alla fine, dove è meno efficace.',
             'warnings'=>array_values(array_unique($warnings)),
             'agent_behavior'=>$agent_behavior,
         ), $profile_payload);
@@ -1136,7 +1177,7 @@ class ALMA_AI_Content_Agent_Draft_Builder {
             if ($geo_label !== '') {
                 $ctx['geo_context'] = array(
                     'location' => $geo_label,
-                    'rules' => 'L\'articolo riguarda la località "' . $geo_label . '". Usa SOLO link affiliati e link interni geograficamente coerenti con questa destinazione; non citare né linkare destinazioni diverse, se non per confronti esplicitamente richiesti dal prompt.',
+                    'rules' => 'L\'articolo riguarda la località "' . $geo_label . '". Usa link affiliati e link interni geograficamente coerenti con questa destinazione; non citare né linkare destinazioni diverse, se non per confronti esplicitamente richiesti dal prompt. ECCEZIONE: i link affiliati di tipologia universale (assicurazione viaggio, eSIM, ecc.) valgono per qualsiasi destinazione e vanno inseriti a prescindere dalla località.',
                 );
             }
         }
@@ -1255,6 +1296,19 @@ class ALMA_AI_Content_Agent_Draft_Builder {
             $enforced = ALMA_AI_Insertion_Rules::enforce($clean['content'], $rules_snapshot);
             $clean['content'] = $enforced['content'];
             $clean['warnings'] = array_values(array_unique(array_merge((array)$clean['warnings'], (array)$widget_result['warnings'], (array)$enforced['warnings'])));
+        }
+        // Garanzia deterministica del link universale (assicurazioni/eSIM):
+        // se l'AI non ne ha inserito uno e il contenuto non lo contiene già,
+        // lo aggiunge il sistema come card a ~70% dell'articolo — stessa
+        // ricetta dell'arricchimento, così ogni articolo lo propone davvero.
+        $universal_guarantee = self::guarantee_universal_link((string) $clean['content']);
+        if ($universal_guarantee['added']) {
+            $clean['content'] = $universal_guarantee['content'];
+            $clean['warnings'][] = 'Link universale (assicurazione/eSIM) aggiunto automaticamente: l\'AI non l\'aveva inserito.';
+        }
+        // Segnalazione qualità: nessun link interno (utile per SEO e navigazione).
+        if (empty($clean['internal_urls_used'])) {
+            $clean['warnings'][] = 'Nessun link interno inserito: verifica che esistano articoli correlati indicizzati per questa destinazione.';
         }
         // Difesa: gli URL GYG con parametri di sessione (deeplink_id/page_id
         // dai CSV) non devono entrare negli articoli — l'AI può scrivere
