@@ -1,3 +1,9 @@
+## 2.95.0 - 2026-07-08
+
+### L'agente scrive con i dati reali della località
+- Il payload di scrittura ora include location_facts (clima, mesi consigliati, attrazioni verificate, patrimonio UNESCO, territorio) dalle Schede località, con la regola di citarli senza inventare. Prima questi dati li usava solo l'ideazione, non la scrittura. Disattivabile con il filtro alma_ai_writer_use_location_facts.
+- Versione plugin aggiornata a `2.95.0`.
+
 ## 2.94.0 - 2026-07-08
 
 ### Bozze dell'agente più complete

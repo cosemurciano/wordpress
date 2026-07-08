@@ -412,10 +412,12 @@ class ALMA_AI_Content_Agent_Draft_Builder {
             'Usa category_ids, tag_ids e new_tags secondo taxonomy_rules.',
             'Formatta il testo per la lettura sul web: evidenzia in <strong> i concetti chiave, i nomi di luoghi/attrazioni e i dati pratici (prezzi, periodi consigliati, durate) — con misura, indicativamente una-due evidenziazioni per paragrafo, mai interi periodi.',
             'I link affiliati di tipologia universale (assicurazione viaggio, eSIM, ecc.) sono pertinenti in QUALSIASI articolo di viaggio, anche multi-destinazione: la coerenza geografica NON si applica a loro. Se ne hai uno tra affiliate_links, inseriscilo nel punto più naturale (consigli pratici, preparativi).',
+            'Se è presente location_facts, integra nel testo i DATI REALI della scheda località — mesi migliori/da evitare e clima (temperature, piogge), attrazioni verificate, patrimonio UNESCO, elementi del territorio — citandoli con naturalezza per rendere l\'articolo concreto e autorevole. NON inventare numeri o fatti non presenti in location_facts.',
         );
         $affiliate_rules = self::compact_rule_list(array_merge((array)($payload['affiliate_rules'] ?? array()), array($profile_rules['affiliate_rules'] ?? '')));
         $seo_rules = self::compact_rule_list(array_merge((array)($payload['seo_rules'] ?? array()), array($profile_rules['seo_rules'] ?? '')));
         $source_rules = self::compact_rule_list(array($profile_rules['source_rules'] ?? '', $profile_rules['anti_duplication_rules'] ?? '', $profile_rules['avoid_rules'] ?? '', $profile_rules['disclosure_policy'] ?? ''));
+        $location_facts = self::build_writer_location_facts($payload);
 
         return array(
             'task' => 'create_article_draft_from_selected_sources',
@@ -444,8 +446,79 @@ class ALMA_AI_Content_Agent_Draft_Builder {
             'media_candidates' => self::compact_media_candidates((array)($payload['media_candidates'] ?? array()), 12),
             'max_editorial_media_used' => self::max_editorial_media_used($payload),
             'source_policies' => $source_rules,
+            'location_facts' => $location_facts,
             'warnings' => self::compact_rule_list((array)($payload['warnings'] ?? array())),
         );
+    }
+
+    /**
+     * Scheda località compatta (clima, fatti Wikidata, territorio) per il
+     * writer: gli stessi dati del tool scheda_localita dell'agente di
+     * ideazione, così l'articolo cita mesi consigliati, temperature,
+     * attrazioni verificate e patrimonio UNESCO invece di restare generico.
+     * Località dedotta dall'idea attiva; mai bloccante (guardie ovunque).
+     *
+     * @return array Vuoto se non c'è località o la scheda non è disponibile.
+     */
+    private static function build_writer_location_facts($payload) {
+        if (!apply_filters('alma_ai_writer_use_location_facts', true)) { return array(); }
+        if (!class_exists('ALMA_Geo_Facts') || !class_exists('ALMA_AI_Content_Agent_Ideas')) { return array(); }
+
+        $label = '';
+        if (is_array($payload['geo_context'] ?? null)) {
+            $label = sanitize_text_field((string) ($payload['geo_context']['location'] ?? ''));
+        }
+        if ($label === '') {
+            $idea_id = absint(get_user_meta(get_current_user_id(), '_alma_active_idea_id', true));
+            if ($idea_id > 0) {
+                $label = sanitize_text_field((string) get_post_meta($idea_id, ALMA_AI_Content_Agent_Ideas::META_LOCATION_LABEL, true));
+            }
+        }
+        if ($label === '') { return array(); }
+
+        $card = ALMA_Geo_Facts::agent_payload($label);
+        if (!is_array($card) || !empty($card['error'])) { return array(); }
+        return self::compact_location_facts($card);
+    }
+
+    /**
+     * Proietta la scheda località completa (agent_payload) su un sottoinsieme
+     * utile alla scrittura: niente serie mensili grezze né dati interni,
+     * solo sintesi e liste brevi che l'AI può citare.
+     */
+    private static function compact_location_facts($card) {
+        $out = array('localita' => sanitize_text_field((string) ($card['localita'] ?? '')));
+        if (($card['paese'] ?? '') !== '') { $out['paese'] = sanitize_text_field((string) $card['paese']); }
+
+        if (is_array($card['clima'] ?? null)) {
+            $clima = $card['clima'];
+            $out['clima'] = array_filter(array(
+                'mesi_migliori' => sanitize_text_field((string) ($clima['mesi_migliori'] ?? '')),
+                'mesi_da_evitare' => sanitize_text_field((string) ($clima['mesi_da_evitare'] ?? '')),
+                'sintesi' => sanitize_text_field((string) ($clima['sintesi'] ?? '')),
+            ), function ($v) { return $v !== ''; });
+        }
+        if (is_array($card['fatti'] ?? null)) {
+            $fatti = $card['fatti'];
+            $attrazioni = array();
+            foreach ((array) ($fatti['attrazioni'] ?? array()) as $a) {
+                $name = is_array($a) ? (string) ($a['nome'] ?? ($a['name'] ?? '')) : (string) $a;
+                $name = sanitize_text_field($name);
+                if ($name !== '') { $attrazioni[] = $name; }
+                if (count($attrazioni) >= 6) { break; }
+            }
+            $out['fatti'] = array_filter(array(
+                'sintesi' => sanitize_text_field((string) ($fatti['sintesi'] ?? '')),
+                'popolazione' => absint($fatti['popolazione'] ?? 0),
+                'patrimonio_unesco' => sanitize_text_field((string) ($fatti['patrimonio_unesco'] ?? '')),
+                'attrazioni' => $attrazioni,
+            ), function ($v) { return $v !== '' && $v !== 0 && $v !== array(); });
+        }
+        if (is_array($card['territorio'] ?? null)) {
+            $sintesi = sanitize_text_field((string) ($card['territorio']['sintesi'] ?? ''));
+            if ($sintesi !== '') { $out['territorio'] = array('sintesi' => $sintesi); }
+        }
+        return $out;
     }
 
 

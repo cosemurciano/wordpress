@@ -1,3 +1,14 @@
+## 2.95.0 - 2026-07-08
+
+### Schede località nella scrittura: l'agente usa i dati reali (clima, fatti, territorio)
+- **Domanda dalla verifica** ("sta realmente usando le Schede località / fonti esterne?"): NO. `scheda_localita` (clima Open-Meteo, fatti Wikidata, territorio OSM, tendenze) era un tool disponibile solo all'agente di IDEAZIONE per scegliere il taglio stagionale; chi SCRIVE l'articolo (draft-builder) non riceveva alcun dato, così gli articoli restavano generici sui dati concreti.
+- **Fix**: il payload inviato al modello per la scrittura ora include `location_facts` — la scheda della località dell'idea in forma compatta: mesi migliori/da evitare e sintesi del clima, fatti verificati (popolazione, patrimonio UNESCO, fino a 6 attrazioni notevoli) e sintesi del territorio. Stessi dati del tool `scheda_localita`, proiettati su ciò che serve al testo (niente serie mensili grezze né dati interni).
+- **Regola di scrittura**: "se è presente location_facts, integra nel testo i dati reali (mesi consigliati, clima, attrazioni verificate, UNESCO, territorio) citandoli con naturalezza; NON inventare numeri o fatti non presenti" — così l'articolo diventa concreto e autorevole senza rischio di allucinazioni.
+- **Iniezione nel punto giusto** (`normalize_payload_for_openai`, unico choke point verso OpenAI usato da tutti i percorsi di generazione): la località è dedotta dall'idea attiva (o dal `geo_context` del payload). Mai bloccante: guardie ovunque, disattivabile col filtro `alma_ai_writer_use_location_facts`.
+- I dati arrivano dalla cache delle Schede località (già scaldata dall'ideazione) o via fetch on-demand con i timeout esistenti; nessun dato inventato.
+- Test standalone 17/17 (proiezione compatta, filtro campi vuoti, cap attrazioni, risoluzione da idea attiva/geo_context, guardie errore/filtro, wiring).
+- Versione plugin aggiornata a `2.95.0`.
+
 ## 2.94.0 - 2026-07-08
 
 ### Qualità delle bozze dell'agente: universale garantito, widget a metà, grassetti, link interni
