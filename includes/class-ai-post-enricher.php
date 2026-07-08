@@ -10,7 +10,8 @@
  * revisione WordPress (rollback nativo).
  *
  * Ciclo di copertura:
- * 1. prima gli articoli MAI analizzati (priorità a quelli senza shortcode);
+ * 1. prima gli articoli MAI analizzati, dai PIÙ VECCHI per data di
+ *    pubblicazione (i primi articoli del blog sono i meno ottimizzati);
  * 2. finiti tutti, si riparte dai più "vecchi" di analisi — ma un articolo
  *    non viene mai ri-analizzato prima del cooldown configurato (default 60
  *    giorni), per controllare i costi ed evitare churn. Nelle ri-analisi
@@ -103,9 +104,12 @@ class ALMA_AI_Post_Enricher {
     }
 
     /**
-     * Coda di lavoro: prima i post mai analizzati (i senza-shortcode hanno
-     * priorità naturale perché più redditizi), poi i più vecchi di analisi
+     * Coda di lavoro: prima i post mai analizzati partendo DAI PIÙ VECCHI
+     * (le prime pubblicazioni — 2020 — sono quelle meno ottimizzate: i
+     * recenti nascono già con link e widget), poi i più vecchi di analisi
      * oltre il cooldown — il ciclo riparte da solo dopo aver coperto tutto.
+     * Metodo deterministico (data di pubblicazione crescente): prevedibile,
+     * copre tutto l'archivio senza buchi e senza rilavorare due volte.
      */
     public static function next_posts($limit) {
         $limit = max(1, absint($limit));
@@ -115,7 +119,7 @@ class ALMA_AI_Post_Enricher {
             'posts_per_page' => $limit,
             'fields' => 'ids',
             'orderby' => 'date',
-            'order' => 'DESC',
+            'order' => 'ASC',
             'no_found_rows' => true,
             'meta_query' => array(array('key' => self::META_LAST_RUN, 'compare' => 'NOT EXISTS')),
         ));
@@ -275,7 +279,7 @@ class ALMA_AI_Post_Enricher {
         $next_run = wp_next_scheduled(self::CRON_HOOK);
 
         echo '<h2>Arricchimento automatico dei post pubblicati</h2>';
-        echo '<p class="description" style="max-width:900px;">Ogni giorno l\'AI analizza gli articoli pubblicati e <strong>aggiunge</strong> (mai riscrive) link affiliati coerenti con contenuto e località, secondo le Regole inserimento, aggiornando il post direttamente. Ciclo: prima tutti gli articoli mai analizzati, poi ri-analisi dei più vecchi oltre il cooldown — nelle ri-analisi l\'AI può anche sostituire link incoerenti. Ogni modifica crea una revisione (rollback nativo). Nessuna notifica per articolo: un solo digest Telegram per esecuzione.</p>';
+        echo '<p class="description" style="max-width:900px;">Ogni giorno l\'AI analizza gli articoli pubblicati e <strong>aggiunge</strong> (mai riscrive) link affiliati coerenti con contenuto e località, secondo le Regole inserimento, aggiornando il post direttamente. Ciclo: prima tutti gli articoli mai analizzati <strong>partendo dai più vecchi</strong> (le prime pubblicazioni sono le meno ottimizzate; i recenti nascono già con link e widget), poi ri-analisi dei più vecchi di analisi oltre il cooldown — nelle ri-analisi l\'AI può anche sostituire link incoerenti. Dove coerente propone anche <strong>un link di tipologia universale</strong> (Assicurazioni, eSIM) e <strong>un widget a metà articolo</strong> per spezzare il testo. Ogni modifica crea una revisione (rollback nativo). Nessuna notifica per articolo: un solo digest Telegram per esecuzione.</p>';
 
         echo '<form method="post" action="'.esc_url(admin_url('admin-post.php')).'">';
         wp_nonce_field('alma_ai_agent_action');
