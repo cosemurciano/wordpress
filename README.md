@@ -1,3 +1,9 @@
+## 2.88.1 - 2026-07-08
+
+### "Esegui ora" dell'arricchimento affidabile
+- Eliminata la dedup silenziosa dell'evento cron, esecuzione manuale che ignora il limite giornaliero, riquadro "Ultima esecuzione" con esito e motivo (saltata/completata/errore) e avviso se WP-Cron non gira.
+- Versione plugin aggiornata a `2.88.1`.
+
 ## 2.88.0 - 2026-07-08
 
 ### Arricchimento dai post più vecchi

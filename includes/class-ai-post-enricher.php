@@ -32,6 +32,7 @@ class ALMA_AI_Post_Enricher {
     const OPTION_COOLDOWN = 'alma_ai_enrich_cooldown_days';
     const OPTION_COUNTER = 'alma_ai_enrich_counter';
     const OPTION_LOG = 'alma_ai_enrich_log';
+    const OPTION_RUN_STATUS = 'alma_ai_enrich_run_status';
     const META_LAST_RUN = '_alma_ai_enrich_last_run';
     const LOCK_OPTION = 'alma_ai_enrich_lock';
     const LOCK_TTL = 900;
@@ -40,7 +41,7 @@ class ALMA_AI_Post_Enricher {
 
     public static function init() {
         add_action('init', array(__CLASS__, 'maybe_schedule_cron'));
-        add_action(self::CRON_HOOK, array(__CLASS__, 'run'));
+        add_action(self::CRON_HOOK, array(__CLASS__, 'run'), 10, 1);
         add_action('admin_post_alma_ai_enrich_run_now', array(__CLASS__, 'handle_run_now'));
     }
 
@@ -82,11 +83,38 @@ class ALMA_AI_Post_Enricher {
     public static function handle_run_now() {
         if (!current_user_can('manage_options')) { wp_die('forbidden'); }
         check_admin_referer('alma_ai_enrich_admin');
-        wp_schedule_single_event(time() + 5, self::CRON_HOOK);
-        if (function_exists('spawn_cron')) { spawn_cron(); }
-        set_transient('alma_ai_agent_admin_notice_' . get_current_user_id(), array('type' => 'success', 'message' => __('Arricchimento avviato in background: il report comparirà qui sotto tra qualche minuto.', 'affiliate-link-manager-ai')), 120);
+        $notice = array('type' => 'success', 'message' => __('Arricchimento avviato in background: lo stato comparirà qui sotto (ricarica tra 1-2 minuti).', 'affiliate-link-manager-ai'));
+        if (!self::is_enabled()) {
+            $notice = array('type' => 'error', 'message' => __('Arricchimento disattivato: spunta "Attiva arricchimento" e salva prima di eseguire.', 'affiliate-link-manager-ai'));
+        } else {
+            // Argomento unico: senza, WordPress scarta in silenzio un secondo
+            // evento identico entro 10 minuti e il click non fa nulla.
+            $scheduled = wp_schedule_single_event(time() + 5, self::CRON_HOOK, array('manual-' . time()));
+            if (false === $scheduled) {
+                $notice = array('type' => 'error', 'message' => __('Programmazione non riuscita: un\'esecuzione è già in coda. Attendi 1-2 minuti e ricarica.', 'affiliate-link-manager-ai'));
+            } else {
+                update_option(self::OPTION_RUN_STATUS, array(
+                    'trigger' => 'manuale',
+                    'requested_at' => current_time('mysql'),
+                    'started_at' => '',
+                    'finished_at' => '',
+                    'state' => 'in attesa di WP-Cron',
+                    'detail' => '',
+                ), false);
+                if (function_exists('spawn_cron')) { spawn_cron(); }
+            }
+        }
+        set_transient('alma_ai_agent_admin_notice_' . get_current_user_id(), $notice, 120);
         wp_safe_redirect(wp_get_referer() ?: admin_url('edit.php?post_type=affiliate_link&page=alma-ai-content-agent&tab=arricchimento'));
         exit;
+    }
+
+    /**
+     * Aggiorna lo stato visibile dell'ultima esecuzione (mai più run muti).
+     */
+    private static function set_run_status($fields) {
+        $status = (array) get_option(self::OPTION_RUN_STATUS, array());
+        update_option(self::OPTION_RUN_STATUS, array_merge($status, (array) $fields), false);
     }
 
     /* ---------------------------------------------------------------------
@@ -143,18 +171,44 @@ class ALMA_AI_Post_Enricher {
         return array_values(array_unique(array_filter($ids)));
     }
 
-    public static function run() {
-        if (!self::is_enabled() || !self::acquire_lock()) { return; }
+    public static function run($trigger = '') {
+        $manual = is_string($trigger) && strpos($trigger, 'manual') === 0;
+        if ($manual || (array) get_option(self::OPTION_RUN_STATUS, array())) {
+            self::set_run_status(array('trigger' => $manual ? 'manuale' : 'cron giornaliero', 'started_at' => current_time('mysql'), 'state' => 'in esecuzione', 'detail' => ''));
+        }
+        if (!self::is_enabled()) {
+            self::set_run_status(array('state' => 'saltata', 'detail' => 'Arricchimento disattivato nelle impostazioni.', 'finished_at' => current_time('mysql')));
+            return;
+        }
+        if (!self::acquire_lock()) {
+            self::set_run_status(array('state' => 'saltata', 'detail' => 'Un\'altra esecuzione è già in corso (lock attivo, scade in max 15 minuti).', 'finished_at' => current_time('mysql')));
+            return;
+        }
         $started = time();
         $summary = array('processed' => 0, 'updated' => 0, 'links_added' => 0, 'links_replaced' => 0, 'skipped' => 0, 'errors' => 0);
+        $loop_reached = false;
         try {
             $limit = self::get_daily_limit();
             $today = current_time('Y-m-d');
             $done_today = self::processed_today();
-            $quota = max(0, $limit - $done_today);
-            if ($quota < 1 || empty(get_option('alma_openai_api_key', ''))) { return; }
+            // Esecuzione manuale: l'admin ha chiesto ORA, il contatore
+            // giornaliero non la blocca (elabora fino a "Articoli al giorno").
+            $quota = $manual ? max(1, $limit) : max(0, $limit - $done_today);
+            if ($quota < 1) {
+                self::set_run_status(array('state' => 'saltata', 'detail' => sprintf('Limite giornaliero già raggiunto (%d/%d): riparte domani, oppure usa Esegui ora che ignora il limite.', $done_today, $limit), 'finished_at' => current_time('mysql')));
+                return;
+            }
+            if (empty(get_option('alma_openai_api_key', ''))) {
+                self::set_run_status(array('state' => 'saltata', 'detail' => 'OpenAI non configurata (ALMA_OPENAI_API_KEY).', 'finished_at' => current_time('mysql')));
+                return;
+            }
 
             $post_ids = self::next_posts($quota);
+            if (empty($post_ids)) {
+                self::set_run_status(array('state' => 'completata', 'detail' => 'Nessun articolo in coda (tutti analizzati e nessuno oltre il cooldown).', 'finished_at' => current_time('mysql')));
+                return;
+            }
+            $loop_reached = true;
             foreach ($post_ids as $post_id) {
                 if ((time() - $started) > self::TIME_BUDGET_SECONDS) { break; }
                 $entry = self::enrich_post($post_id);
@@ -171,8 +225,20 @@ class ALMA_AI_Post_Enricher {
                     $summary['skipped']++;
                 }
             }
+        } catch (Throwable $e) {
+            self::set_run_status(array('state' => 'errore', 'detail' => sanitize_text_field($e->getMessage()), 'finished_at' => current_time('mysql')));
+            $loop_reached = false; // il finally non deve sovrascrivere l'errore
         } finally {
             delete_option(self::LOCK_OPTION);
+            // Solo se il loop è partito: le uscite anticipate hanno già
+            // scritto il loro motivo e non vanno sovrascritte.
+            if ($loop_reached) {
+                self::set_run_status(array(
+                    'state' => 'completata',
+                    'detail' => sprintf('Analizzati %d · aggiornati %d · link aggiunti %d · sostituiti %d · saltati %d · errori %d. Dettagli per articolo nel report qui sotto.', $summary['processed'], $summary['updated'], $summary['links_added'], $summary['links_replaced'], $summary['skipped'], $summary['errors']),
+                    'finished_at' => current_time('mysql'),
+                ));
+            }
             // Un solo digest Telegram per esecuzione (mai per singolo articolo).
             if ($summary['processed'] > 0 && class_exists('ALMA_Telegram_Bot') && ALMA_Telegram_Bot::is_enabled()) {
                 ALMA_Telegram_Bot::send_message_to_all(sprintf(
@@ -296,6 +362,24 @@ class ALMA_AI_Post_Enricher {
         echo '<input type="hidden" name="action" value="alma_ai_enrich_run_now"><button class="button" '.disabled(!$enabled, true, false).'>Esegui ora</button></form>';
         echo '<span class="description">In coda: ~'.(int)$pending_new.' articoli · Prossima esecuzione automatica: '.esc_html($next_run ? get_date_from_gmt(gmdate('Y-m-d H:i:s', $next_run), 'Y-m-d H:i') : '—').'</span>';
         echo '</div>';
+
+        // Stato dell'ultima esecuzione: mai più run muti.
+        $run_status = (array) get_option(self::OPTION_RUN_STATUS, array());
+        if (!empty($run_status['requested_at']) || !empty($run_status['started_at'])) {
+            $state = (string) ($run_status['state'] ?? '');
+            $color = $state === 'completata' ? '#00a32a' : ($state === 'errore' || $state === 'saltata' ? '#d63638' : '#996800');
+            echo '<div style="border:1px solid #dcdcde;border-radius:6px;background:#fff;padding:10px 14px;margin:0 0 16px;max-width:900px;">';
+            echo '<p style="margin:0;"><strong>Ultima esecuzione</strong> (' . esc_html((string) ($run_status['trigger'] ?? '')) . '): <span style="color:' . esc_attr($color) . ';font-weight:600;">' . esc_html($state ?: '—') . '</span>';
+            if (!empty($run_status['requested_at'])) { echo ' · richiesta ' . esc_html((string) $run_status['requested_at']); }
+            if (!empty($run_status['started_at'])) { echo ' · avviata ' . esc_html((string) $run_status['started_at']); }
+            if (!empty($run_status['finished_at'])) { echo ' · terminata ' . esc_html((string) $run_status['finished_at']); }
+            echo '</p>';
+            if (!empty($run_status['detail'])) { echo '<p style="margin:6px 0 0;" class="description">' . esc_html((string) $run_status['detail']) . '</p>'; }
+            if ($state === 'in attesa di WP-Cron' && !empty($run_status['requested_at']) && (current_time('timestamp') - strtotime((string) $run_status['requested_at'])) > 180) {
+                echo '<p style="margin:6px 0 0;color:#d63638;">⚠️ Richiesta di oltre 3 minuti fa e mai partita: WP-Cron non sta girando (su alcuni hosting il loopback è bloccato). Visita una pagina del sito per innescarlo, oppure configura un cron reale che chiami <code>wp-cron.php</code>.</p>';
+            }
+            echo '</div>';
+        }
 
         echo '<h3>Report attività (ultimi '.(int)self::MAX_LOG_ENTRIES.')</h3>';
         if (empty($log)) {
