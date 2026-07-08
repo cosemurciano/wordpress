@@ -1,3 +1,15 @@
+## 2.92.0 - 2026-07-08
+
+### Inserimento universale di qualità: card con descrizione + frase introduttiva nel tono dell'articolo
+- **Segnalazione**: il link universale garantito (v2.91.0) veniva inserito ma "un po' scarso" — titolo nudo + bottone "Scopri di più", descrizione del link ignorata e nessuna frase di raccordo col testo.
+- **Garanzia deterministica ora in formato card**: `ensure_universal_proposal` propone `[affiliate_link img="yes" fields="title,content" button="yes"]` — immagine in evidenza, titolo e **descrizione completa del link** invece del bottone nudo (se l'immagine non esiste ancora, la card degrada con grazia e l'immagine arriva dalla coda AI prioritaria).
+- **Descrizione nei candidati**: tutti i `link_candidati` inviati all'AI (geografici, keyword e universali) ora includono `descrizione` (estratto ≤240 caratteri del contenuto del link): prima il modello non aveva alcun materiale per contestualizzare.
+- **Nuovo campo `frase_intro` per button/card**: l'AI può (e per gli universali DEVE) scrivere 1-2 frasi nel tono dell'articolo che **riscrivono la descrizione del link** adattandola al contesto; la frase viene anteposta al blocco come paragrafo autonomo (sanificata: niente shortcode/parentesi quadre, max 400 caratteri).
+- **Prompt universale rafforzato**: "usa il pattern card SEMPRE con frase_intro, oppure anchor con frase integrata nel discorso — MAI un bottone nudo senza contesto".
+- **Verifica immagini AI in arricchimento** (richiesta): la catena era già completa e corretta — `enrich_post` accoda a `queue_links` sia i link inseriti (anchor/button/card, incluso l'universale garantito) sia i link dei widget materializzati; `create_widget_from_request` accoda a sua volta i link senza immagine; la coda prioritaria non ha cap giornaliero e la chiave in wp-config passa dal filtro `pre_option_alma_openai_api_key`. Nessuna correzione necessaria: la card universale riceverà l'immagine generata al primo inserimento.
+- Test standalone 12/12 (card garantita con fields, frase_intro anteposta/sanificata/troncata, descrizione candidati troncata, catena immagini via smoke test sul sorgente).
+- Versione plugin aggiornata a `2.92.0`.
+
 ## 2.91.0 - 2026-07-08
 
 ### Arricchimento: link universale GARANTITO in ogni articolo (non più a discrezione dell'AI)
