@@ -1,3 +1,9 @@
+## 2.90.3 - 2026-07-08
+
+### Fix tipologie universali mai cliccate
+- I link universali senza click (meta _click_count assente) venivano esclusi dalla selezione per bozze e arricchimento: ora la query non filtra più sul meta e l'ordinamento per click avviene in PHP.
+- Versione plugin aggiornata a `2.90.3`.
+
 ## 2.90.2 - 2026-07-08
 
 ### Fix posizione e larghezza mappa articolo
