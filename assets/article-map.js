@@ -26,7 +26,25 @@
 
         var accent = el.getAttribute('data-accent') || '#1a6ee0';
         var openLabel = el.getAttribute('data-open-label') || 'Apri in Google Maps';
+        var linksLabel = el.getAttribute('data-links-label') || 'Tour e attività';
         var map = window.L.map(el, { scrollWheelZoom: false });
+
+        // Tracking dei link affiliati nei popup: i popup nascono dopo il
+        // binding di tracking.js, quindi il click viene registrato qui via
+        // window.ALMA.trackClick (source: article_map).
+        map.on('popupopen', function (e) {
+            var root = e.popup.getElement();
+            if (!root) { return; }
+            root.querySelectorAll('a[data-link-id]').forEach(function (a) {
+                if (a.dataset.almaBound === '1') { return; }
+                a.dataset.almaBound = '1';
+                a.addEventListener('click', function () {
+                    if (window.ALMA && typeof window.ALMA.trackClick === 'function') {
+                        window.ALMA.trackClick(a.getAttribute('data-link-id'), 'article_map');
+                    }
+                });
+            });
+        });
         window.L.tileLayer(el.getAttribute('data-tile-url'), {
             attribution: el.getAttribute('data-tile-attribution'),
             maxZoom: 18
@@ -46,12 +64,25 @@
                 fillOpacity: 0.95
             }).addTo(map);
 
-            var html = '<div style="min-width:170px;text-align:center;">'
+            var html = '<div style="min-width:190px;max-width:250px;text-align:center;">'
                 + '<div style="font-size:15px;font-weight:700;margin-bottom:2px;">' + escapeHtml(loc.name || '') + '</div>'
                 + (loc.country ? '<div style="color:#5f6b7a;font-size:12px;margin-bottom:8px;">' + escapeHtml(loc.country) + '</div>' : '')
                 + '<a href="' + escapeAttr(loc.gmaps || '#') + '" target="_blank" rel="noopener nofollow" '
                 + 'style="display:inline-block;background:' + escapeAttr(accent) + ';color:#fff;padding:7px 14px;border-radius:999px;font-size:13px;font-weight:600;text-decoration:none;">'
-                + escapeHtml(openLabel) + ' ↗</a></div>';
+                + escapeHtml(openLabel) + ' ↗</a>';
+            if (Array.isArray(loc.links) && loc.links.length) {
+                html += '<div style="border-top:1px solid #e6e8ef;margin:10px -4px 0;padding:8px 4px 0;text-align:left;">'
+                    + '<div style="font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:#5f6b7a;margin-bottom:5px;">' + escapeHtml(linksLabel) + '</div>';
+                loc.links.forEach(function (link) {
+                    if (!link || !link.url) { return; }
+                    html += '<a href="' + escapeAttr(link.url) + '" data-link-id="' + escapeAttr(String(link.id || '')) + '" '
+                        + 'target="_blank" rel="sponsored noopener" '
+                        + 'style="display:block;color:' + escapeAttr(accent) + ';font-size:13px;font-weight:600;line-height:1.35;text-decoration:none;margin:0 0 6px;">'
+                        + '🎟 ' + escapeHtml(link.title || '') + '</a>';
+                });
+                html += '</div>';
+            }
+            html += '</div>';
             marker.bindPopup(html);
             bounds.push([loc.lat, loc.lng]);
         });

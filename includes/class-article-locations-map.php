@@ -28,6 +28,8 @@ class ALMA_Article_Locations_Map {
     const META_DISABLE = '_alma_article_map_disable';
     const SHORTCODE = 'alma_mappa_articolo';
     const MAX_MARKERS = 10;
+    const MAX_LINKS_PER_LOCATION = 2;
+    const LINKS_CACHE_TTL = 43200; // 12 ore
 
     public static function init() {
         add_shortcode(self::SHORTCODE, array(__CLASS__, 'render_shortcode'));
@@ -80,9 +82,46 @@ class ALMA_Article_Locations_Map {
                 'lng' => $lng,
                 'primary' => !empty($row['is_primary']),
                 'gmaps' => self::build_gmaps_url($name, $lat, $lng, (string) $row['geo_provider_place_id']),
+                // Fase 2: i migliori tour/attività della zona nel popup.
+                'links' => self::top_links_for_location((int) $row['id'], $store),
             );
         }
         return $out;
+    }
+
+    /**
+     * I migliori link affiliati dell'AREA della località (vivi, pubblicati,
+     * per click decrescenti, max 2): la conversione direttamente nel popup.
+     * Cache 12h per località: la query sull'area non pesa sul rendering.
+     */
+    private static function top_links_for_location($location_id, $store) {
+        $location_id = absint($location_id);
+        if ($location_id < 1) { return array(); }
+        $cache_key = 'alma_artmap_links_' . $location_id;
+        $cached = get_transient($cache_key);
+        if (is_array($cached)) { return $cached; }
+
+        $rows = array();
+        foreach ((array) $store->get_affiliate_link_ids_for_area($location_id) as $link_id) {
+            $link_id = absint($link_id);
+            if ($link_id < 1 || get_post_status($link_id) !== 'publish') { continue; }
+            $url = trim((string) get_post_meta($link_id, '_affiliate_url', true));
+            if ($url === '') { continue; }
+            if (class_exists('ALMA_Link_Health_Checker') && ALMA_Link_Health_Checker::is_dead($link_id)) { continue; }
+            $rows[] = array(
+                'id' => $link_id,
+                'title' => html_entity_decode(sanitize_text_field((string) get_the_title($link_id)), ENT_QUOTES, 'UTF-8'),
+                'url' => $url,
+                'clicks' => (int) get_post_meta($link_id, '_click_count', true),
+            );
+        }
+        usort($rows, function ($a, $b) { return $b['clicks'] <=> $a['clicks']; });
+        $links = array();
+        foreach (array_slice($rows, 0, self::MAX_LINKS_PER_LOCATION) as $row) {
+            $links[] = array('id' => $row['id'], 'title' => $row['title'], 'url' => $row['url']);
+        }
+        set_transient($cache_key, $links, self::LINKS_CACHE_TTL);
+        return $links;
     }
 
     /**
@@ -149,6 +188,7 @@ class ALMA_Article_Locations_Map {
             . ' data-tile-url="' . esc_attr($tile_url) . '"'
             . ' data-tile-attribution="' . esc_attr($tile_attribution) . '"'
             . ' data-open-label="' . esc_attr__('Apri in Google Maps', 'affiliate-link-manager-ai') . '"'
+            . ' data-links-label="' . esc_attr__('Tour e attività', 'affiliate-link-manager-ai') . '"'
             . ' style="width:100%;height:400px;border-radius:10px;background:#e8ecf1;"></div>';
         // Accessibilità/SEO: l'elenco testuale esiste anche senza JavaScript.
         $output .= '<noscript><ul>';

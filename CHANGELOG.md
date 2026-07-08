@@ -1,3 +1,13 @@
+## 2.90.0 - 2026-07-08
+
+### Mappa articolo, fase 2: "Tour e attività" nel popup — la mappa diventa canale di conversione
+- **Nel popup di ogni marker**, sotto il pulsante "Apri in Google Maps", compare la sezione **"Tour e attività"** con i **2 migliori link affiliati dell'area** della località: pubblicati, vivi (Link Health), ordinati per click, dedotti dall'area geografica dell'indice (stessa logica geo-first delle bozze AI: località esatta, omonime e — per i paesi — tutte le località del paese).
+- **Tracking dei click**: i link del popup nascono dopo il binding di tracking.js, quindi il click viene registrato via `ALMA.trackClick` all'apertura del popup con **provenienza `article_map`** — nelle statistiche vedrai quanto converte la mappa. Attributi `rel="sponsored noopener"`, apertura in nuova scheda, binding senza doppioni.
+- **Prestazioni**: i link per località sono in **cache transient 12h** (la query sull'area non pesa sul rendering della pagina); popup compatto (max 250px) con etichetta localizzabile.
+- Se una località non ha link affiliati vivi nell'area, il popup mostra solo Google Maps: nessuna sezione vuota.
+- Test standalone 7/7 (payload, filtri vivi/pubblicati/click, cache, tracking popupopen, no doppio binding) + 5/5 URL invariati.
+- Versione plugin aggiornata a `2.90.0`.
+
 ## 2.89.0 - 2026-07-08
 
 ### Mappa interattiva "I luoghi di questo articolo" a fine articolo
