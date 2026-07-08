@@ -419,8 +419,9 @@ class ALMA_AI_Post_Optimizer {
         $prompt = 'Analizza l\'articolo e proponi al massimo ' . $budget . ' inserimenti di link affiliati che aumentino la conversione SENZA rompere il flusso di lettura. '
             . 'Rispondi SOLO JSON: {"proposte":[{"paragrafo":int (indice del paragrafo DOPO il quale inserire, >= primo_paragrafo_utilizzabile),"pattern":"anchor|button|card","link_id":int (solo da link_candidati),"frase":string (SOLO per anchor: una frase completa e naturale che prosegue il paragrafo e contiene lo shortcode [affiliate_link id="ID" text="anchor descrittiva"]),"button_text":string (per button/card),"motivo":string (perché qui, orientato alla conversione)}]}. ';
         if ($widget_allowed) {
-            $prompt .= 'Puoi inoltre proporre AL MASSIMO UN widget di link affiliati (blocco grafico a card) se l\'articolo si presta: aggiungi alle proposte {"pattern":"widget","paragrafo":int,"layout":"destination_cards|experience_cards|hero_spotlight","link_ids":[int (solo da link_candidati)],"titolo":string,"button_text":string,"motivo":string}. Layout: destination_cards = griglia di mete/destinazioni (2-6 link); experience_cards = card di tour/attività specifiche (2-8 link); hero_spotlight = UNA sola esperienza di punta (1 link). ';
+            $prompt .= 'DOVE POSSIBILE proponi anche UN widget di link affiliati (blocco grafico a card, massimo uno): serve a SPEZZARE VISIVAMENTE il testo, quindi scegli un paragrafo INTERMEDIO dell\'articolo (dopo una sezione centrale pertinente), NON necessariamente la chiusura. Aggiungi alle proposte {"pattern":"widget","paragrafo":int,"layout":"destination_cards|experience_cards|hero_spotlight","link_ids":[int (solo da link_candidati)],"titolo":string,"button_text":string,"motivo":string}. Layout: destination_cards = griglia di mete/destinazioni (2-6 link); experience_cards = card di tour/attività specifiche (2-8 link); hero_spotlight = UNA sola esperienza di punta (1 link). ';
         }
+        $prompt .= 'I link_candidati con "universale":true (assicurazione viaggio, eSIM…) valgono per QUALSIASI articolo: se coerente col contenuto, includi SEMPRE uno di questi tra le proposte (massimo 1, pattern anchor o button, nel punto più naturale, es. consigli pratici o preparativi). ';
         if ($allow_replacements) {
             $existing_analysis = self::analyze_content($post->ID, $post->post_content);
             $existing_links = array();
@@ -538,6 +539,20 @@ class ALMA_AI_Post_Optimizer {
                 'titolo' => sanitize_text_field((string)$row['title']),
                 'tipologie' => is_array($row['link_types'] ?? null) ? implode(', ', $row['link_types']) : '',
             );
+        }
+        // I migliori link di tipologia UNIVERSALE (Assicurazioni, eSIM…)
+        // sono sempre candidati: valgono per qualsiasi articolo.
+        if (class_exists('ALMA_Universal_Link_Types')) {
+            $existing_ids = array_map(function ($c) { return (int) $c['id']; }, $candidates);
+            foreach (ALMA_Universal_Link_Types::top_universal_links(2, $existing_ids) as $universal_id) {
+                $terms = get_the_terms($universal_id, 'link_type');
+                $candidates[] = array(
+                    'id' => (int) $universal_id,
+                    'titolo' => sanitize_text_field((string) get_the_title($universal_id)),
+                    'tipologie' => (is_array($terms) ? implode(', ', wp_list_pluck($terms, 'name')) : ''),
+                    'universale' => true,
+                );
+            }
         }
         return $candidates;
     }

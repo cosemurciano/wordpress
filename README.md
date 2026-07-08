@@ -1,3 +1,9 @@
+## 2.88.0 - 2026-07-08
+
+### Arricchimento dai post più vecchi
+- La coda parte dalle prime pubblicazioni (2020), le meno ottimizzate; i link universali (Assicurazioni, eSIM) sono sempre candidati e l'AI ne include uno se coerente; il widget viene proposto dove possibile in un punto intermedio per spezzare il testo.
+- Versione plugin aggiornata a `2.88.0`.
+
 ## 2.87.3 - 2026-07-08
 
 ### Parametri di sessione GYG: pulizia completa

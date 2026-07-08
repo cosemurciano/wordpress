@@ -1,3 +1,12 @@
+## 2.88.0 - 2026-07-08
+
+### Arricchimento: si parte dagli articoli più vecchi, con link universali e widget a metà testo
+- **Coda invertita: dai più vecchi ai più recenti.** L'arricchimento automatico analizzava prima gli ultimi articoli pubblicati — in genere già ottimizzati (nascono con link e widget). Ora la coda dei mai-analizzati parte **dalle prime pubblicazioni (gennaio 2020)** in ordine di data crescente. Metodo scelto: **deterministico per data**, non random — copre tutto l'archivio senza buchi, non rilavora due volte lo stesso periodo ed è prevedibile ("a che punto siamo" si capisce dalla data dell'ultimo articolo arricchito). La ri-analisi post-cooldown resta per anzianità di analisi.
+- **Link universali sempre in gara**: i 2 migliori link di tipologia universale (Assicurazioni, eSIM…) entrano sempre tra i candidati dell'arricchimento e della metabox AI Affiliati, marcati `universale`; il prompt istruisce l'AI a includerne **sempre uno se coerente** col contenuto (max 1, anchor o button, nel punto naturale: consigli pratici/preparativi).
+- **Widget per spezzare il testo**: il prompt ora chiede di proporre il widget **dove possibile** (non più "se l'articolo si presta") e in un **paragrafo intermedio** dell'articolo, non necessariamente in chiusura — la funzione è anche visiva: spezzare i muri di testo dei vecchi articoli.
+- Descrizione della tab Arricchimento aggiornata. Test standalone 8/8.
+- Versione plugin aggiornata a `2.88.0`.
+
 ## 2.87.3 - 2026-07-08
 
 ### Parametri di sessione GYG: pulizia anche negli ARTICOLI e sui link in ogni stato
