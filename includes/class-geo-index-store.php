@@ -480,6 +480,106 @@ class ALMA_Geo_Index_Store {
         return array('location_id' => $primary_location_id, 'content_index_id' => $primary_content_index_id, 'locations' => $updated_locations, 'meta' => $meta);
     }
 
+    /**
+     * AGGIUNGE località secondarie a un oggetto già indicizzato senza toccare
+     * le associazioni esistenti: né la primaria (meta _alma_geo_primary_*
+     * intatti), né le righe già presenti nel content index. Usato
+     * dall'integrazione automatica delle località citate nel contenuto
+     * (mappa articolo): save_geo_meta_for_object qui sarebbe distruttivo
+     * perché cancella e riscrive tutte le righe dell'oggetto.
+     *
+     * @return array Località effettivamente aggiunte (formato JSON interno).
+     */
+    public function append_locations_for_object($object_id, $object_type, $locations, $source = 'auto_content') {
+        global $wpdb;
+        $object_id = absint($object_id);
+        $object_type = sanitize_key($object_type);
+        if (!$object_id || $object_type === '' || empty($locations) || !is_array($locations)) {
+            return array();
+        }
+        if (!$this->tables_exist()) {
+            $this->install_tables();
+        }
+
+        // Località già associate: mai duplicare (nemmeno via alias che
+        // risolvono sulla stessa riga della tabella località).
+        $existing_location_ids = array_map('intval', (array) $wpdb->get_col($wpdb->prepare(
+            "SELECT location_id FROM {$this->table_content_index()} WHERE object_id = %d AND object_type = %s AND location_id IS NOT NULL",
+            $object_id,
+            $object_type
+        )));
+
+        // Contesto dell'oggetto: le righe aggiunte ereditano scope/tipo/intent
+        // correnti, coerenti con la riga primaria.
+        $geo_scope = sanitize_key((string) get_post_meta($object_id, '_alma_geo_scope', true));
+        $content_type = sanitize_key((string) get_post_meta($object_id, '_alma_geo_content_type', true));
+        $commercial_intent = sanitize_key((string) get_post_meta($object_id, '_alma_geo_commercial_intent', true));
+        $widget_eligible = get_post_meta($object_id, '_alma_geo_widget_eligible', true) === 'yes';
+        $now = current_time('mysql');
+
+        $added = array();
+        foreach ((array) $locations as $location) {
+            if (!is_array($location)) { continue; }
+            $item = $this->format_location_for_json($location);
+            if ($item['name'] === '' && $item['canonical_name'] === '') { continue; }
+            $item['is_primary'] = false;
+            if ($item['role'] === '' || $item['role'] === 'main_destination') {
+                $item['role'] = 'mentioned_destination';
+            }
+            $item['match_weight'] = $this->default_match_weight_for_role($item['role']);
+            $item['source'] = $item['source'] !== '' ? $item['source'] : sanitize_text_field($source);
+
+            $location_id = $this->upsert_location(array(
+                'canonical_name' => $item['canonical_name'] ?: $item['name'],
+                'type' => $item['type'],
+                'country' => $item['country'],
+                'country_code' => $item['country_code'],
+                'region' => $item['region'],
+                'city' => $item['city'],
+                'area' => $item['area'],
+                'poi' => $item['poi'],
+                'lat' => $item['lat'],
+                'lng' => $item['lng'],
+                'geo_provider' => $item['geo_provider'],
+                'geo_provider_place_id' => $item['geo_provider_place_id'],
+                'suggested_geocoding_query' => $item['suggested_geocoding_query'],
+                'geocoding_status' => $item['geocoding_status'],
+                'formatted_address' => $item['formatted_address'],
+                'geocoded_at' => $item['geocoding_status'] === 'verified' ? $now : '',
+            ));
+            if (!$location_id || in_array((int) $location_id, $existing_location_ids, true)) {
+                continue;
+            }
+            $item['location_id'] = (int) $location_id;
+            $content_index_id = $this->upsert_content_index($object_id, $object_type, $location_id, array(
+                'is_primary' => 0,
+                'role' => $item['role'],
+                'geo_scope' => $geo_scope,
+                'content_type' => $content_type,
+                'commercial_intent' => $commercial_intent,
+                'widget_eligible' => $widget_eligible,
+                'confidence' => $item['confidence'],
+                'match_weight' => $item['match_weight'],
+                'source' => $item['source'],
+                'raw_payload' => array('location' => $item),
+            ));
+            if (!$content_index_id) {
+                $this->log_geo_store_event('warning', 'Geo Index Store could not append content index relation.', $object_id, $object_type);
+                continue;
+            }
+            $existing_location_ids[] = (int) $location_id;
+            $added[] = $item;
+        }
+
+        if (!empty($added)) {
+            $json = json_decode((string) get_post_meta($object_id, '_alma_geo_locations_json', true), true);
+            $json = is_array($json) ? $json : array();
+            update_post_meta($object_id, '_alma_geo_locations_json', wp_json_encode(array_merge($json, $added)));
+            update_post_meta($object_id, '_alma_geo_updated_at', $now);
+        }
+        return $added;
+    }
+
     private function log_geo_store_event($level, $message, $object_id, $object_type) {
         if (!class_exists('ALMA_Logger')) {
             return;

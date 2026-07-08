@@ -3,7 +3,7 @@
  * Plugin Name: Affiliate Link Manager AI
  * Plugin URI: https://your-website.com
  * Description: Gestisce link affiliati con intelligenza artificiale per ottimizzazione e tracking automatico.
- * Version: 2.92.0
+ * Version: 2.93.0
  * Author: Cosè Murciano
  * License: GPL v2 or later
  * Text Domain: affiliate-link-manager-ai
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Definisci costanti del plugin
-define('ALMA_VERSION', '2.92.0');
+define('ALMA_VERSION', '2.93.0');
 define('ALMA_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('ALMA_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('ALMA_PLUGIN_FILE', __FILE__);
@@ -2347,6 +2347,7 @@ class AffiliateManagerAI {
             update_option('alma_enable_ai', sanitize_text_field($_POST['enable_ai'] ?? 'yes'));
             update_option('alma_ai_auto_publish', ($_POST['alma_ai_auto_publish'] ?? 'no') === 'yes' ? 'yes' : 'no');
             update_option('alma_article_map_enabled', empty($_POST['alma_article_map_enabled']) ? '0' : '1', false);
+            update_option('alma_geo_post_integration', empty($_POST['alma_geo_post_integration']) ? '0' : '1', false);
 
             $selected_types = array_map('sanitize_text_field', $_POST['alma_link_post_types'] ?? array());
             update_option('alma_link_post_types', $selected_types);
@@ -2456,6 +2457,8 @@ class AffiliateManagerAI {
                             <td>
                                 <label><input type="checkbox" name="alma_article_map_enabled" value="1" <?php checked(get_option('alma_article_map_enabled', '1'), '1'); ?>> <?php _e('Mostra a fine articolo la mappa interattiva delle località citate (solo articoli con località geocodificate)', 'affiliate-link-manager-ai'); ?></label>
                                 <p class="description"><?php _e('I marker aprono la scheda Google Maps del luogo in una nuova scheda. Shortcode per posizionarla a mano: [alma_mappa_articolo]; esclusione per singolo articolo dalla metabox "📍 Mappa località".', 'affiliate-link-manager-ai'); ?></p>
+                                <label style="display:block;margin-top:8px;"><input type="checkbox" name="alma_geo_post_integration" value="1" <?php checked(get_option('alma_geo_post_integration', '1'), '1'); ?>> <?php _e('Completa automaticamente le località degli articoli dal contenuto (gazetteer + AI)', 'affiliate-link-manager-ai'); ?></label>
+                                <p class="description"><?php _e('Alla pubblicazione/salvataggio e durante l\'arricchimento, le altre destinazioni citate nell\'articolo vengono aggiunte come località secondarie (la primaria non viene mai toccata) e geocodificate in automatico: così finiscono sulla mappa. Una sola analisi AI per versione del contenuto.', 'affiliate-link-manager-ai'); ?></p>
                             </td>
                         </tr>
                     </table>
