@@ -1,3 +1,15 @@
+## 2.94.0 - 2026-07-08
+
+### Qualità delle bozze dell'agente: universale garantito, widget a metà, grassetti, link interni
+- **Segnalazione** (articolo "Stati Uniti in 3 giorni"): mancavano link universali, il widget era a fine articolo, niente grassetti né link interni. Interventi mirati sul draft-builder (creazione bozze dell'agente):
+- **Link universale garantito anche in CREAZIONE** (`guarantee_universal_link`): stessa ricetta dell'arricchimento (v2.91/2.92). Se l'AI non inserisce un link di tipologia universale (assicurazione/eSIM) e il contenuto non ne contiene già uno, il sistema aggiunge una **card** (immagine + titolo + descrizione) col miglior universale a ~70% dell'articolo, prima del salvataggio. Indipendente dai candidati selezionati: gli universali valgono per qualsiasi articolo. La card entra anche nella coda immagini AI se il link non ha featured.
+- **Esenzione geografica degli universali**: la regola geo delle bozze ("usa solo link coerenti con la destinazione") **scartava attivamente** le assicurazioni (che non hanno geografia). Ora la regola ha un'eccezione esplicita per la tipologia universale, ripetuta anche nelle regole core.
+- **Widget a METÀ articolo** (`insert_block_midpoint`): quando l'AI non mette il segnaposto `[[ALMA_WIDGET]]`, il widget (richiesto o di fallback garantito) non viene più accodato in fondo ma inserito dopo un paragrafo centrale, per spezzare il testo. Il contract del widget ora chiede esplicitamente di posizionare il segnaposto in un punto intermedio, non alla fine.
+- **Grassetti**: nuova regola di formattazione — evidenzia in `<strong>` i concetti chiave, i nomi di luoghi/attrazioni e i dati pratici (con misura, una-due per paragrafo).
+- **Link interni**: rafforzata la regola "2-5 link interni pertinenti"; se la bozza non ne contiene nessuno, viene registrato un avviso nella diagnostica (`_alma_ai_agent_qa_warnings`, visibile nella revisione bozza) per capire se mancano articoli correlati indicizzati.
+- Test standalone 18/18 (card garantita con posizione/formato/anti-doppione/guardie, widget mid-point, smoke test su regole geo/grassetti/interni/contract/warning).
+- Versione plugin aggiornata a `2.94.0`.
+
 ## 2.93.0 - 2026-07-08
 
 ### Geo/mappa: le destinazioni citate nell'articolo entrano nell'indice (e sulla mappa)

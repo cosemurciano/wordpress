@@ -320,9 +320,31 @@ class ALMA_AI_Insertion_Rules {
         if ($has_placeholder) {
             $content = str_replace(self::WIDGET_PLACEHOLDER, $created['shortcode'], $content);
         } else {
-            $content .= "\n\n" . $created['shortcode'];
-            $warnings[] = 'Segnaposto widget mancante: widget aggiunto in coda all\'articolo.';
+            // Segnaposto mancante: inserisci il widget a METÀ articolo (spezza
+            // il testo), non in coda dove è meno efficace.
+            $content = self::insert_block_midpoint($content, $created['shortcode']);
+            $warnings[] = 'Segnaposto widget mancante: widget inserito a metà articolo.';
         }
         return array('content' => $content, 'warnings' => $warnings, 'widget_id' => $widget_id);
+    }
+
+    /**
+     * Inserisce un blocco (shortcode widget) dopo un paragrafo intermedio del
+     * contenuto, per spezzare visivamente il testo. Usa il divisore dei
+     * paragrafi del post optimizer quando disponibile; in caso contrario
+     * accoda in fondo (comportamento storico, mai peggiore).
+     */
+    private static function insert_block_midpoint($content, $block) {
+        if (class_exists('ALMA_AI_Post_Optimizer')) {
+            $paragraphs = ALMA_AI_Post_Optimizer::paragraph_texts($content);
+            $count = count($paragraphs);
+            if ($count >= 4) {
+                // Circa a metà, ma mai nei primi due paragrafi (introduzione).
+                $index = max(2, (int) floor($count / 2));
+                $index = min($index, $count - 1);
+                return ALMA_AI_Post_Optimizer::insert_after_paragraph($content, $index, $block, false);
+            }
+        }
+        return rtrim($content) . "\n\n" . $block;
     }
 }
