@@ -1,3 +1,14 @@
+## 2.105.0 - 2026-07-08
+
+### Immagini mai ripetute (nel post e tra articoli) + Telegram accorpato alle pubblicazioni
+- **Segnalazione**: l'agent riusa troppo spesso le stesse immagini tra articoli (featured inclusa) e le duplica anche nello stesso post; su Telegram arrivano ancora notifiche per le bozze/idee oltre a quelle di pubblicazione.
+- **Stessa foto mai due volte nello stesso articolo** (`remove_duplicate_images`, quality checker): le occorrenze successive alla prima vengono rimosse, riconoscendo anche le varianti ridimensionate (`-1024x683`).
+- **Featured mai duplicata nel corpo** (`remove_featured_from_content`): l'immagine scelta come in evidenza viene rimossa dal corpo articolo (il tema la mostra già in testa).
+- **Cooldown di riuso tra articoli**: ogni attachment usato in una bozza AI (featured o editoriale) viene marcato (`_alma_media_last_used_at` + contatore) e il media selector lo **esclude dalle candidate per 90 giorni** (filtro `alma_media_reuse_cooldown_days`). Con le candidate esaurite scatta il flusso esistente di **generazione AI**: featured generata sul titolo/località e immagini editoriali dai segnaposto — quindi immagini nuove invece delle solite, e riuso solo a distanza di tempo.
+- **Telegram accorpato** (richiesta): (1) niente più card-bozza per i post pubblicati subito (auto-publish) — resta SOLO la notifica di pubblicazione con link articolo + ✏️ Modifica; (2) il report di fine esecuzione dell'agente parte **solo se aggiunge informazioni** (errori, bozze in attesa di revisione): se tutti gli articoli sono stati pubblicati e notificati, nessun messaggio ripetuto. Le card con Pubblica/Cestina restano per le bozze NON pubblicate.
+- Test standalone 21/21 (dedup con varianti ridimensionate, featured dal corpo con fallback URL, guardie, wiring cooldown/tracking/telegram).
+- Versione plugin aggiornata a `2.105.0`.
+
 ## 2.104.0 - 2026-07-08
 
 ### Fix accenti corrotti negli articoli generati (pif9 → più): prevenzione + riparazione
