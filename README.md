@@ -1,3 +1,9 @@
+## 2.98.0 - 2026-07-08
+
+### Affiliati sempre come link + varietà
+- L'agent ora inserisce ogni link affiliato pertinente come vero link (anchor, immagine avvolta, bottone, card, widget) scegliendo la modalità migliore, mai solo foto/descrizione; la garanzia deterministica copre anche il nome in grassetto oltre all'immagine. Il tool di ricerca affiliati riporta l'uso pregresso e suggerisce di variare, preferendo i link meno usati a parità di pertinenza.
+- Versione plugin aggiornata a `2.98.0`.
+
 ## 2.97.0 - 2026-07-08
 
 ### Hotel (e affiliati) non più mostrati senza link

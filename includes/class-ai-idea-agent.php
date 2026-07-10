@@ -472,11 +472,20 @@ class ALMA_AI_Idea_Agent {
             'geo_link_ids' => $geo_link_ids,
         ));
         $rows = array_slice((array)($search['groups']['affiliate_link'] ?? array()), 0, 10);
+        $usage = class_exists('ALMA_AI_Content_Agent_Result_Usage')
+            ? ALMA_AI_Content_Agent_Result_Usage::get_counts_by_source(wp_list_pluck($rows, 'source_id'))
+            : array();
         $out = array();
         foreach ($rows as $row) {
-            $out[] = array('id' => (int)$row['source_id'], 'titolo' => $row['title'], 'tipologie' => $row['link_types'], 'score' => (int)$row['score'], 'motivo' => $row['reason']);
+            $sid = (int)$row['source_id'];
+            $out[] = array('id' => $sid, 'titolo' => $row['title'], 'tipologie' => $row['link_types'], 'score' => (int)$row['score'], 'usato_in_articoli' => (int)($usage[$sid] ?? 0), 'motivo' => $row['reason']);
         }
-        return array('localita_risolta' => $location_label, 'link_trovati' => count($out), 'link' => $out);
+        return array(
+            'localita_risolta' => $location_label,
+            'link_trovati' => count($out),
+            'suggerimento_varieta' => __('A parità di pertinenza preferisci i link con "usato_in_articoli" più basso: usa progressivamente tutti i link disponibili per variare l\'offerta, non sempre i soliti.', 'affiliate-link-manager-ai'),
+            'link' => $out,
+        );
     }
 
     private static function tool_existing_articles($query) {
