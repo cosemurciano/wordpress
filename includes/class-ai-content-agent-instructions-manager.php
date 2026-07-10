@@ -21,6 +21,8 @@ class ALMA_AI_Content_Agent_Instructions_Manager {
     }
     public static function get_profile($id){ global $wpdb; $t=ALMA_AI_Content_Agent_Store::table('instruction_profiles'); $exists=$wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s',$t)); if($exists!==$t){return array();} $r=$wpdb->get_row($wpdb->prepare("SELECT * FROM $t WHERE id=%d",absint($id)),ARRAY_A); return is_array($r)?$r:array(); }
     public static function get_active_profiles($limit = 100, $offset = 0){ global $wpdb; $t=ALMA_AI_Content_Agent_Store::table('instruction_profiles'); $exists=$wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s',$t)); if($exists!==$t){return array();} $rows=$wpdb->get_results($wpdb->prepare("SELECT * FROM $t WHERE is_active=1 ORDER BY is_default DESC, profile_name ASC, id DESC LIMIT %d OFFSET %d", max(1, absint($limit)), max(0, absint($offset))),ARRAY_A); return is_array($rows)?$rows:array(); }
+    /** ID del profilo predefinito ATTIVO (is_default), 0 se nessuno. */
+    public static function default_profile_id(){ global $wpdb; $t=ALMA_AI_Content_Agent_Store::table('instruction_profiles'); $exists=$wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s',$t)); if($exists!==$t){return 0;} $id=(int)$wpdb->get_var("SELECT id FROM $t WHERE is_active=1 ORDER BY is_default DESC, id ASC LIMIT 1"); return $id>0?$id:0; }
     public static function get_active_profile(){ $profiles=self::get_active_profiles(1,0); return !empty($profiles[0]) && is_array($profiles[0]) ? $profiles[0] : array(); }
 
     public static function sanitize_profile_textarea($value) {

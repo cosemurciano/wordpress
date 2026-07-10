@@ -1,3 +1,9 @@
+## 2.102.0 - 2026-07-08
+
+### Hotel selezionati e inseriti + widget vari + profili sempre attivi
+- Gli affiliati di tipologie diverse (es. hotel) non vengono più esclusi dai link più cliccati: la selezione è diversificata per tipologia (bozze e "Proponi ottimizzazioni AI"). Prompt aggiornato con la card shortcode per le strutture; il widget di fallback varia il layout in base al contenuto; se l'idea non ha un profilo istruzioni, si applica quello predefinito.
+- Versione plugin aggiornata a `2.102.0`.
+
 ## 2.101.0 - 2026-07-08
 
 ### Import Travelpayouts da CSV

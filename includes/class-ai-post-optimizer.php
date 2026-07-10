@@ -611,11 +611,19 @@ class ALMA_AI_Post_Optimizer {
             'search_scope' => 'affiliate_links_only',
             'geo_link_ids' => $geo_link_ids,
         ));
-        foreach (array_slice((array)($search['groups']['affiliate_link'] ?? array()), 0, self::MAX_CANDIDATES) as $row) {
+        // Diversità per tipologia: evita che i link più cliccati (es. tour)
+        // saturino i candidati escludendo gli hotel/altre tipologie pertinenti.
+        $search_rows = (array)($search['groups']['affiliate_link'] ?? array());
+        if (class_exists('ALMA_AI_Content_Agent_Idea_Importer')) {
+            $search_rows = ALMA_AI_Content_Agent_Idea_Importer::diversify_candidates_by_type($search_rows, self::MAX_CANDIDATES);
+        } else {
+            $search_rows = array_slice($search_rows, 0, self::MAX_CANDIDATES);
+        }
+        foreach ($search_rows as $row) {
             $candidates[] = array(
                 'id' => (int)$row['source_id'],
                 'titolo' => sanitize_text_field((string)$row['title']),
-                'tipologie' => is_array($row['link_types'] ?? null) ? implode(', ', $row['link_types']) : '',
+                'tipologie' => is_array($row['link_types'] ?? null) ? implode(', ', $row['link_types']) : (string)($row['link_types'] ?? ''),
                 'descrizione' => self::candidate_description((int)$row['source_id']),
             );
         }
