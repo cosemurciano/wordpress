@@ -1,3 +1,9 @@
+## 2.103.0 - 2026-07-08
+
+### Travelpayouts dentro Affiliate Sources
+- L'import Travelpayouts è ora un tipo di Source (preset "Travelpayouts CSV") con anteprima delle righe, mappatura colonne manuale, deduplica per URL (con opzione aggiorna) e barra di avanzamento live della conversione API. La vecchia pagina separata è stata rimossa.
+- Versione plugin aggiornata a `2.103.0`.
+
 ## 2.102.0 - 2026-07-08
 
 ### Hotel selezionati e inseriti + widget vari + profili sempre attivi

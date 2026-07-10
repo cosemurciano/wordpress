@@ -37,24 +37,352 @@ class ALMA_Travelpayouts_Importer {
     const CONVERT_BATCH = 40;     // link per esecuzione del job (4 richieste API)
     const MAX_ROWS = 1000;        // tetto per upload
 
+    const PREVIEW_TRANSIENT = 'alma_tp_preview_';   // righe grezze CSV per l'anteprima
+
     public static function init() {
-        add_action('admin_menu', array(__CLASS__, 'add_menu'), 60);
-        add_action('admin_post_alma_tp_save_settings', array(__CLASS__, 'handle_settings'));
-        add_action('admin_post_alma_tp_upload', array(__CLASS__, 'handle_upload'));
         add_action('admin_post_alma_tp_convert_now', array(__CLASS__, 'handle_convert_now'));
         add_action('admin_post_alma_tp_download_demo', array(__CLASS__, 'handle_download_demo'));
+        // Flusso integrato in Affiliate Sources.
+        add_action('admin_post_alma_tp_source_settings', array(__CLASS__, 'handle_source_settings'));
+        add_action('admin_post_alma_tp_source_upload', array(__CLASS__, 'handle_source_upload'));
+        add_action('admin_post_alma_tp_source_import', array(__CLASS__, 'handle_source_import'));
+        add_action('wp_ajax_alma_tp_source_progress', array(__CLASS__, 'ajax_source_progress'));
         add_action(self::CRON_HOOK, array(__CLASS__, 'run_conversion'));
     }
 
-    public static function add_menu() {
-        add_submenu_page(
-            'edit.php?post_type=affiliate_link',
-            __('Import Travelpayouts', 'affiliate-link-manager-ai'),
-            __('Import Travelpayouts', 'affiliate-link-manager-ai'),
-            'manage_options',
-            self::MENU_SLUG,
-            array(__CLASS__, 'render_page')
+    /** URL della pagina di import della source travelpayouts_csv. */
+    private static function source_import_url($source_id, $args = array()) {
+        return add_query_arg(array_merge(array(
+            'post_type' => 'affiliate_link',
+            'page' => 'alma-affiliate-sources',
+            'alma_view' => 'import_contents',
+            'source_id' => absint($source_id),
+        ), $args), admin_url('edit.php'));
+    }
+
+    /* ---------------------------------------------------------------------
+     * Flusso integrato in Affiliate Sources: credenziali + anteprima +
+     * mappatura colonne + deduplica + import + avanzamento live
+     * ------------------------------------------------------------------ */
+
+    private static function source_notice($source_id, $type, $message) {
+        set_transient('alma_tp_notice_' . get_current_user_id(), array('type' => $type, 'message' => $message), 60);
+        wp_safe_redirect(self::source_import_url($source_id));
+        exit;
+    }
+
+    /** Salva le credenziali API (globali: l'account Travelpayouts è unico). */
+    public static function handle_source_settings() {
+        if (!current_user_can('manage_options')) { wp_die('forbidden'); }
+        check_admin_referer('alma_tp_source_settings');
+        $source_id = absint($_POST['source_id'] ?? 0);
+        update_option(self::OPTION_TOKEN, trim(sanitize_text_field(wp_unslash($_POST['tp_token'] ?? ''))), false);
+        update_option(self::OPTION_TRS, absint($_POST['tp_trs'] ?? 0), false);
+        update_option(self::OPTION_MARKER, absint($_POST['tp_marker'] ?? 0), false);
+        update_option(self::OPTION_SHORTEN, empty($_POST['tp_shorten']) ? '0' : '1', false);
+        self::source_notice($source_id, 'success', __('Credenziali Travelpayouts salvate.', 'affiliate-link-manager-ai'));
+    }
+
+    /** Legge il CSV grezzo (intestazioni + righe) senza mappatura. */
+    public static function read_csv_raw($path) {
+        $handle = @fopen($path, 'r');
+        if (!$handle) { return array('headers' => array(), 'rows' => array()); }
+        $first = fgets($handle);
+        if ($first === false) { fclose($handle); return array('headers' => array(), 'rows' => array()); }
+        $first = preg_replace('/^\xEF\xBB\xBF/', '', $first);
+        $delimiter = (substr_count($first, ';') > substr_count($first, ',')) ? ';' : ',';
+        $headers = array_map(function ($h) { return trim((string) $h); }, str_getcsv($first, $delimiter, '"', '\\'));
+        $rows = array();
+        while (($data = fgetcsv($handle, 0, $delimiter, '"', '\\')) !== false) {
+            if (count($rows) >= self::MAX_ROWS) { break; }
+            // Salta righe totalmente vuote.
+            if (count(array_filter(array_map('trim', (array) $data), function ($v) { return $v !== ''; })) === 0) { continue; }
+            $rows[] = array_map(function ($c) { return trim((string) $c); }, (array) $data);
+        }
+        fclose($handle);
+        return array('headers' => $headers, 'rows' => $rows);
+    }
+
+    /** Estrae i campi da una riga grezza secondo la mappatura field=>indice. */
+    public static function row_to_fields($raw_row, $mapping) {
+        $get = function ($field) use ($mapping, $raw_row) {
+            $idx = isset($mapping[$field]) ? (int) $mapping[$field] : -1;
+            return ($idx >= 0 && isset($raw_row[$idx])) ? trim((string) $raw_row[$idx]) : '';
+        };
+        return array(
+            'title' => $get('title'),
+            'description' => $get('description'),
+            'city' => $get('city'),
+            'url' => $get('url'),
+            'link_type' => $get('link_type'),
         );
+    }
+
+    /** Link affiliato già esistente con questo URL (originale o attuale)? */
+    public static function find_existing_by_url($url) {
+        $url = trim((string) $url);
+        if ($url === '') { return 0; }
+        $q = new WP_Query(array(
+            'post_type' => 'affiliate_link',
+            'post_status' => 'any',
+            'fields' => 'ids',
+            'posts_per_page' => 1,
+            'no_found_rows' => true,
+            'meta_query' => array(
+                'relation' => 'OR',
+                array('key' => self::META_ORIGINAL_URL, 'value' => $url),
+                array('key' => '_affiliate_url', 'value' => $url),
+            ),
+        ));
+        return !empty($q->posts) ? (int) $q->posts[0] : 0;
+    }
+
+    /** Carica il CSV, memorizza le righe grezze in transient e va all'anteprima. */
+    public static function handle_source_upload() {
+        if (!current_user_can('manage_options')) { wp_die('forbidden'); }
+        check_admin_referer('alma_tp_source_upload');
+        $source_id = absint($_POST['source_id'] ?? 0);
+        if (empty($_FILES['tp_csv']['tmp_name']) || !is_uploaded_file($_FILES['tp_csv']['tmp_name'])) {
+            self::source_notice($source_id, 'error', __('Nessun file CSV caricato.', 'affiliate-link-manager-ai'));
+        }
+        $data = self::read_csv_raw($_FILES['tp_csv']['tmp_name']);
+        if (empty($data['rows'])) {
+            self::source_notice($source_id, 'error', __('CSV vuoto o illeggibile.', 'affiliate-link-manager-ai'));
+        }
+        $token = wp_generate_password(12, false);
+        set_transient(self::PREVIEW_TRANSIENT . get_current_user_id() . '_' . $token, $data, 30 * MINUTE_IN_SECONDS);
+        wp_safe_redirect(self::source_import_url($source_id, array('tp_preview' => $token)));
+        exit;
+    }
+
+    /** Crea/aggiorna i link dalle righe selezionate e avvia la conversione. */
+    public static function handle_source_import() {
+        if (!current_user_can('manage_options')) { wp_die('forbidden'); }
+        check_admin_referer('alma_tp_source_import');
+        $source_id = absint($_POST['source_id'] ?? 0);
+        $token = sanitize_text_field(wp_unslash($_POST['tp_token_preview'] ?? ''));
+        $data = get_transient(self::PREVIEW_TRANSIENT . get_current_user_id() . '_' . $token);
+        if (!is_array($data) || empty($data['rows'])) {
+            self::source_notice($source_id, 'error', __('Anteprima scaduta: ricarica il CSV.', 'affiliate-link-manager-ai'));
+        }
+        // Mappatura scelta a mano (field => indice colonna).
+        $mapping = array();
+        foreach (array('title', 'description', 'city', 'url', 'link_type') as $field) {
+            $mapping[$field] = isset($_POST['map'][$field]) ? (int) $_POST['map'][$field] : -1;
+        }
+        if ($mapping['url'] < 0) {
+            self::source_notice($source_id, 'error', __('Mappa la colonna URL prima di importare.', 'affiliate-link-manager-ai'));
+        }
+        $update_existing = !empty($_POST['tp_update_existing']);
+        $selected = array_map('absint', (array) ($_POST['rows'] ?? array()));
+        $selected = array_values(array_unique($selected));
+        $created = 0; $updated = 0; $skipped = 0; $link_ids = array();
+        foreach ($selected as $i) {
+            if (!isset($data['rows'][$i])) { continue; }
+            $fields = self::row_to_fields($data['rows'][$i], $mapping);
+            $url = esc_url_raw((string) $fields['url']);
+            if ($url === '' || !wp_http_validate_url($url)) { $skipped++; continue; }
+            $existing = self::find_existing_by_url($url);
+            if ($existing > 0 && !$update_existing) { $skipped++; continue; }
+            if ($existing > 0) {
+                // Aggiorna: ripristina URL originale + rimette in coda conversione.
+                update_post_meta($existing, self::META_ORIGINAL_URL, $url);
+                update_post_meta($existing, '_affiliate_url', $url);
+                update_post_meta($existing, self::META_PENDING, '1');
+                $link_ids[] = $existing; $updated++;
+            } else {
+                $id = self::create_link_from_row($fields);
+                if ($id > 0) { $link_ids[] = $id; $created++; } else { $skipped++; }
+            }
+        }
+        delete_transient(self::PREVIEW_TRANSIENT . get_current_user_id() . '_' . $token);
+        update_option(self::OPTION_STATUS, array(
+            'imported_at' => current_time('mysql'),
+            'created' => $created, 'updated' => $updated, 'skipped' => $skipped,
+            'convert_state' => self::is_configured() ? 'in_coda' : 'in_attesa_config',
+            'convert_detail' => '', 'converted' => 0, 'convert_errors' => 0, 'convert_finished_at' => '',
+        ), false);
+        if (!empty($link_ids) && self::is_configured()) { self::schedule_conversion(); }
+        $msg = sprintf(__('Import: %1$d creati, %2$d aggiornati, %3$d saltati.', 'affiliate-link-manager-ai'), $created, $updated, $skipped);
+        $msg .= self::is_configured() ? ' ' . __('Conversione URL in corso in background.', 'affiliate-link-manager-ai') : ' ' . __('Configura le credenziali per convertire gli URL.', 'affiliate-link-manager-ai');
+        self::source_notice($source_id, ($created + $updated) > 0 ? 'success' : 'error', $msg);
+    }
+
+    /** Stato conversione in tempo reale per la barra di avanzamento. */
+    public static function ajax_source_progress() {
+        if (!current_user_can('manage_options')) { wp_send_json_error(array('message' => 'forbidden'), 403); }
+        check_ajax_referer('alma_tp_progress', 'nonce');
+        $status = (array) get_option(self::OPTION_STATUS, array());
+        wp_send_json_success(array(
+            'state' => (string) ($status['convert_state'] ?? ''),
+            'converted' => (int) ($status['converted'] ?? 0),
+            'errors' => (int) ($status['convert_errors'] ?? 0),
+            'pending' => self::pending_count(),
+            'detail' => (string) ($status['convert_detail'] ?? ''),
+        ));
+    }
+
+    /**
+     * Pagina di import Travelpayouts DENTRO Affiliate Sources: credenziali,
+     * upload, anteprima con mappatura colonne editabile e deduplica, e la
+     * barra di avanzamento della conversione API.
+     */
+    public static function render_source_import_page($source) {
+        $source_id = (int) ($source['id'] ?? 0);
+        $notice = get_transient('alma_tp_notice_' . get_current_user_id());
+        if ($notice) { delete_transient('alma_tp_notice_' . get_current_user_id()); }
+        $token = trim((string) get_option(self::OPTION_TOKEN, ''));
+        $trs = absint(get_option(self::OPTION_TRS, 0));
+        $marker = absint(get_option(self::OPTION_MARKER, 0));
+        $shorten = get_option(self::OPTION_SHORTEN, '1') === '1';
+        $status = (array) get_option(self::OPTION_STATUS, array());
+        $pending = self::pending_count();
+        $action = esc_url(admin_url('admin-post.php'));
+        $ajax = esc_url(admin_url('admin-ajax.php'));
+        $progress_nonce = wp_create_nonce('alma_tp_progress');
+
+        echo '<div class="notice notice-info"><p><strong>' . esc_html__('Travelpayouts CSV:', 'affiliate-link-manager-ai') . '</strong> ' . esc_html__('carica un CSV, verifica la mappatura delle colonne e l\'anteprima, importa i link e la conversione API aggiorna gli URL in affiliati.', 'affiliate-link-manager-ai') . '</p></div>';
+        if (is_array($notice)) {
+            echo '<div class="notice notice-' . esc_attr($notice['type'] === 'error' ? 'error' : 'success') . ' is-dismissible"><p>' . esc_html($notice['message']) . '</p></div>';
+        }
+
+        // 1) Credenziali API (account unico).
+        echo '<div class="postbox"><h2 class="hndle" style="padding:8px 12px;"><span>' . esc_html__('1. Credenziali API Travelpayouts', 'affiliate-link-manager-ai') . '</span></h2><div class="inside">';
+        echo '<form method="post" action="' . $action . '">';
+        wp_nonce_field('alma_tp_source_settings');
+        echo '<input type="hidden" name="action" value="alma_tp_source_settings"><input type="hidden" name="source_id" value="' . $source_id . '">';
+        echo '<table class="form-table"><tbody>';
+        echo '<tr><th>' . esc_html__('API token', 'affiliate-link-manager-ai') . '</th><td><input type="text" name="tp_token" class="regular-text" value="' . esc_attr($token) . '" autocomplete="off"></td></tr>';
+        echo '<tr><th>trs (Project ID)</th><td><input type="number" name="tp_trs" value="' . esc_attr((string) $trs) . '"></td></tr>';
+        echo '<tr><th>marker (Partner ID)</th><td><input type="number" name="tp_marker" value="' . esc_attr((string) $marker) . '"></td></tr>';
+        echo '<tr><th>' . esc_html__('Link brevi', 'affiliate-link-manager-ai') . '</th><td><label><input type="checkbox" name="tp_shorten" value="1" ' . checked($shorten, true, false) . '> shorten</label></td></tr>';
+        echo '</tbody></table>';
+        submit_button(__('Salva credenziali', 'affiliate-link-manager-ai'), 'secondary', 'submit', false);
+        echo ' ' . (self::is_configured() ? '<span style="color:#1a7f37;">✅ ' . esc_html__('configurate', 'affiliate-link-manager-ai') . '</span>' : '<span style="color:#d63638;">⚠️ ' . esc_html__('non configurate', 'affiliate-link-manager-ai') . '</span>');
+        echo '</form></div></div>';
+
+        // 2) Upload CSV.
+        echo '<div class="postbox"><h2 class="hndle" style="padding:8px 12px;"><span>' . esc_html__('2. Carica il CSV', 'affiliate-link-manager-ai') . '</span></h2><div class="inside">';
+        echo '<p class="description">' . esc_html__('Colonne consigliate: Nome, descrizione, città, url, tipologia link.', 'affiliate-link-manager-ai') . ' <a href="' . esc_url(wp_nonce_url(admin_url('admin-post.php?action=alma_tp_download_demo'), 'alma_tp_download_demo')) . '">' . esc_html__('Scarica CSV demo', 'affiliate-link-manager-ai') . '</a></p>';
+        echo '<form method="post" action="' . $action . '" enctype="multipart/form-data">';
+        wp_nonce_field('alma_tp_source_upload');
+        echo '<input type="hidden" name="action" value="alma_tp_source_upload"><input type="hidden" name="source_id" value="' . $source_id . '">';
+        echo '<input type="file" name="tp_csv" accept=".csv,text/csv" required> ';
+        submit_button(__('Carica e anteprima', 'affiliate-link-manager-ai'), 'primary', 'submit', false);
+        echo '</form></div></div>';
+
+        // 3) Anteprima + mappatura + deduplica (se presente token anteprima).
+        $preview_token = isset($_GET['tp_preview']) ? sanitize_text_field(wp_unslash($_GET['tp_preview'])) : '';
+        if ($preview_token !== '') {
+            $data = get_transient(self::PREVIEW_TRANSIENT . get_current_user_id() . '_' . $preview_token);
+            if (is_array($data) && !empty($data['rows'])) {
+                self::render_preview_table($source_id, $preview_token, $data, $action);
+            } else {
+                echo '<div class="notice notice-warning"><p>' . esc_html__('Anteprima scaduta: ricarica il CSV.', 'affiliate-link-manager-ai') . '</p></div>';
+            }
+        }
+
+        // 4) Avanzamento conversione (live).
+        echo '<div class="postbox"><h2 class="hndle" style="padding:8px 12px;"><span>' . esc_html__('4. Conversione URL → affiliati', 'affiliate-link-manager-ai') . '</span></h2><div class="inside">';
+        if (!empty($status['imported_at'])) {
+            echo '<p>' . esc_html(sprintf(__('Ultimo import: %1$s — %2$d creati, %3$d aggiornati, %4$d saltati.', 'affiliate-link-manager-ai'), (string) $status['imported_at'], (int) ($status['created'] ?? 0), (int) ($status['updated'] ?? 0), (int) ($status['skipped'] ?? 0))) . '</p>';
+        }
+        echo '<div class="alma-progress" style="background:#e2e4e7;border-radius:4px;height:16px;overflow:hidden;max-width:520px;"><div id="alma-tp-bar" style="background:#2271b1;height:100%;width:0;transition:width .4s;"></div></div>';
+        echo '<p id="alma-tp-progress-text" class="description">' . esc_html(sprintf(__('In attesa di conversione: %d', 'affiliate-link-manager-ai'), $pending)) . '</p>';
+        if ($pending > 0 && self::is_configured()) {
+            echo '<form method="post" action="' . $action . '" style="display:inline;">';
+            wp_nonce_field('alma_tp_convert_now');
+            echo '<input type="hidden" name="action" value="alma_tp_convert_now">';
+            submit_button(__('Converti ora', 'affiliate-link-manager-ai'), 'secondary', 'submit', false);
+            echo '</form>';
+        }
+        echo '</div></div>';
+        ?>
+        <script>
+        (function(){
+            var ajax = <?php echo wp_json_encode($ajax); ?>, nonce = <?php echo wp_json_encode($progress_nonce); ?>;
+            var bar = document.getElementById('alma-tp-bar'), txt = document.getElementById('alma-tp-progress-text');
+            if (!bar) { return; }
+            function poll(){
+                var body = new URLSearchParams(); body.set('action','alma_tp_source_progress'); body.set('nonce', nonce);
+                fetch(ajax, {method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: body.toString()})
+                    .then(function(r){ return r.json(); }).then(function(res){
+                        if (!res || !res.success) { return; }
+                        var d = res.data, done = d.converted + d.errors, total = done + d.pending;
+                        var pct = total > 0 ? Math.round(done*100/total) : (d.state==='completata'?100:0);
+                        bar.style.width = pct + '%';
+                        if (txt) { txt.textContent = 'Convertiti: ' + d.converted + ' · non convertibili: ' + d.errors + ' · in attesa: ' + d.pending + (d.detail ? ' — ' + d.detail : ''); }
+                        if (d.pending > 0 || d.state === 'in_corso' || d.state === 'in_coda') { setTimeout(poll, 4000); }
+                    }).catch(function(){});
+            }
+            poll();
+        })();
+        </script>
+        <?php
+    }
+
+    /** Tabella anteprima con selettori di mappatura colonne e flag deduplica. */
+    private static function render_preview_table($source_id, $preview_token, $data, $action) {
+        $headers = (array) $data['headers'];
+        $rows = (array) $data['rows'];
+        $auto = self::map_headers($headers); // field => indice suggerito
+        $fields = array(
+            'title' => __('Nome / Titolo', 'affiliate-link-manager-ai'),
+            'description' => __('Descrizione', 'affiliate-link-manager-ai'),
+            'city' => __('Città', 'affiliate-link-manager-ai'),
+            'url' => __('URL', 'affiliate-link-manager-ai'),
+            'link_type' => __('Tipologia link', 'affiliate-link-manager-ai'),
+        );
+        echo '<div class="postbox"><h2 class="hndle" style="padding:8px 12px;"><span>' . esc_html__('3. Anteprima e mappatura colonne', 'affiliate-link-manager-ai') . '</span></h2><div class="inside">';
+        echo '<form method="post" action="' . $action . '">';
+        wp_nonce_field('alma_tp_source_import');
+        echo '<input type="hidden" name="action" value="alma_tp_source_import"><input type="hidden" name="source_id" value="' . (int) $source_id . '"><input type="hidden" name="tp_token_preview" value="' . esc_attr($preview_token) . '">';
+
+        // Mappatura colonne.
+        echo '<table class="form-table"><tbody>';
+        foreach ($fields as $field => $label) {
+            echo '<tr><th>' . esc_html($label) . ($field === 'url' ? ' <span style="color:#d63638;">*</span>' : '') . '</th><td><select name="map[' . esc_attr($field) . ']">';
+            echo '<option value="-1">' . esc_html__('— nessuna —', 'affiliate-link-manager-ai') . '</option>';
+            foreach ($headers as $i => $h) {
+                $sel = (isset($auto[$field]) && (int) $auto[$field] === (int) $i) ? ' selected' : '';
+                echo '<option value="' . (int) $i . '"' . $sel . '>' . esc_html($h !== '' ? $h : ('Col ' . ($i + 1))) . '</option>';
+            }
+            echo '</select></td></tr>';
+        }
+        echo '</tbody></table>';
+        echo '<p><label><input type="checkbox" name="tp_update_existing" value="1"> ' . esc_html__('Aggiorna anche i link già esistenti (stesso URL)', 'affiliate-link-manager-ai') . '</label></p>';
+
+        // Anteprima righe con flag deduplica.
+        $url_idx = isset($auto['url']) ? (int) $auto['url'] : -1;
+        $shown = array_slice($rows, 0, 100, true);
+        echo '<p><button type="button" class="button alma-tp-all">' . esc_html__('Seleziona tutti', 'affiliate-link-manager-ai') . '</button> <button type="button" class="button alma-tp-none">' . esc_html__('Deseleziona tutti', 'affiliate-link-manager-ai') . '</button> <span class="description">' . esc_html(sprintf(__('%d righe (mostrate max 100)', 'affiliate-link-manager-ai'), count($rows))) . '</span></p>';
+        echo '<table class="widefat striped"><thead><tr><th></th>';
+        foreach ($headers as $h) { echo '<th>' . esc_html($h) . '</th>'; }
+        echo '<th>' . esc_html__('Stato', 'affiliate-link-manager-ai') . '</th></tr></thead><tbody>';
+        foreach ($shown as $i => $row) {
+            $url = ($url_idx >= 0 && isset($row[$url_idx])) ? esc_url_raw((string) $row[$url_idx]) : '';
+            $valid = $url !== '' && wp_http_validate_url($url);
+            $exists = $valid ? self::find_existing_by_url($url) : 0;
+            $state = !$valid ? '<span style="color:#d63638;">' . esc_html__('URL mancante/non valido', 'affiliate-link-manager-ai') . '</span>' : ($exists ? '<span style="color:#996800;">' . esc_html__('già presente', 'affiliate-link-manager-ai') . '</span>' : '<span style="color:#1a7f37;">' . esc_html__('nuovo', 'affiliate-link-manager-ai') . '</span>');
+            $checked = ($valid && !$exists) ? ' checked' : '';
+            echo '<tr><td><input type="checkbox" class="alma-tp-row" name="rows[]" value="' . (int) $i . '"' . ($valid ? '' : ' disabled') . $checked . '></td>';
+            foreach ($headers as $ci => $h) { echo '<td>' . esc_html(mb_substr((string) ($row[$ci] ?? ''), 0, 80)) . '</td>'; }
+            echo '<td>' . $state . '</td></tr>';
+        }
+        echo '</tbody></table>';
+        echo '<p>' . get_submit_button(__('Importa i selezionati', 'affiliate-link-manager-ai'), 'primary', 'submit', false) . '</p>';
+        echo '</form>';
+        ?>
+        <script>
+        (function(){
+            var wrap = document.currentScript.closest('.inside');
+            if (!wrap) { return; }
+            wrap.querySelector('.alma-tp-all').addEventListener('click', function(){ wrap.querySelectorAll('.alma-tp-row:not([disabled])').forEach(function(c){ c.checked = true; }); });
+            wrap.querySelector('.alma-tp-none').addEventListener('click', function(){ wrap.querySelectorAll('.alma-tp-row').forEach(function(c){ c.checked = false; }); });
+        })();
+        </script>
+        <?php
+        echo '</div></div>';
     }
 
     /* ---------------------------------------------------------------------
@@ -79,6 +407,10 @@ class ALMA_Travelpayouts_Importer {
         return (int) $q->found_posts;
     }
 
+    // NOTA: i metodi standalone seguenti (handle_settings/handle_upload/
+    // render_page/redirect_back) NON sono più agganciati: la configurazione
+    // e l'import vivono ora nella pagina di import della Source
+    // travelpayouts_csv. Restano solo come riferimento e verranno rimossi.
     public static function handle_settings() {
         if (!current_user_can('manage_options')) { wp_die('forbidden'); }
         check_admin_referer('alma_tp_settings');
@@ -270,13 +602,14 @@ class ALMA_Travelpayouts_Importer {
     public static function handle_convert_now() {
         if (!current_user_can('manage_options')) { wp_die('forbidden'); }
         check_admin_referer('alma_tp_convert_now');
-        if (!self::is_configured()) {
-            self::redirect_back(array('type' => 'error', 'message' => __('Configura prima token, trs e marker Travelpayouts.', 'affiliate-link-manager-ai')));
+        if (self::is_configured()) {
+            // Evento con argomento unico: WP-Cron non lo deduplica come identico.
+            wp_schedule_single_event(time() + 2, self::CRON_HOOK, array('manual-' . time()));
+            if (function_exists('spawn_cron')) { spawn_cron(); }
         }
-        // Evento con argomento unico: WP-Cron non lo deduplica come identico.
-        wp_schedule_single_event(time() + 2, self::CRON_HOOK, array('manual-' . time()));
-        if (function_exists('spawn_cron')) { spawn_cron(); }
-        self::redirect_back(array('type' => 'success', 'message' => __('Conversione avviata: gli URL verranno convertiti in background.', 'affiliate-link-manager-ai')));
+        // Ritorna alla pagina di provenienza (import della source).
+        wp_safe_redirect(wp_get_referer() ?: admin_url('edit.php?post_type=affiliate_link&page=alma-affiliate-sources'));
+        exit;
     }
 
     /** ID dei link ancora da convertire (limite $limit). */
