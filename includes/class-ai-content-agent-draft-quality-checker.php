@@ -657,11 +657,56 @@ class ALMA_AI_Content_Agent_Draft_Quality_Checker {
         return array_values($out);
     }
 
+    /**
+     * Ripara gli escape unicode sopravvissuti nel testo del modello: gli
+     * escape JSON letterali (è) vengono decodificati nel carattere
+     * reale, e i residui MUTILATI (perso "\u00": "pif9"→"più",
+     * "perche9"→"perché", "citte0"→"città") vengono ricostruiti per i
+     * soli codici delle lettere accentate latine, con guardie conservative
+     * (residuo preceduto da lettera minuscola, fine parola). Difesa in
+     * profondità: la prevenzione vera è il contesto JSON_UNESCAPED_UNICODE.
+     */
+    public static function repair_unicode_escape_residues($text, &$repaired = 0) {
+        $text = (string) $text;
+        // Entrambe le regole si applicano SOLO fuori dai tag HTML: gli href
+        // e gli attributi (tracking id, hash) non vanno mai toccati.
+        $map = array('e0' => 'à', 'e8' => 'è', 'e9' => 'é', 'f2' => 'ò', 'f9' => 'ù');
+        $parts = preg_split('/(<[^>]*>)/', $text, -1, PREG_SPLIT_DELIM_CAPTURE);
+        foreach ($parts as $i => $part) {
+            if ($part === '' || $part[0] === '<') { continue; }
+            // 1) Escape letterali completi (con o senza backslash residuo).
+            $part = preg_replace_callback('/\\\\?u00([0-9a-f]{2})\b/i', function ($m) use (&$repaired) {
+                $code = hexdec($m[1]);
+                if ($code < 0xA0 || $code > 0xFF) { return $m[0]; } // solo latin-1 supplement
+                $repaired++;
+                return html_entity_decode('&#' . $code . ';', ENT_QUOTES, 'UTF-8');
+            }, $part);
+            // 2) Residui mutilati dopo lettera minuscola: e0→à, e8→è, e9→é,
+            //    f2→ò, f9→ù (ec/b0 esclusi: troppi falsi positivi). Ammessi
+            //    anche in mezzo alla parola ("Pre9s"→"Prés": le parole
+            //    naturali non contengono cifre), mai seguiti da cifre o
+            //    separatori di percorso.
+            $part = preg_replace_callback('/(?<=[a-z])(e0|e8|e9|f2|f9)(?![\/\.\-_0-9])/', function ($m) use ($map, &$repaired) {
+                $repaired++;
+                return $map[$m[1]];
+            }, $part);
+            // 2b) "e8" isolato è il verbo essere ("non e8 sempre" → "non è").
+            $part = preg_replace_callback('/(?<=\s|^)(e8|E8)(?=[\s,.;:!?])/', function ($m) use (&$repaired) {
+                $repaired++;
+                return $m[1] === 'E8' ? 'È' : 'è';
+            }, $part);
+            $parts[$i] = $part;
+        }
+        return implode('', $parts);
+    }
+
     public static function validate_payload($payload, $candidate_affiliate_ids = array(), $candidate_image_ids = array(), $candidate_affiliate_images = array(), $candidate_internal_links = array(), $featured_image_candidates = array(), $media_candidates = array(), $max_editorial_media_used = 5) {
         $warnings = array();
-        $title = sanitize_text_field($payload['title'] ?? '');
-        $excerpt = sanitize_textarea_field($payload['excerpt'] ?? '');
-        $content = self::sanitize_content_html((string)($payload['content_html'] ?? ($payload['content'] ?? '')));
+        $repaired_escapes = 0;
+        $title = self::repair_unicode_escape_residues(sanitize_text_field($payload['title'] ?? ''), $repaired_escapes);
+        $excerpt = self::repair_unicode_escape_residues(sanitize_textarea_field($payload['excerpt'] ?? ''), $repaired_escapes);
+        $content = self::repair_unicode_escape_residues(self::sanitize_content_html((string)($payload['content_html'] ?? ($payload['content'] ?? ''))), $repaired_escapes);
+        if ($repaired_escapes > 0) { $warnings[] = sprintf('%d escape unicode riparati nel testo del modello (accenti).', $repaired_escapes); }
         if ($title === '') { $warnings[] = 'Titolo vuoto.'; }
         if (trim(wp_strip_all_tags($content)) === '') { $warnings[] = 'Contenuto vuoto.'; }
         if ($excerpt === '') { $excerpt = wp_trim_words(wp_strip_all_tags($content), 30); $warnings[] = 'Excerpt generato automaticamente.'; }

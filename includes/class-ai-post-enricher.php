@@ -321,7 +321,7 @@ class ALMA_AI_Post_Enricher {
         }
         // Solo aggiunte/sostituzioni di shortcode: il testo esistente resta
         // intatto; wp_update_post crea la revisione per il rollback.
-        $updated = wp_update_post(array('ID' => $post_id, 'post_content' => $content), true);
+        $updated = wp_update_post(wp_slash(array('ID' => $post_id, 'post_content' => $content)), true);
         if (is_wp_error($updated)) {
             $entry['error'] = sanitize_text_field($updated->get_error_message());
         } else {

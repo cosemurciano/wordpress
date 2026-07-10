@@ -257,7 +257,7 @@ class ALMA_AI_Idea_Agent {
                     $output = self::execute_tool($name, $arguments, $ideas_created, $max_ideas);
                     $report['tool_calls'][] = array('name' => $name, 'arguments' => wp_json_encode($arguments));
                     $input_items[] = array('type' => 'function_call', 'call_id' => $call['call_id'], 'name' => $call['name'], 'arguments' => $call['arguments']);
-                    $input_items[] = array('type' => 'function_call_output', 'call_id' => $call['call_id'], 'output' => wp_json_encode($output));
+                    $input_items[] = array('type' => 'function_call_output', 'call_id' => $call['call_id'], 'output' => ALMA_OpenAI_Service::encode_context($output));
                 }
                 if ($round === self::MAX_ROUNDS) {
                     $report['error'] = 'Limite di round del loop agente raggiunto senza risposta finale.';

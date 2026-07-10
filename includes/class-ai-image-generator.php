@@ -489,7 +489,7 @@ class ALMA_AI_Image_Generator {
             $figure = '<figure class="wp-block-image size-large alma-ai-editorial-image">' . wp_get_attachment_image($attachment_id, 'large') . '</figure>';
             $new_content = str_replace($placeholder, $figure, (string) $fresh->post_content);
             if ($new_content !== $fresh->post_content) {
-                wp_update_post(array('ID' => $post_id, 'post_content' => $new_content));
+                wp_update_post(wp_slash(array('ID' => $post_id, 'post_content' => $new_content)));
             }
         }
         self::log_entry($post_id, array('status' => 'generated', 'attachment_id' => $attachment_id, 'cost' => $image['cost'], 'response_time' => (int) $image['rt']));

@@ -466,7 +466,7 @@ class ALMA_AI_Post_Optimizer {
             $prompt .= 'Puoi inoltre proporre la SOSTITUZIONE di uno shortcode esistente SOLO se il suo link è geograficamente incoerente, non valido, o esiste un candidato nettamente più pertinente: aggiungi alle proposte {"azione":"sostituisci","vecchio_link_id":int (da shortcode_esistenti),"nuovo_link_id":int (da link_candidati),"testo_anchor":string (nuova anchor descrittiva se il pattern è anchor),"motivo":string}. Non sostituire link già coerenti solo per variare. ';
             if ($budget < 1) { $prompt .= 'La densità massima è già raggiunta: NON proporre nuovi inserimenti, valuta solo eventuali sostituzioni. '; }
         }
-        $prompt .= 'Meglio poche proposte eccellenti che tante mediocri. CONTEXT: ' . wp_json_encode($context);
+        $prompt .= 'Meglio poche proposte eccellenti che tante mediocri. CONTEXT: ' . ALMA_OpenAI_Service::encode_context($context);
 
         $res = ALMA_OpenAI_Service::request(array(
             'system_prompt' => 'Sei un editor esperto di monetizzazione affiliate per blog di viaggi. Proponi inserimenti eleganti e pertinenti. Output solo JSON valido.',
@@ -790,7 +790,7 @@ class ALMA_AI_Post_Optimizer {
         }
         $new_content = self::insert_after_paragraph($post->post_content, (int)$proposal['paragraph'], $insertion, !empty($proposal['inline']));
         // wp_update_post crea automaticamente una revisione: rollback nativo.
-        $updated = wp_update_post(array('ID' => $post_id, 'post_content' => $new_content), true);
+        $updated = wp_update_post(wp_slash(array('ID' => $post_id, 'post_content' => $new_content)), true);
         if (is_wp_error($updated)) {
             wp_send_json_error(array('message' => sanitize_text_field($updated->get_error_message())));
         }
