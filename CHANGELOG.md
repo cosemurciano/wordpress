@@ -1,3 +1,16 @@
+## 2.103.0 - 2026-07-08
+
+### Import Travelpayouts integrato in Affiliate Sources (anteprima, mappatura, deduplica, avanzamento live)
+- **Coerenza col plugin**: Travelpayouts è ora un **tipo di Source** come GetYourGuide/Viator. In *Link Affiliati → Affiliate Sources → Aggiungi nuova source* si sceglie il preset **"Travelpayouts CSV"**; l'import vive nella pagina "Importa contenuti" della source (rimossa la vecchia pagina separata "Import Travelpayouts").
+- **Anteprima prima dell'import**: dopo il caricamento del CSV vengono mostrate le righe lette (max 100) con lo **stato per riga** (nuovo / già presente / URL non valido) prima di creare qualsiasi link.
+- **Mappatura colonne manuale**: le colonne vengono auto-riconosciute (Nome, descrizione, città, url, tipologia link, con alias/accenti) ma sono **modificabili a mano** con un menu a tendina per campo, per CSV con intestazioni diverse.
+- **Deduplica**: i link con lo stesso URL (originale o già convertito) vengono riconosciuti come "già presenti" e saltati, con opzione **"Aggiorna anche i link già esistenti"** (rimette in coda la conversione).
+- **Avanzamento conversione live**: barra di progresso in tempo reale (polling AJAX) con convertiti / non convertibili / in attesa, invece del solo riepilogo.
+- **Selezione righe**: checkbox per riga + Seleziona/Deseleziona tutti; si importano solo le righe scelte.
+- Motore invariato: creazione Link Affiliato (titolo, descrizione, tipologia `link_type`, geo dalla città), conversione API Travelpayouts (`POST links/v1/create`, header `X-Access-Token`, blocchi da 10, catena con pausa per il rate limit, lock atomico con TTL). Credenziali (token/trs/marker/shorten) configurate nella pagina di import.
+- Test standalone 20/20 (lettura CSV grezzo, righe vuote saltate, `row_to_fields` con mappatura, preset e dispatch del manager, dedup, wiring handler/anteprima/avanzamento).
+- Versione plugin aggiornata a `2.103.0`.
+
 ## 2.102.0 - 2026-07-08
 
 ### Hotel finalmente selezionati e inseriti + varietà widget + profili sempre applicati
