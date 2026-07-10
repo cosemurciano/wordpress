@@ -246,20 +246,13 @@ class ALMA_Travelpayouts_Importer {
             echo '<div class="notice notice-' . esc_attr($notice['type'] === 'error' ? 'error' : 'success') . ' is-dismissible"><p>' . esc_html($notice['message']) . '</p></div>';
         }
 
-        // 1) Credenziali API (account unico).
+        // 1) Credenziali API (account unico): si gestiscono nella pagina «Configura provider».
+        $config_url = add_query_arg(array('post_type' => 'affiliate_link', 'page' => 'alma-affiliate-sources', 'alma_view' => 'provider_config', 'source_id' => $source_id), admin_url('edit.php'));
         echo '<div class="postbox"><h2 class="hndle" style="padding:8px 12px;"><span>' . esc_html__('1. Credenziali API Travelpayouts', 'affiliate-link-manager-ai') . '</span></h2><div class="inside">';
-        echo '<form method="post" action="' . $action . '">';
-        wp_nonce_field('alma_tp_source_settings');
-        echo '<input type="hidden" name="action" value="alma_tp_source_settings"><input type="hidden" name="source_id" value="' . $source_id . '">';
-        echo '<table class="form-table"><tbody>';
-        echo '<tr><th>' . esc_html__('API token', 'affiliate-link-manager-ai') . '</th><td><input type="text" name="tp_token" class="regular-text" value="' . esc_attr($token) . '" autocomplete="off"></td></tr>';
-        echo '<tr><th>trs (Project ID)</th><td><input type="number" name="tp_trs" value="' . esc_attr((string) $trs) . '"></td></tr>';
-        echo '<tr><th>marker (Partner ID)</th><td><input type="number" name="tp_marker" value="' . esc_attr((string) $marker) . '"></td></tr>';
-        echo '<tr><th>' . esc_html__('Link brevi', 'affiliate-link-manager-ai') . '</th><td><label><input type="checkbox" name="tp_shorten" value="1" ' . checked($shorten, true, false) . '> shorten</label></td></tr>';
-        echo '</tbody></table>';
-        submit_button(__('Salva credenziali', 'affiliate-link-manager-ai'), 'secondary', 'submit', false);
-        echo ' ' . (self::is_configured() ? '<span style="color:#1a7f37;">✅ ' . esc_html__('configurate', 'affiliate-link-manager-ai') . '</span>' : '<span style="color:#d63638;">⚠️ ' . esc_html__('non configurate', 'affiliate-link-manager-ai') . '</span>');
-        echo '</form></div></div>';
+        echo '<p>' . (self::is_configured() ? '<span style="color:#1a7f37;">✅ ' . esc_html__('configurate', 'affiliate-link-manager-ai') . '</span>' : '<span style="color:#d63638;">⚠️ ' . esc_html__('non configurate', 'affiliate-link-manager-ai') . '</span>');
+        echo ' — ' . esc_html__('token', 'affiliate-link-manager-ai') . ': ' . ($token !== '' ? esc_html__('salvato', 'affiliate-link-manager-ai') : '—') . ' · trs: ' . ($trs > 0 ? (int) $trs : '—') . ' · marker: ' . ($marker > 0 ? (int) $marker : '—') . ' · ' . esc_html__('link brevi', 'affiliate-link-manager-ai') . ': ' . ($shorten ? esc_html__('Sì', 'affiliate-link-manager-ai') : 'No') . '</p>';
+        echo '<p><a class="button" href="' . esc_url($config_url) . '">⚙️ ' . esc_html__('Configura provider', 'affiliate-link-manager-ai') . '</a> <span class="description">' . esc_html__('Token, trs e marker sono condivisi da tutte le source Travelpayouts (account unico).', 'affiliate-link-manager-ai') . '</span></p>';
+        echo '</div></div>';
 
         // 2) Upload CSV.
         echo '<div class="postbox"><h2 class="hndle" style="padding:8px 12px;"><span>' . esc_html__('2. Carica il CSV', 'affiliate-link-manager-ai') . '</span></h2><div class="inside">';

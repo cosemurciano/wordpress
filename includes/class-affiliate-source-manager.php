@@ -53,6 +53,7 @@ class ALMA_Affiliate_Source_Manager {
         if($view==='import_result'){ $this->render_import_result_page(); return; }
         if($view==='gyg_csv_import_type' || $view==='gyg_csv_simple_import'){ $this->redirect_legacy_gyg_csv_import_type(); return; }
         if($view==='ai_behavior'){ $this->render_ai_behavior_page(); return; }
+        if($view==='provider_config'){ $this->render_provider_config_page(); return; }
         $editing_id=absint($_GET['edit_source']??0); $editing=$editing_id?$wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}alma_affiliate_sources WHERE id=%d",$editing_id),ARRAY_A):array(); if(!is_array($editing))$editing=array(); $sources_view=sanitize_key($_GET['alma_sources_view']??'active'); $where=($sources_view==='deleted')?' WHERE deleted_at IS NOT NULL':(($sources_view==='all')?'':' WHERE deleted_at IS NULL'); $rows=$this->sources_table_exists()?$wpdb->get_results("SELECT * FROM {$wpdb->prefix}alma_affiliate_sources{$where} ORDER BY id DESC LIMIT 100",ARRAY_A):array();
         $es=$this->decode_db_json($editing['settings']??''); $ec=$this->decode_db_json($editing['credentials']??''); $sel=json_decode($editing['destination_term_ids']??'',true); if(!is_array($sel))$sel=array(); if(empty($sel)&&!empty($editing['destination_term_id']))$sel=array((int)$editing['destination_term_id']);
         $result=sanitize_key($_GET['alma_result']??'');
@@ -61,24 +62,36 @@ class ALMA_Affiliate_Source_Manager {
         elseif($result==='error'){ echo '<div class="notice notice-error is-dismissible"><p>Errore nel salvataggio della source.</p></div>'; }
         elseif($result==='invalid_json'){ echo '<div class="notice notice-error is-dismissible"><p>JSON avanzato non valido.</p></div>'; }
         $base_sources_url=add_query_arg(array('post_type'=>'affiliate_link','page'=>'alma-affiliate-sources'),admin_url('edit.php'));
-        echo '<div class="wrap"><h1>Affiliate Sources</h1><p><a href="'.esc_url(add_query_arg('alma_sources_view','active',$base_sources_url)).'">Attive</a> | <a href="'.esc_url(add_query_arg('alma_sources_view','deleted',$base_sources_url)).'">Mostra eliminate</a> | <a href="'.esc_url(add_query_arg('alma_sources_view','all',$base_sources_url)).'">Tutte</a></p><button type="button" class="button button-primary alma-toggle-source-form">Aggiungi nuova source</button><div id="alma-source-form-wrap"'.($editing?'':' style="display:none"').'><h2>'.($editing?'Modifica source':'Nuova source').'</h2><form method="post" id="alma-source-form">'; wp_nonce_field('alma_save_source','alma_source_nonce');
-        echo '<input type="hidden" name="action_type" value="save_source"/><input type="hidden" name="source_id" value="'.esc_attr($editing['id']??0).'"/><input type="hidden" id="alma-existing-settings" value="'.esc_attr(wp_json_encode($es)).'"/><input type="hidden" id="alma-existing-credentials-flags" value="'.esc_attr(wp_json_encode(array_fill_keys(array_keys($ec), true))).'"/><div class="alma-sections">';
+        echo '<div class="wrap"><h1>Affiliate Sources</h1><p class="description">Gestisci le fonti di importazione dei link affiliati. API key e impostazioni provider si gestiscono nella pagina dedicata «Configura provider»; l\'import ha la sua pagina «Importa contenuti».</p><p><a href="'.esc_url(add_query_arg('alma_sources_view','active',$base_sources_url)).'">Attive</a> | <a href="'.esc_url(add_query_arg('alma_sources_view','deleted',$base_sources_url)).'">Mostra eliminate</a> | <a href="'.esc_url(add_query_arg('alma_sources_view','all',$base_sources_url)).'">Tutte</a></p><button type="button" class="button button-primary alma-toggle-source-form">Aggiungi nuova source</button><div id="alma-source-form-wrap"'.($editing?'':' style="display:none"').'><h2>'.($editing?'Modifica source':'Nuova source').'</h2><form method="post" id="alma-source-form">'; wp_nonce_field('alma_save_source','alma_source_nonce');
+        echo '<input type="hidden" name="action_type" value="save_source"/><input type="hidden" name="source_id" value="'.esc_attr($editing['id']??0).'"/><div class="alma-sections">';
         echo '<div class="alma-section"><h3>Dati source</h3>'; $this->render_input_row('name','Name',$editing['name']??''); $this->render_input_row('provider_label','Provider',$editing['provider_label']??($editing['provider']??''),true);
         echo '<p><label><input type="checkbox" name="is_active" value="1" '.checked(isset($editing['is_active'])?(int)$editing['is_active']:1,1,false).'/> Source attiva</label></p>';
         echo '<p><label>Preset provider<br/><select name="provider_preset" id="provider_preset"><option value="">—</option>'; foreach($presets as $k=>$p){ echo '<option value="'.esc_attr($k).'"'.selected($k,$editing['provider_preset']??'',false).'>'.esc_html($p['label']).'</option>'; } echo '</select></label></p>';
         echo '</div><div class="alma-section"><h3>Tipologie Link assegnate agli import</h3><select multiple name="destination_term_ids[]" id="destination_term_ids" size="6">'; foreach($terms as $t){ echo '<option value="'.intval($t->term_id).'"'.(in_array((int)$t->term_id,$sel,true)?' selected':'').'>'.esc_html($t->name).'</option>'; } echo '</select></div>';
 
-        echo '<div class="alma-section"><h3>Configurazione provider</h3><div id="alma-guided-settings"></div></div>';
-        echo '<div class="alma-section"><h3>Credenziali provider</h3><div id="alma-guided-credentials"></div><p id="alma-viator-credentials-note" class="description" style="display:none">Viator richiede una sola API key. Non servono access token, client ID, client secret, username o password.</p></div>';
-        echo '<div class="alma-section" id="alma-advanced-credentials" style="display:none"><h3>Credenziali avanzate</h3><p class="description">Inserisci solo chiavi extra non coperte dai campi guidati.</p><textarea name="credentials_advanced" id="credentials_advanced" rows="4" class="large-text code"></textarea></div></div><p><button class="button button-primary">Salva source</button></p></form></div>';
-        echo '<table class="widefat striped"><thead><tr><th>Nome</th><th>Provider</th><th>Destination</th><th>Mode</th><th>Stato</th><th>Lingua</th><th>Mercato</th><th>Ultimo Sync</th><th>Stato Sync</th><th>Azioni</th></tr></thead><tbody>';
+        echo '<div class="alma-section alma-config-note"><h3>Configurazione e credenziali provider</h3><p class="description">API key, credenziali e impostazioni del provider si gestiscono nella pagina dedicata «Configura provider».</p>';
+        if($editing && self::preset_has_config_fields($presets[sanitize_key($editing['provider_preset']??'')]??array())){
+            echo '<p><a class="button" href="'.esc_url(add_query_arg(array('post_type'=>'affiliate_link','page'=>'alma-affiliate-sources','alma_view'=>'provider_config','source_id'=>(int)($editing['id']??0)),admin_url('edit.php'))).'">⚙️ Configura provider</a></p>';
+        } else {
+            echo '<p class="description">Dopo il salvataggio della source si apre automaticamente la pagina di configurazione, se il preset scelto richiede impostazioni o credenziali.</p>';
+        }
+        echo '</div></div><p><button class="button button-primary">Salva source</button></p></form></div>';
+        echo '<table class="widefat striped"><thead><tr><th>Nome</th><th>Provider</th><th>Destination</th><th>Mode</th><th>Stato</th><th>Configurazione</th><th>Lingua</th><th>Mercato</th><th>Ultimo Sync</th><th>Stato Sync</th><th>Azioni</th></tr></thead><tbody>';
         foreach((array)$rows as $r){ $s=$this->decode_db_json($r['settings']??''); $ids=json_decode($r['destination_term_ids']??'',true); if(!is_array($ids))$ids=array(); if(empty($ids)&&!empty($r['destination_term_id']))$ids=array((int)$r['destination_term_id']); $names=array(); foreach($ids as $tid){ $term=get_term((int)$tid,'link_type'); if($term&&!is_wp_error($term))$names[]=$term->name; }
             $provider_label=$r['provider_label']?:$r['provider']; $edit_link=add_query_arg(array('post_type'=>'affiliate_link','page'=>'alma-affiliate-sources','edit_source'=>(int)$r['id']),admin_url('edit.php')); $fields_link=add_query_arg(array('post_type'=>'affiliate_link','page'=>'alma-importable-fields','source_id'=>(int)$r['id']),admin_url('edit.php'));
             $delete_link=add_query_arg(array('post_type'=>'affiliate_link','page'=>'alma-affiliate-sources','alma_view'=>'delete_confirmation','source_id'=>(int)$r['id']),admin_url('edit.php'));
             $import_link=add_query_arg(array('post_type'=>'affiliate_link','page'=>'alma-affiliate-sources','alma_view'=>'import_contents','source_id'=>(int)$r['id']),admin_url('edit.php'));
             $ai_behavior_link=add_query_arg(array('post_type'=>'affiliate_link','page'=>'alma-affiliate-sources','alma_view'=>'ai_behavior','source_id'=>(int)$r['id']),admin_url('edit.php'));
+            $config_link=add_query_arg(array('post_type'=>'affiliate_link','page'=>'alma-affiliate-sources','alma_view'=>'provider_config','source_id'=>(int)$r['id']),admin_url('edit.php'));
             $is_deleted=!empty($r['deleted_at']);
-            echo '<tr data-source-id="'.(int)$r['id'].'"><td>'.esc_html($r['name']).'</td><td>'.esc_html($provider_label).'<br/><small>'.esc_html($r['provider']).'</small></td><td>'.esc_html($names?implode(', ',$names):'—').'</td><td>'.esc_html($s['mode']??$s['integration_mode']??'—').'</td><td>'.($is_deleted?'Eliminata':((int)$r['is_active']===1?'Attivo':'Disattivo')).'</td><td>'.esc_html($r['language']).'</td><td>'.esc_html($r['market']).'</td><td>'.esc_html($r['last_sync_at']).'</td><td>'.esc_html($r['last_sync_status']).'</td><td><a class="button button-small" href="'.esc_url($edit_link).'">Modifica</a> <a class="button button-small" href="'.esc_url($delete_link).'">Elimina</a> '.($is_deleted?'':'<button type="button" class="button button-small alma-test-connection" data-source-id="'.(int)$r['id'].'">Testa connessione</button> <a class="button button-small" href="'.esc_url($fields_link).'">Campi importabili</a> <a class="button button-small" href="'.esc_url($import_link).'">Importa contenuti</a> <a class="button button-small" href="'.esc_url($ai_behavior_link).'">Comportamento agente AI</a>').'<div class="alma-inline-result" aria-live="polite"></div></td></tr>'; }
+            $row_preset_key=sanitize_key($r['provider_preset']??''); $row_preset=is_array($presets[$row_preset_key]??null)?$presets[$row_preset_key]:array();
+            $row_settings=$s; $row_credentials=$this->decode_db_json($r['credentials']??'');
+            if($row_preset_key==='travelpayouts_csv'){ $row_settings=array_merge($row_settings,$this->travelpayouts_global_settings()); }
+            $config_status=self::provider_config_status($row_preset_key,$row_preset,$row_settings,$row_credentials);
+            $config_badge=$this->config_status_badge($config_status);
+            $state_badge=$is_deleted?'<span class="alma-badge-error">Eliminata</span>':(((int)$r['is_active']===1)?'<span class="alma-badge-new">Attivo</span>':'<span class="alma-badge-existing">Disattivo</span>');
+            $configurable=!$is_deleted && self::preset_has_config_fields($row_preset);
+            echo '<tr data-source-id="'.(int)$r['id'].'"><td>'.esc_html($r['name']).'</td><td>'.esc_html($provider_label).'<br/><small>'.esc_html($r['provider']).'</small></td><td>'.esc_html($names?implode(', ',$names):'—').'</td><td>'.esc_html($s['mode']??$s['integration_mode']??'—').'</td><td>'.$state_badge.'</td><td>'.$config_badge.'</td><td>'.esc_html($r['language']).'</td><td>'.esc_html($r['market']).'</td><td>'.esc_html($r['last_sync_at']).'</td><td>'.esc_html($r['last_sync_status']).'</td><td>'.($configurable?'<a class="button button-small" href="'.esc_url($config_link).'">⚙️ Configura</a> ':'').'<a class="button button-small" href="'.esc_url($edit_link).'">Modifica</a> <a class="button button-small" href="'.esc_url($delete_link).'">Elimina</a> '.($is_deleted?'':'<button type="button" class="button button-small alma-test-connection" data-source-id="'.(int)$r['id'].'">Testa connessione</button> <a class="button button-small" href="'.esc_url($fields_link).'">Campi importabili</a> <a class="button button-small" href="'.esc_url($import_link).'">Importa contenuti</a> <a class="button button-small" href="'.esc_url($ai_behavior_link).'">Comportamento agente AI</a>').'<div class="alma-inline-result" aria-live="polite"></div></td></tr>'; }
         echo '</tbody></table>';
         $this->render_bulk_image_retry_box($rows);
         echo '</div>'; }
@@ -133,6 +146,12 @@ class ALMA_Affiliate_Source_Manager {
         $ok=false; $result='error';
         if($source_id>0){ $ok=$wpdb->update("{$wpdb->prefix}alma_affiliate_sources",$data,array('id'=>$source_id)); $result=($ok!==false)?'updated':'error'; }
         else { $data['created_at']=current_time('mysql'); $ok=$wpdb->insert("{$wpdb->prefix}alma_affiliate_sources",$data); $result=($ok!==false)?'created':'error'; if($ok!==false){ $source_id=(int)$wpdb->insert_id; } }
+        if($result==='created' && $source_id>0){
+            $created_preset=$this->get_provider_presets()[$provider_preset]??array();
+            if(self::preset_has_config_fields(is_array($created_preset)?$created_preset:array())){
+                wp_safe_redirect(add_query_arg(array('post_type'=>'affiliate_link','page'=>'alma-affiliate-sources','alma_view'=>'provider_config','source_id'=>$source_id,'alma_result'=>'created_configure'),admin_url('edit.php'))); exit;
+            }
+        }
         $redirect=array('post_type'=>'affiliate_link','page'=>'alma-affiliate-sources','alma_view'=>'save_confirmation','status'=>$result);
         if($source_id>0){ $redirect['source_id']=$source_id; }
         wp_safe_redirect(add_query_arg($redirect,admin_url('edit.php'))); exit; }
@@ -143,6 +162,7 @@ class ALMA_Affiliate_Source_Manager {
         if(($_SERVER['REQUEST_METHOD']??'')!=='POST') return;
         $action=sanitize_key($_POST['action_type']??'');
         if($action==='save_source'){ $this->maybe_handle_source_form(); return; }
+        if($action==='save_provider_config'){ $this->maybe_handle_provider_config_form(); return; }
         if($action==='gyg_csv_upload'){ $this->handle_gyg_csv_upload(); return; }
         if($action==='gyg_csv_save_mapping'){ $this->handle_gyg_csv_save_mapping(); return; }
         if($action==='gyg_csv_import_selected'){ $this->handle_gyg_csv_import_selected(); return; }
@@ -160,6 +180,283 @@ class ALMA_Affiliate_Source_Manager {
         $res=$svc->archive_source($source_id,get_current_user_id());
         wp_safe_redirect(add_query_arg(array('post_type'=>'affiliate_link','page'=>'alma-affiliate-sources','alma_view'=>'delete_confirmation','source_id'=>$source_id,'status'=>is_wp_error($res)?'error':'archived'),admin_url('edit.php'))); exit;
     }
+    public static function is_secret_key($key){
+        $key = sanitize_key($key);
+        foreach (array('token', 'api_key', 'secret', 'password', 'signing_key') as $needle) {
+            if (strpos($key, $needle) !== false) { return true; }
+        }
+        return false;
+    }
+
+    public static function preset_field_label($key){
+        $labels = array(
+            'api_key'=>'API key','access_token'=>'Access token','bearer_token'=>'Bearer token','affiliate_id'=>'Affiliate ID',
+            'site_id'=>'Site ID','client_id'=>'Client ID','client_secret'=>'Client secret','username'=>'Username','password'=>'Password',
+            'partner_id'=>'Partner ID','referral_url'=>'Referral URL','tracking_code'=>'Tracking code','xml_api_key'=>'XML API key',
+            'xml_username'=>'XML username','xml_password'=>'XML password','jwt_signing_key'=>'JWT signing key','jwt_key_id'=>'JWT key ID',
+            'cnt_language'=>'Lingua contenuti','currency'=>'Valuta','default_query'=>'Query predefinita','limit'=>'Limite risultati',
+            'timeout'=>'Timeout API (secondi)','utm_medium'=>'UTM medium','environment'=>'Environment','base_url'=>'Base URL',
+            'user_agent'=>'User-Agent','api_version'=>'API version','language'=>'Lingua','locale'=>'Locale','market'=>'Mercato',
+            'mode'=>'Modalità','marker'=>'Marker (Partner ID)','api_token'=>'API token',
+        );
+        $key = sanitize_key($key);
+        if (isset($labels[$key])) { return $labels[$key]; }
+        return ucwords(str_replace('_', ' ', $key));
+    }
+
+    public static function normalize_preset_fields($fields, $secret_default = false){
+        $normalized = array();
+        foreach ((array) $fields as $field) {
+            if (is_array($field)) {
+                $key = sanitize_key($field['key'] ?? '');
+                if ($key === '' || $key === 'type_mappings') { continue; }
+                $type = in_array((string) ($field['type'] ?? 'text'), array('text', 'password', 'select', 'number'), true) ? (string) $field['type'] : 'text';
+                $secret = $secret_default || $type === 'password' || self::is_secret_key($key);
+                $normalized[] = array(
+                    'key' => $key,
+                    'label' => (string) (($field['label'] ?? '') !== '' ? $field['label'] : self::preset_field_label($key)),
+                    'type' => $secret ? 'password' : $type,
+                    'default' => (string) ($field['default'] ?? ''),
+                    'required' => !empty($field['required']),
+                    'options' => is_array($field['options'] ?? null) ? $field['options'] : array(),
+                    'placeholder' => (string) ($field['placeholder'] ?? ''),
+                    'help' => (string) ($field['help'] ?? ''),
+                    'secret' => $secret,
+                );
+                continue;
+            }
+            $key = sanitize_key((string) $field);
+            if ($key === '' || $key === 'type_mappings') { continue; }
+            $secret = $secret_default || self::is_secret_key($key);
+            $type = $secret ? 'password' : (in_array($key, array('limit', 'import_limit', 'timeout', 'batch_size'), true) ? 'number' : 'text');
+            $normalized[] = array('key'=>$key,'label'=>self::preset_field_label($key),'type'=>$type,'default'=>'','required'=>false,'options'=>array(),'placeholder'=>'','help'=>'','secret'=>$secret);
+        }
+        return $normalized;
+    }
+
+    public static function preset_has_config_fields($preset){
+        if (!is_array($preset)) { return false; }
+        $settings_fields = self::normalize_preset_fields($preset['settings_fields'] ?? array(), false);
+        $credentials_fields = self::normalize_preset_fields($preset['credentials_fields'] ?? array(), true);
+        return !empty($settings_fields) || !empty($credentials_fields);
+    }
+
+    public static function provider_config_status($preset_key, $preset, $settings, $credentials){
+        $preset = is_array($preset) ? $preset : array();
+        $settings = is_array($settings) ? $settings : array();
+        $credentials = is_array($credentials) ? $credentials : array();
+        $settings_fields = self::normalize_preset_fields($preset['settings_fields'] ?? array(), false);
+        $credentials_fields = self::normalize_preset_fields($preset['credentials_fields'] ?? array(), true);
+        if (empty($settings_fields) && empty($credentials_fields)) {
+            return array('state' => 'none', 'missing' => array());
+        }
+        $labels = array();
+        foreach (array_merge($settings_fields, $credentials_fields) as $f) { $labels[$f['key']] = $f['label']; }
+        $required = array_values(array_filter(array_map('sanitize_key', (array) ($preset['required_fields'] ?? array()))));
+        $missing = array();
+        foreach ($required as $key) {
+            if (!isset($labels[$key])) { continue; }
+            $value = $credentials[$key] ?? ($settings[$key] ?? '');
+            if (is_string($value)) { $value = trim($value); }
+            if ($value === '' || $value === null || $value === 0 || $value === '0') {
+                // 0/'0' contano come mancanti solo per gli ID numerici richiesti (trs/marker).
+                if ($value === 0 || $value === '0') {
+                    if (in_array($key, array('tp_trs', 'tp_marker'), true)) { $missing[] = $labels[$key]; }
+                    continue;
+                }
+                $missing[] = $labels[$key];
+            }
+        }
+        return array('state' => empty($missing) ? 'ok' : 'missing', 'missing' => $missing);
+    }
+
+    private function config_status_badge($status){
+        $state = is_array($status) ? (string) ($status['state'] ?? 'none') : 'none';
+        if ($state === 'ok') { return '<span class="alma-config-status is-ok">✅ Configurata</span>'; }
+        if ($state === 'missing') {
+            $missing = implode(', ', array_map('sanitize_text_field', (array) ($status['missing'] ?? array())));
+            return '<span class="alma-config-status is-missing" title="'.esc_attr('Campi mancanti: '.$missing).'">⚠️ Da completare</span>';
+        }
+        return '<span class="alma-config-status is-none">—</span>';
+    }
+
+    private function travelpayouts_global_settings(){
+        if (!class_exists('ALMA_Travelpayouts_Importer')) { return array(); }
+        $out = array();
+        $token = trim((string) get_option(ALMA_Travelpayouts_Importer::OPTION_TOKEN, ''));
+        if ($token !== '') { $out['tp_api_token'] = $token; }
+        $trs = absint(get_option(ALMA_Travelpayouts_Importer::OPTION_TRS, 0));
+        $marker = absint(get_option(ALMA_Travelpayouts_Importer::OPTION_MARKER, 0));
+        $out['tp_trs'] = $trs > 0 ? (string) $trs : '';
+        $out['tp_marker'] = $marker > 0 ? (string) $marker : '';
+        $out['tp_shorten'] = get_option(ALMA_Travelpayouts_Importer::OPTION_SHORTEN, '1') === '1' ? '1' : '0';
+        return $out;
+    }
+
+    private function sync_travelpayouts_global_settings($settings){
+        if (!class_exists('ALMA_Travelpayouts_Importer')) { return; }
+        // Le opzioni globali restano la fonte di verità per il convertitore API (account unico).
+        if (trim((string) ($settings['tp_api_token'] ?? '')) !== '') {
+            update_option(ALMA_Travelpayouts_Importer::OPTION_TOKEN, trim((string) $settings['tp_api_token']), false);
+        }
+        if (array_key_exists('tp_trs', $settings)) { update_option(ALMA_Travelpayouts_Importer::OPTION_TRS, absint($settings['tp_trs']), false); }
+        if (array_key_exists('tp_marker', $settings)) { update_option(ALMA_Travelpayouts_Importer::OPTION_MARKER, absint($settings['tp_marker']), false); }
+        if (array_key_exists('tp_shorten', $settings)) { update_option(ALMA_Travelpayouts_Importer::OPTION_SHORTEN, ((string) $settings['tp_shorten'] === '1') ? '1' : '0', false); }
+    }
+
+    private function render_provider_config_field($group, $field, $value, $has_value){
+        $name = sanitize_key($group).'['.esc_attr($field['key']).']';
+        $required_mark = !empty($field['required']) ? ' *' : '';
+        echo '<p><label><strong>'.esc_html($field['label']).esc_html($required_mark).'</strong><br/>';
+        if (!empty($field['secret'])) {
+            $ph = $has_value ? 'già salvata' : $field['placeholder'];
+            $required_attr = (!empty($field['required']) && !$has_value) ? ' required' : '';
+            echo '<input type="password" name="'.$name.'" value="" placeholder="'.esc_attr($ph).'" class="regular-text" autocomplete="off"'.$required_attr.'/>';
+        } elseif ($field['type'] === 'select' && !empty($field['options'])) {
+            $current = ($value !== '' && $value !== null) ? (string) $value : (string) $field['default'];
+            echo '<select name="'.$name.'">';
+            foreach ((array) $field['options'] as $opt) {
+                $ov = (string) ($opt['value'] ?? ''); $ol = (string) ($opt['label'] ?? $ov);
+                echo '<option value="'.esc_attr($ov).'"'.selected($current, $ov, false).'>'.esc_html($ol).'</option>';
+            }
+            echo '</select>';
+        } else {
+            $current = ($value !== '' && $value !== null) ? (string) $value : (string) $field['default'];
+            $type = $field['type'] === 'number' ? 'number' : 'text';
+            $required_attr = !empty($field['required']) ? ' required' : '';
+            echo '<input type="'.$type.'" name="'.$name.'" value="'.esc_attr($current).'" placeholder="'.esc_attr($field['placeholder']).'" class="regular-text"'.$required_attr.'/>';
+        }
+        echo '</label>';
+        if ($field['help'] !== '') { echo '<br/><span class="description">'.esc_html($field['help']).'</span>'; }
+        if (!empty($field['secret']) && $has_value) { echo '<br/><span class="description">Valore già salvato: lascia vuoto per mantenerlo.</span>'; }
+        echo '</p>';
+    }
+
+    private function render_provider_config_page(){
+        global $wpdb; $source_id = absint($_GET['source_id'] ?? 0);
+        $source = $source_id > 0 ? $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}alma_affiliate_sources WHERE id=%d", $source_id), ARRAY_A) : array();
+        $list_url = add_query_arg(array('post_type'=>'affiliate_link','page'=>'alma-affiliate-sources'), admin_url('edit.php'));
+        echo '<div class="wrap alma-provider-config-page"><h1>Configura provider</h1><p><a class="button" href="'.esc_url($list_url).'">Torna alla lista Sources</a></p>';
+        if (!is_array($source) || empty($source) || !empty($source['deleted_at'])) { echo '<div class="notice notice-warning"><p>Source non valida o archiviata.</p></div></div>'; return; }
+        $presets = $this->get_provider_presets();
+        $preset_key = sanitize_key($source['provider_preset'] ?? '');
+        $preset = is_array($presets[$preset_key] ?? null) ? $presets[$preset_key] : array();
+        $settings = $this->decode_db_json($source['settings'] ?? '');
+        $credentials = $this->decode_db_json($source['credentials'] ?? '');
+        if ($preset_key === 'travelpayouts_csv') { $settings = array_merge($settings, $this->travelpayouts_global_settings()); }
+        $result = sanitize_key($_GET['alma_result'] ?? '');
+        if ($result === 'config_saved') { echo '<div class="notice notice-success is-dismissible"><p>Configurazione provider salvata.</p></div>'; }
+        elseif ($result === 'config_error') { echo '<div class="notice notice-error is-dismissible"><p>Errore nel salvataggio della configurazione provider.</p></div>'; }
+        elseif ($result === 'invalid_json') { echo '<div class="notice notice-error is-dismissible"><p>JSON credenziali avanzate non valido: nessuna modifica salvata.</p></div>'; }
+        elseif ($result === 'created_configure') { echo '<div class="notice notice-success is-dismissible"><p>Source creata correttamente. Completa ora la configurazione del provider per abilitare test connessione e import.</p></div>'; }
+        $config_status = self::provider_config_status($preset_key, $preset, $settings, $credentials);
+        $edit_url = add_query_arg(array('post_type'=>'affiliate_link','page'=>'alma-affiliate-sources','edit_source'=>$source_id), admin_url('edit.php'));
+        $import_url = add_query_arg(array('post_type'=>'affiliate_link','page'=>'alma-affiliate-sources','alma_view'=>'import_contents','source_id'=>$source_id), admin_url('edit.php'));
+        echo '<div class="postbox"><h2 class="hndle"><span>Riepilogo Source</span></h2><div class="inside"><div class="alma-grid-3">';
+        echo '<p><strong>Nome Source:</strong> '.esc_html($source['name'] ?? '').'</p>';
+        echo '<p><strong>Provider:</strong> '.esc_html(($source['provider_label'] ?? '') ?: ($source['provider'] ?? '')).'</p>';
+        echo '<p><strong>Preset:</strong> '.esc_html((string) ($preset['label'] ?? ($preset_key !== '' ? $preset_key : '—'))).'</p>';
+        echo '<p><strong>Stato:</strong> '.(((int) ($source['is_active'] ?? 0) === 1) ? '<span class="alma-badge-new">Attivo</span>' : '<span class="alma-badge-existing">Disattivo</span>').'</p>';
+        echo '<p><strong>Configurazione:</strong> '.$this->config_status_badge($config_status).'</p>';
+        echo '</div>';
+        if ($config_status['state'] === 'missing') { echo '<p class="description">Campi obbligatori mancanti: <strong>'.esc_html(implode(', ', $config_status['missing'])).'</strong></p>'; }
+        echo '<p><a class="button" href="'.esc_url($edit_url).'">Modifica dati source</a> <a class="button" href="'.esc_url($import_url).'">Importa contenuti</a></p></div></div>';
+        if ($preset_key === '' || empty($preset)) {
+            echo '<div class="notice notice-warning inline"><p>Nessun preset provider selezionato per questa source. Scegli un preset in «Modifica dati source» per configurare API key e impostazioni.</p></div></div>';
+            return;
+        }
+        $help_bits = array_filter(array((string) ($preset['description'] ?? ''), (string) ($preset['help_text'] ?? '')));
+        if (!empty($help_bits)) { echo '<div class="notice notice-info inline"><p>'.esc_html(implode(' ', $help_bits)).'</p></div>'; }
+        if ((string) ($preset['unsupported_message'] ?? '') !== '' && (string) ($preset['provider_type'] ?? '') !== 'manual') { echo '<div class="notice notice-warning inline"><p>'.esc_html((string) $preset['unsupported_message']).' Puoi comunque salvare la configurazione in anticipo.</p></div>'; }
+        $settings_fields = self::normalize_preset_fields($preset['settings_fields'] ?? array(), false);
+        $credentials_fields = self::normalize_preset_fields($preset['credentials_fields'] ?? array(), true);
+        if (empty($settings_fields) && empty($credentials_fields)) {
+            echo '<div class="notice notice-info inline"><p>Questo preset non richiede configurazione o credenziali provider.</p></div></div>';
+            return;
+        }
+        echo '<form method="post">'; wp_nonce_field('alma_save_provider_config', 'alma_provider_config_nonce');
+        echo '<input type="hidden" name="action_type" value="save_provider_config"/><input type="hidden" name="source_id" value="'.(int) $source_id.'"/>';
+        if (!empty($settings_fields)) {
+            echo '<div class="postbox"><h2 class="hndle"><span>Configurazione provider</span></h2><div class="inside">';
+            if ($preset_key === 'travelpayouts_csv') { echo '<p class="description">Token, trs e marker Travelpayouts sono condivisi da tutte le source Travelpayouts (account unico): modificarli qui li aggiorna ovunque.</p>'; }
+            foreach ($settings_fields as $field) {
+                $value = $settings[$field['key']] ?? '';
+                $has_value = is_scalar($value) && trim((string) $value) !== '';
+                $this->render_provider_config_field('settings_fields', $field, is_scalar($value) ? (string) $value : '', $has_value);
+            }
+            echo '</div></div>';
+        }
+        if (!empty($credentials_fields)) {
+            echo '<div class="postbox"><h2 class="hndle"><span>Credenziali provider</span></h2><div class="inside">';
+            echo '<p class="description">Le credenziali salvate non vengono mai mostrate in chiaro. Lascia vuoto un campo per mantenere il valore già salvato.</p>';
+            if ($preset_key === 'viator') { echo '<p class="description">Viator richiede una sola API key. Non servono access token, client ID, client secret, username o password.</p>'; }
+            foreach ($credentials_fields as $field) {
+                $has_value = trim((string) ($credentials[$field['key']] ?? '')) !== '';
+                $this->render_provider_config_field('credentials_fields', $field, '', $has_value);
+            }
+            echo '</div></div>';
+        }
+        echo '<div class="postbox"><h2 class="hndle"><span>Credenziali avanzate (JSON)</span></h2><div class="inside"><p class="description">Solo per chiavi extra non coperte dai campi guidati. Le chiavi inserite si aggiungono alle credenziali esistenti senza rimuoverle.</p><textarea name="credentials_advanced" rows="4" class="large-text code" placeholder=\'{"chiave_extra":"valore"}\'></textarea></div></div>';
+        echo '<p><button class="button button-primary">Salva configurazione</button> ';
+        if (!empty($preset['supports_connection_test'])) {
+            echo '<span class="alma-test-connection-wrap"><button type="button" class="button alma-test-connection" data-source-id="'.(int) $source_id.'">Testa connessione</button><span class="alma-inline-result" aria-live="polite"></span></span> ';
+        }
+        echo '<a class="button" href="'.esc_url($list_url).'">Torna alla lista Sources</a></p></form></div>';
+    }
+
+    private function maybe_handle_provider_config_form(){
+        if (!wp_verify_nonce($_POST['alma_provider_config_nonce'] ?? '', 'alma_save_provider_config')) { wp_die('Nonce non valido'); }
+        if (!current_user_can('manage_options')) { wp_die('Unauthorized'); }
+        global $wpdb;
+        $source_id = absint($_POST['source_id'] ?? 0);
+        $redirect = array('post_type'=>'affiliate_link','page'=>'alma-affiliate-sources','alma_view'=>'provider_config','source_id'=>$source_id);
+        $existing = $source_id > 0 ? $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}alma_affiliate_sources WHERE id=%d", $source_id), ARRAY_A) : null;
+        if (!is_array($existing) || empty($existing) || !empty($existing['deleted_at'])) {
+            $redirect['alma_result'] = 'config_error';
+            wp_safe_redirect(add_query_arg($redirect, admin_url('edit.php'))); exit;
+        }
+        $preset_key = sanitize_key($existing['provider_preset'] ?? '');
+        $presets = $this->get_provider_presets();
+        $preset = is_array($presets[$preset_key] ?? null) ? $presets[$preset_key] : array();
+        $settings = $this->decode_db_json($existing['settings'] ?? '');
+        $credentials = $this->decode_db_json($existing['credentials'] ?? '');
+        $ca = $this->parse_json($_POST['credentials_advanced'] ?? '');
+        if (isset($ca['__invalid'])) {
+            $redirect['alma_result'] = 'invalid_json';
+            wp_safe_redirect(add_query_arg($redirect, admin_url('edit.php'))); exit;
+        }
+        $secret_settings = array();
+        foreach (self::normalize_preset_fields($preset['settings_fields'] ?? array(), false) as $f) {
+            if (!empty($f['secret'])) { $secret_settings[$f['key']] = true; }
+        }
+        foreach ((array) ($_POST['settings_fields'] ?? array()) as $k => $v) {
+            $key = sanitize_key($k);
+            if ($key === '' || $key === 'type_mappings') { continue; }
+            if ($key === 'import_link_type_term_ids') { $settings[$key] = array_values(array_unique(array_filter(array_map('absint', (array) $v)))); continue; }
+            if (in_array($key, array('import_limit', 'limit'), true)) { $settings[$key] = max(1, min(100, (int) $v)); continue; }
+            if ($key === 'batch_size') { $settings[$key] = max(1, min(500, (int) $v)); continue; }
+            if ($key === 'timeout') { $settings[$key] = max(3, min(30, (int) $v)); continue; }
+            if ($key === 'regenerate_ai_context_on_import') { $settings[$key] = sanitize_text_field(wp_unslash($v)) === '1' ? '1' : '0'; continue; }
+            $value = is_scalar($v) ? sanitize_text_field(wp_unslash((string) $v)) : '';
+            if (isset($secret_settings[$key]) && $value === '') { continue; } // campo segreto vuoto = mantieni il valore salvato
+            $settings[$key] = $value;
+        }
+        foreach ((array) ($_POST['credentials_fields'] ?? array()) as $k => $v) {
+            $k = sanitize_key($k);
+            $v = is_scalar($v) ? sanitize_text_field(wp_unslash((string) $v)) : '';
+            if ($k !== '' && $v !== '') { $credentials[$k] = $v; }
+        }
+        foreach ($ca as $k => $v) {
+            if ($v !== '' && $v !== null) { $credentials[sanitize_key($k)] = is_scalar($v) ? sanitize_text_field((string) $v) : wp_json_encode($v); }
+        }
+        if ($preset_key === 'travelpayouts_csv') {
+            $this->sync_travelpayouts_global_settings($settings);
+        }
+        $ok = $wpdb->update("{$wpdb->prefix}alma_affiliate_sources", array('settings'=>wp_json_encode($settings), 'credentials'=>wp_json_encode($credentials), 'updated_at'=>current_time('mysql')), array('id'=>$source_id));
+        $redirect['alma_result'] = ($ok !== false) ? 'config_saved' : 'config_error';
+        wp_safe_redirect(add_query_arg($redirect, admin_url('edit.php'))); exit;
+    }
+
     private function render_import_contents_page(){
         global $wpdb; $source_id=absint($_GET['source_id']??0); $source=$source_id>0?$wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}alma_affiliate_sources WHERE id=%d",$source_id),ARRAY_A):array();
         $list_url=add_query_arg(array('post_type'=>'affiliate_link','page'=>'alma-affiliate-sources'),admin_url('edit.php'));

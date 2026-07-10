@@ -1,3 +1,9 @@
+## 2.106.0 - 2026-07-10
+
+### Pagina «Configura provider» + Affiliate Sources più chiari
+- API key e impostazioni provider ora si gestiscono in una pagina dedicata «Configura provider» (stessa area Affiliate Sources), per tutti i preset: credenziali mai in chiaro (vuoto = mantieni), test connessione, e redirect automatico alla configurazione dopo la creazione di una source. La lista mostra badge di stato colorati e un badge «Configurazione» che segnala i campi obbligatori mancanti; le credenziali Travelpayouts (condivise, account unico) si gestiscono qui e la pagina di import ne mostra solo lo stato.
+- Versione plugin aggiornata a `2.106.0`.
+
 ## 2.105.0 - 2026-07-08
 
 ### Immagini sempre nuove + Telegram senza doppioni
