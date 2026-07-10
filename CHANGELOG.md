@@ -1,3 +1,17 @@
+## 2.106.0 - 2026-07-10
+
+### Pagina «Configura provider» separata + UI/UX Affiliate Sources
+- **Richiesta**: migliorare UI e UX dei sources di importazione; per le source che richiedono API key ecc., una pagina di configurazione separata ma nella stessa area.
+- **Nuova pagina «Configura provider»** (`alma_view=provider_config`, sempre dentro Affiliate Sources): riepilogo source con stato configurazione, descrizione/istruzioni del preset, **Configurazione provider** (tutti i campi del preset, resi lato server per TUTTI i preset — prima solo Viator/GYG/GYG CSV via JavaScript), **Credenziali provider** (sempre come password: mai mostrate in chiaro, placeholder "già salvata", campo vuoto = mantieni il valore salvato) e **Credenziali avanzate JSON** (chiavi extra, con guardia su JSON non valido). Pulsanti Salva configurazione, Testa connessione (se il preset lo supporta), Torna alla lista.
+- **Salvataggio dedicato** (`save_provider_config`, nonce proprio): aggiorna SOLO le colonne `settings`/`credentials` della source con gli stessi clamp numerici del form storico (limit 1-100, batch 1-500, timeout 3-30); i campi segreti vuoti mantengono il valore esistente. Il form storico `save_source` resta invariato (retrocompatibilità).
+- **Form Aggiungi/Modifica source alleggerito**: rimosse le sezioni Configurazione provider/Credenziali/Credenziali avanzate (ora nella pagina dedicata); al loro posto un box informativo con link «⚙️ Configura provider». Dopo la **creazione** di una source il redirect porta direttamente alla pagina di configurazione se il preset richiede impostazioni o credenziali.
+- **Lista sources migliorata**: nuova colonna **Configurazione** con badge (✅ Configurata / ⚠️ Da completare con tooltip dei campi mancanti / — per i preset senza campi, calcolato dai `required_fields` del preset), badge colorati per lo stato (Attivo verde, Disattivo giallo, Eliminata rosso), pulsante «⚙️ Configura» nelle azioni e descrizione della pagina sotto il titolo.
+- **Travelpayouts integrato**: il preset ora ha campi tipizzati (token come password, trs/marker numerici richiesti, link brevi Sì/No); la pagina di configurazione legge e aggiorna le **opzioni globali** condivise (`alma_tp_api_token`/`trs`/`marker`/`shorten` — account unico, fonte di verità per il convertitore API); la pagina di import mostra solo lo stato credenziali con link a «Configura provider» (l'handler storico di salvataggio resta attivo per retrocompatibilità).
+- **Viator**: la «Modalità import» (create_update/create_only), prima disponibile solo nel form JavaScript, è ora un campo del preset visibile nella pagina di configurazione.
+- Il vecchio JavaScript dei campi guidati resta ed è un no-op sicuro senza i contenitori rimossi; nessuna option o API rimossa.
+- Test standalone 51/51 (campi segreti, normalizzazione dei due formati schema preset, stato configurazione con required, empty-keep, clamp, smoke su viste/route/preset/CSS).
+- Versione plugin aggiornata a `2.106.0`.
+
 ## 2.105.0 - 2026-07-08
 
 ### Immagini mai ripetute (nel post e tra articoli) + Telegram accorpato alle pubblicazioni
