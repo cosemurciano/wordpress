@@ -738,6 +738,22 @@ class ALMA_AI_Content_Agent_Draft_Builder {
         return ($total > 0 && $accommodation * 2 >= $total) ? 'destination_cards' : 'experience_cards';
     }
 
+    /**
+     * Marca gli attachment usati (featured + editoriali) con data e contatore:
+     * il media selector li esclude dalle candidate per il periodo di cooldown,
+     * così le stesse immagini non si ripetono tra gli articoli.
+     */
+    private static function mark_media_used($featured_id, $media_used) {
+        $ids = array(absint($featured_id));
+        foreach ((array) $media_used as $item) {
+            $ids[] = absint(is_array($item) ? ($item['attachment_id'] ?? 0) : $item);
+        }
+        foreach (array_values(array_unique(array_filter($ids))) as $att_id) {
+            update_post_meta($att_id, '_alma_media_last_used_at', current_time('mysql'));
+            update_post_meta($att_id, '_alma_media_use_count', absint(get_post_meta($att_id, '_alma_media_use_count', true)) + 1);
+        }
+    }
+
     private static function candidate_affiliate_images($affiliate_links) {
         $images = array();
         foreach ((array)$affiliate_links as $link) {
@@ -1338,7 +1354,7 @@ class ALMA_AI_Content_Agent_Draft_Builder {
         if (!empty($clean['featured_image_id'])) set_post_thumbnail($post_id, $clean['featured_image_id']);
         if (class_exists('ALMA_AI_Seo_Bridge')) { ALMA_AI_Seo_Bridge::apply($post_id, (string)($clean['seo_title'] ?? ''), (string)($clean['seo_description'] ?? '')); }
         update_post_meta($post_id, '_alma_ai_agent_generated', 1); update_post_meta($post_id, '_alma_ai_agent_idea_id', $idea_id); update_post_meta($post_id, '_alma_ai_agent_brief_id', absint($brief['id'] ?? 0)); update_post_meta($post_id, '_alma_ai_agent_task', 'content_draft_generation'); update_post_meta($post_id, '_alma_ai_agent_model', sanitize_text_field($res['model'] ?? '')); update_post_meta($post_id, '_alma_ai_agent_instruction_profile_id', absint($brief['instruction_profile_id'] ?? $idea['instruction_profile_id'] ?? 0)); update_post_meta($post_id, '_alma_ai_agent_instruction_snapshot_hash', sanitize_text_field($brief['instruction_snapshot_hash'] ?? $idea['instruction_snapshot_hash'] ?? '')); update_post_meta($post_id, '_alma_ai_agent_affiliate_links_used', wp_json_encode($clean['affiliate_links_used'])); update_post_meta($post_id, '_alma_ai_agent_affiliate_shortcodes_used', wp_json_encode((array)($clean['affiliate_shortcodes_used'] ?? array()))); update_post_meta($post_id, '_alma_ai_agent_affiliate_urls_used', wp_json_encode((array)($clean['affiliate_urls_used'] ?? array())));
-        update_post_meta($post_id, '_alma_ai_agent_internal_urls_used', wp_json_encode((array)($clean['internal_urls_used'] ?? array()))); update_post_meta($post_id, '_alma_ai_agent_media_used', wp_json_encode((array)($clean['media_used'] ?? array()))); update_post_meta($post_id, '_alma_ai_agent_image_ids_used', wp_json_encode($clean['inline_image_ids'])); update_post_meta($post_id, '_alma_ai_agent_featured_image_id', absint($clean['featured_image_id'])); update_post_meta($post_id, '_alma_ai_agent_qa_warnings', wp_json_encode(array_merge((array)$clean['warnings'], (array)($parsed['warnings'] ?? array())))); update_post_meta($post_id, '_alma_ai_seo_title', sanitize_text_field($parsed['seo_title'] ?? '')); update_post_meta($post_id, '_alma_ai_meta_description', sanitize_text_field($parsed['meta_description'] ?? '')); update_post_meta($post_id, '_alma_ai_focus_keyword', sanitize_text_field($parsed['focus_keyword'] ?? '')); update_post_meta($post_id, '_alma_ai_generated_at', current_time('mysql')); update_post_meta($post_id, '_alma_ai_suggested_tags', wp_json_encode((array)($parsed['suggested_tags'] ?? array())));
+        update_post_meta($post_id, '_alma_ai_agent_internal_urls_used', wp_json_encode((array)($clean['internal_urls_used'] ?? array()))); update_post_meta($post_id, '_alma_ai_agent_media_used', wp_json_encode((array)($clean['media_used'] ?? array()))); update_post_meta($post_id, '_alma_ai_agent_image_ids_used', wp_json_encode($clean['inline_image_ids'])); update_post_meta($post_id, '_alma_ai_agent_featured_image_id', absint($clean['featured_image_id'])); self::mark_media_used(absint($clean['featured_image_id']), (array) ($clean['media_used'] ?? array())); update_post_meta($post_id, '_alma_ai_agent_qa_warnings', wp_json_encode(array_merge((array)$clean['warnings'], (array)($parsed['warnings'] ?? array())))); update_post_meta($post_id, '_alma_ai_seo_title', sanitize_text_field($parsed['seo_title'] ?? '')); update_post_meta($post_id, '_alma_ai_meta_description', sanitize_text_field($parsed['meta_description'] ?? '')); update_post_meta($post_id, '_alma_ai_focus_keyword', sanitize_text_field($parsed['focus_keyword'] ?? '')); update_post_meta($post_id, '_alma_ai_generated_at', current_time('mysql')); update_post_meta($post_id, '_alma_ai_suggested_tags', wp_json_encode((array)($parsed['suggested_tags'] ?? array())));
         ALMA_AI_Usage_Logger::log(array('task'=>'content_draft_generation','success'=>true,'model'=>$res['model'] ?? '','response_time'=>$res['response_time'] ?? null,'input_tokens'=>$res['usage']['input_tokens'] ?? null,'output_tokens'=>$res['usage']['output_tokens'] ?? null,'estimated_cost'=>$res['estimated_cost'] ?? null,'reference_id'=>'post:'.$post_id));
         return array('success'=>true,'post_id'=>$post_id,'edit_url'=>get_edit_post_link($post_id, 'raw'),'warnings'=>array_values(array_merge((array)$clean['warnings'], (array)($parsed['warnings'] ?? array()))));
     }
@@ -1563,6 +1579,7 @@ class ALMA_AI_Content_Agent_Draft_Builder {
             $clean['warnings'][] = 'Immagine in evidenza non indicata dall\'AI e generazione immagini AI disattivata: bozza senza immagine in evidenza.';
         }
         update_post_meta($post_id, '_alma_ai_agent_selected_featured_image_id', $selected_featured_id);
+        self::mark_media_used($selected_featured_id, (array) ($clean['media_used'] ?? array()));
         if ($selected_featured_id > 0) {
             $selected_featured_url = function_exists('wp_get_attachment_image_url') ? wp_get_attachment_image_url($selected_featured_id, 'full') : '';
             if (!$selected_featured_url && function_exists('wp_get_attachment_url')) { $selected_featured_url = wp_get_attachment_url($selected_featured_id); }

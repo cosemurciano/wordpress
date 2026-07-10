@@ -556,6 +556,10 @@ class ALMA_Telegram_Bot {
 
     public static function notify_draft_created($post_id, $post_status = 'draft') {
         if (!self::is_enabled() || get_option(self::OPTION_NOTIFY_DRAFTS, '1') !== '1') { return; }
+        // Post pubblicato subito (auto-publish): nessuna card bozza — la
+        // notifica di pubblicazione (link articolo + Modifica) è l'unico
+        // messaggio, mai doppioni.
+        if ($post_status === 'publish' || get_post_status($post_id) === 'publish') { return; }
         foreach (self::get_chat_ids() as $chat_id) {
             self::send_draft_card($chat_id, $post_id);
         }
@@ -563,7 +567,19 @@ class ALMA_Telegram_Bot {
 
     public static function notify_agent_report($report) {
         if (!self::is_enabled()) { return; }
-        self::broadcast(self::format_agent_report((array) $report));
+        $report = (array) $report;
+        // Accorpamento con le notifiche di pubblicazione: ogni articolo
+        // pubblicato è GIÀ arrivato in chat (link + Modifica). Il report di
+        // fine esecuzione parte solo se aggiunge informazioni: errori,
+        // bozze in attesa di revisione o esecuzione fallita.
+        $has_extra = !empty($report['error']);
+        foreach ((array) ($report['drafts_created'] ?? array()) as $draft_row) {
+            $post_id = (int) ($draft_row['post_id'] ?? 0);
+            if ($post_id > 0 && get_post_status($post_id) !== 'publish') { $has_extra = true; break; }
+            if ($post_id < 1 && !empty($draft_row['error'])) { $has_extra = true; break; }
+        }
+        if (!$has_extra) { return; }
+        self::broadcast(self::format_agent_report($report));
     }
 
     /**

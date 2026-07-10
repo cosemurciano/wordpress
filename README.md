@@ -1,3 +1,9 @@
+## 2.105.0 - 2026-07-08
+
+### Immagini sempre nuove + Telegram senza doppioni
+- La stessa foto non compare più due volte nello stesso articolo né come featured duplicata nel corpo; le immagini usate di recente (90 giorni) sono escluse dalle candidate e al loro posto vengono generate immagini AI nuove. Su Telegram: solo la notifica di pubblicazione (link + Modifica); il report agente parte solo se ha errori o bozze in attesa da segnalare.
+- Versione plugin aggiornata a `2.105.0`.
+
 ## 2.104.0 - 2026-07-08
 
 ### Fix accenti corrotti negli articoli AI

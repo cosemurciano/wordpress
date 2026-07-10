@@ -700,6 +700,59 @@ class ALMA_AI_Content_Agent_Draft_Quality_Checker {
         return implode('', $parts);
     }
 
+    /** Nome file senza dimensione/estensione: identifica l'immagine anche nelle varianti ridimensionate. */
+    private static function image_src_token($src) {
+        $path = function_exists('wp_parse_url') ? wp_parse_url((string)$src, PHP_URL_PATH) : parse_url((string)$src, PHP_URL_PATH);
+        $file = basename((string)($path ?: $src));
+        $file = preg_replace('/\.(webp|jpe?g|png|gif|avif)$/i', '', $file);
+        return strtolower((string) preg_replace('/-\d+x\d+$/', '', (string)$file));
+    }
+
+    /**
+     * La stessa immagine non deve comparire due volte nello stesso articolo:
+     * le occorrenze successive alla prima (stessa src, anche in variante
+     * ridimensionata) vengono rimosse.
+     */
+    public static function remove_duplicate_images($content, &$warnings) {
+        $seen = array();
+        $removed = 0;
+        $content = preg_replace_callback('/<img\b[^>]*>/i', function ($m) use (&$seen, &$removed) {
+            if (!preg_match('/\ssrc=["\']([^"\']+)["\']/i', $m[0], $src)) { return $m[0]; }
+            $token = self::image_src_token($src[1]);
+            if ($token === '') { return $m[0]; }
+            if (isset($seen[$token])) { $removed++; return ''; }
+            $seen[$token] = true;
+            return $m[0];
+        }, (string)$content);
+        if ($removed > 0) { $warnings[] = sprintf('%d immagini duplicate rimosse (stessa foto ripetuta nell\'articolo).', $removed); }
+        return $content;
+    }
+
+    /**
+     * L'immagine scelta come featured non deve comparire anche nel corpo
+     * (WordPress/il tema la mostra già in testa all'articolo).
+     */
+    public static function remove_featured_from_content($content, $featured_image_id, $featured_candidates, &$warnings) {
+        $featured_image_id = absint($featured_image_id);
+        if ($featured_image_id < 1) { return $content; }
+        $featured_url = '';
+        foreach ((array)$featured_candidates as $candidate) {
+            if (absint($candidate['attachment_id'] ?? 0) === $featured_image_id) { $featured_url = (string)($candidate['url'] ?? ''); break; }
+        }
+        if ($featured_url === '' && function_exists('wp_get_attachment_url')) { $featured_url = (string) wp_get_attachment_url($featured_image_id); }
+        $token = self::image_src_token($featured_url);
+        if ($token === '') { return $content; }
+        $removed = 0;
+        $content = preg_replace_callback('/<img\b[^>]*>/i', function ($m) use ($token, &$removed) {
+            if (!preg_match('/\ssrc=["\']([^"\']+)["\']/i', $m[0], $src)) { return $m[0]; }
+            if (self::image_src_token($src[1]) !== $token) { return $m[0]; }
+            $removed++;
+            return '';
+        }, (string)$content);
+        if ($removed > 0) { $warnings[] = 'Immagine in evidenza rimossa dal corpo articolo (il tema la mostra già in testa).'; }
+        return $content;
+    }
+
     public static function validate_payload($payload, $candidate_affiliate_ids = array(), $candidate_image_ids = array(), $candidate_affiliate_images = array(), $candidate_internal_links = array(), $featured_image_candidates = array(), $media_candidates = array(), $max_editorial_media_used = 5) {
         $warnings = array();
         $repaired_escapes = 0;
@@ -766,6 +819,10 @@ class ALMA_AI_Content_Agent_Draft_Quality_Checker {
 
         $content = self::sanitize_content_html($content);
         list($content, $retained_editorial_media) = self::enforce_editorial_media_limit_in_content($content, $editorial_index, $index, $max_editorial_media_used, $warnings);
+        // Mai la stessa foto due volte nell'articolo, e mai la featured
+        // duplicata nel corpo (il tema la mostra già in testa).
+        $content = self::remove_duplicate_images($content, $warnings);
+        $content = self::remove_featured_from_content($content, absint($payload['featured_image_id'] ?? 0), $featured_image_candidates, $warnings);
         $content = self::sanitize_content_html($content);
         $final_editorial_media = self::collect_editorial_media_from_content($content, $editorial_index, $index);
         if (count($final_editorial_media) < count($retained_editorial_media)) {

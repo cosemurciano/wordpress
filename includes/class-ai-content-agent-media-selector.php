@@ -24,11 +24,27 @@ class ALMA_AI_Content_Agent_Media_Selector {
         }
 
         $rows = self::fetch_rows($table, $query_terms, max(40, ($featured_limit + $media_limit) * 5));
+        // Cooldown di riuso: un'immagine già usata di recente in un articolo
+        // AI (featured o editoriale) non viene ricandidata prima di N giorni
+        // (default 90, filtro alma_media_reuse_cooldown_days). Con candidate
+        // esaurite, featured e immagini editoriali vengono GENERATE dall'AI:
+        // così le stesse foto non si ripetono tra gli articoli.
+        $cooldown_days = max(0, absint(apply_filters('alma_media_reuse_cooldown_days', 90, $args)));
+        $cooldown_cutoff = $cooldown_days > 0 ? (current_time('timestamp') - $cooldown_days * DAY_IN_SECONDS) : 0;
+        $recently_used = 0;
         $scored = array();
         foreach ($rows as $row) {
             $candidate = self::score_row($row, $query_terms);
             if (empty($candidate) || (int)$candidate['score'] < (int)apply_filters('alma_ai_media_candidate_min_score', self::DEFAULT_MIN_SCORE, $args)) { continue; }
+            if ($cooldown_cutoff > 0) {
+                $last_used = strtotime((string) get_post_meta(absint($candidate['attachment_id'] ?? 0), '_alma_media_last_used_at', true));
+                if ($last_used && $last_used > $cooldown_cutoff) { $recently_used++; continue; }
+            }
             $scored[] = $candidate;
+        }
+        if ($recently_used > 0) {
+            $warnings[] = sprintf('%d immagini escluse dalle candidate perché usate di recente (cooldown %d giorni): le nuove immagini verranno generate dall\'AI.', $recently_used, $cooldown_days);
+            $debug['recently_used_excluded'] = $recently_used;
         }
 
         usort($scored, function($a, $b) {
