@@ -36,6 +36,31 @@ class ALMA_AI_Content_Agent_Result_Usage {
         foreach ((array)$rows as $row) { $counts[sanitize_text_field($row['result_key'])] = max(0, (int)$row['usage_count']); }
         return $counts;
     }
+    /**
+     * Conteggio d'uso per source_id (aggregato su tutte le result_key dello
+     * stesso oggetto): usato per variare l'offerta affiliata preferendo i
+     * link meno utilizzati a parità di pertinenza.
+     *
+     * @return array<int,int> source_id => quante volte usato in bozze
+     */
+    public static function get_counts_by_source($source_ids, $source_group = 'affiliate_link') {
+        global $wpdb;
+        $ids = array_values(array_unique(array_filter(array_map('absint', (array) $source_ids))));
+        if (empty($ids)) { return array(); }
+        $table = self::table_name();
+        if ($wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $table)) !== $table) { return array_fill_keys($ids, 0); }
+        $ph = implode(',', array_fill(0, count($ids), '%d'));
+        $params = $ids;
+        $params[] = sanitize_key($source_group);
+        $rows = $wpdb->get_results($wpdb->prepare(
+            "SELECT source_id, SUM(usage_count) AS c FROM $table WHERE source_id IN ($ph) AND source_group = %s GROUP BY source_id",
+            $params
+        ), ARRAY_A);
+        $counts = array_fill_keys($ids, 0);
+        foreach ((array) $rows as $row) { $counts[(int) $row['source_id']] = max(0, (int) $row['c']); }
+        return $counts;
+    }
+
     public static function increment_for_results($results, $draft_post_id) {
         global $wpdb;
         $table = self::table_name();

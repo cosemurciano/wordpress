@@ -1,3 +1,14 @@
+## 2.98.0 - 2026-07-08
+
+### Affiliati SEMPRE inseriti come link (arsenale completo) + varietà dell'offerta
+- **Richiesta**: quando l'agent trova link affiliati utili deve sempre trattarli come link e inserirli con tutte le modalità (link, descrizione, immagine, call to action, widget) scegliendo le migliori per la conversione — non solo il link sull'immagine (v2.97). E non deve preferire sempre i link con più click: variare, usandoli tutti man mano in base al contesto.
+- **Prompt rafforzato**: OGNI link affiliato pertinente va SEMPRE reso cliccabile, non solo usato come fonte di foto/descrizione; l'AI deve sfruttare tutto l'arsenale (anchor col nome, immagine avvolta, bottone CTA, card, widget per le raccolte) e scegliere la modalità che converte di più. Regola aggiuntiva di **varietà**: linkare CIASCUNA struttura/esperienza al suo affiliate_link, non concentrarsi su uno solo.
+- **Garanzia deterministica estesa** (`link_used_affiliate_images`): oltre ad avvolgere l'immagine (v2.97), ora se il link non ha immagine da avvolgere il sistema rende cliccabile il **nome del link in grassetto** (es. `<strong>Signature Hotel</strong>`), conservativo (solo match esatto del titolo, mai doppioni). Così anche gli affiliati citati per nome senza foto vengono monetizzati.
+- **Varietà nella selezione** (richiesta 2): il tool `cerca_link_affiliati` dell'agente ora riporta per ogni link `usato_in_articoli` (quante volte già usato nelle bozze) e un `suggerimento_varieta`: a parità di pertinenza l'agent preferisce i link meno utilizzati, ruotando l'offerta. Nuovo `ALMA_AI_Content_Agent_Result_Usage::get_counts_by_source`.
+- **Nota**: le tipologie del link (v2.97) e la varietà aiutano l'agent a capire cosa sta linkando e a distribuire le scelte; la selezione resta guidata dalla pertinenza al contesto dell'articolo.
+- Test standalone 28/28.
+- Versione plugin aggiornata a `2.98.0`.
+
 ## 2.97.0 - 2026-07-08
 
 ### Bozze agente: garanzia link affiliato sulle immagini usate (hotel non più mostrati senza link)
