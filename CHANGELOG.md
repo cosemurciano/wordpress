@@ -1,3 +1,15 @@
+## 2.99.0 - 2026-07-08
+
+### Piani editoriali multipli (si sommano) + spunta "Avvia subito la creazione"
+- **Richiesta**: poter avviare più piani editoriali alla volta senza limiti se non la quantità di ciascun piano (i piani si sommano); e una spunta per avviare/creare subito le bozze (es. 3 post immediatamente).
+- **I piani si SOMMANO** (`enqueue_or_start_plan` + coda `alma_ai_idea_agent_queue`): la Regia non rifiuta più un nuovo piano se uno è in corso — lo **accoda** (FIFO) e lo avvia automaticamente al termine di quello attuale (guardia: massimo 20 piani in coda). Nessun tetto giornaliero, solo la quantità dettata da ogni piano. Il pulsante resta sempre attivo ("Avvia il piano" / "Accoda un piano") e la Regia mostra lo stato (in corso + numero in coda).
+- **Spunta "Avvia subito la creazione delle bozze"**: nuovo parametro `immediate` di `run()` che genera IMMEDIATAMENTE le bozze di TUTTE le idee del piano, ignorando la distribuzione sui giorni. Senza spunta, comportamento invariato (bozze di oggi subito, le future nel giorno previsto).
+- **Telegram allineato**: il comando `/agente` accoda invece di rifiutare quando un piano è in corso, con messaggio di conferma della posizione in coda.
+- **Stop completo**: fermare l'agente svuota anche i piani accodati (stop = ferma tutto), con conferma di quanti ne sono stati rimossi.
+- Retrocompatibilità: `run()` con `immediate` opzionale (default 0), cron portato a 8 argomenti; i vecchi eventi a 7 argomenti restano validi (immediate=0).
+- Test standalone 23/23 (avvio immediato vs accodamento, ordine FIFO, avvio del prossimo al termine, tetto coda, propagazione flag immediate, wiring Regia/Telegram/stop).
+- Versione plugin aggiornata a `2.99.0`.
+
 ## 2.98.0 - 2026-07-08
 
 ### Affiliati SEMPRE inseriti come link (arsenale completo) + varietà dell'offerta
