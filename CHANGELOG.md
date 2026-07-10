@@ -1,3 +1,14 @@
+## 2.101.0 - 2026-07-08
+
+### Import massivo link affiliati da CSV con conversione Travelpayouts
+- Nuova pagina **Link Affiliati → Import Travelpayouts**: importa link affiliati in massa da un CSV e li converte in link affiliati tramite le API Travelpayouts.
+- **CSV** con colonne: Nome (titolo), descrizione, città, url, tipologia link (intestazioni riconosciute in modo flessibile: alias italiani/inglesi, accenti, delimitatore , o ;). Disponibile un **CSV demo** scaricabile dalla pagina.
+- Ogni riga crea un **Link Affiliato** con titolo, descrizione (anche come contesto AI per bozze/arricchimento), **tipologia** (termine `link_type` creato se mancante) e **geolocalizzazione dalla città** (in coda al geocoding automatico esistente). L'URL originale viene salvato in attesa di conversione.
+- **Conversione via API** (`POST https://api.travelpayouts.com/links/v1/create`, header `X-Access-Token`, `trs`/`marker`/`shorten` da impostazioni): un job in background converte l'URL diretto in **partner_url** e aggiorna `_affiliate_url`. Rispetta i limiti dell'API (max 10 link per richiesta, 100 richieste/minuto): blocchi da 10, catena con pausa, lock atomico con TTL, cursore e stato visibile (mai job invisibili). I link non convertibili (brand non supportato/non iscritto) escono dalla coda con il motivo salvato, senza bloccarla.
+- Se le API non sono ancora configurate, l'import crea comunque i link con l'URL originale; la conversione parte appena si salvano token/trs/marker (o con "Converti ora").
+- Test standalone 27/27 (parsing CSV con alias/accenti/delimitatori, righe senza URL scartate, parsing risposta API success/failed, errori 401/400, chunking, wiring creazione link/tipologia/geo/flag e catena del job).
+- Versione plugin aggiornata a `2.101.0`.
+
 ## 2.100.0 - 2026-07-08
 
 ### Telegram: report solo con i post pubblicati + agente senza date crea subito

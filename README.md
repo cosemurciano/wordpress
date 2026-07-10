@@ -1,3 +1,9 @@
+## 2.101.0 - 2026-07-08
+
+### Import Travelpayouts da CSV
+- Nuova pagina "Import Travelpayouts": importi in massa i link affiliati da un CSV (Nome, descrizione, città, url, tipologia link, con CSV demo) e le API Travelpayouts convertono automaticamente ogni URL in link affiliato aggiornando la scheda. Job in background rispettoso dei limiti API, con geolocalizzazione dalla città e tipologia.
+- Versione plugin aggiornata a `2.101.0`.
+
 ## 2.100.0 - 2026-07-08
 
 ### Telegram più essenziale

@@ -3,7 +3,7 @@
  * Plugin Name: Affiliate Link Manager AI
  * Plugin URI: https://your-website.com
  * Description: Gestisce link affiliati con intelligenza artificiale per ottimizzazione e tracking automatico.
- * Version: 2.100.0
+ * Version: 2.101.0
  * Author: Cosè Murciano
  * License: GPL v2 or later
  * Text Domain: affiliate-link-manager-ai
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Definisci costanti del plugin
-define('ALMA_VERSION', '2.100.0');
+define('ALMA_VERSION', '2.101.0');
 define('ALMA_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('ALMA_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('ALMA_PLUGIN_FILE', __FILE__);
@@ -70,6 +70,7 @@ require_once ALMA_PLUGIN_DIR . 'includes/class-ai-image-generator.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-article-locations-map.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-google-trends.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-geo-facts.php';
+require_once ALMA_PLUGIN_DIR . 'includes/class-travelpayouts-importer.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-affiliate-source-url-validator.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-affiliate-source-provider-interface.php';
 require_once ALMA_PLUGIN_DIR . 'includes/providers/class-affiliate-source-provider-manual.php';
@@ -184,6 +185,7 @@ class AffiliateManagerAI {
         ALMA_AI_Image_Generator::init();
         ALMA_Article_Locations_Map::init();
         ALMA_Geo_Facts::init();
+        ALMA_Travelpayouts_Importer::init();
         add_action('init', array($this, 'init'));
         add_action('widgets_init', array('ALMA_Contextual_Affiliate_Widget', 'register_widget'));
         // Registrato qui (prima che `widgets_init` scatti) perché ALMA_Shortcodes::init()
