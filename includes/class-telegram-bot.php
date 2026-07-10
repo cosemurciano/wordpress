@@ -270,22 +270,27 @@ class ALMA_Telegram_Bot {
             self::send_message($chat_id, '❌ OpenAI non è configurata nel plugin.');
             return;
         }
-        if (get_option(ALMA_AI_Idea_Agent::LOCK_OPTION)) {
-            self::send_message($chat_id, '⏳ Un\'esecuzione dell\'agente è già in corso: riceverai il report al termine.');
-            return;
-        }
-        // Lancio dalla regia Telegram: force=1 (parte anche oltre il limite
-        // giornaliero) e bozze immediate attive, come dalla pagina Regia AI.
-        // Firma allineata a run() a 7 argomenti (num/giorni/data del piano).
+        // I piani si sommano: se uno è in corso, questo viene accodato
+        // (nessun rifiuto), coerente con la pagina Regia AI.
         $num_ideas = max(0, min(10, absint($num_ideas)));
         $days_span = max(0, min(60, absint($days_span)));
         // Autore delle idee: il primo amministratore.
         $admins = get_users(array('role' => 'administrator', 'number' => 1, 'fields' => 'ID'));
         $user_id = !empty($admins) ? (int) $admins[0] : 1;
-        delete_option(ALMA_AI_Idea_Agent::OPTION_CANCEL);
-        wp_schedule_single_event(time() + 5, ALMA_AI_Idea_Agent::CRON_HOOK, array($user_id, sanitize_textarea_field($objective), 1, 1, $num_ideas, $days_span, ''));
-        if (function_exists('spawn_cron')) { spawn_cron(); }
+        // force=1 (oltre il limite giornaliero); immediate=0 (bozze secondo la
+        // programmazione, come default della Regia).
+        $result = ALMA_AI_Idea_Agent::enqueue_or_start_plan(array($user_id, sanitize_textarea_field($objective), 1, 1, $num_ideas, $days_span, '', 0));
+        if (($result['type'] ?? '') === 'error') {
+            self::send_message($chat_id, '⚠️ ' . self::esc((string) ($result['message'] ?? 'Impossibile avviare il piano.')));
+            return;
+        }
         $plan_note = $num_ideas > 0 ? sprintf("\n📋 Piano: %d articoli in %d giorni a partire da oggi.", $num_ideas, max(1, $days_span)) : '';
+        if (!empty($result['queued'])) {
+            self::send_message($chat_id, '🕓 Un piano è già in corso: questo è stato <b>accodato</b> (posizione ' . (int) ($result['position'] ?? 1) . ').'
+                . $plan_note
+                . "\nPartirà automaticamente al termine di quello attuale. Riceverai il report al termine.");
+            return;
+        }
         self::send_message($chat_id, '🤖 Agente di ideazione avviato' . ($objective !== '' ? ' sul tema: <i>' . self::esc($objective) . '</i>' : '')
             . $plan_note
             . "\nOgni idea creerà la sua bozza nel giorno programmato."

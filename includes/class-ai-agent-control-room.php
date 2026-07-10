@@ -301,9 +301,17 @@ class ALMA_AI_Agent_Control_Room {
         echo '<p style="margin:0;"><label><strong>' . esc_html__('In quanti giorni', 'affiliate-link-manager-ai') . '</strong><br><input type="number" id="alma-regia-giorni" name="agent_days" min="1" max="60" value="14" class="small-text"></label></p>';
         echo '<p style="margin:0;"><label><strong>' . esc_html__('A partire dal', 'affiliate-link-manager-ai') . '</strong><br><input type="date" id="alma-regia-inizio" name="agent_start_date" value="' . esc_attr(current_time('Y-m-d')) . '" min="' . esc_attr(current_time('Y-m-d')) . '"></label></p>';
         echo '<p style="margin:0;flex:1 1 340px;"><label><strong>' . esc_html__('Obiettivo e suggerimenti (opzionale)', 'affiliate-link-manager-ai') . '</strong><br><input type="text" id="alma-regia-obiettivo" name="agent_objective" class="widefat" placeholder="' . esc_attr__('Es. destinazioni per l\'autunno, focus Sicilia, taglio pratico…', 'affiliate-link-manager-ai') . '"></label></p>';
-        echo '<p style="margin:0;"><button class="button button-primary button-hero" ' . disabled($running, true, false) . '>' . esc_html($running ? __('Esecuzione in corso…', 'affiliate-link-manager-ai') : __('Avvia il piano', 'affiliate-link-manager-ai')) . '</button></p>';
+        // I piani si sommano: il pulsante resta sempre attivo, se un piano è
+        // in corso il nuovo viene accodato e parte al termine.
+        echo '<p style="margin:0;"><button class="button button-primary button-hero">' . esc_html($running ? __('Accoda un piano', 'affiliate-link-manager-ai') : __('Avvia il piano', 'affiliate-link-manager-ai')) . '</button></p>';
         echo '</div>';
-        echo '<p class="description" style="margin:8px 0 0;">' . esc_html__('Ogni piano è indipendente e si somma a quelli già programmati: le idee ricevono date distribuite dalla data di inizio scelta; le bozze delle idee di oggi si generano subito, le altre nel giorno previsto. Nessun tetto giornaliero: il ritmo lo decide il piano.', 'affiliate-link-manager-ai') . '</p>';
+        echo '<p style="margin:8px 0 0;"><label><input type="checkbox" name="agent_immediate" value="1"> <strong>' . esc_html__('Avvia subito la creazione delle bozze', 'affiliate-link-manager-ai') . '</strong> — ' . esc_html__('genera immediatamente TUTTE le bozze del piano, ignorando la distribuzione sui giorni (es. 3 post subito).', 'affiliate-link-manager-ai') . '</label></p>';
+        $queued = class_exists('ALMA_AI_Idea_Agent') ? ALMA_AI_Idea_Agent::queued_count() : 0;
+        $sum_note = __('I piani si SOMMANO: puoi avviarne più di uno: se uno è in corso, il nuovo viene accodato e parte automaticamente al termine. Senza la spunta, le idee ricevono date distribuite dalla data di inizio e le bozze di oggi si generano subito, le altre nel giorno previsto. Nessun tetto giornaliero: il ritmo lo decide il piano.', 'affiliate-link-manager-ai');
+        if ($running || $queued > 0) {
+            $sum_note .= ' ' . sprintf(__('Stato attuale: %1$s%2$s.', 'affiliate-link-manager-ai'), $running ? __('un piano in corso', 'affiliate-link-manager-ai') : __('nessun piano in corso', 'affiliate-link-manager-ai'), $queued > 0 ? sprintf(__(', %d in coda', 'affiliate-link-manager-ai'), $queued) : '');
+        }
+        echo '<p class="description" style="margin:8px 0 0;">' . esc_html($sum_note) . '</p>';
         echo '</form>';
 
         // ---- Consiglio AI (accorpa i "Consigli strategici AI" della dashboard) ----

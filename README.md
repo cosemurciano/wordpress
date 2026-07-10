@@ -1,3 +1,9 @@
+## 2.99.0 - 2026-07-08
+
+### Più piani editoriali insieme + avvio immediato
+- Ora puoi avviare più piani editoriali contemporaneamente: se uno è in corso i nuovi vengono accodati e partono automaticamente al termine (i piani si sommano, nessun tetto giornaliero). Nuova spunta "Avvia subito la creazione delle bozze" per generare immediatamente tutte le bozze del piano (es. 3 post subito). Comando Telegram /agente allineato; lo Stop svuota anche la coda.
+- Versione plugin aggiornata a `2.99.0`.
+
 ## 2.98.0 - 2026-07-08
 
 ### Affiliati sempre come link + varietà

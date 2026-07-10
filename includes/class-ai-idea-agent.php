@@ -30,9 +30,11 @@ class ALMA_AI_Idea_Agent {
     const OPTION_RUN_HISTORY = 'alma_ai_idea_agent_history';
     const HISTORY_MAX = 30;
     const OPTION_CANCEL = 'alma_ai_idea_agent_cancel';
+    const OPTION_QUEUE = 'alma_ai_idea_agent_queue';   // piani accodati (si sommano)
+    const QUEUE_MAX = 20;
 
     public static function init() {
-        add_action(self::CRON_HOOK, array(__CLASS__, 'run'), 10, 7);
+        add_action(self::CRON_HOOK, array(__CLASS__, 'run'), 10, 8);
         add_action('admin_post_alma_ai_idea_agent_start', array(__CLASS__, 'handle_start'));
         add_action('admin_post_alma_ai_idea_agent_stop', array(__CLASS__, 'handle_stop'));
         add_action('admin_post_alma_ai_idea_agent_settings', array(__CLASS__, 'handle_settings'));
@@ -88,22 +90,64 @@ class ALMA_AI_Idea_Agent {
 
         if (empty(get_option('alma_openai_api_key', ''))) {
             $notice = array('type' => 'error', 'message' => __('OpenAI non è configurata.', 'affiliate-link-manager-ai'));
-        } elseif (get_option(self::LOCK_OPTION)) {
-            $notice = array('type' => 'error', 'message' => __('Un\'esecuzione dell\'agente è già in corso: attendila o fermala prima di avviare un nuovo piano.', 'affiliate-link-manager-ai'));
         } else {
             $objective = sanitize_textarea_field(wp_unslash($_POST['agent_objective'] ?? ''));
             $num_ideas = max(0, min(10, absint($_POST['agent_num_ideas'] ?? 0)));
             $days_span = max(0, min(60, absint($_POST['agent_days'] ?? 0)));
             $start_date = self::sanitize_start_date(wp_unslash($_POST['agent_start_date'] ?? ''));
-            // Le bozze si creano SEMPRE secondo la programmazione: quelle di
-            // oggi subito, le future nel giorno previsto (runner giornaliero).
-            delete_option(self::OPTION_CANCEL);
-            wp_schedule_single_event(time() + 5, self::CRON_HOOK, array(get_current_user_id(), $objective, 1, 1, $num_ideas, $days_span, $start_date));
-            if (function_exists('spawn_cron')) { spawn_cron(); }
+            // Spunta "Avvia subito la creazione": genera SUBITO le bozze di
+            // tutte le idee del piano, ignorando la distribuzione sui giorni.
+            $immediate = !empty($_POST['agent_immediate']) ? 1 : 0;
+            // I piani si SOMMANO: se un'esecuzione è già in corso il nuovo
+            // piano viene accodato e parte al termine di quello attuale
+            // (nessun rifiuto). Nessun tetto se non la quantità del piano.
+            $args = array(get_current_user_id(), $objective, 1, 1, $num_ideas, $days_span, $start_date, $immediate);
+            $notice = self::enqueue_or_start_plan($args);
         }
         set_transient('alma_ai_agent_admin_notice_' . get_current_user_id(), $notice, 120);
         wp_safe_redirect(wp_get_referer() ?: admin_url('edit.php?post_type=affiliate_link&page=alma-ai-regia'));
         exit;
+    }
+
+    /**
+     * Avvia un piano subito se libero, altrimenti lo ACCODA (i piani si
+     * sommano). Ritorna array('type','message','queued'=>bool,'position'=>int).
+     */
+    public static function enqueue_or_start_plan($args) {
+        if (get_option(self::LOCK_OPTION)) {
+            $queue = array_values((array) get_option(self::OPTION_QUEUE, array()));
+            if (count($queue) >= self::QUEUE_MAX) {
+                return array('type' => 'error', 'message' => sprintf(__('Coda piani piena (max %d in attesa): attendi che ne partano alcuni.', 'affiliate-link-manager-ai'), self::QUEUE_MAX), 'queued' => false, 'position' => 0);
+            }
+            $queue[] = array_values((array) $args);
+            update_option(self::OPTION_QUEUE, $queue, false);
+            return array('type' => 'success', 'message' => sprintf(__('Un piano è già in corso: questo è stato accodato (posizione %d). Partirà automaticamente al termine di quello attuale.', 'affiliate-link-manager-ai'), count($queue)), 'queued' => true, 'position' => count($queue));
+        }
+        delete_option(self::OPTION_CANCEL);
+        wp_schedule_single_event(time() + 5, self::CRON_HOOK, array_values((array) $args));
+        if (function_exists('spawn_cron')) { spawn_cron(); }
+        return array('type' => 'success', 'message' => __('Agente ideazione avviato in background: il report comparirà nella Regia AI entro qualche minuto.', 'affiliate-link-manager-ai'), 'queued' => false, 'position' => 0);
+    }
+
+    /**
+     * Estrae e avvia il prossimo piano accodato (chiamato al termine di un
+     * run). Nessun rischio di sovrapposizione: parte come nuovo evento cron,
+     * il lock è già stato rilasciato.
+     */
+    /** Numero di piani editoriali attualmente in coda (accodati). */
+    public static function queued_count() {
+        return count((array) get_option(self::OPTION_QUEUE, array()));
+    }
+
+    private static function start_next_queued_plan() {
+        $queue = array_values((array) get_option(self::OPTION_QUEUE, array()));
+        if (empty($queue)) { return; }
+        $next = array_shift($queue);
+        update_option(self::OPTION_QUEUE, $queue, false);
+        if (!is_array($next) || empty($next)) { return; }
+        delete_option(self::OPTION_CANCEL);
+        wp_schedule_single_event(time() + 10, self::CRON_HOOK, array_values($next));
+        if (function_exists('spawn_cron')) { spawn_cron(); }
     }
 
     /**
@@ -114,11 +158,15 @@ class ALMA_AI_Idea_Agent {
     public static function handle_stop() {
         if (!current_user_can('manage_options')) { wp_die('forbidden'); }
         check_admin_referer('alma_ai_idea_agent_stop');
+        // Lo stop ferma TUTTO: il piano in corso e quelli accodati.
+        $queued = self::queued_count();
+        delete_option(self::OPTION_QUEUE);
+        $queue_note = $queued > 0 ? sprintf(__(' Svuotati anche %d piani in coda.', 'affiliate-link-manager-ai'), $queued) : '';
         if (get_option(self::LOCK_OPTION)) {
             update_option(self::OPTION_CANCEL, (string) time(), false);
-            $notice = array('type' => 'success', 'message' => __('Richiesta di stop inviata: l\'agente si fermerà entro pochi secondi (al termine del passo in corso).', 'affiliate-link-manager-ai'));
+            $notice = array('type' => 'success', 'message' => __('Richiesta di stop inviata: l\'agente si fermerà entro pochi secondi (al termine del passo in corso).', 'affiliate-link-manager-ai') . $queue_note);
         } else {
-            $notice = array('type' => 'success', 'message' => __('Nessuna esecuzione in corso.', 'affiliate-link-manager-ai'));
+            $notice = array('type' => 'success', 'message' => __('Nessuna esecuzione in corso.', 'affiliate-link-manager-ai') . $queue_note);
         }
         set_transient('alma_ai_agent_admin_notice_' . get_current_user_id(), $notice, 120);
         wp_safe_redirect(wp_get_referer() ?: admin_url('edit.php?post_type=affiliate_link&page=alma-ai-regia'));
@@ -148,7 +196,7 @@ class ALMA_AI_Idea_Agent {
         return false;
     }
 
-    public static function run($user_id = 0, $objective = '', $create_drafts = 0, $force = 0, $num_ideas = 0, $days_span = 0, $start_date = '') {
+    public static function run($user_id = 0, $objective = '', $create_drafts = 0, $force = 0, $num_ideas = 0, $days_span = 0, $start_date = '', $immediate = 0) {
         if (!self::acquire_lock()) { return; }
         $started_at = current_time('mysql');
         $report = array(
@@ -232,8 +280,10 @@ class ALMA_AI_Idea_Agent {
                         $report['error'] = 'Interrotto dall\'amministratore (le bozze rimanenti verranno generate nei giorni programmati).';
                         break;
                     }
+                    // Con "Avvia subito" (immediate) si generano TUTTE le bozze
+                    // ora, ignorando la distribuzione sui giorni.
                     $scheduled = (string) get_post_meta((int)$idea['id'], ALMA_AI_Content_Agent_Ideas::META_SCHEDULED_AT, true);
-                    if ($scheduled !== '' && $scheduled > $today) {
+                    if (empty($immediate) && $scheduled !== '' && $scheduled > $today) {
                         $report['drafts_created'][] = array('idea_id' => (int)$idea['id'], 'titolo' => $idea['titolo'], 'post_id' => 0, 'error' => '', 'programmata' => $scheduled);
                         continue;
                     }
@@ -285,6 +335,9 @@ class ALMA_AI_Idea_Agent {
             if (class_exists('ALMA_Telegram_Bot')) {
                 ALMA_Telegram_Bot::notify_agent_report($report);
             }
+            // Piani accodati (che si sommano): avvia il prossimo, ora che il
+            // lock è libero. Ogni piano resta indipendente e completo.
+            self::start_next_queued_plan();
         }
     }
 
