@@ -1,3 +1,11 @@
+## 2.100.0 - 2026-07-08
+
+### Telegram: report solo con i post pubblicati + agente senza date crea subito
+- **Report agente**: ora il messaggio Telegram elenca SOLO gli articoli effettivamente pubblicati, ciascuno con il link alla visualizzazione (+ Modifica). Le idee non vengono più inviate. Le bozze create ma non ancora pubblicate sono indicate solo come conteggio ("N bozze in attesa di revisione, usa /bozze"), senza titoli; gli errori delle bozze mancate restano visibili (vengono ritentate). Rimosso il riassunto testuale e l'elenco delle idee/programmate.
+- **`/agente <tema>` senza date crea subito**: quando l'agente viene lanciato da Telegram senza indicare una finestra di giorni (comando `/agente`, a differenza di `/piano N G`), le bozze vengono generate IMMEDIATAMENTE (immediate=1, riusa il meccanismo della v2.99.0). Con `/piano N giorni` il piano resta distribuito sui giorni come prima.
+- Test standalone 13/13.
+- Versione plugin aggiornata a `2.100.0`.
+
 ## 2.99.0 - 2026-07-08
 
 ### Piani editoriali multipli (si sommano) + spunta "Avvia subito la creazione"

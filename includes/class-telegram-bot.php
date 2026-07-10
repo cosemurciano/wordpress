@@ -277,9 +277,11 @@ class ALMA_Telegram_Bot {
         // Autore delle idee: il primo amministratore.
         $admins = get_users(array('role' => 'administrator', 'number' => 1, 'fields' => 'ID'));
         $user_id = !empty($admins) ? (int) $admins[0] : 1;
-        // force=1 (oltre il limite giornaliero); immediate=0 (bozze secondo la
-        // programmazione, come default della Regia).
-        $result = ALMA_AI_Idea_Agent::enqueue_or_start_plan(array($user_id, sanitize_textarea_field($objective), 1, 1, $num_ideas, $days_span, '', 0));
+        // force=1 (oltre il limite giornaliero). "Senza date" (nessuna finestra
+        // di giorni indicata, es. /agente <tema>) ⇒ immediate=1: le bozze si
+        // creano SUBITO. Con /piano N G il piano resta distribuito sui giorni.
+        $immediate = $days_span > 0 ? 0 : 1;
+        $result = ALMA_AI_Idea_Agent::enqueue_or_start_plan(array($user_id, sanitize_textarea_field($objective), 1, 1, $num_ideas, $days_span, '', $immediate));
         if (($result['type'] ?? '') === 'error') {
             self::send_message($chat_id, '⚠️ ' . self::esc((string) ($result['message'] ?? 'Impossibile avviare il piano.')));
             return;
@@ -291,9 +293,12 @@ class ALMA_Telegram_Bot {
                 . "\nPartirà automaticamente al termine di quello attuale. Riceverai il report al termine.");
             return;
         }
+        $draft_note = $immediate
+            ? "\nLe bozze verranno create SUBITO (nessuna data indicata)."
+            : "\nOgni idea creerà la sua bozza nel giorno programmato.";
         self::send_message($chat_id, '🤖 Agente di ideazione avviato' . ($objective !== '' ? ' sul tema: <i>' . self::esc($objective) . '</i>' : '')
             . $plan_note
-            . "\nOgni idea creerà la sua bozza nel giorno programmato."
+            . $draft_note
             . "\nRiceverai qui il report al termine (2-5 minuti). Usa /stato per seguirlo o /stop per fermarlo.");
     }
 
@@ -406,44 +411,35 @@ class ALMA_Telegram_Bot {
     public static function format_agent_report($report) {
         $ideas = (array) ($report['ideas_created'] ?? array());
         $drafts = array_filter((array) ($report['drafts_created'] ?? array()), function ($d) { return !empty($d['post_id']); });
-        $auto_publish = get_option('alma_ai_auto_publish', 'no') === 'yes';
+        // Solo i POST effettivamente PUBBLICATI vengono elencati con il link;
+        // le idee non si inviano mai (richiesta esplicita).
+        $published = array();
+        $unpublished = 0;
+        foreach ($drafts as $draft) {
+            if (get_post_status((int) $draft['post_id']) === 'publish') { $published[] = $draft; }
+            else { $unpublished++; }
+        }
         $text = "<b>🤖 Report agente ideazione</b>\n";
         $text .= 'Avviato: ' . self::esc($report['started_at'] ?? '') . "\n";
-        $text .= 'Idee create: <b>' . count($ideas) . '</b> · Bozze: <b>' . count($drafts) . '</b> · Costo stimato: ~$' . number_format((float) ($report['cost_total'] ?? 0), 4) . "\n";
-        if ($auto_publish) {
-            // Pubblicazione automatica attiva: niente elenco idee (ridondante),
-            // per ogni articolo pubblicato titolo + link + modifica.
-            foreach (array_slice($drafts, 0, 10) as $draft) {
-                $post_id = (int) $draft['post_id'];
-                $edit_url = admin_url('post.php?post=' . $post_id . '&action=edit');
-                if (get_post_status($post_id) === 'publish') {
-                    $text .= '📣 <a href="' . esc_url(get_permalink($post_id)) . '">' . self::esc($draft['titolo']) . '</a> · <a href="' . esc_url($edit_url) . '">✏️ Modifica</a>' . "\n";
-                } else {
-                    $preview = get_preview_post_link($post_id);
-                    $text .= '📝 <a href="' . esc_url($preview ?: $edit_url) . '">' . self::esc($draft['titolo']) . '</a> · <a href="' . esc_url($edit_url) . '">✏️ Modifica</a>' . "\n";
-                }
-            }
-        } else {
-            foreach (array_slice($ideas, 0, 8) as $idea) {
-                $text .= '• ' . self::esc($idea['titolo']) . (!empty($idea['localita']) ? ' — 📍 ' . self::esc($idea['localita']) : '') . "\n";
-            }
-            foreach (array_slice($drafts, 0, 5) as $draft) {
-                $preview = get_preview_post_link((int) $draft['post_id']);
-                $text .= '📝 <a href="' . esc_url($preview) . '">' . self::esc($draft['titolo']) . "</a>\n";
-            }
+        $text .= 'Idee: <b>' . count($ideas) . '</b> · Pubblicati: <b>' . count($published) . '</b> · Costo stimato: ~$' . number_format((float) ($report['cost_total'] ?? 0), 4) . "\n";
+        // Elenco dei soli articoli pubblicati, con link alla visualizzazione.
+        foreach (array_slice($published, 0, 10) as $draft) {
+            $post_id = (int) $draft['post_id'];
+            $edit_url = admin_url('post.php?post=' . $post_id . '&action=edit');
+            $text .= '📣 <a href="' . esc_url(get_permalink($post_id)) . '">' . self::esc($draft['titolo']) . '</a> · <a href="' . esc_url($edit_url) . '">✏️ Modifica</a>' . "\n";
         }
-        // Il PERCHÉ delle bozze mancate, sempre visibile: programmate per un
-        // altro giorno o fallite (queste ultime vengono ritentate in automatico).
+        if ($unpublished > 0) {
+            $text .= '📝 ' . (int) $unpublished . ' bozze create in attesa di revisione (usa /bozze per pubblicarle).' . "\n";
+        }
+        // Il PERCHÉ delle bozze mancate, sempre visibile: fallite (ritentate in
+        // automatico). Le idee non vengono elencate.
         foreach ((array) ($report['drafts_created'] ?? array()) as $draft_row) {
             if (!empty($draft_row['post_id'])) { continue; }
-            if (!empty($draft_row['programmata'])) {
-                $text .= '📅 ' . self::esc((string) $draft_row['titolo']) . ' — bozza in programma il ' . self::esc((string) $draft_row['programmata']) . "\n";
-            } elseif (!empty($draft_row['error'])) {
+            if (!empty($draft_row['error'])) {
                 $text .= '⚠️ Bozza NON creata per "' . self::esc((string) $draft_row['titolo']) . '": ' . self::esc((string) $draft_row['error']) . ' — verrà ritentata automaticamente entro pochi minuti (max 3 tentativi).' . "\n";
             }
         }
         if (!empty($report['error'])) { $text .= '⚠️ ' . self::esc($report['error']) . "\n"; }
-        if (!empty($report['summary'])) { $text .= "\n" . self::esc(wp_trim_words($report['summary'], 80, '…')); }
         return $text;
     }
 

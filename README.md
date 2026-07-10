@@ -1,3 +1,9 @@
+## 2.100.0 - 2026-07-08
+
+### Telegram più essenziale
+- Il report dell'agente su Telegram invia solo i link agli articoli pubblicati (non le idee); il comando /agente senza date crea le bozze subito.
+- Versione plugin aggiornata a `2.100.0`.
+
 ## 2.99.0 - 2026-07-08
 
 ### Più piani editoriali insieme + avvio immediato
