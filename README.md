@@ -1,3 +1,9 @@
+## 2.104.0 - 2026-07-08
+
+### Fix accenti corrotti negli articoli AI
+- Gli accenti diventavano residui di escape JSON ("pif9" invece di "più"): ora il contesto per il modello è serializzato senza escape unicode, i salvataggi usano wp_slash e una riparazione difensiva nel quality checker corregge eventuali residui (con guardie su URL e falsi positivi).
+- Versione plugin aggiornata a `2.104.0`.
+
 ## 2.103.0 - 2026-07-08
 
 ### Travelpayouts dentro Affiliate Sources

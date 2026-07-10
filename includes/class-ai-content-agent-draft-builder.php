@@ -1323,7 +1323,7 @@ class ALMA_AI_Content_Agent_Draft_Builder {
         $brief = ALMA_AI_Content_Agent_Store::get_brief_by_idea($idea_id); if (!$brief) return self::fail('Brief non trovato.', '', 'idea:'.$idea_id);
         $context = array('idea'=>$idea,'brief'=>$brief,'instruction_snapshot'=>$brief['instruction_snapshot'] ?? ($idea['instruction_snapshot'] ?? ''),'candidate_affiliate_links'=>json_decode((string)($brief['candidate_affiliate_links'] ?? '[]'), true),'candidate_images'=>json_decode((string)($brief['candidate_images'] ?? '[]'), true),'knowledge_suggestions'=>json_decode((string)($brief['suggested_knowledge_sources'] ?? '[]'), true),'warnings'=>json_decode((string)($brief['warnings'] ?? '[]'), true));
         $prompt = 'Genera JSON con: title,slug,excerpt,content_html,seo_title,meta_description,focus_keyword,suggested_tags,affiliate_links_used,featured_image_id,inline_image_ids,qa_notes,warnings. Usa solo shortcode [affiliate_link id="ID" text="anchor"]. Non inventare ID.';
-        $res = ALMA_OpenAI_Service::request(array('system_prompt'=>'Sei un content editor WordPress. Output solo JSON valido.', 'user_prompt'=>$prompt.' CONTEXT: '.wp_json_encode($context), 'json_output'=>true, 'max_output_tokens'=>1800));
+        $res = ALMA_OpenAI_Service::request(array('system_prompt'=>'Sei un content editor WordPress. Output solo JSON valido.', 'user_prompt'=>$prompt.' CONTEXT: '.ALMA_OpenAI_Service::encode_context($context), 'json_output'=>true, 'max_output_tokens'=>1800));
         if (empty($res['success'])) { return self::fail($res['error'] ?? 'Risposta OpenAI fallita.', $res['model'] ?? '', 'idea:'.$idea_id); }
         $parsed = json_decode($res['response'], true); if (!is_array($parsed)) $parsed = json_decode(ALMA_AI_Content_Agent_Text_Utils::extract_first_json($res['response']), true);
         if (!is_array($parsed)) { return self::fail('Draft JSON non valido', $res['model'] ?? '', 'idea:'.$idea_id); }
@@ -1333,7 +1333,7 @@ class ALMA_AI_Content_Agent_Draft_Builder {
         $clean = ALMA_AI_Content_Agent_Draft_Quality_Checker::validate_payload($parsed, $candidate_affiliate_ids, $candidate_image_ids, $candidate_affiliate_records, array());
         if (!is_array($clean) || !array_key_exists('title', $clean) || !array_key_exists('content', $clean)) return self::fail('QA output non valido.', $res['model'] ?? '', 'idea:'.$idea_id);
         if ($clean['title'] === '' || trim(wp_strip_all_tags($clean['content'])) === '') return self::fail('Output draft non valido dopo QA.', $res['model'] ?? '', 'idea:'.$idea_id);
-        $post_id = wp_insert_post(array('post_type'=>'post','post_status'=>'draft','post_author'=>get_current_user_id(),'post_title'=>$clean['title'],'post_name'=>$clean['slug'],'post_excerpt'=>$clean['excerpt'],'post_content'=>$clean['content']), true);
+        $post_id = wp_insert_post(wp_slash(array('post_type'=>'post','post_status'=>'draft','post_author'=>get_current_user_id(),'post_title'=>$clean['title'],'post_name'=>$clean['slug'],'post_excerpt'=>$clean['excerpt'],'post_content'=>$clean['content'])), true);
         if (is_wp_error($post_id) || !$post_id) { return self::fail('Errore creazione bozza.', $res['model'] ?? '', 'idea:'.$idea_id); }
         if (!empty($clean['featured_image_id'])) set_post_thumbnail($post_id, $clean['featured_image_id']);
         if (class_exists('ALMA_AI_Seo_Bridge')) { ALMA_AI_Seo_Bridge::apply($post_id, (string)($clean['seo_title'] ?? ''), (string)($clean['seo_description'] ?? '')); }
@@ -1420,9 +1420,9 @@ class ALMA_AI_Content_Agent_Draft_Builder {
         $configured_max_tokens = absint(get_option('alma_openai_max_output_tokens', 1800));
         $max_output_tokens = $configured_max_tokens > 0 ? $configured_max_tokens : 1800;
         $response_format = self::build_draft_response_format();
-        $res = ALMA_OpenAI_Service::request(array('system_prompt'=>'Sei un content editor WordPress per output strutturato.', 'user_prompt'=>$prompt.' CONTEXT: '.wp_json_encode($ai_payload), 'response_format'=>$response_format, 'json_output'=>true, 'max_output_tokens'=>$max_output_tokens, 'timeout'=>absint(get_option('alma_openai_timeout', 120))));
+        $res = ALMA_OpenAI_Service::request(array('system_prompt'=>'Sei un content editor WordPress per output strutturato.', 'user_prompt'=>$prompt.' CONTEXT: '.ALMA_OpenAI_Service::encode_context($ai_payload), 'response_format'=>$response_format, 'json_output'=>true, 'max_output_tokens'=>$max_output_tokens, 'timeout'=>absint(get_option('alma_openai_timeout', 120))));
         if (empty($res['success']) && (($res['error_code'] ?? '') === 'response_format_unsupported' || strpos(strtolower((string)($res['error'] ?? '')), 'response_format') !== false)) {
-            $res = ALMA_OpenAI_Service::request(array('system_prompt'=>'Sei un content editor WordPress per output strutturato.', 'user_prompt'=>$prompt.' CONTEXT: '.wp_json_encode($ai_payload), 'json_output'=>true, 'max_output_tokens'=>$max_output_tokens, 'timeout'=>absint(get_option('alma_openai_timeout', 120))));
+            $res = ALMA_OpenAI_Service::request(array('system_prompt'=>'Sei un content editor WordPress per output strutturato.', 'user_prompt'=>$prompt.' CONTEXT: '.ALMA_OpenAI_Service::encode_context($ai_payload), 'json_output'=>true, 'max_output_tokens'=>$max_output_tokens, 'timeout'=>absint(get_option('alma_openai_timeout', 120))));
             $res['response_format_used'] = 'fallback_json_object';
         }
         if (empty($res['success'])) {
@@ -1520,7 +1520,7 @@ class ALMA_AI_Content_Agent_Draft_Builder {
         // default resta bozza da revisionare.
         $auto_publish = get_option('alma_ai_auto_publish', 'no') === 'yes';
         $post_status = $auto_publish ? 'publish' : 'draft';
-        $post_id = wp_insert_post(array('post_type'=>'post','post_status'=>$post_status,'post_author'=>$user_id,'post_title'=>$clean['title'],'post_name'=>$clean['slug'],'post_excerpt'=>$clean['excerpt'],'post_content'=>$clean['content']), true);
+        $post_id = wp_insert_post(wp_slash(array('post_type'=>'post','post_status'=>$post_status,'post_author'=>$user_id,'post_title'=>$clean['title'],'post_name'=>$clean['slug'],'post_excerpt'=>$clean['excerpt'],'post_content'=>$clean['content'])), true);
         if (is_wp_error($post_id) || !$post_id) { return self::fail('Errore creazione bozza.', $res['model'] ?? '', 'session:user:'.$user_id); }
         if (!empty($ai_widget_id)) { update_post_meta($post_id, '_alma_ai_agent_widget_id', (int) $ai_widget_id); }
         // I link affiliati usati nell'articolo senza immagine in evidenza vanno

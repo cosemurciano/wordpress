@@ -1,3 +1,15 @@
+## 2.104.0 - 2026-07-08
+
+### Fix accenti corrotti negli articoli generati (pif9 → più): prevenzione + riparazione
+- **Segnalazione** (articolo "10 hotel a Parigi"): accenti rotti in tutto il testo ("le zone pif9 centrali", "perche9", "citte0", "puf2", "Pre9s"). Non c'entra il francese: ogni lettera accentata era diventata il **residuo del suo escape JSON** (`più` → `\u00f9` → perso `\u00` → resta `f9`).
+- **Causa radice**: il CONTEXT inviato al modello era serializzato con `wp_json_encode` che di default escapa l'unicode — il modello vedeva migliaia di `\u00e8`/`\u00f9`, li riproduceva nel contenuto, e nel salvataggio la sequenza veniva mutilata.
+- **Prevenzione** (fix vero): nuovo `ALMA_OpenAI_Service::encode_context()` con `JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES`, usato in TUTTI i punti che costruiscono prompt (draft-builder ×3, optimizer/arricchimento, tool output dell'agente di ideazione): il modello ora vede e restituisce testo con accenti reali.
+- **Correttezza WordPress**: `wp_slash()` su tutti i salvataggi di contenuto AI (`wp_insert_post` ×2 nel draft-builder, `wp_update_post` in arricchimento, metabox AI Affiliati e sostituzione segnaposto immagini): senza, WordPress rimuove i backslash dal contenuto (concausa della mutilazione).
+- **Riparazione difensiva** (`repair_unicode_escape_residues` nel quality checker, applicata a titolo/excerpt/contenuto di ogni nuova bozza): decodifica gli escape sopravvissuti (`\u00e8`/`u00e8` → è) e ricostruisce i residui mutilati (`pif9`→più, `perche9`→perché, `citte0`→città, `puf2`→può, `Pre9s`→Prés, `e8` isolato→è). Guardie conservative: solo fuori dai tag HTML (mai href/attributi), solo dopo lettera minuscola, mai dentro percorsi o seguiti da cifre; `ec`/`b0` esclusi (falsi positivi). Warning con conteggio riparazioni nella diagnostica bozza.
+- Nota: l'articolo GIÀ pubblicato non si ripara da solo — va rigenerato o corretto; se ce ne sono diversi si può fare un batch di riparazione retroattiva (chiedere).
+- Test standalone 25/25 (tutti i casi reali dell'articolo, falsi positivi evitati su href/percorsi/parole normali, wiring prevenzione + wp_slash + warning).
+- Versione plugin aggiornata a `2.104.0`.
+
 ## 2.103.0 - 2026-07-08
 
 ### Import Travelpayouts integrato in Affiliate Sources (anteprima, mappatura, deduplica, avanzamento live)

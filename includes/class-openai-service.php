@@ -2,6 +2,17 @@
 if (!defined('ABSPATH')) { exit; }
 
 class ALMA_OpenAI_Service {
+    /**
+     * Serializza il contesto per i prompt SENZA escape unicode: con il
+     * default di wp_json_encode ogni accento diventava \u00e8/\u00f9 e il
+     * modello, imitando il contesto, riproduceva gli escape nel contenuto
+     * che poi arrivavano mutilati nel post ("più" -> "pif9"). Con
+     * JSON_UNESCAPED_UNICODE il modello vede e restituisce testo reale.
+     */
+    public static function encode_context($data) {
+        return wp_json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    }
+
     public static function request($args = array()) {
         $api_key = trim((string) get_option('alma_openai_api_key', ''));
         if ($api_key === '') {
