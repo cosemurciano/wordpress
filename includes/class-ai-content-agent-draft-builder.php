@@ -413,6 +413,7 @@ class ALMA_AI_Content_Agent_Draft_Builder {
             'Formatta il testo per la lettura sul web: evidenzia in <strong> i concetti chiave, i nomi di luoghi/attrazioni e i dati pratici (prezzi, periodi consigliati, durate) — con misura, indicativamente una-due evidenziazioni per paragrafo, mai interi periodi.',
             'I link affiliati di tipologia universale (assicurazione viaggio, eSIM, ecc.) sono pertinenti in QUALSIASI articolo di viaggio, anche multi-destinazione: la coerenza geografica NON si applica a loro. Se ne hai uno tra affiliate_links, inseriscilo nel punto più naturale (consigli pratici, preparativi).',
             'Se è presente location_facts, integra nel testo i DATI REALI della scheda località — mesi migliori/da evitare e clima (temperature, piogge), attrazioni verificate, patrimonio UNESCO, elementi del territorio — citandoli con naturalezza per rendere l\'articolo concreto e autorevole. NON inventare numeri o fatti non presenti in location_facts.',
+            'REGOLA CRITICA di monetizzazione: se usi l\'immagine o descrivi in modo specifico una struttura/prodotto presente in affiliate_links (es. un hotel, un tour), DEVI renderlo cliccabile con il suo affiliate_url — immagine avvolta in <a href="{affiliate_url}" target="_blank" rel="nofollow sponsored noopener"> oppure lo shortcode [affiliate_link id="ID"]. MAI mostrare foto o descrizione di un affiliato senza il suo link: una foto senza link è un\'occasione di guadagno persa. Considera le link_types (es. "Hotel e Resort") per capire che è una struttura prenotabile.',
         );
         $affiliate_rules = self::compact_rule_list(array_merge((array)($payload['affiliate_rules'] ?? array()), array($profile_rules['affiliate_rules'] ?? '')));
         $seo_rules = self::compact_rule_list(array_merge((array)($payload['seo_rules'] ?? array()), array($profile_rules['seo_rules'] ?? '')));
@@ -521,6 +522,61 @@ class ALMA_AI_Content_Agent_Draft_Builder {
         return $out;
     }
 
+
+    /**
+     * Garanzia di monetizzazione: quando l'AI usa l'immagine di un link
+     * affiliato SENZA renderlo cliccabile (foto + descrizione ma niente
+     * link — tipico con hotel/strutture nuove), il sistema avvolge quella
+     * immagine nel link affiliato con gli attributi di tracking. Salta i
+     * link già presenti (href o shortcode) e le immagini già dentro un
+     * anchor, quindi mai doppioni.
+     *
+     * @return array{content:string,linked:int[]}
+     */
+    private static function link_used_affiliate_images($content, $affiliate_links) {
+        $content = (string) $content;
+        $linked = array();
+        foreach ((array) $affiliate_links as $link) {
+            if (!is_array($link)) { continue; }
+            $url = esc_url_raw((string) ($link['affiliate_url'] ?? ''));
+            $id = absint($link['id'] ?? 0);
+            if ($url === '' || $id < 1) { continue; }
+            // Già monetizzato (href con questo URL o shortcode con questo id)?
+            if (strpos($content, $url) !== false) { continue; }
+            if (preg_match('/\[affiliate_link[^\]]*\bid="?' . $id . '"?[\s"\]]/', $content)) { continue; }
+            $img_url = (string) ($link['featured_image_url'] ?? '');
+            if ($img_url === '' && is_array($link['image'] ?? null)) { $img_url = (string) ($link['image']['image_url'] ?? ''); }
+            $base = self::image_base_token($img_url);
+            if ($base === '') { continue; }
+            $wrapped = false;
+            // L'alternanza cattura PRIMA gli anchor completi (le immagini già
+            // linkate vengono così saltate) e poi le <img> isolate.
+            $new = preg_replace_callback('/<a\b[^>]*>.*?<\/a>|<img\b[^>]*>/is', function ($m) use (&$wrapped, $base, $url, $id) {
+                $tag = $m[0];
+                if ($wrapped || strncasecmp($tag, '<a', 2) === 0) { return $tag; }
+                if (stripos($tag, $base) === false) { return $tag; }
+                $wrapped = true;
+                return '<a href="' . esc_url($url) . '" target="_blank" rel="nofollow sponsored noopener" data-link-id="' . $id . '" data-track="1" data-source="agent_content">' . $tag . '</a>';
+            }, $content);
+            if ($wrapped && $new !== null) { $content = $new; $linked[] = $id; }
+        }
+        return array('content' => $content, 'linked' => $linked);
+    }
+
+    /**
+     * Token identificativo di un'immagine (nome file senza dimensione né
+     * estensione) per riconoscere la stessa immagine anche in una variante
+     * ridimensionata: es. ".../ai-signature-hotel-37104-1024x683.webp" e
+     * ".../ai-signature-hotel-37104.webp" → "ai-signature-hotel-37104".
+     */
+    private static function image_base_token($url) {
+        $url = (string) $url;
+        $path = function_exists('wp_parse_url') ? wp_parse_url($url, PHP_URL_PATH) : parse_url($url, PHP_URL_PATH);
+        $file = basename((string) ($path ?: $url));
+        $file = preg_replace('/\.(webp|jpe?g|png|gif|avif)$/i', '', $file);
+        $file = preg_replace('/-\d+x\d+$/', '', (string) $file);
+        return sanitize_text_field((string) $file);
+    }
 
     private static function max_editorial_media_used($payload = array()) {
         $payload = is_array($payload) ? $payload : array();
@@ -971,6 +1027,15 @@ class ALMA_AI_Content_Agent_Draft_Builder {
             $selection_context[] = $entry;
             $image_debug = class_exists('ALMA_AI_Content_Agent_Affiliate_Index') ? ALMA_AI_Content_Agent_Affiliate_Index::get_image_debug_data($p->ID) : array();
 
+            // Tipologie AUTOREVOLI dalla tassonomia: i risultati di ricerca
+            // (row) non le portano per i link appena importati, così l'agent
+            // non sapeva che fossero "Hotel e Resort" prenotabili e li usava
+            // solo come fonte di immagine/descrizione. La tassonomia è la
+            // fonte di verità; row come fallback.
+            $term_names = get_the_terms($p->ID, 'link_type');
+            $link_types = (is_array($term_names) && !is_wp_error($term_names)) ? array_values(array_map('sanitize_text_field', wp_list_pluck($term_names, 'name'))) : array();
+            if (empty($link_types)) { $link_types = array_values(array_map('sanitize_text_field', (array)($row['link_types'] ?? array()))); }
+
             $affiliate_links[] = array(
                 'id' => (int)$p->ID,
                 'title' => sanitize_text_field($p->post_title),
@@ -979,7 +1044,7 @@ class ALMA_AI_Content_Agent_Draft_Builder {
                 'affiliate_url' => $affiliate_url,
                 'ai_context' => $ai_context,
                 'shortcode' => $shortcode,
-                'link_types' => array_values(array_map('sanitize_text_field', (array)($row['link_types'] ?? array()))),
+                'link_types' => $link_types,
                 'provider' => $source_provider,
                 'source' => $source_name !== '' ? $source_name : sanitize_text_field($row['source'] ?? ''),
                 'provenance' => sanitize_text_field($row['provenance'] ?? ''),
@@ -1369,6 +1434,15 @@ class ALMA_AI_Content_Agent_Draft_Builder {
             $enforced = ALMA_AI_Insertion_Rules::enforce($clean['content'], $rules_snapshot);
             $clean['content'] = $enforced['content'];
             $clean['warnings'] = array_values(array_unique(array_merge((array)$clean['warnings'], (array)$widget_result['warnings'], (array)$enforced['warnings'])));
+        }
+        // Garanzia di monetizzazione: gli affiliati (es. hotel) mostrati con
+        // foto/descrizione ma senza link vengono resi cliccabili avvolgendo
+        // la loro immagine nel link affiliato con tracking.
+        $img_link_guarantee = self::link_used_affiliate_images((string) $clean['content'], (array) $ctx['affiliate_links']);
+        if (!empty($img_link_guarantee['linked'])) {
+            $clean['content'] = $img_link_guarantee['content'];
+            $clean['warnings'][] = sprintf('%d immagini di link affiliati rese cliccabili automaticamente (usate senza link dall\'AI).', count($img_link_guarantee['linked']));
+            if (class_exists('ALMA_AI_Image_Generator')) { ALMA_AI_Image_Generator::queue_links($img_link_guarantee['linked']); }
         }
         // Garanzia deterministica del link universale (assicurazioni/eSIM):
         // se l'AI non ne ha inserito uno e il contenuto non lo contiene già,
