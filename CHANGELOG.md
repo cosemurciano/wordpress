@@ -1,3 +1,14 @@
+## 2.97.0 - 2026-07-08
+
+### Bozze agente: garanzia link affiliato sulle immagini usate (hotel non più mostrati senza link)
+- **Segnalazione**: articolo sugli hotel di Parigi — l'agent ha selezionato i 16 link affiliati degli hotel (geolocalizzati, tipologia "Hotel e Resort") ma ha inserito solo foto e descrizioni, SENZA i link affiliati. Foto e testo perfetti, ma zero monetizzazione.
+- **Causa 1 — l'agent non "vedeva" le tipologie**: il campo `link_types` nel payload di scrittura arrivava dal risultato di ricerca della sessione, che per i link appena importati è vuoto; NON veniva riletto dalla tassonomia. Così l'AI non sapeva che quei link fossero strutture prenotabili e li ha usati come semplici fonti di immagine/descrizione. **Fix**: `link_types` ora è letto dalla tassonomia `link_type` (fonte di verità, es. "Hotel e Resort"), con il risultato di ricerca come solo fallback.
+- **Causa 2 — nessuna garanzia deterministica**: la regola "ogni immagine affiliata va avvolta in un link" c'era, ma l'AI l'ha ignorata e niente la faceva rispettare. **Fix** (`link_used_affiliate_images`): dopo la scrittura, per ogni link affiliato selezionato la cui immagine compare nel contenuto ma NON è cliccabile, il sistema avvolge quell'immagine nel link affiliato con gli attributi di tracking (`data-link-id`, `data-track`, `data-source="agent_content"`). Riconosce l'immagine anche nella variante ridimensionata (match sul nome file senza suffisso dimensione); salta i link già presenti come href o shortcode e le immagini già dentro un anchor (mai doppioni). Le immagini così linkate entrano anche nella coda di generazione immagini AI se prive di featured.
+- **Regola rafforzata**: "REGOLA CRITICA di monetizzazione — se usi l'immagine o descrivi una struttura/prodotto di affiliate_links (es. un hotel), DEVI renderlo cliccabile col suo affiliate_url o shortcode: mai foto/descrizione di un affiliato senza il suo link".
+- Nota: gli articoli GIÀ pubblicati con immagini nude non vengono riparati automaticamente (l'arricchimento lavora sugli shortcode, non sulle immagini): per quelli, rigenerare o aggiungere i link a mano. La correzione vale per tutte le nuove bozze.
+- Test standalone 19/19 (token immagine, wrapping caso reale Parigi, no doppioni su href/shortcode/anchor, multipli hotel, fallback image_url, guardie).
+- Versione plugin aggiornata a `2.97.0`.
+
 ## 2.96.0 - 2026-07-08
 
 ### Revisione geo dal metabox "AI Affiliati": località e mappa on-demand

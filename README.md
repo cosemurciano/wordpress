@@ -1,3 +1,9 @@
+## 2.97.0 - 2026-07-08
+
+### Hotel (e affiliati) non più mostrati senza link
+- Le tipologie dei link affiliati (es. "Hotel e Resort") ora sono lette dalla tassonomia e viste dall'agent; e una garanzia deterministica rende cliccabile ogni immagine di un affiliato usata senza link, avvolgendola nel link affiliato con tracking. Risolve il caso "foto e descrizioni degli hotel ma senza link affiliato".
+- Versione plugin aggiornata a `2.97.0`.
+
 ## 2.96.0 - 2026-07-08
 
 ### Revisione geo dal metabox articolo
