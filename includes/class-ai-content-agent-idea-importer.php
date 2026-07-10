@@ -29,7 +29,7 @@ class ALMA_AI_Content_Agent_Idea_Importer {
     const LOCK_TTL = 600;
     const REPORT_TRANSIENT = 'alma_ai_ideas_import_report_';
     const MAX_ROWS = 500;
-    const MAX_AUTO_CANDIDATES = 8;
+    const MAX_AUTO_CANDIDATES = 12;
 
     public static function init() {
         add_action('init', array(__CLASS__, 'maybe_schedule_cron'));
@@ -450,6 +450,39 @@ class ALMA_AI_Content_Agent_Idea_Importer {
      *    dell'autore dell'idea, come farebbe dall'admin);
      * 3. bozza generata dal Draft Builder esistente; meta idea aggiornate.
      */
+    /**
+     * Riordina i candidati affiliati garantendo la diversità per tipologia:
+     * raggruppa per link_type (preservando l'ordine per punteggio dentro
+     * ogni gruppo) e li interleava a round-robin, così una singola tipologia
+     * molto cliccata non satura i primi $cap posti. Ritorna i primi $cap.
+     */
+    public static function diversify_candidates_by_type($rows, $cap) {
+        $rows = array_values((array) $rows);
+        if (count($rows) <= $cap) { return $rows; }
+        $groups = array();
+        $order = array();
+        foreach ($rows as $row) {
+            $types = $row['link_types'] ?? '';
+            $first = is_array($types) ? (string) reset($types) : (string) (explode(',', (string) $types)[0]);
+            $key = strtolower(trim($first)); // tipologia primaria
+            if ($key === '') { $key = '_senza_tipo'; }
+            if (!isset($groups[$key])) { $groups[$key] = array(); $order[] = $key; }
+            $groups[$key][] = $row;
+        }
+        $out = array();
+        $exhausted = false;
+        while (count($out) < $cap && !$exhausted) {
+            $exhausted = true;
+            foreach ($order as $key) {
+                if (empty($groups[$key])) { continue; }
+                $out[] = array_shift($groups[$key]);
+                $exhausted = false;
+                if (count($out) >= $cap) { break; }
+            }
+        }
+        return $out;
+    }
+
     private static function generate_draft_for_scheduled_idea($idea_id) {
         $idea = ALMA_AI_Content_Agent_Ideas::get($idea_id);
         if (empty($idea)) { return array('success' => false, 'error' => 'Idea non trovata'); }
@@ -471,7 +504,11 @@ class ALMA_AI_Content_Agent_Idea_Importer {
             'geo_location_label' => (string)($idea['location_label'] ?? ''),
             'geo_link_ids' => $geo_link_ids,
         ));
-        $candidates = array_slice((array)($search['groups']['affiliate_link'] ?? array()), 0, self::MAX_AUTO_CANDIDATES);
+        // Diversità per TIPOLOGIA: i top per punteggio erano dominati dai
+        // link più cliccati (es. tour), lasciando fuori gli hotel appena
+        // importati (senza storico). Il round-robin per link_type garantisce
+        // che ogni tipologia pertinente entri tra i candidati.
+        $candidates = self::diversify_candidates_by_type((array)($search['groups']['affiliate_link'] ?? array()), self::MAX_AUTO_CANDIDATES);
         // Verifica LIVE al momento della creazione dell'articolo: i link
         // morti vengono scartati (e marcati) prima di entrare nella bozza.
         if (class_exists('ALMA_Link_Health_Checker')) {
@@ -511,6 +548,17 @@ class ALMA_AI_Content_Agent_Idea_Importer {
         update_post_meta($idea_id, ALMA_AI_Content_Agent_Ideas::META_RESULTS, $candidates);
         update_post_meta($idea_id, ALMA_AI_Content_Agent_Ideas::META_SELECTION, $candidates);
         update_user_meta($author_id, '_alma_active_idea_id', $idea_id);
+
+        // Profilo istruzioni: se l'idea non ne ha uno (l'agent non lo ha
+        // scelto), applica il profilo PREDEFINITO attivo, così le Istruzioni
+        // AI - Profili vengono sempre usate anche nelle bozze automatiche.
+        $idea_for_profile = ALMA_AI_Content_Agent_Ideas::get($idea_id);
+        if (empty($idea_for_profile['profile_id']) && class_exists('ALMA_AI_Content_Agent_Instructions_Manager')) {
+            $default_pid = ALMA_AI_Content_Agent_Instructions_Manager::default_profile_id();
+            if ($default_pid > 0) {
+                update_post_meta($idea_id, ALMA_AI_Content_Agent_Ideas::META_PROFILE_ID, $default_pid);
+            }
+        }
         ALMA_AI_Content_Agent_Selection_Session::load_from_idea(ALMA_AI_Content_Agent_Ideas::get($idea_id));
 
         $result = ALMA_AI_Content_Agent_Draft_Builder::generate_from_selection_session($author_id);

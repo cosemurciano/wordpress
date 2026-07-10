@@ -413,7 +413,7 @@ class ALMA_AI_Content_Agent_Draft_Builder {
             'Formatta il testo per la lettura sul web: evidenzia in <strong> i concetti chiave, i nomi di luoghi/attrazioni e i dati pratici (prezzi, periodi consigliati, durate) — con misura, indicativamente una-due evidenziazioni per paragrafo, mai interi periodi.',
             'I link affiliati di tipologia universale (assicurazione viaggio, eSIM, ecc.) sono pertinenti in QUALSIASI articolo di viaggio, anche multi-destinazione: la coerenza geografica NON si applica a loro. Se ne hai uno tra affiliate_links, inseriscilo nel punto più naturale (consigli pratici, preparativi).',
             'Se è presente location_facts, integra nel testo i DATI REALI della scheda località — mesi migliori/da evitare e clima (temperature, piogge), attrazioni verificate, patrimonio UNESCO, elementi del territorio — citandoli con naturalezza per rendere l\'articolo concreto e autorevole. NON inventare numeri o fatti non presenti in location_facts.',
-            'REGOLA CRITICA di monetizzazione: OGNI link affiliato pertinente in affiliate_links va SEMPRE inserito come vero link cliccabile, non solo come fonte di foto o descrizione. Puoi usarlo anche come fonte, ma DEVI comunque linkarlo. Scegli per ogni link la modalità che converte di più e sfrutta tutto l\'arsenale: nome/anchor nel testo con lo shortcode [affiliate_link id="ID" text="…"], immagine avvolta in <a href="{affiliate_url}" target="_blank" rel="nofollow sponsored noopener">, bottone CTA (button="yes"), card (img+descrizione+bottone) e, per raccolte di più strutture/esperienze, il widget [[ALMA_WIDGET]]. MAI mostrare foto o descrizione di un affiliato senza il suo link: è guadagno perso. Usa le link_types (es. "Hotel e Resort") per capire che è una struttura prenotabile e proporre la giusta call to action.',
+            'REGOLA CRITICA di monetizzazione: OGNI link affiliato pertinente in affiliate_links va SEMPRE inserito come vero link cliccabile, non solo come fonte di foto o descrizione. Puoi usarlo anche come fonte, ma DEVI comunque linkarlo. Scegli per ogni link la modalità che converte di più e sfrutta tutto l\'arsenale: nome/anchor nel testo con lo shortcode [affiliate_link id="ID" text="…"], immagine avvolta in <a href="{affiliate_url}" target="_blank" rel="nofollow sponsored noopener">, bottone CTA (button="yes"), card e, per raccolte di più strutture/esperienze, il widget [[ALMA_WIDGET]]. Per una struttura/prodotto presentato con foto (es. un hotel) usa la CARD con lo shortcode nella forma: [affiliate_link id="ID" img="yes" fields="title,content" button="yes" button_size="medium"] — mostra immagine, titolo, descrizione e pulsante. MAI mostrare foto o descrizione di un affiliato senza il suo link: è guadagno perso. Usa le link_types (es. "Hotel e Resort") per capire che è una struttura prenotabile e proporre la giusta call to action.',
             'Varia l\'offerta: usa i DIVERSI link affiliati pertinenti disponibili, non concentrarti su uno solo. In un articolo che elenca più strutture/esperienze, linka CIASCUNA al suo affiliate_link corrispondente.',
         );
         $affiliate_rules = self::compact_rule_list(array_merge((array)($payload['affiliate_rules'] ?? array()), array($profile_rules['affiliate_rules'] ?? '')));
@@ -712,6 +712,30 @@ class ALMA_AI_Content_Agent_Draft_Builder {
         $result['added'] = true;
         $result['link_id'] = $link_id;
         return $result;
+    }
+
+    /**
+     * Sceglie il layout del widget di fallback in base alla tipologia
+     * prevalente dei link: un solo link → hero_spotlight; alloggi/mete
+     * (hotel, resort, destinazioni) → destination_cards; altrimenti (tour,
+     * attività, esperienze) → experience_cards. Evita di usare sempre lo
+     * stesso layout.
+     */
+    private static function pick_widget_layout_for_links($link_ids) {
+        $link_ids = array_values(array_filter(array_map('absint', (array) $link_ids)));
+        if (count($link_ids) <= 1) { return 'hero_spotlight'; }
+        $accommodation = 0; $total = 0;
+        foreach ($link_ids as $id) {
+            $terms = get_the_terms($id, 'link_type');
+            if (is_wp_error($terms) || empty($terms)) { continue; }
+            foreach ($terms as $term) {
+                $total++;
+                if (preg_match('/hotel|resort|alloggi|ostell|b&b|appartament|destinazion|met[ae]|citt/i', (string) $term->name)) { $accommodation++; }
+            }
+        }
+        // Se almeno metà dei link sono strutture/mete, la griglia destinazioni
+        // valorizza meglio l'immagine; altrimenti le card esperienze.
+        return ($total > 0 && $accommodation * 2 >= $total) ? 'destination_cards' : 'experience_cards';
     }
 
     private static function candidate_affiliate_images($affiliate_links) {
@@ -1227,7 +1251,7 @@ class ALMA_AI_Content_Agent_Draft_Builder {
             'seo_rules'=>$seo_rules,
             'media_rules'=>array_filter(array('Usa massimo '.$max_editorial_media_used.' immagini editoriali dalla Media Library nel corpo dell’articolo.','Usare immagini affiliate solo se pertinenti alla sezione.','Non inventare URL immagini.','Usare solo immagini presenti nei link affiliati selezionati.','Non duplicare troppe volte la stessa immagine.','Non scaricare immagini durante la generazione bozza.','Se nessuna immagine della Media Library è adatta a una sezione, puoi inserire su una riga a sé un segnaposto [Immagine: descrizione fotografica dettagliata della scena] (massimo 3 per articolo): verrà generato dall\'AI e sostituito automaticamente dopo la creazione.', $profile_payload['instruction_profile_rules']['image_rules'] ?? '')),
             'output_contract'=>array('title','slug','excerpt','content','seo_title','seo_description','featured_image_id','affiliate_shortcodes_used','affiliate_urls_used','internal_urls_used','media_used','category_ids','tag_ids','new_tags','warnings'),
-            'widget_request_contract'=>'Campo OPZIONALE widget_request nell\'output JSON: {"title":string,"layout":string,"link_ids":[int],"button_text":string,"rewritten":[{"id":int,"title":string,"description":string}]}. Scegli il layout adatto al contesto dell\'articolo: "destination_cards" = griglia di mete/destinazioni con titolo e località sull\'immagine (2-6 link); "experience_cards" = card compatte per tour e attività specifiche con pulsante, carosello su mobile (2-8 link); "hero_spotlight" = UNA sola esperienza di punta in grande evidenza con testo e pulsante (esattamente 1 link). Compilalo SOLO se hai inserito il segnaposto [[ALMA_WIDGET]] nel content; il sistema creerà il widget reale e sostituirà il segnaposto. Posiziona il segnaposto [[ALMA_WIDGET]] in un punto INTERMEDIO dell\'articolo (dopo una sezione centrale pertinente) per spezzare visivamente il testo — NON alla fine, dove è meno efficace.',
+            'widget_request_contract'=>'Campo OPZIONALE widget_request nell\'output JSON: {"title":string,"layout":string,"link_ids":[int],"button_text":string,"rewritten":[{"id":int,"title":string,"description":string}]}. Scegli il layout adatto al contesto dell\'articolo: "destination_cards" = griglia di mete/destinazioni con titolo e località sull\'immagine (2-6 link); "experience_cards" = card compatte per tour e attività specifiche con pulsante, carosello su mobile (2-8 link); "hero_spotlight" = UNA sola esperienza di punta in grande evidenza con testo e pulsante (esattamente 1 link). SCEGLI il layout in base al CONTENUTO, non usare sempre lo stesso: per hotel/alloggi e mete usa "destination_cards", per tour/attività "experience_cards", per una singola proposta di punta "hero_spotlight". Compilalo SOLO se hai inserito il segnaposto [[ALMA_WIDGET]] nel content; il sistema creerà il widget reale e sostituirà il segnaposto. Posiziona il segnaposto [[ALMA_WIDGET]] in un punto INTERMEDIO dell\'articolo (dopo una sezione centrale pertinente) per spezzare visivamente il testo — NON alla fine, dove è meno efficace.',
             'warnings'=>array_values(array_unique($warnings)),
             'agent_behavior'=>$agent_behavior,
         ), $profile_payload);
@@ -1444,9 +1468,13 @@ class ALMA_AI_Content_Agent_Draft_Builder {
             $rules_snapshot = ALMA_AI_Insertion_Rules::get_rules();
             if ($ai_widget_id < 1 && in_array('widget', (array) $rules_snapshot['patterns'], true) && !empty($candidate_affiliate_ids)) {
                 $fallback_ids = array_slice(array_map('absint', (array) $candidate_affiliate_ids), 0, 4);
+                // Layout scelto in base alla tipologia prevalente dei link
+                // (non sempre lo stesso): alloggi/mete → destination_cards,
+                // tour/attività → experience_cards, singolo → hero_spotlight.
+                $fallback_layout = self::pick_widget_layout_for_links($fallback_ids);
                 $fallback_request = array(
-                    'title' => __('Esperienze consigliate', 'affiliate-link-manager-ai'),
-                    'layout' => count($fallback_ids) === 1 ? 'hero_spotlight' : 'experience_cards',
+                    'title' => __('Le migliori proposte per te', 'affiliate-link-manager-ai'),
+                    'layout' => $fallback_layout,
                     'link_ids' => $fallback_ids,
                 );
                 $fallback_result = ALMA_AI_Insertion_Rules::apply_widget_request($clean['content'], $fallback_request, $candidate_affiliate_ids);

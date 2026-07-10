@@ -1,3 +1,14 @@
+## 2.102.0 - 2026-07-08
+
+### Hotel finalmente selezionati e inseriti + varietà widget + profili sempre applicati
+- **Causa radice** (articolo "Parigi in 3 giorni con hotel e tour"): gli hotel NON venivano inseriti perché **non entravano nemmeno tra i candidati**. La selezione automatica prendeva i top-8 link per punteggio, dominati dai tour già cliccati; gli hotel appena importati (senza storico click) restavano fuori, quindi la garanzia di inserimento (v2.97/2.98) non li poteva vedere. Stessa dinamica nel pulsante "Proponi ottimizzazioni AI".
+- **Diversità per tipologia** (`diversify_candidates_by_type`): i candidati affiliati vengono raggruppati per `link_type` e interleavati a round-robin (preservando l'ordine per punteggio dentro ogni gruppo), così ogni tipologia pertinente (hotel, tour…) entra tra i candidati. Applicata sia alla selezione automatica delle bozze (cap alzato 8→12) sia all'optimizer ("Proponi ottimizzazioni AI"). Ora gli hotel di un articolo sugli hotel vengono davvero proposti e inseriti.
+- **Card shortcode per le strutture** (richiesta): il prompt ora indica esplicitamente di usare, per hotel/prodotti con foto, `[affiliate_link id="ID" img="yes" fields="title,content" button="yes" button_size="medium"]` (immagine + titolo + descrizione + pulsante).
+- **Varietà del widget** (`pick_widget_layout_for_links`): il widget di fallback non usa più sempre `experience_cards` — sceglie il layout in base alla tipologia prevalente dei link (hotel/mete → `destination_cards`, tour/attività → `experience_cards`, singolo → `hero_spotlight`); il prompt invita a variare il layout in base al contenuto.
+- **Istruzioni AI - Profili sempre usate** (verifica richiesta): il profilo veniva applicato solo se l'idea ne aveva uno esplicito, e l'agent spesso non lo impostava → bozze senza profilo. Ora, se l'idea non ha profilo, si applica automaticamente il **profilo predefinito attivo** (`is_default`). Nuovo `ALMA_AI_Content_Agent_Instructions_Manager::default_profile_id()`.
+- Test standalone 18/18 (diversità con hotel non esclusi, ordine per punteggio nei gruppi, link_types come array/stringa, layout per tipologia, wiring importer/optimizer/prompt/profilo).
+- Versione plugin aggiornata a `2.102.0`.
+
 ## 2.101.0 - 2026-07-08
 
 ### Import massivo link affiliati da CSV con conversione Travelpayouts
