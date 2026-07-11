@@ -1,3 +1,15 @@
+## 2.106.2 - 2026-07-11
+
+### Fix: le idee senza link affiliati pertinenti ora creano comunque l'articolo
+- **Segnalazione** (idea "Viaggio in Mongolia"): bozza mai creata con errore "Seleziona almeno una fonte prima di creare la bozza", e pulsanti manuali rotti ("Idea non trovata." dall'elenco, "Nessuna sessione contenuto attiva." dal workspace). Per quel tema non esistono link affiliati coerenti — correttamente — ma il flusso lo trattava come errore.
+- **Causa n.1 — candidato universale scartato in silenzio**: il candidato di tipologia universale (assicurazioni/eSIM) costruito dal runner non aveva `result_key`/`source_group`, e la sessione di selezione scarta le righe senza chiave: quando era l'UNICO candidato la selezione arrivava vuota e la bozza falliva. Ora il candidato ha le chiavi corrette e, in difesa, la sessione deriva una chiave di fallback (`gruppo:id`) invece di scartare righe identificabili.
+- **Causa n.2 — zero link = blocco**: il runner falliva con "Nessun link affiliato candidato" e il draft builder esigeva almeno una fonte. Ora le idee senza link affiliati pertinenti producono comunque un **articolo informativo**: nessuna monetizzazione inventata (nota esplicita al writer: niente shortcode/link fittizi, che comunque verrebbero rimossi dal QA), link interni benvenuti, e la garanzia del link universale resta attiva quando disponibile.
+- **Pulsante «Genera bozza» dell'elenco riparato**: instradava le idee (post CPT) al flusso storico che legge la vecchia tabella idee → "Idea non trovata." per TUTTE le idee dell'agente. Ora le idee CPT passano dal flusso unificato del runner (fallback legacy conservato); il pulsante è visibile anche con 0 fonti selezionate.
+- **Pulsante «Crea bozza» del workspace**: con sessione senza fonti ma un'idea attiva, la bozza si genera direttamente dall'idea (stesso flusso unificato) invece di rispondere "Nessuna sessione contenuto attiva".
+- **Difesa anti-duplicato**: se l'idea ha già la sua bozza/articolo, i pulsanti e il runner restituiscono quella esistente invece di crearne una seconda (e lo stato dell'idea si riallinea).
+- Test standalone 21/21 (chiave di fallback in sessione, candidato universale, flusso senza fonti, routing pulsanti, anti-duplicato) + 28/28 regia ancora verdi.
+- Versione plugin aggiornata a `2.106.2`.
+
 ## 2.106.1 - 2026-07-11
 
 ### Verifica flusso regia → idee → post: sbloccati i piani editoriali

@@ -60,8 +60,17 @@ class ALMA_AI_Content_Agent_Admin {
         } elseif ($do === 'generate_brief') {
             $result = array('success'=>false,'message'=>'Step brief AI separato disattivato nel workflow corrente.');
         } elseif ($do === 'generate_draft') {
-            $result = ALMA_AI_Content_Agent_Draft_Builder::generate_for_idea(absint($_POST['idea_id'] ?? 0));
-            $result['message'] = empty($result['success']) ? ($result['error'] ?? 'Errore generazione bozza.') : 'Bozza generata: '.esc_url_raw($result['edit_url'] ?? '');
+            $idea_id = absint($_POST['idea_id'] ?? 0);
+            // Le idee contenuto sono post CPT: il flusso storico generate_for_idea
+            // legge la vecchia tabella idee e rispondeva "Idea non trovata."
+            // per TUTTE le idee dell'agente. Il CPT passa dal flusso unificato
+            // del runner (che supporta anche idee senza link affiliati).
+            if ($idea_id > 0 && get_post_type($idea_id) === 'alma_content_idea' && class_exists('ALMA_AI_Content_Agent_Idea_Importer')) {
+                $result = ALMA_AI_Content_Agent_Idea_Importer::generate_draft_now($idea_id);
+            } else {
+                $result = ALMA_AI_Content_Agent_Draft_Builder::generate_for_idea($idea_id);
+            }
+            $result['message'] = empty($result['success']) ? ($result['error'] ?? 'Errore generazione bozza.') : (!empty($result['existing']) ? 'Bozza già esistente per questa idea: nessun duplicato creato.' : 'Bozza generata: '.esc_url_raw($result['edit_url'] ?? ''));
         } elseif ($do === 'save_instruction_profile') {
             $id = absint($_POST['profile_id'] ?? 0);
             $profile_data = wp_unslash($_POST);
@@ -216,7 +225,20 @@ class ALMA_AI_Content_Agent_Admin {
             }
         } elseif ($do === 'create_draft_from_selection') {
             $summary = ALMA_AI_Content_Agent_Selection_Session::summary();
-            if (($summary['status'] ?? 'empty') === 'empty') { $result = array('success'=>false,'message'=>'Nessuna sessione contenuto attiva.'); }
+            $active_idea_id = absint(get_user_meta(get_current_user_id(), '_alma_active_idea_id', true));
+            $session_without_sources = (($summary['status'] ?? 'empty') === 'empty') || (int)($summary['selected_total'] ?? 0) < 1;
+            if ($session_without_sources && $active_idea_id > 0 && get_post_type($active_idea_id) === 'alma_content_idea' && class_exists('ALMA_AI_Content_Agent_Idea_Importer')) {
+                // Sessione senza fonti ma idea attiva (es. tema senza link
+                // affiliati pertinenti): flusso unificato del runner, che
+                // ricostruisce i candidati e supporta anche zero link.
+                if (empty(get_option('alma_openai_api_key', ''))) { $result = array('success'=>false,'message'=>'OpenAI non è configurata.'); }
+                else {
+                    $result = ALMA_AI_Content_Agent_Idea_Importer::generate_draft_now($active_idea_id);
+                    $result['message'] = empty($result['success']) ? ($result['error'] ?? 'Errore creazione bozza dall\'idea attiva.') : (!empty($result['existing']) ? 'Bozza già esistente per questa idea: nessun duplicato creato.' : 'Bozza articolo creata.');
+                    set_transient(self::RESULT_TRANSIENT_KEY . get_current_user_id(), $result, 120);
+                }
+            }
+            elseif (($summary['status'] ?? 'empty') === 'empty') { $result = array('success'=>false,'message'=>'Nessuna sessione contenuto attiva.'); }
             elseif ((int)($summary['selected_total'] ?? 0) < 1) { $result = array('success'=>false,'message'=>'Seleziona almeno una fonte prima di creare la bozza.'); }
             elseif ((int)($summary['selected_post'] ?? 0) > ALMA_AI_Content_Agent_Selection_Session::MAX_SELECTED_POSTS) { $result = array('success'=>false,'message'=>'Puoi selezionare massimo 3 Post.'); }
             elseif (empty(get_option('alma_openai_api_key', ''))) { $result = array('success'=>false,'message'=>'OpenAI non è configurata.'); }
@@ -509,7 +531,9 @@ class ALMA_AI_Content_Agent_Admin {
             echo '<td>'.esc_html($idea_post->post_modified).'</td>';
             echo '<td><div class="alma-actions-inline" style="display:flex;gap:4px;flex-wrap:wrap;">';
             echo '<a class="button button-small button-primary" href="'.esc_url(add_query_arg('idea_id', (int)$idea_post->ID, $workspace_url)).'">Apri nel workspace</a>';
-            if ($selection_count > 0 && !$draft_post) {
+            if (!$draft_post) {
+                // Visibile anche con 0 fonti selezionate: le idee senza link
+                // affiliati pertinenti producono comunque un articolo.
                 echo '<form method="post" action="'.esc_url(admin_url('admin-post.php')).'">'.wp_nonce_field('alma_ai_agent_action','_wpnonce',true,false).'<input type="hidden" name="action" value="alma_ai_agent_action"><input type="hidden" name="do" value="generate_draft"><input type="hidden" name="idea_id" value="'.(int)$idea_post->ID.'"><button class="button button-small">Genera bozza</button></form>';
             }
             echo '<form method="post" action="'.esc_url(admin_url('admin-post.php')).'" onsubmit="return confirm(\'Eliminare definitivamente questa idea?\');">'.wp_nonce_field('alma_ai_agent_action','_wpnonce',true,false).'<input type="hidden" name="action" value="alma_ai_agent_action"><input type="hidden" name="do" value="delete_content_idea"><input type="hidden" name="idea_id" value="'.(int)$idea_post->ID.'"><button class="button button-small">Elimina</button></form>';

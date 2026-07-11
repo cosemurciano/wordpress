@@ -1359,12 +1359,15 @@ class ALMA_AI_Content_Agent_Draft_Builder {
         return array('success'=>true,'post_id'=>$post_id,'edit_url'=>get_edit_post_link($post_id, 'raw'),'warnings'=>array_values(array_merge((array)$clean['warnings'], (array)($parsed['warnings'] ?? array()))));
     }
 
-    public static function generate_from_selection_session($user_id = 0) {
+    public static function generate_from_selection_session($user_id = 0, $allow_no_sources = false) {
         global $wpdb;
         $user_id = absint($user_id ?: get_current_user_id());
         $session = ALMA_AI_Content_Agent_Selection_Session::build_context_package();
         $selected = array_values(array_filter((array)($session['selected_results'] ?? array()), function($r){ return !empty($r['selected']); }));
-        if (empty($selected)) { return self::fail('Seleziona almeno una fonte prima di creare la bozza.'); }
+        // $allow_no_sources: idee senza link affiliati pertinenti (es.
+        // destinazione non coperta) producono comunque un articolo
+        // informativo, senza monetizzazione inventata.
+        if (empty($selected) && !$allow_no_sources) { return self::fail('Seleziona almeno una fonte prima di creare la bozza.'); }
         $selected_posts = array_values(array_filter($selected, function($r){ return ($r['source_group'] ?? '') === 'post'; }));
         if (count($selected_posts) > ALMA_AI_Content_Agent_Selection_Session::MAX_SELECTED_POSTS) { return self::fail('Puoi selezionare massimo 3 Post.'); }
         if (empty(get_option('alma_openai_api_key', ''))) { return self::fail('OpenAI non è configurata.'); }
@@ -1420,7 +1423,11 @@ class ALMA_AI_Content_Agent_Draft_Builder {
             }
         }
         if (empty($ctx['posts']) && empty($ctx['pages']) && empty($ctx['documents']) && empty($ctx['affiliate_links']) && empty($ctx['sources_online']) && empty($ctx['media'])) {
-            return self::fail('Nessuna fonte valida disponibile nella sessione selezionata.');
+            if (!$allow_no_sources) {
+                return self::fail('Nessuna fonte valida disponibile nella sessione selezionata.');
+            }
+            $ctx['no_affiliate_links_note'] = 'Per questo tema NON sono disponibili link affiliati pertinenti: scrivi un articolo informativo completo basandoti sul prompt editoriale. NON inventare link, shortcode [affiliate_link] o [alma_widget]: verranno rimossi. I link interni ad articoli esistenti restano benvenuti.';
+            $warnings[] = 'Nessun link affiliato pertinente disponibile: articolo creato senza monetizzazione.';
         }
         $profile_id = absint($session['instruction_profile_id'] ?? 0);
         $profile = $profile_id ? ALMA_AI_Content_Agent_Instructions_Manager::get_profile($profile_id) : array();
@@ -1431,6 +1438,11 @@ class ALMA_AI_Content_Agent_Draft_Builder {
         $payload['sources_online'] = $ctx['sources_online'];
         $payload['pages'] = $ctx['pages'];
         $payload['media'] = $ctx['media'];
+        if (!empty($ctx['no_affiliate_links_note'])) {
+            // La nota viaggia in 'warnings': è l'unico canale del payload
+            // normalizzato (whitelist) che arriva al writer come istruzione.
+            $payload['warnings'] = array_merge((array)($payload['warnings'] ?? array()), array($ctx['no_affiliate_links_note']));
+        }
         $ai_payload = self::normalize_payload_for_openai($payload);
         $prompt = self::build_draft_generation_prompt();
         $configured_max_tokens = absint(get_option('alma_openai_max_output_tokens', 1800));

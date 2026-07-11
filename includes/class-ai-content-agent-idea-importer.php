@@ -486,6 +486,13 @@ class ALMA_AI_Content_Agent_Idea_Importer {
     private static function generate_draft_for_scheduled_idea($idea_id) {
         $idea = ALMA_AI_Content_Agent_Ideas::get($idea_id);
         if (empty($idea)) { return array('success' => false, 'error' => 'Idea non trovata'); }
+        // Difesa anti-duplicato: se l'idea ha già la sua bozza/articolo, la
+        // restituisce (successo) invece di crearne un secondo — così anche lo
+        // stato dell'idea si riallinea (executed) se era rimasto indietro.
+        $existing_draft = absint(get_post_meta($idea_id, ALMA_AI_Content_Agent_Ideas::META_DRAFT_POST_ID, true));
+        if ($existing_draft > 0 && get_post($existing_draft)) {
+            return array('success' => true, 'post_id' => $existing_draft, 'edit_url' => get_edit_post_link($existing_draft, 'raw'), 'existing' => true, 'warnings' => array('Bozza già esistente per questa idea: nessun duplicato creato.'));
+        }
         $author_id = absint(get_post_field('post_author', $idea_id)) ?: 1;
         wp_set_current_user($author_id);
 
@@ -527,7 +534,15 @@ class ALMA_AI_Content_Agent_Idea_Importer {
                 if (!is_wp_error($terms) && !empty($terms)) {
                     foreach ($terms as $term) { $term_labels[] = $term->name; }
                 }
+                // result_key/source_group sono OBBLIGATORI: la sessione di
+                // selezione scarta le righe senza chiave, e quando l'universale
+                // era l'unico candidato la bozza falliva con "Seleziona almeno
+                // una fonte" (es. destinazioni senza link coerenti).
                 $candidates[] = array(
+                    'result_key' => 'affiliate_link:' . (int) $universal_id,
+                    'source_group' => 'affiliate_link',
+                    'source_type' => 'affiliate_link',
+                    'wp_id' => (int) $universal_id,
                     'source_id' => (int) $universal_id,
                     'title' => html_entity_decode(get_the_title($universal_id), ENT_QUOTES, 'UTF-8'),
                     'link_types' => implode(', ', $term_labels),
@@ -538,10 +553,10 @@ class ALMA_AI_Content_Agent_Idea_Importer {
                 );
             }
         }
-        if (empty($candidates)) {
-            self::mark_idea_failure($idea_id, 'Nessun link affiliato candidato');
-            return array('success' => false, 'error' => 'Nessun link affiliato candidato per l\'idea #' . $idea_id);
-        }
+        // Nessun link affiliato pertinente (es. destinazione non ancora
+        // coperta): l'articolo si crea COMUNQUE, informativo e senza
+        // monetizzazione inventata — prima il piano falliva qui.
+        $no_affiliate_sources = empty($candidates);
         foreach ($candidates as &$candidate) { $candidate['selected'] = true; }
         unset($candidate);
 
@@ -561,7 +576,7 @@ class ALMA_AI_Content_Agent_Idea_Importer {
         }
         ALMA_AI_Content_Agent_Selection_Session::load_from_idea(ALMA_AI_Content_Agent_Ideas::get($idea_id));
 
-        $result = ALMA_AI_Content_Agent_Draft_Builder::generate_from_selection_session($author_id);
+        $result = ALMA_AI_Content_Agent_Draft_Builder::generate_from_selection_session($author_id, $no_affiliate_sources);
         if (!empty($result['success']) && !empty($result['post_id'])) {
             // Solo a SUCCESSO l'idea è eseguita: i fallimenti (timeout OpenAI,
             // interruzioni a cavallo di mezzanotte…) restano ritentabili dal
