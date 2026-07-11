@@ -1,3 +1,9 @@
+## 2.106.1 - 2026-07-11
+
+### Regia sbloccata: piani editoriali che non partivano
+- Verificato tutto il flusso regia → idee → bozze → pubblicazione: apici e virgolette nel comando sono gestiti correttamente ovunque e non bloccavano nulla. Le cause reali erano un lock rimasto appeso dopo un run ucciso dall'hosting (ogni piano successivo veniva accodato per sempre) e il rifiuto silenzioso di WP-Cron per comandi identici ripetuti entro 10 minuti. Ora il lock scaduto si sblocca da solo, ogni piano ha un token univoco, i fallimenti di schedulazione sono espliciti e i piani in coda non vanno mai persi; `/stop` su Telegram svuota anche la coda.
+- Versione plugin aggiornata a `2.106.1`.
+
 ## 2.106.0 - 2026-07-10
 
 ### Pagina «Configura provider» + Affiliate Sources più chiari

@@ -317,8 +317,8 @@ class ALMA_Telegram_Bot {
      * /stato — fotografia operativa: agente, bozze programmate, immagini, link.
      */
     private static function command_status($chat_id) {
-        $running = class_exists('ALMA_AI_Idea_Agent') && get_option(ALMA_AI_Idea_Agent::LOCK_OPTION);
-        $stopping = class_exists('ALMA_AI_Idea_Agent') && get_option(ALMA_AI_Idea_Agent::OPTION_CANCEL);
+        $running = class_exists('ALMA_AI_Idea_Agent') && ALMA_AI_Idea_Agent::is_running();
+        $stopping = $running && get_option(ALMA_AI_Idea_Agent::OPTION_CANCEL);
         $text = "<b>📡 Stato operativo</b>\n";
         $text .= '🤖 Agente: ' . ($running ? ($stopping ? '<b>in arresto…</b>' : '<b>in esecuzione</b> (usa /stop per fermarlo)') : 'fermo') . "\n";
         if (class_exists('ALMA_AI_Content_Agent_Idea_Importer') && method_exists('ALMA_AI_Content_Agent_Idea_Importer', 'due_ideas_count')) {
@@ -349,12 +349,16 @@ class ALMA_Telegram_Bot {
             self::send_message($chat_id, 'Agente non disponibile.');
             return;
         }
-        if (!get_option(ALMA_AI_Idea_Agent::LOCK_OPTION)) {
-            self::send_message($chat_id, 'ℹ️ Nessuna esecuzione dell\'agente in corso.');
+        // Come il pulsante in Regia AI: lo stop ferma anche i piani accodati.
+        $queued = ALMA_AI_Idea_Agent::queued_count();
+        delete_option(ALMA_AI_Idea_Agent::OPTION_QUEUE);
+        $queue_note = $queued > 0 ? sprintf(' Svuotati anche %d piani in coda.', $queued) : '';
+        if (!ALMA_AI_Idea_Agent::is_running()) {
+            self::send_message($chat_id, 'ℹ️ Nessuna esecuzione dell\'agente in corso.' . $queue_note);
             return;
         }
         update_option(ALMA_AI_Idea_Agent::OPTION_CANCEL, (string) time(), false);
-        self::send_message($chat_id, '🛑 Arresto richiesto: l\'agente si fermerà al prossimo punto sicuro (le idee già create restano).');
+        self::send_message($chat_id, '🛑 Arresto richiesto: l\'agente si fermerà al prossimo punto sicuro (le idee già create restano).' . $queue_note);
     }
 
     /**

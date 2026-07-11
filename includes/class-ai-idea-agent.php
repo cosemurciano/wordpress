@@ -110,11 +110,44 @@ class ALMA_AI_Idea_Agent {
     }
 
     /**
+     * Lock di esecuzione "vivo": presente E non scaduto (LOCK_TTL). Un run
+     * ucciso dall'hosting (timeout/kill: il finally non gira) lasciava il
+     * lock per sempre: ogni piano successivo veniva accodato senza che
+     * nulla lo facesse mai partire e la regia risultava bloccata. Un lock
+     * scaduto viene rimosso e trattato come libero.
+     */
+    public static function is_running() {
+        $started = absint(get_option(self::LOCK_OPTION, 0));
+        if ($started < 1) { return false; }
+        if ((time() - $started) > self::LOCK_TTL) {
+            delete_option(self::LOCK_OPTION);
+            return false;
+        }
+        return true;
+    }
+
+    /**
+     * Programma l'esecuzione del piano come evento cron singolo. Un token
+     * univoco viene aggiunto come 9° argomento (il callback ne accetta 8 e
+     * lo ignora) perché WP-Cron rifiuta in silenzio un evento identico
+     * (stesso hook + stessi argomenti) entro 10 minuti: ripetere lo stesso
+     * comando faceva perdere il piano con messaggio di successo.
+     */
+    private static function schedule_run($args, $delay) {
+        $args = array_values((array) $args);
+        $args[] = uniqid('plan_', true);
+        $scheduled = wp_schedule_single_event(time() + max(1, (int) $delay), self::CRON_HOOK, $args);
+        if (false === $scheduled || is_wp_error($scheduled)) { return false; }
+        if (function_exists('spawn_cron')) { spawn_cron(); }
+        return true;
+    }
+
+    /**
      * Avvia un piano subito se libero, altrimenti lo ACCODA (i piani si
      * sommano). Ritorna array('type','message','queued'=>bool,'position'=>int).
      */
     public static function enqueue_or_start_plan($args) {
-        if (get_option(self::LOCK_OPTION)) {
+        if (self::is_running()) {
             $queue = array_values((array) get_option(self::OPTION_QUEUE, array()));
             if (count($queue) >= self::QUEUE_MAX) {
                 return array('type' => 'error', 'message' => sprintf(__('Coda piani piena (max %d in attesa): attendi che ne partano alcuni.', 'affiliate-link-manager-ai'), self::QUEUE_MAX), 'queued' => false, 'position' => 0);
@@ -124,8 +157,9 @@ class ALMA_AI_Idea_Agent {
             return array('type' => 'success', 'message' => sprintf(__('Un piano è già in corso: questo è stato accodato (posizione %d). Partirà automaticamente al termine di quello attuale.', 'affiliate-link-manager-ai'), count($queue)), 'queued' => true, 'position' => count($queue));
         }
         delete_option(self::OPTION_CANCEL);
-        wp_schedule_single_event(time() + 5, self::CRON_HOOK, array_values((array) $args));
-        if (function_exists('spawn_cron')) { spawn_cron(); }
+        if (!self::schedule_run($args, 5)) {
+            return array('type' => 'error', 'message' => __('Impossibile programmare l\'esecuzione (evento cron rifiutato): riprova tra qualche istante.', 'affiliate-link-manager-ai'), 'queued' => false, 'position' => 0);
+        }
         return array('type' => 'success', 'message' => __('Agente ideazione avviato in background: il report comparirà nella Regia AI entro qualche minuto.', 'affiliate-link-manager-ai'), 'queued' => false, 'position' => 0);
     }
 
@@ -146,8 +180,12 @@ class ALMA_AI_Idea_Agent {
         update_option(self::OPTION_QUEUE, $queue, false);
         if (!is_array($next) || empty($next)) { return; }
         delete_option(self::OPTION_CANCEL);
-        wp_schedule_single_event(time() + 10, self::CRON_HOOK, array_values($next));
-        if (function_exists('spawn_cron')) { spawn_cron(); }
+        if (!self::schedule_run($next, 10)) {
+            // Evento rifiutato: il piano torna in testa alla coda invece di
+            // andare perso (riproverà al termine del prossimo run).
+            array_unshift($queue, $next);
+            update_option(self::OPTION_QUEUE, $queue, false);
+        }
     }
 
     /**
@@ -162,7 +200,7 @@ class ALMA_AI_Idea_Agent {
         $queued = self::queued_count();
         delete_option(self::OPTION_QUEUE);
         $queue_note = $queued > 0 ? sprintf(__(' Svuotati anche %d piani in coda.', 'affiliate-link-manager-ai'), $queued) : '';
-        if (get_option(self::LOCK_OPTION)) {
+        if (self::is_running()) {
             update_option(self::OPTION_CANCEL, (string) time(), false);
             $notice = array('type' => 'success', 'message' => __('Richiesta di stop inviata: l\'agente si fermerà entro pochi secondi (al termine del passo in corso).', 'affiliate-link-manager-ai') . $queue_note);
         } else {
@@ -197,7 +235,17 @@ class ALMA_AI_Idea_Agent {
     }
 
     public static function run($user_id = 0, $objective = '', $create_drafts = 0, $force = 0, $num_ideas = 0, $days_span = 0, $start_date = '', $immediate = 0) {
-        if (!self::acquire_lock()) { return; }
+        if (!self::acquire_lock()) {
+            // Un altro piano è partito nel frattempo (corsa tra eventi cron):
+            // questo torna in coda invece di andare perso — verrà avviato
+            // dal finally del run in corso.
+            $queue = array_values((array) get_option(self::OPTION_QUEUE, array()));
+            if (count($queue) < self::QUEUE_MAX) {
+                $queue[] = array(absint($user_id), (string) $objective, (int) $create_drafts, (int) $force, (int) $num_ideas, (int) $days_span, (string) $start_date, (int) $immediate);
+                update_option(self::OPTION_QUEUE, $queue, false);
+            }
+            return;
+        }
         $started_at = current_time('mysql');
         $report = array(
             'started_at' => $started_at, 'finished_at' => '', 'rounds' => 0,
@@ -654,7 +702,7 @@ class ALMA_AI_Idea_Agent {
      */
     public static function render_panel() {
         if (!current_user_can('manage_options')) { return; }
-        $running = (bool) get_option(self::LOCK_OPTION);
+        $running = self::is_running();
         $last = self::get_last_run();
         echo '<div class="alma-ideas-card" style="border:1px solid #c3c4c7;border-radius:6px;background:#fff;padding:12px 16px;margin:12px 0;display:flex;gap:14px;align-items:center;flex-wrap:wrap;">';
         echo '<span style="font-size:1.05em;"><strong>🤖 Agente ideazione AI</strong></span>';

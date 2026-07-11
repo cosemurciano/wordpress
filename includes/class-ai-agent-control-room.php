@@ -250,8 +250,8 @@ class ALMA_AI_Agent_Control_Room {
 
     public static function render_page() {
         if (!current_user_can('manage_options')) { wp_die('forbidden'); }
-        $running = (bool) get_option(ALMA_AI_Idea_Agent::LOCK_OPTION);
-        $stopping = (bool) get_option(ALMA_AI_Idea_Agent::OPTION_CANCEL);
+        $running = ALMA_AI_Idea_Agent::is_running();
+        $stopping = $running && (bool) get_option(ALMA_AI_Idea_Agent::OPTION_CANCEL);
         $runs_today = ALMA_AI_Idea_Agent::runs_today();
         $draft_counter = get_option('alma_ai_ideas_draft_counter', array());
         $drafts_today = (is_array($draft_counter) && ($draft_counter['date'] ?? '') === current_time('Y-m-d')) ? (int) $draft_counter['count'] : 0;
