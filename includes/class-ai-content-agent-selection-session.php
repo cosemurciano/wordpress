@@ -38,6 +38,14 @@ class ALMA_AI_Content_Agent_Selection_Session {
         foreach ($rows as $row) {
             if (!is_array($row)) { continue; }
             $key = self::extract_result_key($row);
+            if ($key === '') {
+                // Riga senza chiave ma identificabile (es. candidato universale
+                // costruito a mano): chiave derivata invece di scartarla — lo
+                // scarto silenzioso svuotava la selezione delle idee.
+                $fallback_id = absint($row['source_id'] ?? ($row['wp_id'] ?? 0));
+                $fallback_group = sanitize_key((string) ($row['source_group'] ?? ($row['source_type'] ?? '')));
+                if ($fallback_id > 0 && $fallback_group !== '') { $key = $fallback_group . ':' . $fallback_id; }
+            }
             if ($key === '') { continue; }
             $row['result_key'] = $key;
             $row['source_group'] = self::normalize_group($row['source_group'] ?? '');

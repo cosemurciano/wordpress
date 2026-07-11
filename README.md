@@ -1,3 +1,9 @@
+## 2.106.2 - 2026-07-11
+
+### Idee senza link affiliati: l'articolo si crea comunque
+- Le idee su destinazioni senza link affiliati coerenti (es. Mongolia) non falliscono più con "Seleziona almeno una fonte": l'articolo viene creato in versione informativa senza monetizzazione inventata, e il candidato universale (assicurazioni/eSIM) non viene più scartato quando è l'unico. Riparati i pulsanti manuali: «Genera bozza» dall'elenco idee (rispondeva "Idea non trovata.") e «Crea bozza» dal workspace con idea attiva; in più, guardia anti-duplicato se la bozza esiste già.
+- Versione plugin aggiornata a `2.106.2`.
+
 ## 2.106.1 - 2026-07-11
 
 ### Regia sbloccata: piani editoriali che non partivano
