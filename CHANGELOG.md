@@ -1,3 +1,14 @@
+## 2.106.1 - 2026-07-11
+
+### Verifica flusso regia → idee → post: sbloccati i piani editoriali
+- **Verifica richiesta**: regia, creazione idee e post con pubblicazione, con sospetto su apici/virgolette nel testo del comando. **Esito su apici e virgolette: gestiti correttamente in TUTTI i passaggi** (regia: `wp_unslash` + sanitize; Telegram: JSON REST senza slash; prompt per concatenazione semplice con `wp_json_encode` a livello HTTP; argomenti tool decodificati da JSON; titolo/prompt idea sanificati; bozze salvate con `wp_slash` dalla v2.104; `data-obiettivo` con `esc_attr`). Non erano loro la causa del blocco.
+- **Causa reale n.1 — lock stantio**: se un run veniva ucciso dall'hosting (timeout/kill, il `finally` non gira), l'opzione di lock restava per sempre: ogni piano successivo (regia o Telegram) veniva "accodato" senza che nulla lo facesse mai partire, la regia mostrava "in esecuzione" all'infinito e la coda si riempiva. Nuovo `is_running()` (lock presente E non scaduto oltre `LOCK_TTL` 600s, con pulizia del lock scaduto) usato da avvio piani, pagina Regia, card Idee, `/stato`, `/stop` e stop admin.
+- **Causa reale n.2 — piani identici persi in silenzio**: WP-Cron rifiuta un evento identico (stesso hook + stessi argomenti) entro 10 minuti: ripetere lo stesso comando (tipico proprio quando "non parte nulla") perdeva il piano mostrando comunque il messaggio di successo. Ora ogni schedulazione aggiunge un token univoco come 9° argomento (il callback ne accetta 8: ignorato) e il rifiuto dell'evento produce un errore esplicito invece di un falso successo.
+- **Piani mai persi**: se la schedulazione del prossimo piano in coda fallisce, il piano torna in testa alla coda; se due eventi partono in corsa e il lock è conteso, il piano perdente si ri-accoda invece di sparire.
+- **`/stop` Telegram allineato alla Regia**: svuota anche i piani in coda e risponde correttamente quando non c'è nessuna esecuzione (prima, con lock stantio, chiedeva un arresto che non sarebbe mai avvenuto).
+- Test standalone 28/28 (lock stantio, token univoco, rifiuto cron esplicito, coda senza perdite, smoke su apici/virgolette lungo tutto il flusso).
+- Versione plugin aggiornata a `2.106.1`.
+
 ## 2.106.0 - 2026-07-10
 
 ### Pagina «Configura provider» separata + UI/UX Affiliate Sources
