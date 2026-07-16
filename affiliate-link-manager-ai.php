@@ -3,7 +3,7 @@
  * Plugin Name: Affiliate Link Manager AI
  * Plugin URI: https://your-website.com
  * Description: Gestisce link affiliati con intelligenza artificiale per ottimizzazione e tracking automatico.
- * Version: 2.106.2
+ * Version: 2.107.0
  * Author: Cosè Murciano
  * License: GPL v2 or later
  * Text Domain: affiliate-link-manager-ai
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Definisci costanti del plugin
-define('ALMA_VERSION', '2.106.2');
+define('ALMA_VERSION', '2.107.0');
 define('ALMA_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('ALMA_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('ALMA_PLUGIN_FILE', __FILE__);
@@ -71,6 +71,7 @@ require_once ALMA_PLUGIN_DIR . 'includes/class-article-locations-map.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-google-trends.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-geo-facts.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-travelpayouts-importer.php';
+require_once ALMA_PLUGIN_DIR . 'includes/class-affiliate-link-update-importer.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-affiliate-source-url-validator.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-affiliate-source-provider-interface.php';
 require_once ALMA_PLUGIN_DIR . 'includes/providers/class-affiliate-source-provider-manual.php';
@@ -186,6 +187,7 @@ class AffiliateManagerAI {
         ALMA_Article_Locations_Map::init();
         ALMA_Geo_Facts::init();
         ALMA_Travelpayouts_Importer::init();
+        ALMA_Affiliate_Link_Update_Importer::init();
         add_action('init', array($this, 'init'));
         add_action('widgets_init', array('ALMA_Contextual_Affiliate_Widget', 'register_widget'));
         // Registrato qui (prima che `widgets_init` scatti) perché ALMA_Shortcodes::init()
@@ -2153,6 +2155,13 @@ class AffiliateManagerAI {
         }
         check_admin_referer('alma_export_affiliate_links_csv');
 
+        // Filtri opzionali (source, tipologie, provider, stato, ricerca):
+        // senza parametri l'export resta identico a prima (tutti i link).
+        $filters = ALMA_Affiliate_Link_Update_Importer::export_filters_from_request($_GET);
+        // Modalità testo: raw (fedele, adatta al re-import) o clean (senza
+        // HTML/shortcode, per analisi esterne — comportamento storico).
+        $text_mode = $filters['text_mode'];
+
         $filename = 'sothra_affiliate_links_export_' . current_time('Y-m-d_H-i-s') . '.csv';
         nocache_headers();
         header('Content-Type: text/csv; charset=utf-8');
@@ -2171,16 +2180,12 @@ class AffiliateManagerAI {
 
         $paged = 1;
         $per_page = 200;
+        $base_query_args = ALMA_Affiliate_Link_Update_Importer::build_export_query_args($filters);
         do {
-            $query = new WP_Query(array(
-                'post_type' => 'affiliate_link',
-                'post_status' => 'any',
+            $query = new WP_Query(array_merge($base_query_args, array(
                 'posts_per_page' => $per_page,
                 'paged' => $paged,
-                'orderby' => 'ID',
-                'order' => 'ASC',
-                'no_found_rows' => true,
-            ));
+            )));
 
             foreach ($query->posts as $post) {
                 $post_id = (int) $post->ID;
@@ -2208,9 +2213,9 @@ class AffiliateManagerAI {
                     $this->get_first_post_meta_value($post_id, array('_alma_source_name', '_alma_source_provider_label')),
                     get_post_meta($post_id, '_alma_source_id', true),
                     get_post_meta($post_id, '_alma_external_id', true),
-                    $this->clean_affiliate_export_text(get_post_meta($post_id, '_alma_ai_context', true)),
-                    $this->clean_affiliate_export_text($post->post_content),
-                    $this->clean_affiliate_export_text($post->post_excerpt),
+                    $text_mode === 'clean' ? $this->clean_affiliate_export_text(get_post_meta($post_id, '_alma_ai_context', true)) : (string) get_post_meta($post_id, '_alma_ai_context', true),
+                    $text_mode === 'clean' ? $this->clean_affiliate_export_text($post->post_content) : (string) $post->post_content,
+                    $text_mode === 'clean' ? $this->clean_affiliate_export_text($post->post_excerpt) : (string) $post->post_excerpt,
                     $featured_image_id ? wp_get_attachment_url($featured_image_id) : '',
                     $featured_image_id,
                     get_post_meta($post_id, '_alma_geo_enabled', true),
@@ -2631,34 +2636,16 @@ class AffiliateManagerAI {
                     </table>
                 </div>
 
-                <!-- Export Affiliate Links -->
+                <!-- Export / Import aggiornamento Affiliate Links -->
                 <div id="export-affiliate-links" class="alma-settings-section" style="display:none;">
-                    <h2><?php _e('Export Link Affiliati', 'affiliate-link-manager-ai'); ?></h2>
-                    <p><?php _e('Esporta i Link Affiliati con URL, tipologie, contesto AI, provider, immagine e dati geografici già presenti. Il CSV può essere usato per analisi esterne e per preparare un futuro file di geolocalizzazione dei Link Affiliati.', 'affiliate-link-manager-ai'); ?></p>
-                    <table class="form-table">
-                        <tr>
-                            <th scope="row"><?php _e('Link Affiliati disponibili', 'affiliate-link-manager-ai'); ?></th>
-                            <td>
-                                <?php $affiliate_counts = $this->get_affiliate_link_export_counts(); ?>
-                                <p>
-                                    <strong><?php echo esc_html(number_format_i18n($affiliate_counts['total'])); ?></strong> <?php esc_html_e('totali', 'affiliate-link-manager-ai'); ?> ·
-                                    <strong><?php echo esc_html(number_format_i18n($affiliate_counts['publish'])); ?></strong> <?php esc_html_e('pubblicati', 'affiliate-link-manager-ai'); ?>
-                                </p>
-                            </td>
-                        </tr>
-                        <tr>
-                            <th scope="row"><?php _e('CSV analisi esterna', 'affiliate-link-manager-ai'); ?></th>
-                            <td>
-                                <p class="description"><?php _e('Esporta tutti i Link Affiliati in un file CSV utile per analisi esterne, geolocalizzazione e successivo re-import dei dati geografici.', 'affiliate-link-manager-ai'); ?></p>
-                                <p>
-                                    <a class="button button-primary" href="<?php echo esc_url(wp_nonce_url(admin_url('admin-post.php?action=alma_export_affiliate_links_csv'), 'alma_export_affiliate_links_csv')); ?>">
-                                        <?php _e('Esporta Link Affiliati CSV', 'affiliate-link-manager-ai'); ?>
-                                    </a>
-                                </p>
-                                <p class="description"><?php _e('Il file non include API key, log tecnici privati o altri segreti; contiene solo dati del CPT affiliate_link e meta utili alla geolocalizzazione.', 'affiliate-link-manager-ai'); ?></p>
-                            </td>
-                        </tr>
-                    </table>
+                    <h2><?php _e('Export e aggiornamento Link Affiliati', 'affiliate-link-manager-ai'); ?></h2>
+                    <?php $affiliate_counts = $this->get_affiliate_link_export_counts(); ?>
+                    <p>
+                        <strong><?php echo esc_html(number_format_i18n($affiliate_counts['total'])); ?></strong> <?php esc_html_e('Link totali', 'affiliate-link-manager-ai'); ?> ·
+                        <strong><?php echo esc_html(number_format_i18n($affiliate_counts['publish'])); ?></strong> <?php esc_html_e('pubblicati', 'affiliate-link-manager-ai'); ?>
+                        — <span class="description"><?php _e('Il file non include API key, log tecnici privati o altri segreti.', 'affiliate-link-manager-ai'); ?></span>
+                    </p>
+                    <?php ALMA_Affiliate_Link_Update_Importer::render_settings_section(); ?>
                 </div>
 
                 <!-- Editor Settings -->

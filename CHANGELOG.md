@@ -1,3 +1,16 @@
+## 2.107.0 - 2026-07-16
+
+### Export Link Affiliati con filtri + import di aggiornamento in blocco
+- **Richiesta**: filtri di selezione nell'export (source, tipologie e altro) e un'importazione di update dei link affiliati; l'export deve contenere, oltre all'ID, la maggior parte dei campi utili al re-import.
+- **Filtri export** (tab «Export Link Affiliati» nelle Impostazioni, ora «Export e aggiornamento Link Affiliati»): Source (tutte / senza source / singola), Tipologie Link (multiple), Provider, Stato (publish/draft/pending/private), Con/senza immagine, Ricerca testo. Senza filtri l'export resta identico a prima (tutti i link). Nuova classe `ALMA_Affiliate_Link_Update_Importer` con `build_export_query_args` testabile.
+- **Testo fedele per il re-import**: le colonne `post_content`, `post_excerpt` e `ai_context` ora escono in formato RAW (fedele, celle multilinea quotate) — indispensabile per l'update senza distruggere la formattazione. La modalità storica "pulita" (senza HTML/shortcode, per analisi esterne) resta disponibile con una spunta.
+- **Import aggiornamento**: carica un CSV con la colonna chiave `affiliate_link_id` (il file dell'export va bene anche parziale, con solo le colonne che vuoi aggiornare). Regole: **cella vuota = valore attuale mantenuto** (mai sovrascritture accidentali), **`[VUOTO]` = svuota il campo**, colonna assente = campo non toccato, valore identico = nessuna modifica. Campi aggiornabili: titolo, slug, stato, contenuto, riassunto, `affiliate_url` (validato http/https), titolo/target/rel del link, contesto AI, external_id, tipologie (`Nome|Nome`, create se mancanti con nota), immagine in evidenza (ID media verificato). **Mai toccati**: click, provider, source, dati geografici (gestiti dal geocoding), date.
+- **Anteprima prima di applicare**: dopo l'upload viene mostrato il diff per riga (ID, titolo, campi che cambiano, errori) con conteggi (da aggiornare / senza modifiche / ID non trovati / errori); l'applicazione parte solo su conferma.
+- **Applicazione in batch interrompibili** (pattern di casa): AJAX iterativi da 100 righe con cursore, lock atomico `add_option` con TTL 300s e heartbeat, barra di avanzamento, ripresa dal punto raggiunto in caso di errore di rete, report finale persistito. Limite 2000 righe per file (le eccedenti vengono segnalate).
+- Sicurezza: l'apice anti-formula aggiunto dall'export (`'=`, `'+`, …) viene rimosso al re-import per non sporcare i valori; salvataggi con `wp_slash` (post e meta); il form di upload vive nel footer (mai annidato nel form impostazioni, con attributo HTML5 `form`).
+- Test standalone 39/39 (sanificazione campi, diff vuoto/[VUOTO]/identico, filtri→query, smoke integrazione) + `node --check` sul JS.
+- Versione plugin aggiornata a `2.107.0`.
+
 ## 2.106.2 - 2026-07-11
 
 ### Fix: le idee senza link affiliati pertinenti ora creano comunque l'articolo

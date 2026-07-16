@@ -1,3 +1,9 @@
+## 2.107.0 - 2026-07-16
+
+### Export filtrato + aggiornamento in blocco dei Link Affiliati
+- L'export CSV ora ha filtri (source, tipologie, provider, stato, immagine, ricerca) ed esporta il testo fedele adatto al re-import (la modalità "pulita" per analisi resta opzionale). Nuovo import di aggiornamento: ricarichi il CSV (anche parziale) con la colonna affiliate_link_id e aggiorni in blocco titoli, URL affiliati, descrizioni, tipologie, immagini e altro — cella vuota mantiene il valore, [VUOTO] lo svuota, click/provider/source/geo mai toccati. Anteprima con diff per riga e applicazione in batch interrompibili con barra di avanzamento.
+- Versione plugin aggiornata a `2.107.0`.
+
 ## 2.106.2 - 2026-07-11
 
 ### Idee senza link affiliati: l'articolo si crea comunque
