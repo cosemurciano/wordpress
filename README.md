@@ -1,3 +1,9 @@
+## 2.108.0 - 2026-07-16
+
+### Import aggiornamento Link Affiliati: scegli tu i campi
+- Nell'anteprima dell'import di aggiornamento ora selezioni quali campi del file applicare (con il conteggio delle righe che cambiano per ciascuno): puoi aggiornare anche un solo campo lasciando intatto tutto il resto. Conferma esplicita con l'elenco dei campi, rivalidazione server-side e report con i campi applicati.
+- Versione plugin aggiornata a `2.108.0`.
+
 ## 2.107.0 - 2026-07-16
 
 ### Export filtrato + aggiornamento in blocco dei Link Affiliati

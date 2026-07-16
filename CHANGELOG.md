@@ -1,3 +1,13 @@
+## 2.108.0 - 2026-07-16
+
+### Selezione dei campi da aggiornare nell'import dei Link Affiliati
+- **Richiesta** (sicurezza): prima di applicare l'import di aggiornamento, poter scegliere QUALI campi del file importare — ad esempio aggiornare solo un campo — sempre associati allo stesso `affiliate_link_id`.
+- **Selezione campi in anteprima**: dopo l'upload, l'anteprima mostra le checkbox dei campi aggiornabili presenti nel file, ciascuna con il numero di righe che cambierebbero per quel campo (i campi con 0 differenze sono disabilitati). Pulsanti Seleziona/Deseleziona tutti. Deselezionare un campo lo lascia intatto anche se il CSV lo contiene.
+- **Applicazione limitata ai campi spuntati**: il pulsante chiede conferma esplicita con l'elenco dei campi scelti; il server rivalida SEMPRE i campi contro il whitelist degli aggiornabili e filtra le modifiche riga per riga (`filter_changes_by_fields`) — nessun campo selezionato = nessuna scrittura, campi fuori whitelist (click, provider, source, geo…) non passano mai. Le righe le cui modifiche restano vuote dopo il filtro vengono conteggiate come saltate.
+- Il report finale registra anche i campi applicati («Campi applicati: …») e li mostra nella riga dell'ultimo import.
+- Test standalone 51/51 (filtro campi puro: singolo campo, multipli, vuoto, fuori whitelist, campo assente nella riga + smoke su anteprima/AJAX/report) + `node --check` sul JS.
+- Versione plugin aggiornata a `2.108.0`.
+
 ## 2.107.0 - 2026-07-16
 
 ### Export Link Affiliati con filtri + import di aggiornamento in blocco

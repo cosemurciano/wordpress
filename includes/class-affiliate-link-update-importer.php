@@ -191,6 +191,22 @@ class ALMA_Affiliate_Link_Update_Importer {
     }
 
     /**
+     * Sicurezza: restringe le modifiche di una riga ai soli campi selezionati
+     * dall'utente in anteprima. I campi arrivano dal client ma vengono sempre
+     * rivalidati contro il whitelist dei campi aggiornabili.
+     */
+    public static function filter_changes_by_fields($changes, $selected_fields) {
+        $changes = is_array($changes) ? $changes : array();
+        $allowed = array();
+        foreach ((array) $selected_fields as $field) {
+            $field = sanitize_key((string) $field);
+            if (isset(self::updatable_fields()[$field])) { $allowed[$field] = true; }
+        }
+        if (empty($allowed)) { return array(); }
+        return array_intersect_key($changes, $allowed);
+    }
+
+    /**
      * Applica le modifiche a un Link. Ritorna array('updated_fields'=>[], 'warnings'=>[]).
      */
     public static function apply_changes($post_id, $changes) {
@@ -347,20 +363,30 @@ class ALMA_Affiliate_Link_Update_Importer {
         }
         $counts = array('total' => count($parsed['rows']), 'update' => 0, 'unchanged' => 0, 'not_found' => 0, 'invalid' => 0, 'error' => 0, 'truncated' => (int) $parsed['truncated']);
         $preview_rows = array();
+        $field_counts = array(); // righe che cambiano per ciascun campo → checkbox di selezione
         foreach ($parsed['rows'] as $row) {
             $diff = self::build_row_changes($row);
             $counts[$diff['status']] = ($counts[$diff['status']] ?? 0) + 1;
+            foreach (array_keys((array) $diff['changes']) as $changed_column) {
+                $field_counts[$changed_column] = ($field_counts[$changed_column] ?? 0) + 1;
+            }
             // In transient restano solo le righe che servono all'applicazione
             // o alla diagnosi (update/errori): le "nessuna modifica" si contano.
             if ($diff['status'] === 'update' || !empty($diff['errors'])) {
                 $preview_rows[] = $diff;
             }
         }
+        // Colonne aggiornabili effettivamente presenti nel file: base della
+        // selezione campi in anteprima (sicurezza: si applica solo ciò che
+        // l'utente spunta, anche se il CSV contiene altre colonne).
+        $columns_in_file = array_values(array_intersect(array_keys(self::updatable_fields()), (array) $parsed['headers']));
         $token = strtolower(wp_generate_password(20, false, false));
         set_transient(self::preview_key($token), array(
             'filename' => sanitize_file_name((string) ($file['name'] ?? 'import.csv')),
             'created_at' => current_time('mysql'),
             'counts' => $counts,
+            'columns' => $columns_in_file,
+            'field_counts' => $field_counts,
             'rows' => $preview_rows,
         ), self::PREVIEW_TTL);
         wp_safe_redirect(self::settings_url(array('alma_link_update_token' => $token))); exit;
@@ -430,6 +456,13 @@ class ALMA_Affiliate_Link_Update_Importer {
         if (!is_array($data) || empty($data['rows'])) {
             wp_send_json_error(array('message' => __('Anteprima scaduta o vuota: ricarica il CSV.', 'affiliate-link-manager-ai')));
         }
+        // Selezione campi: si applica SOLO ciò che l'utente ha spuntato in
+        // anteprima. Nessun campo valido selezionato = nessuna scrittura.
+        $selected_fields = array_values(array_filter(array_map('sanitize_key', (array) ($_POST['fields'] ?? array()))));
+        $selected_fields = array_values(array_intersect($selected_fields, array_keys(self::updatable_fields())));
+        if (empty($selected_fields)) {
+            wp_send_json_error(array('message' => __('Seleziona almeno un campo da aggiornare prima di applicare.', 'affiliate-link-manager-ai')));
+        }
         if ($cursor === 0) {
             if (!self::acquire_lock()) {
                 wp_send_json_error(array('message' => __('Un\'altra applicazione è già in corso: attendi qualche istante.', 'affiliate-link-manager-ai')));
@@ -442,7 +475,9 @@ class ALMA_Affiliate_Link_Update_Importer {
         $updated = 0; $skipped = 0; $warnings = array();
         foreach ($slice as $row) {
             if (($row['status'] ?? '') !== 'update' || empty($row['changes'])) { $skipped++; continue; }
-            $applied = self::apply_changes(absint($row['post_id']), (array) $row['changes']);
+            $changes = self::filter_changes_by_fields((array) $row['changes'], $selected_fields);
+            if (empty($changes)) { $skipped++; continue; }
+            $applied = self::apply_changes(absint($row['post_id']), $changes);
             if (!empty($applied['updated_fields'])) { $updated++; } else { $skipped++; }
             foreach ((array) $applied['warnings'] as $warning) {
                 if (count($warnings) < 20) { $warnings[] = '#' . absint($row['post_id']) . ': ' . $warning; }
@@ -457,6 +492,7 @@ class ALMA_Affiliate_Link_Update_Importer {
                 'time' => current_time('mysql'),
                 'filename' => sanitize_file_name((string) ($data['filename'] ?? '')),
                 'counts' => (array) ($data['counts'] ?? array()),
+                'fields' => $selected_fields,
             );
             update_option(self::OPTION_LAST_REPORT, $report, false);
         }
@@ -529,7 +565,8 @@ class ALMA_Affiliate_Link_Update_Importer {
         $last_report = get_option(self::OPTION_LAST_REPORT, null);
         if (is_array($last_report) && !empty($last_report['time'])) {
             $report_counts = (array) ($last_report['counts'] ?? array());
-            echo '<p class="description">' . esc_html(sprintf(__('Ultimo import aggiornamento: %1$s (%2$s) — %3$d righe, %4$d da aggiornare, %5$d senza modifiche, %6$d non trovati.', 'affiliate-link-manager-ai'), (string) $last_report['time'], (string) ($last_report['filename'] ?? ''), (int) ($report_counts['total'] ?? 0), (int) ($report_counts['update'] ?? 0), (int) ($report_counts['unchanged'] ?? 0), (int) ($report_counts['not_found'] ?? 0))) . '</p>';
+            $report_fields = array_values(array_filter(array_map('sanitize_key', (array) ($last_report['fields'] ?? array()))));
+            echo '<p class="description">' . esc_html(sprintf(__('Ultimo import aggiornamento: %1$s (%2$s) — %3$d righe, %4$d da aggiornare, %5$d senza modifiche, %6$d non trovati.', 'affiliate-link-manager-ai'), (string) $last_report['time'], (string) ($last_report['filename'] ?? ''), (int) ($report_counts['total'] ?? 0), (int) ($report_counts['update'] ?? 0), (int) ($report_counts['unchanged'] ?? 0), (int) ($report_counts['not_found'] ?? 0))) . ($report_fields ? ' ' . esc_html(sprintf(__('Campi applicati: %s.', 'affiliate-link-manager-ai'), implode(', ', $report_fields))) : '') . '</p>';
         }
 
         self::render_preview_section();
@@ -551,6 +588,21 @@ class ALMA_Affiliate_Link_Update_Importer {
         echo '<p>' . esc_html(sprintf(__('Righe: %1$d · Da aggiornare: %2$d · Senza modifiche: %3$d · ID non trovati: %4$d · Righe con errori: %5$d · Non valide: %6$d', 'affiliate-link-manager-ai'), (int) ($counts['total'] ?? 0), (int) ($counts['update'] ?? 0), (int) ($counts['unchanged'] ?? 0), (int) ($counts['not_found'] ?? 0), (int) ($counts['error'] ?? 0), (int) ($counts['invalid'] ?? 0)));
         if (!empty($counts['truncated'])) { echo ' · ' . esc_html(sprintf(__('ATTENZIONE: %d righe oltre il limite di %d sono state ignorate.', 'affiliate-link-manager-ai'), (int) $counts['truncated'], self::MAX_ROWS)); }
         echo '</p>';
+        // Selezione campi: per sicurezza si applicano SOLO i campi spuntati
+        // (es. aggiornare solo affiliate_url lasciando intatto tutto il resto).
+        $columns_in_file = array_values(array_intersect(array_keys(self::updatable_fields()), (array) ($data['columns'] ?? array())));
+        $field_counts = (array) ($data['field_counts'] ?? array());
+        if (!empty($columns_in_file)) {
+            echo '<fieldset style="margin:8px 0 12px;padding:10px 12px;border:1px solid #c3c4c7;border-radius:6px;background:#fff;">';
+            echo '<legend><strong>' . esc_html__('Campi da aggiornare (solo quelli spuntati verranno applicati)', 'affiliate-link-manager-ai') . '</strong></legend>';
+            echo '<p style="margin:4px 0 8px;"><button type="button" class="button button-small" id="alma-luf-all">' . esc_html__('Seleziona tutti', 'affiliate-link-manager-ai') . '</button> <button type="button" class="button button-small" id="alma-luf-none">' . esc_html__('Deseleziona tutti', 'affiliate-link-manager-ai') . '</button></p>';
+            echo '<div style="display:flex;gap:6px 18px;flex-wrap:wrap;">';
+            foreach ($columns_in_file as $column) {
+                $rows_changing = (int) ($field_counts[$column] ?? 0);
+                echo '<label style="white-space:nowrap;"><input type="checkbox" class="alma-link-update-field" value="' . esc_attr($column) . '"' . checked($rows_changing > 0, true, false) . ($rows_changing > 0 ? '' : ' disabled') . '/> <code>' . esc_html($column) . '</code> <span class="description">(' . esc_html(sprintf(_n('%d riga', '%d righe', $rows_changing, 'affiliate-link-manager-ai'), $rows_changing)) . ')</span></label>';
+            }
+            echo '</div><p class="description" style="margin:8px 0 0;">' . esc_html__('I campi con 0 righe non presentano differenze rispetto ai valori attuali. Deseleziona un campo per NON toccarlo anche se il file lo contiene.', 'affiliate-link-manager-ai') . '</p></fieldset>';
+        }
         $shown = 0;
         echo '<table class="widefat striped"><thead><tr><th>ID</th><th>' . esc_html__('Titolo', 'affiliate-link-manager-ai') . '</th><th>' . esc_html__('Campi che cambiano', 'affiliate-link-manager-ai') . '</th><th>' . esc_html__('Note', 'affiliate-link-manager-ai') . '</th></tr></thead><tbody>';
         foreach ($rows as $row) {
@@ -597,15 +649,26 @@ class ALMA_Affiliate_Link_Update_Importer {
                 $.each(params, function(k, v){ if (v !== '' && v !== '0' && !(k === 'alma_status' && v === 'any') && !(k === 'alma_text_mode' && v === 'raw')) { query.push(k + '=' + encodeURIComponent(v)); } });
                 $(this).attr('href', base + (query.length ? '&' + query.join('&') : ''));
             });
-            // Import: applica gli aggiornamenti in batch interrompibili.
+            // Selezione campi: seleziona/deseleziona tutto (solo abilitati).
+            $('#alma-luf-all').on('click', function(){ $('.alma-link-update-field:not(:disabled)').prop('checked', true); });
+            $('#alma-luf-none').on('click', function(){ $('.alma-link-update-field').prop('checked', false); });
+            function almaSelectedFields(){
+                return $('.alma-link-update-field:checked').map(function(){ return $(this).val(); }).get();
+            }
+            // Import: applica gli aggiornamenti in batch interrompibili,
+            // limitati ai campi selezionati.
             $('#alma-link-update-apply').on('click', function(){
+                var fields = almaSelectedFields();
+                if (!fields.length) { window.alert('Seleziona almeno un campo da aggiornare.'); return; }
+                if (!window.confirm('Aggiornare SOLO questi campi?\n\n' + fields.join(', '))) { return; }
                 var $btn = $(this).prop('disabled', true).text('Applicazione in corso…');
                 var $wrap = $('#alma-link-update-preview');
                 var token = $wrap.data('token'), nonce = $wrap.data('nonce');
                 var totals = { updated: 0, skipped: 0 };
+                $('.alma-link-update-field').prop('disabled', true);
                 $('#alma-link-update-progress').show();
                 function step(cursor){
-                    $.post(ajaxurl, { action: 'alma_link_update_apply', nonce: nonce, token: token, cursor: cursor }).done(function(res){
+                    $.post(ajaxurl, { action: 'alma_link_update_apply', nonce: nonce, token: token, cursor: cursor, fields: fields }).done(function(res){
                         if (!res || !res.success) {
                             $('#alma-link-update-status').text((res && res.data && res.data.message) || 'Errore applicazione.');
                             $btn.prop('disabled', false).text('Riprova');
