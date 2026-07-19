@@ -300,11 +300,13 @@ class ALMA_AI_Agent_Control_Room {
         echo '<p style="margin:0;"><label><strong>' . esc_html__('Quanti articoli', 'affiliate-link-manager-ai') . '</strong><br><input type="number" id="alma-regia-num" name="agent_num_ideas" min="1" max="10" value="' . esc_attr((string) ALMA_AI_Idea_Agent::get_max_ideas()) . '" class="small-text"></label></p>';
         echo '<p style="margin:0;"><label><strong>' . esc_html__('In quanti giorni', 'affiliate-link-manager-ai') . '</strong><br><input type="number" id="alma-regia-giorni" name="agent_days" min="1" max="60" value="14" class="small-text"></label></p>';
         echo '<p style="margin:0;"><label><strong>' . esc_html__('A partire dal', 'affiliate-link-manager-ai') . '</strong><br><input type="date" id="alma-regia-inizio" name="agent_start_date" value="' . esc_attr(current_time('Y-m-d')) . '" min="' . esc_attr(current_time('Y-m-d')) . '"></label></p>';
-        echo '<p style="margin:0;flex:1 1 340px;"><label><strong>' . esc_html__('Obiettivo e suggerimenti (opzionale)', 'affiliate-link-manager-ai') . '</strong><br><input type="text" id="alma-regia-obiettivo" name="agent_objective" class="widefat" placeholder="' . esc_attr__('Es. destinazioni per l\'autunno, focus Sicilia, taglio pratico…', 'affiliate-link-manager-ai') . '"></label></p>';
+        echo '</div>';
+        // Area prompt ampia: l'obiettivo/regia merita spazio (testi lunghi
+        // e articolati), quindi textarea a piena larghezza su riga propria.
+        echo '<p style="margin:10px 0 0;"><label style="display:block;"><strong>' . esc_html__('Obiettivo e suggerimenti (opzionale)', 'affiliate-link-manager-ai') . '</strong><br><textarea id="alma-regia-obiettivo" name="agent_objective" rows="4" class="widefat" style="max-width:900px;" placeholder="' . esc_attr__('Es. serie di guide sulla Francia: cosa fare e dove andare, taglio autorevole ma accessibile, orientato alla pianificazione reale del viaggio… (la QUANTITÀ di articoli resta quella impostata nei campi qui sopra)', 'affiliate-link-manager-ai') . '"></textarea></label></p>';
         // I piani si sommano: il pulsante resta sempre attivo, se un piano è
         // in corso il nuovo viene accodato e parte al termine.
-        echo '<p style="margin:0;"><button class="button button-primary button-hero">' . esc_html($running ? __('Accoda un piano', 'affiliate-link-manager-ai') : __('Avvia il piano', 'affiliate-link-manager-ai')) . '</button></p>';
-        echo '</div>';
+        echo '<p style="margin:10px 0 0;"><button class="button button-primary button-hero">' . esc_html($running ? __('Accoda un piano', 'affiliate-link-manager-ai') : __('Avvia il piano', 'affiliate-link-manager-ai')) . '</button></p>';
         echo '<p style="margin:8px 0 0;"><label><input type="checkbox" name="agent_immediate" value="1"> <strong>' . esc_html__('Avvia subito la creazione delle bozze', 'affiliate-link-manager-ai') . '</strong> — ' . esc_html__('genera immediatamente TUTTE le bozze del piano, ignorando la distribuzione sui giorni (es. 3 post subito).', 'affiliate-link-manager-ai') . '</label></p>';
         $queued = class_exists('ALMA_AI_Idea_Agent') ? ALMA_AI_Idea_Agent::queued_count() : 0;
         $sum_note = __('I piani si SOMMANO: puoi avviarne più di uno: se uno è in corso, il nuovo viene accodato e parte automaticamente al termine. Senza la spunta, le idee ricevono date distribuite dalla data di inizio e le bozze di oggi si generano subito, le altre nel giorno previsto. Nessun tetto giornaliero: il ritmo lo decide il piano.', 'affiliate-link-manager-ai');
@@ -324,20 +326,43 @@ class ALMA_AI_Agent_Control_Room {
         echo '</div>';
         if (is_array($advice) && !empty($advice['data'])) {
             $d = $advice['data'];
-            echo '<div style="margin-top:10px;padding:12px 14px;background:#f0f6fc;border:1px solid #c5d9ed;border-radius:6px;">';
-            echo '<p style="margin:0 0 6px;"><strong>' . esc_html(sprintf(__('Piano consigliato (%s)', 'affiliate-link-manager-ai'), (string) $advice['time'])) . ':</strong> ';
-            echo esc_html(sprintf(__('%1$d articoli in %2$d giorni', 'affiliate-link-manager-ai'), (int) $d['articoli'], (int) $d['giorni']));
-            if (!empty($d['obiettivo'])) { echo ' — <em>' . esc_html($d['obiettivo']) . '</em>'; }
-            echo '</p>';
-            if (!empty($d['motivazione'])) { echo '<p style="margin:0 0 8px;" class="description">' . esc_html($d['motivazione']) . '</p>'; }
+            // Richiudibile: <details> nativo, aperto di default dopo la
+            // generazione ma comprimibile quando non serve.
+            echo '<details open style="margin-top:10px;border:1px solid #c5d9ed;border-radius:6px;background:#f0f6fc;">';
+            echo '<summary style="cursor:pointer;padding:10px 14px;font-weight:600;">💡 ' . esc_html(sprintf(__('Piano consigliato (%1$s): %2$d articoli in %3$d giorni', 'affiliate-link-manager-ai'), (string) $advice['time'], (int) $d['articoli'], (int) $d['giorni'])) . ' <span class="description" style="font-weight:400;">' . esc_html__('(clicca per mostrare/nascondere)', 'affiliate-link-manager-ai') . '</span></summary>';
+            echo '<div style="padding:0 14px 12px;display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;">';
+            if (!empty($d['obiettivo'])) { echo '<div style="background:#fff;border:1px solid #dcdcde;border-radius:6px;padding:10px 12px;"><p style="margin:0 0 4px;"><strong>🎯 ' . esc_html__('Obiettivo proposto', 'affiliate-link-manager-ai') . '</strong></p><p style="margin:0;">' . esc_html($d['obiettivo']) . '</p></div>'; }
+            if (!empty($d['motivazione'])) { echo '<div style="background:#fff;border:1px solid #dcdcde;border-radius:6px;padding:10px 12px;"><p style="margin:0 0 4px;"><strong>💬 ' . esc_html__('Motivazione', 'affiliate-link-manager-ai') . '</strong></p><p style="margin:0;">' . esc_html($d['motivazione']) . '</p></div>'; }
+            echo '</div>';
             if (!empty($d['consigli'])) {
-                echo '<p style="margin:0 0 4px;"><strong>' . esc_html__('Consigli strategici', 'affiliate-link-manager-ai') . ':</strong></p><ol style="margin:0 0 10px 20px;">';
-                foreach ((array) $d['consigli'] as $tip) { echo '<li>' . esc_html((string) $tip) . '</li>'; }
-                echo '</ol>';
+                echo '<div style="padding:0 14px 12px;"><p style="margin:0 0 4px;"><strong>📌 ' . esc_html__('Consigli strategici', 'affiliate-link-manager-ai') . '</strong></p><ol style="margin:0 0 0 20px;">';
+                foreach ((array) $d['consigli'] as $tip) { echo '<li style="margin-bottom:4px;">' . esc_html((string) $tip) . '</li>'; }
+                echo '</ol></div>';
             }
+            echo '<div style="padding:0 14px 12px;">';
             echo '<button type="button" class="button button-secondary" id="alma-regia-applica" data-articoli="' . esc_attr((string)(int) $d['articoli']) . '" data-giorni="' . esc_attr((string)(int) $d['giorni']) . '" data-obiettivo="' . esc_attr((string) $d['obiettivo']) . '">' . esc_html__('Applica il piano', 'affiliate-link-manager-ai') . '</button> ';
             echo '<span class="description">' . esc_html__('Compila i campi qui sopra: rivedi, modifica se vuoi, poi Avvia il piano.', 'affiliate-link-manager-ai') . '</span>';
-            echo '</div>';
+            echo '</div></details>';
+        }
+
+        // ---- Coda piani: annullamento singolo senza fermare l'esecuzione ----
+        $queue_rows = ALMA_AI_Idea_Agent::get_queue_summary();
+        if (!empty($queue_rows)) {
+            echo '<hr style="margin:14px 0;">';
+            echo '<h3 style="margin:0 0 8px;">🗓️ ' . esc_html(sprintf(__('Piani in coda (%d)', 'affiliate-link-manager-ai'), count($queue_rows))) . '</h3>';
+            echo '<table class="widefat striped" style="max-width:1000px;"><thead><tr><th>#</th><th>' . esc_html__('Obiettivo', 'affiliate-link-manager-ai') . '</th><th>' . esc_html__('Articoli', 'affiliate-link-manager-ai') . '</th><th>' . esc_html__('Giorni', 'affiliate-link-manager-ai') . '</th><th>' . esc_html__('Avvio bozze', 'affiliate-link-manager-ai') . '</th><th>' . esc_html__('Azioni', 'affiliate-link-manager-ai') . '</th></tr></thead><tbody>';
+            foreach ($queue_rows as $queued_plan) {
+                echo '<tr><td>' . ((int) $queued_plan['index'] + 1) . '</td>';
+                echo '<td>' . esc_html($queued_plan['objective'] !== '' ? wp_trim_words($queued_plan['objective'], 24, '…') : '—') . '</td>';
+                echo '<td>' . ($queued_plan['num_ideas'] > 0 ? (int) $queued_plan['num_ideas'] : esc_html__('auto', 'affiliate-link-manager-ai')) . '</td>';
+                echo '<td>' . ($queued_plan['days_span'] > 0 ? (int) $queued_plan['days_span'] : '—') . '</td>';
+                echo '<td>' . esc_html($queued_plan['immediate'] ? __('subito', 'affiliate-link-manager-ai') : __('nei giorni programmati', 'affiliate-link-manager-ai')) . '</td>';
+                echo '<td><form method="post" action="' . esc_url(admin_url('admin-post.php')) . '" style="margin:0;" onsubmit="return confirm(\'' . esc_js(__('Annullare questo piano in coda?', 'affiliate-link-manager-ai')) . '\');">';
+                wp_nonce_field('alma_ai_idea_agent_cancel_queued');
+                echo '<input type="hidden" name="action" value="alma_ai_idea_agent_cancel_queued"><input type="hidden" name="queue_index" value="' . (int) $queued_plan['index'] . '"><button class="button button-small" style="border-color:#d63638;color:#d63638;">✖ ' . esc_html__('Annulla', 'affiliate-link-manager-ai') . '</button></form></td></tr>';
+            }
+            echo '</tbody></table>';
+            echo '<p class="description">' . esc_html__('L\'annullamento rimuove solo il piano scelto: l\'esecuzione in corso e gli altri piani in coda non vengono toccati (per fermare tutto usa «Ferma l\'agente»).', 'affiliate-link-manager-ai') . '</p>';
         }
         echo '</div>';
 

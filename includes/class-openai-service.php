@@ -74,6 +74,18 @@ class ALMA_OpenAI_Service {
 
         $start = microtime(true);
         $res = self::post_responses_api($api_key, $body, $timeout);
+        // Retry automatico sugli errori TRANSITORI (5xx del server OpenAI,
+        // 429 rate limit, errori di connessione): un singolo hiccup faceva
+        // fallire l'intero run dell'agente ("An error occurred while
+        // processing your request"). Gli errori 4xx applicativi non vengono
+        // ritentati.
+        for ($transient_attempt = 1; $transient_attempt <= 2; $transient_attempt++) {
+            $is_transient = is_wp_error($res) || in_array((int) wp_remote_retrieve_response_code($res), array(429, 500, 502, 503, 520, 524), true);
+            if (!$is_transient) { break; }
+            sleep(2 * $transient_attempt);
+            $warnings[] = 'Errore transitorio OpenAI: tentativo automatico ' . $transient_attempt . '/2.';
+            $res = self::post_responses_api($api_key, $body, $timeout);
+        }
         $rt = round((microtime(true)-$start)*1000);
 
         if (is_wp_error($res)) {

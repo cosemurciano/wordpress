@@ -713,6 +713,54 @@ class ALMA_AI_Content_Agent_Draft_Quality_Checker {
      * le occorrenze successive alla prima (stessa src, anche in variante
      * ridimensionata) vengono rimosse.
      */
+    /**
+     * La stessa foto non deve comparire due volte nemmeno via SHORTCODE:
+     * la dedup sui soli <img> non vedeva (1) due [affiliate_link id=X
+     * img="yes"] dello stesso link, né (2) un <img> della foto affiliata
+     * già mostrata dalla card shortcode. Regole deterministiche:
+     * - shortcode ripetuto dello stesso link con img="yes" → img="no" dalla
+     *   seconda occorrenza in poi;
+     * - <img> con la stessa foto di una card img="yes" presente → rimosso.
+     */
+    public static function dedupe_affiliate_shortcode_images($content, $candidate_affiliate_images, &$warnings) {
+        $content = (string) $content;
+        $ids_with_image_card = array();
+        $downgraded = 0;
+        $content = preg_replace_callback('/\[affiliate_link\b[^\]]*\]/i', function ($m) use (&$ids_with_image_card, &$downgraded) {
+            $shortcode = $m[0];
+            if (!preg_match('/\bid=["\']?(\d+)/i', $shortcode, $id_match)) { return $shortcode; }
+            if (!preg_match('/\bimg=["\']?yes["\']?/i', $shortcode)) { return $shortcode; }
+            $link_id = (int) $id_match[1];
+            if (isset($ids_with_image_card[$link_id])) {
+                $downgraded++;
+                return preg_replace('/\bimg=["\']?yes["\']?/i', 'img="no"', $shortcode);
+            }
+            $ids_with_image_card[$link_id] = true;
+            return $shortcode;
+        }, $content);
+        if ($downgraded > 0) { $warnings[] = sprintf('%d card affiliate ripetute dello stesso link: immagine mostrata solo nella prima.', $downgraded); }
+        if (empty($ids_with_image_card)) { return $content; }
+        // Token delle foto già mostrate dalle card: gli <img> equivalenti
+        // nel corpo sono duplicati e vengono rimossi.
+        $card_tokens = array();
+        foreach ((array) $candidate_affiliate_images as $image) {
+            $link_id = absint($image['affiliate_link_id'] ?? ($image['id'] ?? 0));
+            if ($link_id < 1 || !isset($ids_with_image_card[$link_id])) { continue; }
+            $token = self::image_src_token((string) ($image['url'] ?? ($image['image_url'] ?? '')));
+            if ($token !== '') { $card_tokens[$token] = true; }
+        }
+        if (empty($card_tokens)) { return $content; }
+        $removed = 0;
+        $content = preg_replace_callback('/<img\b[^>]*>/i', function ($m) use ($card_tokens, &$removed) {
+            if (!preg_match('/\ssrc=["\']([^"\']+)["\']/i', $m[0], $src)) { return $m[0]; }
+            $token = self::image_src_token($src[1]);
+            if ($token !== '' && isset($card_tokens[$token])) { $removed++; return ''; }
+            return $m[0];
+        }, $content);
+        if ($removed > 0) { $warnings[] = sprintf('%d immagini rimosse: già mostrate dalla card affiliate (stessa foto).', $removed); }
+        return $content;
+    }
+
     public static function remove_duplicate_images($content, &$warnings) {
         $seen = array();
         $removed = 0;
@@ -822,6 +870,7 @@ class ALMA_AI_Content_Agent_Draft_Quality_Checker {
         // Mai la stessa foto due volte nell'articolo, e mai la featured
         // duplicata nel corpo (il tema la mostra già in testa).
         $content = self::remove_duplicate_images($content, $warnings);
+        $content = self::dedupe_affiliate_shortcode_images($content, $candidate_affiliate_images, $warnings);
         $content = self::remove_featured_from_content($content, absint($payload['featured_image_id'] ?? 0), $featured_image_candidates, $warnings);
         $content = self::sanitize_content_html($content);
         $final_editorial_media = self::collect_editorial_media_from_content($content, $editorial_index, $index);

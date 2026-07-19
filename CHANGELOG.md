@@ -1,3 +1,14 @@
+## 2.109.0 - 2026-07-19
+
+### Regia più robusta e usabile: retry OpenAI, immagini mai ripetute (anche via card), coda annullabile
+- **Segnalazione**: piano non immediato fallito con "An error occurred while processing your request…" (costo già maturato ~$0.30). **Diagnosi**: è un errore transitorio del SERVER OpenAI (5xx), non il prompt — il testo "serie di articoli" non va in conflitto con la quantità impostata (il prompt di sistema impone "crea ESATTAMENTE N idee" e la quantità dei campi vince sempre). Il vero difetto: un singolo hiccup faceva fallire l'intero run.
+- **Retry automatico sugli errori transitori** (`ALMA_OpenAI_Service::request`): su 429/500/502/503/520/524 ed errori di connessione, fino a 2 nuovi tentativi con backoff (2s/4s) prima di arrendersi; gli errori applicativi 4xx non vengono ritentati. Vale per TUTTI i flussi AI (agente, bozze, arricchimento, consigli).
+- **Stessa immagine mai due volte, anche via shortcode**: la dedup precedente vedeva solo i tag `<img>`; ora (`dedupe_affiliate_shortcode_images` nel quality checker) (1) la card `[affiliate_link img="yes"]` ripetuta per lo stesso link mostra l'immagine solo la prima volta (`img="no"` dalle successive), (2) un `<img>` con la stessa foto già mostrata da una card viene rimosso (riconoscendo anche le varianti ridimensionate). Warning con conteggi nella diagnostica bozza.
+- **UI/UX Regia**: l'obiettivo/regia è ora una **textarea ampia** a piena larghezza su riga propria (il placeholder chiarisce che la quantità di articoli resta quella impostata nei campi); il **consiglio AI** è impaginato a card (obiettivo proposto / motivazione / consigli numerati) dentro un blocco **richiudibile** (`<details>`), aperto dopo la generazione e comprimibile quando non serve.
+- **Annulla esecuzioni**: nuova tabella «Piani in coda» nella Regia con obiettivo, quantità, giorni e modalità di avvio, e pulsante **✖ Annulla** per rimuovere il singolo piano accodato senza toccare l'esecuzione in corso né gli altri piani («Ferma l'agente» resta per fermare tutto).
+- Test standalone 22/22 (dedup card/immagini con varianti, coda leggibile, smoke retry/UI/handler) + regressione immagini v2.105 ancora 21/21.
+- Versione plugin aggiornata a `2.109.0`.
+
 ## 2.108.0 - 2026-07-16
 
 ### Selezione dei campi da aggiornare nell'import dei Link Affiliati
