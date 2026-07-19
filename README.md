@@ -1,3 +1,15 @@
+## 2.109.0 - 2026-07-19
+
+### Regia: niente più run persi per errori OpenAI, immagini mai ripetute, coda annullabile
+- Gli errori transitori del server OpenAI ora vengono ritentati automaticamente (l'errore segnalato non dipendeva dal prompt: la quantità impostata vince sempre sul testo). La stessa foto non compare più due volte nemmeno tra card affiliate e immagini del corpo. In Regia: area prompt ampia, consiglio AI impaginato meglio e richiudibile, e tabella dei piani in coda con annullamento del singolo piano.
+- Versione plugin aggiornata a `2.109.0`.
+
+## 2.108.0 - 2026-07-16
+
+### Import aggiornamento Link Affiliati: scegli tu i campi
+- Nell'anteprima dell'import di aggiornamento ora selezioni quali campi del file applicare (con il conteggio delle righe che cambiano per ciascuno): puoi aggiornare anche un solo campo lasciando intatto tutto il resto. Conferma esplicita con l'elenco dei campi, rivalidazione server-side e report con i campi applicati.
+- Versione plugin aggiornata a `2.108.0`.
+
 ## 2.107.0 - 2026-07-16
 
 ### Export filtrato + aggiornamento in blocco dei Link Affiliati

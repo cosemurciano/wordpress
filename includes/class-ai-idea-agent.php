@@ -38,6 +38,7 @@ class ALMA_AI_Idea_Agent {
         add_action('admin_post_alma_ai_idea_agent_start', array(__CLASS__, 'handle_start'));
         add_action('admin_post_alma_ai_idea_agent_stop', array(__CLASS__, 'handle_stop'));
         add_action('admin_post_alma_ai_idea_agent_settings', array(__CLASS__, 'handle_settings'));
+        add_action('admin_post_alma_ai_idea_agent_cancel_queued', array(__CLASS__, 'handle_cancel_queued'));
     }
 
     /**
@@ -171,6 +172,48 @@ class ALMA_AI_Idea_Agent {
     /** Numero di piani editoriali attualmente in coda (accodati). */
     public static function queued_count() {
         return count((array) get_option(self::OPTION_QUEUE, array()));
+    }
+
+    /**
+     * Piani in coda in forma leggibile per la Regia: obiettivo, quantità,
+     * giorni, immediato. L'indice è la posizione reale nella coda (per
+     * l'annullamento singolo).
+     */
+    public static function get_queue_summary() {
+        $out = array();
+        foreach (array_values((array) get_option(self::OPTION_QUEUE, array())) as $index => $args) {
+            $args = array_values((array) $args);
+            $out[] = array(
+                'index' => (int) $index,
+                'objective' => sanitize_textarea_field((string) ($args[1] ?? '')),
+                'num_ideas' => absint($args[4] ?? 0),
+                'days_span' => absint($args[5] ?? 0),
+                'start_date' => sanitize_text_field((string) ($args[6] ?? '')),
+                'immediate' => !empty($args[7]),
+            );
+        }
+        return $out;
+    }
+
+    /**
+     * Annulla UN piano in coda (senza toccare l'esecuzione in corso né gli
+     * altri accodati) — dalla Regia AI.
+     */
+    public static function handle_cancel_queued() {
+        if (!current_user_can('manage_options')) { wp_die('forbidden'); }
+        check_admin_referer('alma_ai_idea_agent_cancel_queued');
+        $index = absint($_POST['queue_index'] ?? 0);
+        $queue = array_values((array) get_option(self::OPTION_QUEUE, array()));
+        if (isset($queue[$index])) {
+            array_splice($queue, $index, 1);
+            update_option(self::OPTION_QUEUE, $queue, false);
+            $notice = array('type' => 'success', 'message' => __('Piano in coda annullato. Gli altri piani restano invariati.', 'affiliate-link-manager-ai'));
+        } else {
+            $notice = array('type' => 'error', 'message' => __('Piano non trovato in coda (forse è già partito).', 'affiliate-link-manager-ai'));
+        }
+        set_transient('alma_ai_agent_admin_notice_' . get_current_user_id(), $notice, 120);
+        wp_safe_redirect(wp_get_referer() ?: admin_url('edit.php?post_type=affiliate_link&page=alma-ai-regia'));
+        exit;
     }
 
     private static function start_next_queued_plan() {
