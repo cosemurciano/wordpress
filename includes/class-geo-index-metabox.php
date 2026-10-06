@@ -83,8 +83,8 @@ class ALMA_Geo_Index_Metabox {
             wp_send_json_error(array('message' => __('Inserisci almeno 3 caratteri.', 'affiliate-link-manager-ai')), 400);
         }
         $api_key = trim((string) get_option('alma_geo_google_maps_api_key', ''));
-        if ($api_key === '') {
-            wp_send_json_error(array('message' => __('Google Maps API key non configurata.', 'affiliate-link-manager-ai'), 'code' => 'api_key_missing'), 400);
+        if (!ALMA_Geo_Index_Geocoder::provider_is_ready()) {
+            wp_send_json_error(array('message' => __('Provider di geocoding non pronto: con Google serve la API key (Nominatim non la richiede).', 'affiliate-link-manager-ai'), 'code' => 'api_key_missing'), 400);
         }
 
         // Throttle per utente: ogni ricerca costa quota Google (fino a 2 chiamate).
@@ -104,7 +104,7 @@ class ALMA_Geo_Index_Metabox {
         }
         set_transient($rate_key, $rate + 1, 2 * MINUTE_IN_SECONDS);
 
-        $provider = new ALMA_Geo_Index_Google_Geocoder($api_key, (int) get_option('alma_geo_geocoding_timeout', 15));
+        $provider = ALMA_Geo_Index_Geocoder::make_provider((int) get_option('alma_geo_geocoding_timeout', 15));
         $result = $provider->search_locations($query, array('region' => get_option('alma_geo_geocoding_country_bias', '')));
         if (empty($result['success'])) {
             wp_send_json_error(array('message' => sanitize_text_field($result['message'] ?? __('Errore durante la ricerca località.', 'affiliate-link-manager-ai'))), 500);

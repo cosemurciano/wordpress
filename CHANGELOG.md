@@ -1,3 +1,16 @@
+## 2.110.0 - 2026-10-06
+
+### Geocoding OpenStreetMap/Nominatim predefinito (Google al secondo posto)
+- **Richiesta**: alternativa a Google per la geolocalizzazione dei post, coerente con le mappe già in uso (Leaflet + tile OpenStreetMap), con Google come seconda scelta, tutto retrocompatibile e attivo dall'aggiornamento senza toccare i post già fatti. Per paesi, regioni e città i dati OSM sono più che sufficienti.
+- **Nuovo provider `ALMA_Geo_Index_Nominatim_Geocoder`**: geocoder ufficiale OpenStreetMap, **gratuito e senza API key**. Stessa interfaccia del provider Google e risultati nello stesso formato intermedio (place_id `osm:tipo/id`, tipi nel vocabolario della pipeline, address_components): validazione, store, dedup per (place_id, provider), coda automatica e metabox funzionano senza modifiche. Rispetta la policy dell'istanza pubblica: throttle interno ≥1,1s tra richieste, User-Agent identificativo, lingua italiana e country bias (`countrycodes`); HTTP 403/429 trattati come retry_later.
+- **Nominatim è il provider predefinito**: migrazione una-tantum all'avvio (`maybe_migrate_default_provider`) — se il provider memorizzato era Google (o assente) passa a Nominatim; chi preferisce Google può risceglierlo nelle impostazioni e la scelta non viene più sovrascritta (flag). Il select «Provider geocoding» ora offre OpenStreetMap/Nominatim (consigliato) e Google Maps (richiede API key, campo chiave marcato «solo provider Google»).
+- **Le località già geocodificate NON vengono toccate**: restano `verified` con provider `google_maps` e place_id Google; il nuovo provider vale solo per le geocodifiche future (coda, batch, ricerca nel metabox). Nessuna rigenerazione, nessun cambiamento nei post esistenti.
+- **Coda automatica e azioni admin provider-aware**: con Nominatim il geocoding parte senza chiavi; il blocco «API key mancante» resta solo quando il provider scelto è Google. Il pulsante «Test API key» testa esplicitamente la chiave Google anche quando il provider attivo è Nominatim.
+- **Link mappa del popup articolo**: le località geocodificate con OSM aprono OpenStreetMap sulle coordinate; quelle storiche con place_id Google continuano ad aprire Google Maps (retrocompatibilità).
+- Bonus di coerenza licenze: geocoding OSM + mappe OSM elimina la zona grigia dei geocode Google mostrati su tile non-Google, e azzera i costi API.
+- Test standalone 48/48 (mappatura tipi OSM→pipeline, address_components, fixture jsonv2, default/prontezza/migrazione provider, link mappa, smoke cablaggio completo).
+- Versione plugin aggiornata a `2.110.0`.
+
 ## 2.109.0 - 2026-07-19
 
 ### Regia più robusta e usabile: retry OpenAI, immagini mai ripetute (anche via card), coda annullabile

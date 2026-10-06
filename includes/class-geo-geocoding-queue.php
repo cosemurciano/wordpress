@@ -57,7 +57,9 @@ class ALMA_Geo_Geocoding_Queue {
         if (get_option(self::ENABLED_OPTION, 'yes') !== 'yes') {
             return false;
         }
-        return trim((string) get_option('alma_geo_google_maps_api_key', '')) !== '';
+        // Provider-aware: Nominatim (predefinito) non richiede chiavi,
+        // Google richiede la API key.
+        return ALMA_Geo_Index_Geocoder::provider_is_ready();
     }
 
     /**
@@ -121,12 +123,13 @@ class ALMA_Geo_Geocoding_Queue {
      * sovrapporsi ai batch manuali lanciati dall'admin.
      */
     public static function drain($force = false) {
-        // $force: azione manuale "Geocodifica ora" — richiede solo la API key,
-        // funziona anche con l'automatismo disattivato.
+        // $force: azione manuale "Geocodifica ora" — richiede solo un provider
+        // pronto (Nominatim sempre; Google con API key), funziona anche con
+        // l'automatismo disattivato.
         if (!$force && !self::is_enabled()) {
             return;
         }
-        if ($force && trim((string) get_option('alma_geo_google_maps_api_key', '')) === '') {
+        if ($force && !ALMA_Geo_Index_Geocoder::provider_is_ready()) {
             return;
         }
         $geocoder = new ALMA_Geo_Index_Geocoder();

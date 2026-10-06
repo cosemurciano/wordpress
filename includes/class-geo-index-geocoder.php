@@ -6,6 +6,8 @@ if (!defined('ABSPATH')) { exit; }
  */
 class ALMA_Geo_Index_Geocoder {
     const PROVIDER_GOOGLE = 'google';
+    const PROVIDER_NOMINATIM = 'nominatim';
+    const PROVIDER_MIGRATION_FLAG = 'alma_geo_provider_osm_default_migrated';
     const LAST_REPORT_OPTION = 'alma_geo_geocoding_last_report';
     const BATCH_LOCK_OPTION = 'alma_geo_geocoding_batch_lock';
     const BATCH_LOCK_TTL = 600;
@@ -17,9 +19,55 @@ class ALMA_Geo_Index_Geocoder {
         $this->store = $store ?: new ALMA_Geo_Index_Store();
     }
 
+    /**
+     * Provider corrente dalle opzioni: Nominatim (OSM) è il predefinito,
+     * Google resta disponibile come seconda scelta (richiede API key).
+     */
+    public static function current_provider() {
+        $provider = sanitize_key(get_option('alma_geo_geocoding_provider', self::PROVIDER_NOMINATIM));
+        return in_array($provider, array(self::PROVIDER_GOOGLE, self::PROVIDER_NOMINATIM), true) ? $provider : self::PROVIDER_NOMINATIM;
+    }
+
+    /**
+     * Il provider è pronto a geocodificare? Nominatim non richiede chiavi;
+     * Google richiede la API key. Usato da coda automatica, metabox e admin.
+     */
+    public static function provider_is_ready() {
+        if (self::current_provider() === self::PROVIDER_NOMINATIM) { return true; }
+        return trim((string) get_option('alma_geo_google_maps_api_key', '')) !== '';
+    }
+
+    /**
+     * Migrazione una-tantum (v2.110.0): OpenStreetMap/Nominatim diventa il
+     * provider predefinito — coerente con le mappe frontend già OSM e senza
+     * costi/chiavi. Le località GIÀ geocodificate (status verified, provider
+     * google_maps) non vengono toccate: cambia solo chi geocodifica le nuove.
+     * Chi preferisce Google può risceglierlo nelle impostazioni: la scelta
+     * successiva alla migrazione non viene più sovrascritta (flag).
+     */
+    public static function maybe_migrate_default_provider() {
+        if (get_option(self::PROVIDER_MIGRATION_FLAG)) { return; }
+        $stored = sanitize_key((string) get_option('alma_geo_geocoding_provider', ''));
+        if ($stored === '' || $stored === self::PROVIDER_GOOGLE) {
+            update_option('alma_geo_geocoding_provider', self::PROVIDER_NOMINATIM, false);
+        }
+        update_option(self::PROVIDER_MIGRATION_FLAG, '1', false);
+    }
+
+    /**
+     * Istanza del provider selezionato (factory condivisa da batch, coda,
+     * ricerca admin e metabox).
+     */
+    public static function make_provider($timeout = 15) {
+        if (self::current_provider() === self::PROVIDER_NOMINATIM) {
+            return new ALMA_Geo_Index_Nominatim_Geocoder($timeout);
+        }
+        return new ALMA_Geo_Index_Google_Geocoder(get_option('alma_geo_google_maps_api_key', ''), $timeout);
+    }
+
     public function get_settings() {
         return array(
-            'provider' => sanitize_key(get_option('alma_geo_geocoding_provider', self::PROVIDER_GOOGLE)),
+            'provider' => self::current_provider(),
             'google_maps_api_key' => (string) get_option('alma_geo_google_maps_api_key', ''),
             'batch_size' => max(1, min(50, absint(get_option('alma_geo_geocoding_batch_size', 20)))),
             'timeout' => max(1, min(30, absint(get_option('alma_geo_geocoding_timeout', 15)))),
@@ -30,8 +78,7 @@ class ALMA_Geo_Index_Geocoder {
     }
 
     public function is_enabled() {
-        $settings = $this->get_settings();
-        return $settings['provider'] === self::PROVIDER_GOOGLE && trim($settings['google_maps_api_key']) !== '';
+        return self::provider_is_ready();
     }
 
     public function get_pending_locations($limit = 20) {
@@ -204,7 +251,7 @@ class ALMA_Geo_Index_Geocoder {
             'examples' => array(),
             'rows' => array(),
         );
-        if (trim((string) $settings['google_maps_api_key']) === '') {
+        if ($settings['provider'] === self::PROVIDER_GOOGLE && trim((string) $settings['google_maps_api_key']) === '') {
             $report['api_errors'][] = __('API key Google Maps non configurata.', 'affiliate-link-manager-ai');
             $report['rate_limit_detected'] = true;
             update_option(self::LAST_REPORT_OPTION, $report, false);
@@ -214,7 +261,7 @@ class ALMA_Geo_Index_Geocoder {
             return $this->locked_report_stub($report);
         }
         try {
-        $provider = new ALMA_Geo_Index_Google_Geocoder($settings['google_maps_api_key'], $timeout);
+        $provider = self::make_provider($timeout);
         foreach ($locations as $location) {
             $previous_status = sanitize_key($location['geocoding_status'] ?? 'pending');
             if ($previous_status === 'verified') {
@@ -287,14 +334,14 @@ class ALMA_Geo_Index_Geocoder {
             return array('status' => 'failed', 'message' => __('Google ha rifiutato la richiesta (REQUEST_DENIED): verifica che la API key sia valida e che la Geocoding API sia abilitata.', 'affiliate-link-manager-ai'));
         }
         if ($this->is_rate_limit_result($result)) {
-            return array('status' => 'retry_later', 'message' => sanitize_text_field($result['message'] ?? $result['status'] ?? __('Quota o rate limit Google rilevato.', 'affiliate-link-manager-ai')));
+            return array('status' => 'retry_later', 'message' => sanitize_text_field($result['message'] ?? $result['status'] ?? __('Quota o rate limit del provider di geocoding rilevato.', 'affiliate-link-manager-ai')));
         }
         if (empty($result['success'])) {
             return array('status' => 'failed', 'message' => sanitize_text_field($result['message'] ?? $result['status'] ?? __('Geocoding fallito.', 'affiliate-link-manager-ai')));
         }
         $results = is_array($result['results'] ?? null) ? $result['results'] : array();
         if (empty($results)) {
-            return array('status' => 'failed', 'message' => __('Nessun risultato Google Geocoding.', 'affiliate-link-manager-ai'));
+            return array('status' => 'failed', 'message' => __('Nessun risultato dal geocoding.', 'affiliate-link-manager-ai'));
         }
         $first = $results[0];
         if ($first['lat'] === null || $first['lng'] === null || empty($first['place_id'])) {
@@ -326,7 +373,7 @@ class ALMA_Geo_Index_Geocoder {
             $confidence = 0.55;
         } elseif (count($results) > 1) {
             $status = 'ambiguous';
-            $message = __('Google ha restituito più risultati: verifica consigliata.', 'affiliate-link-manager-ai');
+            $message = __('Il geocoder ha restituito più risultati: verifica consigliata.', 'affiliate-link-manager-ai');
             $confidence = 0.6;
         }
 
@@ -334,7 +381,9 @@ class ALMA_Geo_Index_Geocoder {
             'status' => $status,
             'lat' => $first['lat'],
             'lng' => $first['lng'],
-            'geo_provider' => 'google_maps',
+            // Provider effettivo: le località storiche restano google_maps,
+            // le nuove vengono marcate con il provider corrente (es. nominatim).
+            'geo_provider' => self::current_provider() === self::PROVIDER_NOMINATIM ? ALMA_Geo_Index_Nominatim_Geocoder::PROVIDER_KEY : 'google_maps',
             'place_id' => $first['place_id'],
             'formatted_address' => $first['formatted_address'],
             'address_components' => $first['address_components'],
@@ -370,7 +419,7 @@ class ALMA_Geo_Index_Geocoder {
     private function get_provider($settings = array()) {
         if (!$this->provider) {
             $settings = array_merge($this->get_settings(), is_array($settings) ? $settings : array());
-            $this->provider = new ALMA_Geo_Index_Google_Geocoder($settings['google_maps_api_key'], $settings['timeout']);
+            $this->provider = self::make_provider($settings['timeout']);
         }
         return $this->provider;
     }
@@ -380,6 +429,10 @@ class ALMA_Geo_Index_Geocoder {
         // abilitata, un errore permanente di configurazione (vedi is_configuration_error_result).
         $status = strtoupper(sanitize_text_field($result['status'] ?? $result['raw_status'] ?? ''));
         $code = absint($result['response_code'] ?? 0);
+        // 403 da Nominatim = blocco fair use dell'istanza pubblica: è un
+        // retry_later, non un errore permanente (per Google il 403 non arriva
+        // qui: usa REQUEST_DENIED nel body).
+        if ($code === 403 && self::current_provider() === self::PROVIDER_NOMINATIM) { return true; }
         return in_array($status, array('OVER_QUERY_LIMIT', 'RESOURCE_EXHAUSTED'), true) || $code === 429;
     }
 
