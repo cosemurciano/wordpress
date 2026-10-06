@@ -154,13 +154,13 @@ class ALMA_Geo_Index_Admin {
         $pending = ALMA_Geo_Geocoding_Queue::count_pending();
         $next = ALMA_Geo_Geocoding_Queue::next_run_timestamp();
         $last = ALMA_Geo_Geocoding_Queue::get_last_run_report();
-        $api_key_missing = trim((string) get_option('alma_geo_google_maps_api_key', '')) === '';
+        $api_key_missing = !ALMA_Geo_Index_Geocoder::provider_is_ready();
         $settings_url = admin_url('edit.php?post_type=affiliate_link&page=' . self::MENU_SLUG . '&tab=settings');
         ?>
         <div class="card" style="max-width:960px;">
             <h2><?php esc_html_e('Geocoding automatico', 'affiliate-link-manager-ai'); ?></h2>
             <?php if ($api_key_missing) : ?>
-                <p><span class="dashicons dashicons-warning" style="color:#d63638;"></span> <?php esc_html_e('API key Google Maps non configurata: le località restano in attesa finché non la salvi nelle impostazioni.', 'affiliate-link-manager-ai'); ?> <a href="<?php echo esc_url($settings_url); ?>"><?php esc_html_e('Vai alle impostazioni', 'affiliate-link-manager-ai'); ?></a></p>
+                <p><span class="dashicons dashicons-warning" style="color:#d63638;"></span> <?php esc_html_e('Provider di geocoding non pronto (con Google serve la API key): le località restano in attesa finché non sistemi le impostazioni.', 'affiliate-link-manager-ai'); ?> <a href="<?php echo esc_url($settings_url); ?>"><?php esc_html_e('Vai alle impostazioni', 'affiliate-link-manager-ai'); ?></a></p>
             <?php elseif (!$enabled) : ?>
                 <p><span class="dashicons dashicons-controls-pause" style="color:#996800;"></span> <?php esc_html_e('Geocoding automatico disattivato: le località nuove restano pending finché non lanci un batch manuale o riattivi l\'automatismo.', 'affiliate-link-manager-ai'); ?> <a href="<?php echo esc_url($settings_url); ?>"><?php esc_html_e('Vai alle impostazioni', 'affiliate-link-manager-ai'); ?></a></p>
             <?php else : ?>
@@ -224,7 +224,12 @@ class ALMA_Geo_Index_Admin {
         }
         if ($action === 'save_geocoding_settings') {
             $api_key = isset($_POST['alma_geo_google_maps_api_key']) ? trim(sanitize_text_field(wp_unslash($_POST['alma_geo_google_maps_api_key']))) : '';
-            update_option('alma_geo_geocoding_provider', 'google', false);
+            // Provider selezionabile: Nominatim (OSM, predefinito) o Google.
+            $provider = sanitize_key($_POST['alma_geo_geocoding_provider'] ?? ALMA_Geo_Index_Geocoder::PROVIDER_NOMINATIM);
+            if (!in_array($provider, array(ALMA_Geo_Index_Geocoder::PROVIDER_NOMINATIM, ALMA_Geo_Index_Geocoder::PROVIDER_GOOGLE), true)) {
+                $provider = ALMA_Geo_Index_Geocoder::PROVIDER_NOMINATIM;
+            }
+            update_option('alma_geo_geocoding_provider', $provider, false);
             if ($api_key !== '') {
                 update_option('alma_geo_google_maps_api_key', $api_key, false);
             }
@@ -238,12 +243,14 @@ class ALMA_Geo_Index_Admin {
             if (ALMA_Geo_Geocoding_Queue::is_enabled() && ALMA_Geo_Geocoding_Queue::count_pending() > 0) {
                 ALMA_Geo_Geocoding_Queue::maybe_schedule();
             }
-            $this->notice_success($api_key === '' && get_option('alma_geo_google_maps_api_key', '') === '' ? __('Impostazioni salvate. API key non configurata.', 'affiliate-link-manager-ai') : __('Impostazioni geocoding salvate.', 'affiliate-link-manager-ai'));
+            $this->notice_success(ALMA_Geo_Index_Geocoder::current_provider() === ALMA_Geo_Index_Geocoder::PROVIDER_GOOGLE && $api_key === '' && get_option('alma_geo_google_maps_api_key', '') === '' ? __('Impostazioni salvate. API key non configurata (richiesta solo per Google).', 'affiliate-link-manager-ai') : __('Impostazioni geocoding salvate.', 'affiliate-link-manager-ai'));
             return;
         }
         if ($action === 'test_api_key') {
-            if (!$this->geocoder->is_enabled()) {
-                $this->notice_error(__('API key non configurata.', 'affiliate-link-manager-ai'));
+            // Il test riguarda SOLO Google (Nominatim non ha chiavi): si testa
+            // la chiave salvata anche se il provider attivo è Nominatim.
+            if (trim((string) get_option('alma_geo_google_maps_api_key', '')) === '') {
+                $this->notice_error(__('API key Google non configurata (il test riguarda solo il provider Google; Nominatim non richiede chiavi).', 'affiliate-link-manager-ai'));
                 return;
             }
             $provider = new ALMA_Geo_Index_Google_Geocoder(get_option('alma_geo_google_maps_api_key', ''), (int) get_option('alma_geo_geocoding_timeout', 15));
@@ -257,7 +264,7 @@ class ALMA_Geo_Index_Admin {
         }
         if ($action === 'batch_pending' || $action === 'retry_failed') {
             if (!$this->geocoder->is_enabled()) {
-                $this->notice_error(__('API key non configurata. Salva una chiave Google Maps prima di avviare il batch.', 'affiliate-link-manager-ai'));
+                $this->notice_error(__('Provider di geocoding non pronto: con Google serve la API key (Nominatim non la richiede).', 'affiliate-link-manager-ai'));
                 return;
             }
             $settings = $this->geocoder->get_settings();
@@ -622,8 +629,8 @@ class ALMA_Geo_Index_Admin {
             <input type="hidden" name="alma_geo_index_action" value="save_geocoding_settings">
             <h3><?php esc_html_e('Impostazioni geocoding', 'affiliate-link-manager-ai'); ?></h3>
             <table class="form-table"><tbody>
-                <tr><th><label><?php esc_html_e('Provider geocoding', 'affiliate-link-manager-ai'); ?></label></th><td><select name="alma_geo_geocoding_provider"><option value="google">Google Maps</option></select></td></tr>
-                <tr><th><label for="alma_geo_google_maps_api_key"><?php esc_html_e('API key Google Maps', 'affiliate-link-manager-ai'); ?></label></th><td><input type="password" id="alma_geo_google_maps_api_key" name="alma_geo_google_maps_api_key" value="" class="regular-text" autocomplete="off"><p class="description"><?php echo esc_html($masked_key); ?>. <?php esc_html_e('Lascia vuoto per mantenere la chiave esistente.', 'affiliate-link-manager-ai'); ?></p></td></tr>
+                <tr><th><label><?php esc_html_e('Provider geocoding', 'affiliate-link-manager-ai'); ?></label></th><td><select name="alma_geo_geocoding_provider"><option value="nominatim" <?php selected(ALMA_Geo_Index_Geocoder::current_provider(), 'nominatim'); ?>><?php esc_html_e('OpenStreetMap / Nominatim (consigliato — gratuito, senza API key)', 'affiliate-link-manager-ai'); ?></option><option value="google" <?php selected(ALMA_Geo_Index_Geocoder::current_provider(), 'google'); ?>><?php esc_html_e('Google Maps (richiede API key)', 'affiliate-link-manager-ai'); ?></option></select><p class="description"><?php esc_html_e('Nominatim usa gli stessi dati OpenStreetMap delle mappe del sito: ideale per paesi, regioni e città. Le località già geocodificate con Google restano invariate: il provider vale solo per le nuove geocodifiche.', 'affiliate-link-manager-ai'); ?></p></td></tr>
+                <tr><th><label for="alma_geo_google_maps_api_key"><?php esc_html_e('API key Google Maps (solo provider Google)', 'affiliate-link-manager-ai'); ?></label></th><td><input type="password" id="alma_geo_google_maps_api_key" name="alma_geo_google_maps_api_key" value="" class="regular-text" autocomplete="off"><p class="description"><?php echo esc_html($masked_key); ?>. <?php esc_html_e('Lascia vuoto per mantenere la chiave esistente.', 'affiliate-link-manager-ai'); ?></p></td></tr>
                 <tr><th><label for="alma_geo_geocoding_batch_size"><?php esc_html_e('Batch size', 'affiliate-link-manager-ai'); ?></label></th><td><input type="number" min="1" max="50" id="alma_geo_geocoding_batch_size" name="alma_geo_geocoding_batch_size" value="<?php echo esc_attr((string) $settings['batch_size']); ?>"></td></tr>
                 <tr><th><label for="alma_geo_geocoding_timeout"><?php esc_html_e('Timeout richiesta', 'affiliate-link-manager-ai'); ?></label></th><td><input type="number" min="1" max="30" id="alma_geo_geocoding_timeout" name="alma_geo_geocoding_timeout" value="<?php echo esc_attr((string) $settings['timeout']); ?>"></td></tr>
                 <tr><th><label for="alma_geo_geocoding_delay_ms"><?php esc_html_e('Pausa tra richieste (ms)', 'affiliate-link-manager-ai'); ?></label></th><td><input type="number" min="0" max="5000" id="alma_geo_geocoding_delay_ms" name="alma_geo_geocoding_delay_ms" value="<?php echo esc_attr((string) $settings['delay_ms']); ?>"></td></tr>

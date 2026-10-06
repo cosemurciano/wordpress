@@ -1,3 +1,9 @@
+## 2.110.0 - 2026-10-06
+
+### Geolocalizzazione senza Google: Nominatim (OpenStreetMap) predefinito
+- Il geocoding delle località ora usa Nominatim/OpenStreetMap — gratuito, senza API key e coerente con le mappe OSM già presenti sul sito — con Google disponibile come seconda scelta nelle impostazioni. Attivo dall'aggiornamento con migrazione automatica: le località già geocodificate con Google restano esattamente com'erano, il nuovo provider vale solo per quelle future. Le località OSM aprono OpenStreetMap dal popup della mappa, quelle storiche continuano ad aprire Google Maps.
+- Versione plugin aggiornata a `2.110.0`.
+
 ## 2.109.0 - 2026-07-19
 
 ### Regia: niente più run persi per errori OpenAI, immagini mai ripetute, coda annullabile

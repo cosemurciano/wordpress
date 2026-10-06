@@ -3,7 +3,7 @@
  * Plugin Name: Affiliate Link Manager AI
  * Plugin URI: https://your-website.com
  * Description: Gestisce link affiliati con intelligenza artificiale per ottimizzazione e tracking automatico.
- * Version: 2.109.0
+ * Version: 2.110.0
  * Author: Cosè Murciano
  * License: GPL v2 or later
  * Text Domain: affiliate-link-manager-ai
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Definisci costanti del plugin
-define('ALMA_VERSION', '2.109.0');
+define('ALMA_VERSION', '2.110.0');
 define('ALMA_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('ALMA_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('ALMA_PLUGIN_FILE', __FILE__);
@@ -117,6 +117,7 @@ require_once ALMA_PLUGIN_DIR . 'includes/class-ai-content-agent-dashboard-widget
 require_once ALMA_PLUGIN_DIR . 'includes/class-geo-index-store.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-geo-index-job-store.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-geo-index-google-geocoder.php';
+require_once ALMA_PLUGIN_DIR . 'includes/class-geo-index-nominatim-geocoder.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-geo-index-geocoder.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-geo-index-metabox.php';
 require_once ALMA_PLUGIN_DIR . 'includes/class-geo-index-importer.php';
@@ -188,6 +189,9 @@ class AffiliateManagerAI {
         ALMA_Geo_Facts::init();
         ALMA_Travelpayouts_Importer::init();
         ALMA_Affiliate_Link_Update_Importer::init();
+        // v2.110.0: OpenStreetMap/Nominatim diventa il provider di geocoding
+        // predefinito dall'attivazione (una tantum; Google resta selezionabile).
+        ALMA_Geo_Index_Geocoder::maybe_migrate_default_provider();
         add_action('init', array($this, 'init'));
         add_action('widgets_init', array('ALMA_Contextual_Affiliate_Widget', 'register_widget'));
         // Registrato qui (prima che `widgets_init` scatti) perché ALMA_Shortcodes::init()

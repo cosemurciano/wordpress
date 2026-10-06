@@ -125,12 +125,19 @@ class ALMA_Article_Locations_Map {
     }
 
     /**
-     * URL Google Maps ufficiale (nessuna API key). Con place_id si apre la
-     * scheda esatta del luogo; altrimenti le coordinate. Funzione pura.
+     * URL mappa esterna ufficiale (nessuna API key). Con un place_id Google
+     * si apre la scheda esatta del luogo; con un id OSM/Nominatim si apre
+     * OpenStreetMap sulle coordinate (coerente con le mappe del sito);
+     * altrimenti le coordinate su Google Maps. Funzione pura.
      */
     public static function build_gmaps_url($name, $lat, $lng, $place_id = '') {
         $place_id = trim((string) $place_id);
         $name = trim((string) $name);
+        if (strpos($place_id, 'osm:') === 0 || strpos($place_id, 'nominatim:') === 0) {
+            $lat_r = round((float) $lat, 7);
+            $lng_r = round((float) $lng, 7);
+            return 'https://www.openstreetmap.org/?mlat=' . rawurlencode((string) $lat_r) . '&mlon=' . rawurlencode((string) $lng_r) . '#map=12/' . rawurlencode((string) $lat_r) . '/' . rawurlencode((string) $lng_r);
+        }
         if ($place_id !== '' && $name !== '') {
             return 'https://www.google.com/maps/search/?api=1&query=' . rawurlencode($name) . '&query_place_id=' . rawurlencode($place_id);
         }
