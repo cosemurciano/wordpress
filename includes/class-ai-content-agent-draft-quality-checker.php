@@ -121,10 +121,31 @@ class ALMA_AI_Content_Agent_Draft_Quality_Checker {
         return $key !== '' && isset($index['by_image_key'][$key]) ? $index['by_image_key'][$key] : array();
     }
 
-    private static function set_safe_affiliate_anchor_attrs($anchor, $href) {
+    /**
+     * Rimette in sesto un'ancora che l'AI ha lasciato senza href.
+     *
+     * Il `$link_id` serve al tracciamento: senza `data-link-id` e senza la
+     * classe, `assets/tracking.js` non vede il click e il link risulta poi
+     * «mai cliccato» — proprio il link che la pipeline ha dovuto riparare.
+     *
+     * @param DOMElement $anchor  L'ancora.
+     * @param string     $href    L'indirizzo affiliato.
+     * @param int        $link_id ID del Link Affiliato, se noto.
+     */
+    private static function set_safe_affiliate_anchor_attrs($anchor, $href, $link_id = 0) {
         $anchor->setAttribute('href', $href);
         $anchor->setAttribute('target', '_blank');
         $anchor->setAttribute('rel', 'nofollow sponsored noopener');
+
+        $link_id = absint($link_id);
+
+        if ($link_id > 0 && class_exists('ALMA_Affiliate_Anchor')) {
+            $classi = trim($anchor->getAttribute('class') . ' ' . ALMA_Affiliate_Anchor::TRACK_CLASS);
+            $anchor->setAttribute('class', $classi);
+            $anchor->setAttribute('data-link-id', (string) $link_id);
+            $anchor->setAttribute('data-track', '1');
+            $anchor->setAttribute('data-source', 'agent_qa');
+        }
     }
 
     private static function unwrap_node($node) {
@@ -169,7 +190,7 @@ class ALMA_AI_Content_Agent_Draft_Quality_Checker {
                 $img = $imgs->item(0);
                 $record = self::find_record_by_image_src($img ? $img->getAttribute('src') : '', $index);
                 if (!empty($record['affiliate_url'])) {
-                    self::set_safe_affiliate_anchor_attrs($anchor, $record['affiliate_url']);
+                    self::set_safe_affiliate_anchor_attrs($anchor, $record['affiliate_url'], (int) ($record['id'] ?? 0));
                     $added_urls[] = $record['affiliate_url'];
                     $warnings[] = 'Href affiliato aggiunto a immagine affiliata senza link.';
                     continue;
@@ -182,7 +203,7 @@ class ALMA_AI_Content_Agent_Draft_Quality_Checker {
             $text_key = self::normalize_lookup_text($anchor->textContent);
             if ($text_key !== '' && isset($index['by_title'][$text_key])) {
                 $record = $index['by_title'][$text_key];
-                self::set_safe_affiliate_anchor_attrs($anchor, $record['affiliate_url']);
+                self::set_safe_affiliate_anchor_attrs($anchor, $record['affiliate_url'], (int) ($record['id'] ?? 0));
                 $added_urls[] = $record['affiliate_url'];
                 $warnings[] = 'Href affiliato aggiunto a link testuale senza href.';
                 continue;

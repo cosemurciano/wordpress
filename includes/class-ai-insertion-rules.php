@@ -103,6 +103,58 @@ class ALMA_AI_Insertion_Rules {
      * Applica le regole al contenuto HTML generato. Ritorna array con
      * 'content' e 'warnings'. Pure: nessuna dipendenza WordPress.
      */
+    /*
+     * Una porta chiusa, perche' qualcuno ci riprovera'.
+     *
+     * Verrebbe naturale «far girare enforce() alla fine», visto che la
+     * pipeline AI inserisce link dopo averla eseguita. Non si fa, e il
+     * motivo e' che **enforce() non e' idempotente**: il passo 3 degrada gli
+     * shortcode oltre la densita', il passo 4 degrada il secondo di due
+     * shortcode adiacenti, e il primo puo' creare le adiacenze che sfamano
+     * il secondo. Rieseguirla su un contenuto che ci e' gia' passato toglie
+     * un altro link, e alla passata dopo un altro ancora: una cascata che si
+     * vede solo contando. Una prova in `tests/test-insertion-rules.php`
+     * tiene ferma questa conclusione.
+     *
+     * Il tetto si rispetta a monte: `remaining_budget()` dice quanto spazio
+     * resta, e chi inserisce dopo si ferma li'.
+     */
+
+    /**
+     * Quanti inserimenti affiliati contiene gia' questo contenuto.
+     *
+     * Conta gli shortcode **e** le ancore grezze tracciate: la pipeline AI
+     * aggiunge le seconde dopo che `enforce()` ha gia' girato, e `enforce()`
+     * guarda solo gli shortcode. Finche' il conteggio ignorava le ancore, un
+     * articolo configurato per tre inserimenti poteva uscirne con quindici.
+     *
+     * @param string $content Il contenuto.
+     * @return int
+     */
+    public static function count_insertions($content) {
+        $content = (string) $content;
+
+        $shortcode = preg_match_all('/\[affiliate_link(?:s_widget)?[^\]]*\]/', $content);
+        $ancore    = preg_match_all('/<a\b[^>]*\bdata-link-id="[0-9]+"[^>]*>/i', $content);
+
+        return (int) $shortcode + (int) $ancore;
+    }
+
+    /**
+     * Quanti inserimenti affiliati puo' ancora accogliere questo contenuto.
+     *
+     * @param string $content Il contenuto.
+     * @param array  $rules   Le regole configurate.
+     * @return int Zero quando il tetto e' gia' raggiunto o superato.
+     */
+    public static function remaining_budget($content, $rules) {
+        $density = max(100, (int) ($rules['density_words'] ?? 300));
+        $parole  = self::count_words(wp_strip_all_tags((string) $content));
+        $tetto   = max(1, (int) floor($parole / $density));
+
+        return max(0, $tetto - self::count_insertions($content));
+    }
+
     public static function enforce($content, $rules) {
         $warnings = array();
         $content = (string) $content;

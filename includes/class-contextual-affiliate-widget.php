@@ -267,14 +267,9 @@ class ALMA_Contextual_Affiliate_Widget extends WP_Widget {
         if ($affiliate_url === '') {
             return;
         }
-        $rel = get_post_meta($link_id, '_link_rel', true);
-        if ($rel === '' && metadata_exists('post', $link_id, '_link_rel')) {
-            $rel_attr = '';
-        } elseif (!$rel) {
-            $rel_attr = 'sponsored noopener';
-        } else {
-            $rel_attr = $rel;
-        }
+        // Questa era l'unica delle quattro copie che distingueva «scelto
+        // vuoto» da «mai scritto». Ora la distinzione sta in un posto solo.
+        $rel_attr = ALMA_Affiliate_Anchor::rel($link_id);
         $target = get_post_meta($link_id, '_link_target', true) ?: '_blank';
         $link_title = get_post_meta($link_id, '_link_title', true) ?: get_the_title($link_id);
         $description = wp_trim_words(wp_strip_all_tags(strip_shortcodes(get_post_field('post_excerpt', $link_id) ?: get_post_field('post_content', $link_id))), 18, '…');

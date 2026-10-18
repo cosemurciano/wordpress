@@ -1,3 +1,12 @@
+## 2.111.0 - 2026-10-18
+
+### Link affiliati marcati come sponsorizzati, click finalmente contati, densità rispettata
+- I link arrivati dagli importer uscivano **senza nessun `rel`**: la regola che mette `sponsored noopener` era scritta in quattro punti e solo uno la applicava davvero, perché gli altri scambiavano «campo mai scritto» per «link interno scelto apposta». Ora la decisione sta in un posto solo (`ALMA_Affiliate_Anchor`), e chi aveva scelto di lasciare un link senza `rel` continua a non averlo.
+- Tre superfici su otto non registravano i click — fra cui i layout a scheda, che sono il preset predefinito e l'unico che l'agente AI genera — perché mancava la classe a cui si aggancia il tracciamento. Ora la stampano tutte, e le ancore riparate dal QA hanno anche il loro `data-link-id`.
+- La densità configurata («un inserimento ogni N parole») governava solo i link scritti dal modello: i due passaggi successivi ne aggiungevano altri senza tetto, fino a tredici. Ora il conteggio vede anche le ancore grezze e la garanzia di monetizzazione si ferma allo spazio che resta.
+- Aggiunta la cartella `tests/` con un runner: `php tests/run.php`, 41 prove.
+- Versione plugin aggiornata a `2.111.0`.
+
 ## 2.110.0 - 2026-10-06
 
 ### Geolocalizzazione senza Google: Nominatim (OpenStreetMap) predefinito

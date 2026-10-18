@@ -536,10 +536,17 @@ class ALMA_AI_Content_Agent_Draft_Builder {
      *
      * @return array{content:string,linked:int[]}
      */
-    private static function link_used_affiliate_images($content, $affiliate_links) {
+    private static function link_used_affiliate_images($content, $affiliate_links, $max = 0) {
         $content = (string) $content;
         $linked = array();
+        $max = max(0, (int) $max);
         foreach ((array) $affiliate_links as $link) {
+            // Il tetto arriva dalla densita' configurata. Prima non c'era:
+            // questo ciclo girava su tutti i candidati (fino a 13) DOPO che
+            // `enforce()` aveva gia' applicato il suo limite, e le ancore
+            // grezze che produce `enforce()` non le vede. Un articolo da 900
+            // parole regolato su 3 inserimenti poteva uscirne con 17.
+            if ($max > 0 && count($linked) >= $max) { break; }
             if (!is_array($link)) { continue; }
             $url = esc_url_raw((string) ($link['affiliate_url'] ?? ''));
             $id = absint($link['id'] ?? 0);
@@ -548,7 +555,11 @@ class ALMA_AI_Content_Agent_Draft_Builder {
             if (strpos($content, $url) !== false) { continue; }
             if (preg_match('/\[affiliate_link[^\]]*\bid="?' . $id . '"?[\s"\]]/', $content)) { continue; }
 
-            $anchor_open = '<a href="' . esc_url($url) . '" target="_blank" rel="nofollow sponsored noopener" data-link-id="' . $id . '" data-track="1" data-source="agent_content">';
+            // Gli attributi c'erano gia' tutti tranne la classe, ed e' la
+            // classe che `assets/tracking.js` aggancia: senza, questi click
+            // non sono mai arrivati da nessuna parte.
+            $anchor_open = '<a href="' . esc_url($url) . '" target="_blank" rel="nofollow sponsored noopener"'
+                . ALMA_Affiliate_Anchor::track_attrs($id, 'agent_content') . '>';
             $wrapped = false;
 
             // Livello 1: immagine del link.
@@ -1519,7 +1530,18 @@ class ALMA_AI_Content_Agent_Draft_Builder {
         // Garanzia di monetizzazione: gli affiliati (es. hotel) mostrati con
         // foto o solo nome/descrizione ma senza link vengono resi cliccabili
         // (immagine o nome in grassetto avvolti nel link affiliato con tracking).
-        $img_link_guarantee = self::link_used_affiliate_images((string) $clean['content'], (array) $ctx['affiliate_links']);
+        // Lo spazio che la densita' configurata lascia ancora, meno uno slot
+        // tenuto da parte per la card del link universale qui sotto: quella
+        // e' una garanzia voluta e deve entrarci sempre, quindi le si fa
+        // posto prima invece di sforare dopo.
+        $budget_residuo = 0;
+        if (class_exists('ALMA_AI_Insertion_Rules')) {
+            $budget_residuo = max(0, ALMA_AI_Insertion_Rules::remaining_budget(
+                (string) $clean['content'],
+                ALMA_AI_Insertion_Rules::get_rules()
+            ) - 1);
+        }
+        $img_link_guarantee = self::link_used_affiliate_images((string) $clean['content'], (array) $ctx['affiliate_links'], $budget_residuo);
         if (!empty($img_link_guarantee['linked'])) {
             $clean['content'] = $img_link_guarantee['content'];
             $clean['warnings'][] = sprintf('%d link affiliati resi cliccabili automaticamente (usati senza link dall\'AI).', count($img_link_guarantee['linked']));
@@ -1534,6 +1556,11 @@ class ALMA_AI_Content_Agent_Draft_Builder {
             $clean['content'] = $universal_guarantee['content'];
             $clean['warnings'][] = 'Link universale (assicurazione/eSIM) aggiunto automaticamente: l\'AI non l\'aveva inserito.';
         }
+        // Qui `enforce()` non si rilegge: non e' idempotente e toglierebbe
+        // un link a ogni passata — la nota in ALMA_AI_Insertion_Rules lo
+        // spiega, e una prova lo tiene fermo. Il tetto e' gia' rispettato
+        // a monte, dal budget calcolato qui sopra.
+
         // Segnalazione qualità: nessun link interno (utile per SEO e navigazione).
         if (empty($clean['internal_urls_used'])) {
             $clean['warnings'][] = 'Nessun link interno inserito: verifica che esistano articoli correlati indicizzati per questa destinazione.';
