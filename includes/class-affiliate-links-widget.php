@@ -214,12 +214,7 @@ class ALMA_Affiliate_Links_Widget extends WP_Widget {
                 get_post_meta($id, '_alma_geo_primary_country', true)
             );
 
-            $link_rel = get_post_meta($id, '_link_rel', true);
-            if ($link_rel === '') {
-                // Link interno: nessun attributo rel.
-            } elseif (!$link_rel) {
-                $link_rel = 'sponsored noopener';
-            }
+            $link_rel = ALMA_Affiliate_Anchor::rel($id);
 
             $items[] = array(
                 'id' => $id,
@@ -237,9 +232,22 @@ class ALMA_Affiliate_Links_Widget extends WP_Widget {
 
     /**
      * Attributi comuni dei link card: tracking click identico agli shortcode.
+     *
+     * La classe del template arriva qui invece di essere scritta nel tag,
+     * e non è un vezzo: `assets/tracking.js` si aggancia a
+     * `.alma-affiliate-link[data-track="1"]`, e finché ogni scheda stampava
+     * il proprio `class="alma-wgt-…"` prima di questi attributi non c'era
+     * modo di aggiungere la classe del tracciamento senza stampare un
+     * secondo attributo `class` — di cui il browser tiene il primo. Le
+     * schede sono il preset predefinito del widget e l'unico che l'agente
+     * AI genera: i loro click non sono mai stati contati.
+     *
+     * @param array  $item  Riga del link.
+     * @param string $class Classe del template.
      */
-    private static function card_link_attrs($item) {
-        $attrs = ' href="' . esc_url($item['url']) . '" data-link-id="' . esc_attr($item['id']) . '" data-track="1" data-source="widget"';
+    private static function card_link_attrs($item, $class = '') {
+        $attrs = ' href="' . esc_url($item['url']) . '"'
+            . ALMA_Affiliate_Anchor::track_attrs($item['id'], 'widget', $class);
         if ($item['rel'] !== '') {
             $attrs .= ' rel="' . esc_attr($item['rel']) . '"';
         }
@@ -314,7 +322,7 @@ class ALMA_Affiliate_Links_Widget extends WP_Widget {
             foreach ($items as $item) {
                 $bg = $item['image'] !== '' ? ' style="background-image:url(' . esc_url($item['image']) . ');"' : '';
                 $meta = $item['location'] !== '' ? $item['location'] : self::truncate_text($item['description'], 60);
-                $output .= '<a class="alma-wgt-dest"' . self::card_link_attrs($item) . $bg . '>'
+                $output .= '<a' . self::card_link_attrs($item, 'alma-wgt-dest') . $bg . '>'
                     . '<span class="alma-wgt-dest__body">'
                     . '<span class="alma-wgt-dest__title">' . esc_html($item['title']) . '</span>'
                     . ($meta !== '' ? '<span class="alma-wgt-dest__meta">' . esc_html($meta) . '</span>' : '')
@@ -331,11 +339,11 @@ class ALMA_Affiliate_Links_Widget extends WP_Widget {
             foreach ($items as $item) {
                 $bg = $item['image'] !== '' ? ' style="background-image:url(' . esc_url($item['image']) . ');"' : '';
                 $output .= '<div class="alma-wgt-exp">'
-                    . '<a class="alma-wgt-exp__img"' . self::card_link_attrs($item) . $bg . ' aria-hidden="true" tabindex="-1"></a>'
+                    . '<a' . self::card_link_attrs($item, 'alma-wgt-exp__img') . $bg . ' aria-hidden="true" tabindex="-1"></a>'
                     . '<div class="alma-wgt-exp__body">'
                     . ($item['location'] !== '' ? '<span class="alma-wgt-exp__loc">' . esc_html($item['location']) . '</span>' : '')
-                    . '<a class="alma-wgt-exp__title"' . self::card_link_attrs($item) . '>' . esc_html($item['title']) . '</a>'
-                    . '<a class="alma-wgt-exp__btn"' . self::card_link_attrs($item) . '>' . esc_html($button_text) . '</a>'
+                    . '<a' . self::card_link_attrs($item, 'alma-wgt-exp__title') . '>' . esc_html($item['title']) . '</a>'
+                    . '<a' . self::card_link_attrs($item, 'alma-wgt-exp__btn') . '>' . esc_html($button_text) . '</a>'
                     . '</div></div>';
             }
             $output .= '</div>';
@@ -350,9 +358,9 @@ class ALMA_Affiliate_Links_Widget extends WP_Widget {
             . '<div class="alma-wgt-hero__text">'
             . '<p class="alma-wgt-hero__title">' . esc_html($item['title']) . '</p>'
             . ($description !== '' ? '<p class="alma-wgt-hero__desc">' . esc_html($description) . '</p>' : '')
-            . '<a class="alma-wgt-hero__btn"' . self::card_link_attrs($item) . '>' . esc_html($button_text) . '</a>'
+            . '<a' . self::card_link_attrs($item, 'alma-wgt-hero__btn') . '>' . esc_html($button_text) . '</a>'
             . '</div>'
-            . '<a class="alma-wgt-hero__img"' . self::card_link_attrs($item) . $bg . ' aria-label="' . esc_attr($item['title']) . '"></a>'
+            . '<a' . self::card_link_attrs($item, 'alma-wgt-hero__img') . $bg . ' aria-label="' . esc_attr($item['title']) . '"></a>'
             . '</div>';
         return $output;
     }
@@ -380,12 +388,7 @@ class ALMA_Affiliate_Links_Widget extends WP_Widget {
             return '<span style="color:red;">' . esc_html__('[Affiliate Link: URL non configurato]', 'affiliate-link-manager-ai') . '</span>';
         }
 
-        $link_rel = get_post_meta($id, '_link_rel', true);
-        if ($link_rel === '') {
-            // Link interno: nessun attributo rel.
-        } elseif (!$link_rel) {
-            $link_rel = 'sponsored noopener';
-        }
+        $link_rel = ALMA_Affiliate_Anchor::rel($id);
         $link_target = get_post_meta($id, '_link_target', true) ?: '_blank';
         $link_title = get_post_meta($id, '_link_title', true);
         if (empty($link_title)) {

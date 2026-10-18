@@ -75,13 +75,10 @@ class ALMA_Shortcodes {
             return esc_html($fallback_text);
         }
 
-        $link_rel = get_post_meta($atts['id'], '_link_rel', true);
-
-        if ($link_rel === '') {
-            // Link interno: nessun attributo rel
-        } elseif (!$link_rel) {
-            $link_rel = 'sponsored noopener';
-        }
+        // Il rel lo decide ALMA_Affiliate_Anchor: qui c'era una copia della
+        // regola che scambiava «campo mai scritto» per «link interno», e
+        // mandava fuori senza rel ogni link arrivato da un importer.
+        $link_rel = ALMA_Affiliate_Anchor::rel($atts['id']);
 
         $link_target = get_post_meta($atts['id'], '_link_target', true) ?: '_blank';
         $link_title = get_post_meta($atts['id'], '_link_title', true);

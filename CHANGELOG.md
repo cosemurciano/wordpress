@@ -1,3 +1,86 @@
+## 2.111.0 - 2026-10-18
+
+### I link affiliati escono marcati, i click si contano davvero, e la densità configurata vale sul pezzo finito
+
+- **I link importati uscivano senza nessun `rel`.** La regola «se non è stato
+  scelto un rel, metti quello da link sponsorizzato» era scritta in quattro
+  punti — shortcode, widget elenco (due volte), widget contestuale — e solo
+  l'ultimo la applicava. Gli altri tre leggevano
+  `get_post_meta($id, '_link_rel', true)` e trattavano la stringa vuota come
+  «link interno, nessun rel di proposito». Ma `get_post_meta()` restituisce la
+  stringa vuota in **due** casi diversi: il campo c'è ed è vuoto, e il campo
+  non c'è affatto. Il secondo è il caso di ogni link arrivato dagli importer
+  dei provider, che `_link_rel` non lo scrivono mai — cioè il grosso del
+  catalogo. Quei link finivano negli articoli senza `sponsored`, senza
+  `noopener` e con un `target="_blank"` scoperto: un link pagato presentato a
+  Google come link editoriale.
+
+  Il modo giusto esisteva già nel widget contestuale, che distingue i due casi
+  con `metadata_exists()`. Ora quella distinzione sta in un posto solo, la
+  nuova `ALMA_Affiliate_Anchor`, e i quattro punti la chiamano. Chi ha scelto
+  di lasciare un link senza `rel` continua a non averlo: quella scelta si
+  riconosce ancora. Il valore di partenza resta `sponsored noopener` e si
+  cambia con il filtro `alma_affiliate_default_rel`.
+
+- **Tre superfici su otto non contavano i click.** `assets/tracking.js` si
+  aggancia a `.alma-affiliate-link[data-track="1"]`: gli attributi senza quella
+  classe non contano niente. Non ce l'avevano i layout a scheda del widget —
+  che sono il preset predefinito, e l'unico che l'agente AI genera — le ancore
+  che la pipeline aggiunge con la garanzia di monetizzazione, e quelle che il
+  QA ripara. Click mai registrati, su superfici che nel frattempo i consigli
+  dell'AI leggevano come «poco cliccate»; e il contatore dei click decide anche
+  quale link universale finisce in ogni articolo.
+
+  Le schede passavano la propria `class` nel tag prima degli attributi: non
+  c'era modo di aggiungere la nostra senza stampare un secondo attributo
+  `class`, di cui il browser tiene il primo. Ora la classe del template passa
+  da `card_link_attrs()` e se ne stampa una sola. Le ancore riparate dal QA
+  ricevono anche `data-link-id`, che prima non avevano affatto.
+
+- **La densità configurata non governava il pezzo finito.** L'impostazione «un
+  inserimento ogni N parole» veniva applicata da `enforce()` a metà pipeline;
+  dopo di lei arrivavano altri due passaggi che inserivano senza essere
+  contati — la garanzia di monetizzazione, un ciclo **senza tetto** su tutti i
+  candidati (fino a tredici), e la card del link universale. Un articolo da 900
+  parole regolato su tre inserimenti poteva uscirne con diciassette.
+
+  Ora `count_insertions()` vede anche le ancore grezze tracciate, non solo gli
+  shortcode, e `remaining_budget()` dice quanto spazio resta: la garanzia di
+  monetizzazione si ferma lì, tenendo da parte uno slot per la card
+  universale, che è una garanzia voluta e deve entrarci sempre.
+
+  **Non** si rilegge `enforce()` alla fine, che sarebbe stata la correzione
+  ovvia: non è idempotente. Il passo della densità degrada gli shortcode in
+  eccesso, quelli senza `text="…"` spariscono del tutto, i due che stavano ai
+  loro lati diventano adiacenti e il passo successivo ne degrada un altro — a
+  cascata, una passata dopo l'altra. Una prova tiene ferma questa conclusione,
+  così chi riproverà la strada breve lo scopre subito invece che in produzione.
+
+### Aggiunto
+
+- **`tests/`, con un runner.** Quarantanove voci di questo changelog citano
+  conteggi di test — «Test standalone 51/51», «22/22» — e nel repository non
+  c'era mai stato un file di test: venivano scritti, eseguiti e persi. Ora
+  `php tests/run.php` esegue ogni `test-*.php` in un processo suo (gli shim
+  dichiarati con `function_exists` si rovinerebbero a vicenda in un processo
+  solo) ed esce con 1 se qualcosa fallisce. Le 41 prove di questa versione
+  coprono il `rel`, gli attributi del tracciamento, il conteggio degli
+  inserimenti, il budget e la non idempotenza di `enforce()`; ognuna è stata
+  verificata per mutazione — tolta la correzione, la prova corrispondente
+  fallisce.
+
+- `ALMA_Affiliate_Anchor`: `rel()`, `rel_attr()`, `target()`, `track_attrs()` e
+  la costante `TRACK_CLASS`, cioè il punto di contatto con `tracking.js`
+  scritto una volta invece che in sette template.
+
+### Note
+
+- Nessuna option rimossa, nessuna firma pubblica cambiata. I link che oggi
+  hanno un `rel` scritto a mano non cambiano; quelli importati cominciano a
+  uscire marcati, che è la correzione.
+- Test standalone 41/41 (`php tests/run.php`), `php -l` su tutti i file toccati.
+- Versione plugin aggiornata a `2.111.0`.
+
 ## 2.110.0 - 2026-10-06
 
 ### Geocoding OpenStreetMap/Nominatim predefinito (Google al secondo posto)
